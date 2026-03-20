@@ -425,6 +425,7 @@ class ChatInputWrapper extends StatelessWidget {
   final Future<void> Function()? onPickAttachment;
   final List<ChatInputAttachment> attachments;
   final ValueChanged<String>? onRemoveAttachment;
+  final Widget? topBanner;
 
   const ChatInputWrapper({
     super.key,
@@ -443,28 +444,39 @@ class ChatInputWrapper extends StatelessWidget {
     this.onPickAttachment,
     this.attachments = const [],
     this.onRemoveAttachment,
+    this.topBanner,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-      child: ChatInputArea(
-        key: inputAreaKey,
-        controller: controller,
-        focusNode: focusNode,
-        isProcessing: isProcessing,
-        onSendMessage: onSendMessage,
-        onCancelTask: onCancelTask,
-        onPopupVisibilityChanged: onPopupVisibilityChanged,
-        openClawEnabled: openClawEnabled,
-        onToggleOpenClaw: onToggleOpenClaw,
-        onLongPressOpenClaw: onLongPressOpenClaw,
-        useLargeComposerStyle: useLargeComposerStyle,
-        useAttachmentPickerForPlus: useAttachmentPickerForPlus,
-        onPickAttachment: onPickAttachment,
-        attachments: attachments,
-        onRemoveAttachment: onRemoveAttachment,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (topBanner != null) ...[
+            topBanner!,
+            const SizedBox(height: 8),
+          ],
+          ChatInputArea(
+            key: inputAreaKey,
+            controller: controller,
+            focusNode: focusNode,
+            isProcessing: isProcessing,
+            onSendMessage: onSendMessage,
+            onCancelTask: onCancelTask,
+            onPopupVisibilityChanged: onPopupVisibilityChanged,
+            openClawEnabled: openClawEnabled,
+            onToggleOpenClaw: onToggleOpenClaw,
+            onLongPressOpenClaw: onLongPressOpenClaw,
+            useLargeComposerStyle: useLargeComposerStyle,
+            useAttachmentPickerForPlus: useAttachmentPickerForPlus,
+            onPickAttachment: onPickAttachment,
+            attachments: attachments,
+            onRemoveAttachment: onRemoveAttachment,
+          ),
+        ],
       ),
     );
   }

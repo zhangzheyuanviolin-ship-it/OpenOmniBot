@@ -10,6 +10,7 @@ import androidx.lifecycle.lifecycleScope
 import cn.com.omnimind.bot.App
 import cn.com.omnimind.bot.ui.channel.ChannelManager
 import cn.com.omnimind.bot.ui.channel.FileSaveChannel
+import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.AssistsUtil
 import cn.com.omnimind.bot.ui.halfScreen.HalfScreenListenerImpl
 import io.flutter.embedding.android.FlutterActivity
@@ -132,6 +133,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        AppUpdateManager.requestSilentCheckIfDue(this)
 
         try {
             val isAssistsCoreInitialized = AssistsUtil.Core.isInitialized()

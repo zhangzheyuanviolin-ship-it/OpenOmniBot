@@ -4,6 +4,7 @@ import BaseApplication
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.McpServerManager
+import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
 import com.tencent.mmkv.MMKV
 import io.flutter.FlutterInjector
@@ -129,6 +130,7 @@ class App : BaseApplication() {
      */
     fun initSDKsAfterPrivacyConsent() {
         OmniLog.d("AppStartup", "initSDKsAfterPrivacyConsent start")
+        AppUpdateManager.requestSilentCheckIfDue(this)
         OmniLog.d("AppStartup", "initSDKsAfterPrivacyConsent completed")
     }
 }

@@ -1,0 +1,143 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
+class AppUpdateStatus {
+  final String currentVersion;
+  final String latestVersion;
+  final bool hasUpdate;
+  final int checkedAt;
+  final int publishedAt;
+  final String releaseUrl;
+  final String releaseNotes;
+  final String apkName;
+  final String apkDownloadUrl;
+
+  const AppUpdateStatus({
+    required this.currentVersion,
+    required this.latestVersion,
+    required this.hasUpdate,
+    required this.checkedAt,
+    required this.publishedAt,
+    required this.releaseUrl,
+    required this.releaseNotes,
+    required this.apkName,
+    required this.apkDownloadUrl,
+  });
+
+  bool get canInstall => apkDownloadUrl.trim().isNotEmpty;
+
+  String get currentVersionLabel =>
+      currentVersion.isEmpty ? '-' : 'v$currentVersion';
+
+  String get latestVersionLabel =>
+      latestVersion.isEmpty ? '-' : 'v$latestVersion';
+
+  factory AppUpdateStatus.fromMap(Map<dynamic, dynamic> map) {
+    return AppUpdateStatus(
+      currentVersion: (map['currentVersion'] as String? ?? '').trim(),
+      latestVersion: (map['latestVersion'] as String? ?? '').trim(),
+      hasUpdate: map['hasUpdate'] == true,
+      checkedAt: _readInt(map['checkedAt']),
+      publishedAt: _readInt(map['publishedAt']),
+      releaseUrl: (map['releaseUrl'] as String? ?? '').trim(),
+      releaseNotes: (map['releaseNotes'] as String? ?? '').trim(),
+      apkName: (map['apkName'] as String? ?? '').trim(),
+      apkDownloadUrl: (map['apkDownloadUrl'] as String? ?? '').trim(),
+    );
+  }
+
+  static int _readInt(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is double) return raw.toInt();
+    if (raw is String) return int.tryParse(raw) ?? 0;
+    return 0;
+  }
+}
+
+class AppUpdateInstallResult {
+  final bool success;
+  final String status;
+  final String message;
+  final String? filePath;
+
+  const AppUpdateInstallResult({
+    required this.success,
+    required this.status,
+    required this.message,
+    this.filePath,
+  });
+
+  factory AppUpdateInstallResult.fromMap(Map<dynamic, dynamic> map) {
+    return AppUpdateInstallResult(
+      success: map['success'] == true,
+      status: (map['status'] as String? ?? '').trim(),
+      message: (map['message'] as String? ?? '').trim(),
+      filePath: (map['filePath'] as String?)?.trim(),
+    );
+  }
+}
+
+class AppUpdateService {
+  static const MethodChannel _channel = MethodChannel(
+    'cn.com.omnimind.bot/app_update',
+  );
+
+  static final ValueNotifier<AppUpdateStatus?> statusNotifier =
+      ValueNotifier<AppUpdateStatus?>(null);
+
+  static Future<void> initialize() => _initialize();
+
+  static Future<void> _initialize() async {
+    await refreshCachedStatus();
+    unawaited(_safeRefreshIfNeeded());
+  }
+
+  static Future<AppUpdateStatus?> refreshCachedStatus() async {
+    try {
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'getCachedStatus',
+      );
+      final status =
+          result == null ? null : AppUpdateStatus.fromMap(result);
+      statusNotifier.value = status;
+      return status;
+    } catch (_) {
+      return statusNotifier.value;
+    }
+  }
+
+  static Future<AppUpdateStatus?> refreshIfNeeded() {
+    return _safeRefreshIfNeeded();
+  }
+
+  static Future<AppUpdateStatus?> checkNow() {
+    return _check(force: true);
+  }
+
+  static Future<AppUpdateInstallResult> installLatestApk() async {
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'installLatestApk',
+    );
+    return AppUpdateInstallResult.fromMap(result ?? const {});
+  }
+
+  static Future<AppUpdateStatus?> _check({required bool force}) async {
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'checkNow',
+      {'force': force},
+    );
+    final status = result == null ? null : AppUpdateStatus.fromMap(result);
+    statusNotifier.value = status;
+    return status;
+  }
+
+  static Future<AppUpdateStatus?> _safeRefreshIfNeeded() async {
+    try {
+      return await _check(force: false);
+    } catch (_) {
+      return statusNotifier.value;
+    }
+  }
+}

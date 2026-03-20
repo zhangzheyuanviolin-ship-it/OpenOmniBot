@@ -16,7 +16,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 1
-        versionName = "0.0.1"
+        versionName = "0.0.2"
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
@@ -120,6 +120,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.service)
+    implementation(libs.work.runtime)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.ktor.server.core)

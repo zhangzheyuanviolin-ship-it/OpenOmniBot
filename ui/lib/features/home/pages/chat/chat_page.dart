@@ -17,6 +17,7 @@ import 'package:ui/constants/openclaw/openclaw_keys.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/widgets/permission_bottom_sheet.dart';
 import 'package:ui/services/app_state_service.dart';
+import 'package:ui/services/app_update_service.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/permission_registry.dart';
@@ -33,6 +34,8 @@ import 'mixins/conversation_manager.dart';
 
 // 导入 Widgets
 import 'widgets/chat_widgets.dart';
+import 'package:ui/widgets/app_update_banner.dart';
+import 'package:ui/widgets/app_update_dialog.dart';
 
 enum ChatPageMode { normal, openclaw }
 
@@ -170,6 +173,7 @@ class _ChatPageState extends State<ChatPage>
   int _companionCountdown = kCompanionCountdownDuration;
   bool _showCompanionCountdown = false;
   Timer? _companionCountdownTimer;
+  AppUpdateStatus? _appUpdateStatus;
 
   ChatPageMode get _activeMode => _activeConversationMode;
   String _modeKey(ChatPageMode mode) => switch (mode) {
@@ -758,6 +762,9 @@ class _ChatPageState extends State<ChatPage>
 
     _runtimeCoordinator.ensureInitialized();
     _runtimeCoordinator.addListener(_handleRuntimeCoordinatorChanged);
+    AppUpdateService.statusNotifier.addListener(_handleAppUpdateStatusChanged);
+    _appUpdateStatus = AppUpdateService.statusNotifier.value;
+    unawaited(AppUpdateService.initialize());
 
     _inputFocusNode.addListener(_onFocusChange);
     _messageController.addListener(_handleSlashCommandInput);
@@ -1110,6 +1117,7 @@ class _ChatPageState extends State<ChatPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _runtimeCoordinator.removeListener(_handleRuntimeCoordinatorChanged);
+    AppUpdateService.statusNotifier.removeListener(_handleAppUpdateStatusChanged);
     _messageController.removeListener(_handleSlashCommandInput);
     _messageController.dispose();
     _normalMessageScrollController.dispose();
@@ -1128,6 +1136,41 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _onFocusChange() {}
+
+  void _handleAppUpdateStatusChanged() {
+    if (!mounted) return;
+    setState(() {
+      _appUpdateStatus = AppUpdateService.statusNotifier.value;
+    });
+  }
+
+  double _popupMenuBottomOffset() {
+    final renderObject = _inputAreaKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) {
+      return 72;
+    }
+    final offset = renderObject.size.height - 8;
+    return offset < 72 ? 72 : offset;
+  }
+
+  Future<void> _handleAppUpdateBannerTap() async {
+    final status = _appUpdateStatus;
+    if (status == null || !status.hasUpdate || !mounted) return;
+    await showAppUpdateDialog(context, status);
+  }
+
+  Widget? _buildAppUpdateBanner() {
+    final status = _appUpdateStatus;
+    if (status == null || !status.hasUpdate) {
+      return null;
+    }
+    return AppUpdateBanner(
+      text: '发现新版本 ${status.latestVersionLabel}，点击更新',
+      onTap: () {
+        _handleAppUpdateBannerTap();
+      },
+    );
+  }
 
   Future<void> _loadOpenClawConfig() async {
     try {
@@ -1573,6 +1616,7 @@ class _ChatPageState extends State<ChatPage>
     if (state == AppLifecycleState.resumed) {
       _notifySummarySheetReadyIfNeeded();
       unawaited(_checkCompanionTaskState());
+      unawaited(AppUpdateService.refreshIfNeeded());
     }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
@@ -2281,6 +2325,7 @@ class _ChatPageState extends State<ChatPage>
                           onPickAttachment: _pickAttachments,
                           attachments: _pendingAttachments,
                           onRemoveAttachment: _removePendingAttachment,
+                          topBanner: _buildAppUpdateBanner(),
                         ),
                       ),
                     SizedBox(height: inputBottomPadding),
@@ -2292,7 +2337,7 @@ class _ChatPageState extends State<ChatPage>
                     right: 24,
                     // Scaffold 已经根据键盘重排了 body，这里不再叠加 bottomInset，
                     // 否则键盘弹出时会把菜单额外上推，出现跑到屏幕顶部的问题。
-                    bottom: 72,
+                    bottom: _popupMenuBottomOffset(),
                     child:
                         _chatInputAreaKey.currentState?.buildPopupMenu() ??
                         const SizedBox.shrink(),

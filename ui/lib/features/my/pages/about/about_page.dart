@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:ui/services/app_update_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_text_styles.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/app_update_dialog.dart';
+import 'package:ui/widgets/gradient_button.dart';
+import 'package:ui/utils/ui.dart';
 
 class AboutPage extends StatefulWidget {
   const AboutPage({Key? key}) : super(key: key);
@@ -13,32 +17,112 @@ class AboutPage extends StatefulWidget {
 
 class _AboutPageState extends State<AboutPage> {
   String _version = '';
+  AppUpdateStatus? _updateStatus;
+  bool _isCheckingUpdate = false;
 
   @override
   void initState() {
     super.initState();
+    AppUpdateService.statusNotifier.addListener(_handleUpdateStatusChanged);
     _loadVersion();
+    _loadUpdateStatus();
+  }
+
+  @override
+  void dispose() {
+    AppUpdateService.statusNotifier.removeListener(_handleUpdateStatusChanged);
+    super.dispose();
   }
 
   Future<void> _loadVersion() async {
     try {
       final versionInfo = await DeviceService.getAppVersion();
-      if (versionInfo != null && mounted) {
+      if (!mounted) return;
+      if (versionInfo != null) {
         final versionName = versionInfo['versionName'] as String?;
         setState(() {
           _version = 'Version ${versionName ?? '-'}';
         });
-      } else {
-        setState(() {
-          _version = 'Version -';
-        });
+        return;
       }
+      setState(() {
+        _version = 'Version -';
+      });
     } catch (e) {
       print('加载版本号失败: $e');
+      if (!mounted) return;
       setState(() {
         _version = 'Version -';
       });
     }
+  }
+
+  Future<void> _loadUpdateStatus() async {
+    await AppUpdateService.initialize();
+    if (!mounted) return;
+    setState(() {
+      _updateStatus = AppUpdateService.statusNotifier.value;
+    });
+  }
+
+  void _handleUpdateStatusChanged() {
+    if (!mounted) return;
+    setState(() {
+      _updateStatus = AppUpdateService.statusNotifier.value;
+    });
+  }
+
+  Future<void> _handleCheckUpdate() async {
+    if (_isCheckingUpdate) return;
+    setState(() {
+      _isCheckingUpdate = true;
+    });
+
+    try {
+      final status = await AppUpdateService.checkNow();
+      if (!mounted) return;
+      if (status == null) {
+        showToast('检查更新失败', type: ToastType.error);
+        return;
+      }
+      if (status.hasUpdate) {
+        await showAppUpdateDialog(context, status);
+        return;
+      }
+      showToast('已是最新版', type: ToastType.success);
+    } catch (_) {
+      if (!mounted) return;
+      showToast('检查更新失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingUpdate = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handlePrimaryAction() async {
+    final status = _updateStatus;
+    if (status != null && status.hasUpdate) {
+      await showAppUpdateDialog(context, status);
+      return;
+    }
+    await _handleCheckUpdate();
+  }
+
+  String _buildUpdateHint() {
+    final status = _updateStatus;
+    if (status == null) {
+      return '检查 GitHub Release 获取最新版本';
+    }
+    if (status.hasUpdate) {
+      return '发现新版本 ${status.latestVersionLabel}';
+    }
+    if (status.checkedAt > 0) {
+      return '已是最新版';
+    }
+    return '检查 GitHub Release 获取最新版本';
   }
 
   @override
@@ -113,8 +197,32 @@ class _AboutPageState extends State<AboutPage> {
                         ),
                       ],
                     ),
-                    
+
                     const SizedBox(height: 10),
+                    Text(
+                      _buildUpdateHint(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: AppTextStyles.fontFamily,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.text50,
+                        letterSpacing: 0.3,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    GradientButton(
+                      text: _isCheckingUpdate
+                          ? '检查中...'
+                          : (_updateStatus?.hasUpdate == true ? '查看新版本' : '检查更新'),
+                      width: 180,
+                      height: 44,
+                      enabled: !_isCheckingUpdate,
+                      onTap: () {
+                        _handlePrimaryAction();
+                      },
+                    ),
                     const SizedBox(height: 154),
                   ],
                 ),
