@@ -268,8 +268,6 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       if (!mounted) return;
       if (_models.isEmpty) return;
     }
-    final searchController = TextEditingController();
-    String searchQuery = '';
     final selected = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -279,124 +277,12 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       ),
       clipBehavior: Clip.antiAlias,
       builder: (context) {
-        final sheetHeight = (MediaQuery.of(context).size.height * 0.78)
-            .clamp(420.0, 620.0)
-            .toDouble();
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final filtered = _models.where((item) {
-              final haystack =
-                  '${item.id} ${item.displayName} ${item.ownedBy ?? ''}'
-                      .toLowerCase();
-              return haystack.contains(searchQuery.trim().toLowerCase());
-            }).toList();
-
-            void updateFilter(String keyword) {
-              setModalState(() {
-                searchQuery = keyword;
-              });
-            }
-
-            return SafeArea(
-              top: false,
-              child: Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom,
-                ),
-                child: Container(
-                  color: Colors.white,
-                  child: SizedBox(
-                    height: sheetHeight,
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 12),
-                        Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: const Color(0x22000000),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          '选择模型',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.text,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: TextField(
-                            controller: searchController,
-                            onChanged: updateFilter,
-                            decoration: InputDecoration(
-                              hintText: '搜索模型 ID',
-                              prefixIcon: const Icon(Icons.search),
-                              filled: true,
-                              fillColor: const Color(0xFFF8FAFC),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide.none,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Expanded(
-                          child: ListView.separated(
-                            physics: const ClampingScrollPhysics(),
-                            clipBehavior: Clip.hardEdge,
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                            itemBuilder: (context, index) {
-                              final item = filtered[index];
-                              final selected = item.id == _selectedModelId;
-                              return ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
-                                ),
-                                tileColor: selected
-                                    ? const Color(0xFFF0F7FF)
-                                    : const Color(0xFFF8FAFC),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                title: Text(item.displayName),
-                                subtitle: Text(
-                                  item.ownedBy == null
-                                      ? item.id
-                                      : '${item.id} · ${item.ownedBy}',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                trailing: selected
-                                    ? const Icon(
-                                        Icons.check_circle,
-                                        color: Color(0xFF2C7FEB),
-                                      )
-                                    : null,
-                                onTap: () => Navigator.of(context).pop(item.id),
-                              );
-                            },
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 8),
-                            itemCount: filtered.length,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
+        return _ProviderModelPickerSheet(
+          items: _models,
+          currentValue: _selectedModelId,
         );
       },
     );
-    searchController.dispose();
 
     if (selected != null && mounted) {
       setState(() {
@@ -743,6 +629,153 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProviderModelPickerSheet extends StatefulWidget {
+  const _ProviderModelPickerSheet({
+    required this.items,
+    required this.currentValue,
+  });
+
+  final List<ProviderModelOption> items;
+  final String currentValue;
+
+  @override
+  State<_ProviderModelPickerSheet> createState() =>
+      _ProviderModelPickerSheetState();
+}
+
+class _ProviderModelPickerSheetState extends State<_ProviderModelPickerSheet> {
+  late final TextEditingController _searchController;
+  late List<ProviderModelOption> _filteredItems;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _filteredItems = List<ProviderModelOption>.from(widget.items);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _updateFilter(String keyword) {
+    final query = keyword.trim().toLowerCase();
+    setState(() {
+      _filteredItems = widget.items.where((item) {
+        final haystack =
+            '${item.id} ${item.displayName} ${item.ownedBy ?? ''}'
+                .toLowerCase();
+        return haystack.contains(query);
+      }).toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final availableHeight =
+        mediaQuery.size.height - mediaQuery.viewInsets.bottom;
+    final sheetHeight = (availableHeight * 0.78)
+        .clamp(420.0, 620.0)
+        .toDouble();
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
+        child: Container(
+          color: Colors.white,
+          child: SizedBox(
+            height: sheetHeight,
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0x22000000),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '选择模型',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.text,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _updateFilter,
+                    decoration: InputDecoration(
+                      hintText: '搜索模型 ID',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.separated(
+                    physics: const ClampingScrollPhysics(),
+                    clipBehavior: Clip.hardEdge,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    itemBuilder: (context, index) {
+                      final item = _filteredItems[index];
+                      final isSelected = item.id == widget.currentValue;
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        tileColor: isSelected
+                            ? const Color(0xFFF0F7FF)
+                            : const Color(0xFFF8FAFC),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        title: Text(item.displayName),
+                        subtitle: Text(
+                          item.ownedBy == null
+                              ? item.id
+                              : '${item.id} · ${item.ownedBy}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(
+                                Icons.check_circle,
+                                color: Color(0xFF2C7FEB),
+                              )
+                            : null,
+                        onTap: () => Navigator.of(context).pop(item.id),
+                      );
+                    },
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemCount: _filteredItems.length,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
