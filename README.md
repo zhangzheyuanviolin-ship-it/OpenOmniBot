@@ -1,6 +1,6 @@
 # OpenOmniBot
 
-> 那晚豆包和龙虾都喝多了...<br> 一个Android端真正“可执行”的Agent，而不仅仅是一个对话式聊天机器人
+> 那晚豆包和龙虾都喝多了...<br> 一个Android端真正可“执行”的Agent，而不仅仅是一个对话式聊天机器人
 
 
 ## ✨ 项目简介
@@ -26,7 +26,7 @@ OpenOmniBot/
 ├── assists/             # 自动化执行引擎：任务调度、状态机、视觉检测、操作控制
 ├── accessibility/       # 无障碍与屏幕感知：Accessibility Service、截图、MediaProjection
 ├── omniintelligence/    # 智能能力抽象层：模型协议、任务状态、Agent 请求/响应模型
-└── uikit/               # 原生浮窗/覆盖层 UI：Overlay、悬浮球、半屏面板（对应你示例里的 overlay）
+└── uikit/               # 原生浮窗/覆盖层 UI：Overlay、悬浮球、半屏面板
 ```
 
 ## 🚀 快速开始
@@ -83,4 +83,12 @@ cd ..
 
 ### 其他
 感谢 linux.do 等社区的开发者的支持
-![](docs/pic/wechat_2026-3-21.jpg)
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="docs/pic/wechat_2026-3-21.jpg" alt="WeChat Group" width="220"/><br/>
+      <b>WeChat Group</b>
+    </td>
+  </tr>
+</table>
