@@ -326,34 +326,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   }
 
   Future<void> _promptAddModel() async {
-    final controller = TextEditingController();
     final modelId = await showDialog<String>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('添加模型 ID'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: '输入模型 ID',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-              child: const Text('添加'),
-            ),
-          ],
-        );
-      },
+      useRootNavigator: false,
+      builder: (_) => const _AddModelIdDialog(),
     );
-    controller.dispose();
 
+    if (!mounted) return;
     if (modelId == null) {
       return;
     }
@@ -803,6 +782,72 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         ),
                       ],
                     ),
+      ),
+    );
+  }
+}
+
+class _AddModelIdDialog extends StatefulWidget {
+  const _AddModelIdDialog();
+
+  @override
+  State<_AddModelIdDialog> createState() => _AddModelIdDialogState();
+}
+
+class _AddModelIdDialogState extends State<_AddModelIdDialog> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _close([String? value]) {
+    _focusNode.unfocus();
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _close();
+      },
+      child: AlertDialog(
+        title: const Text('添加模型 ID'),
+        content: TextField(
+          controller: _controller,
+          focusNode: _focusNode,
+          decoration: const InputDecoration(
+            hintText: '输入模型 ID',
+          ),
+          onSubmitted: (_) => _close(_controller.text.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => _close(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => _close(_controller.text.trim()),
+            child: const Text('添加'),
+          ),
+        ],
       ),
     );
   }
