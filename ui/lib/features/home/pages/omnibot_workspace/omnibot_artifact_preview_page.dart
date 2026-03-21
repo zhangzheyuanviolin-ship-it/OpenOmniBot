@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
 import 'package:ui/widgets/omnibot_resource_widgets.dart';
 
@@ -62,27 +63,26 @@ class _OmnibotArtifactPreviewPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title, overflow: TextOverflow.ellipsis),
-        actions: [
-          IconButton(
-            onPressed: () {
-              OmnibotResourceService.openWithSystem(
-                sourcePath: widget.path,
-                mimeType: widget.mimeType,
-              );
-            },
-            icon: SvgPicture.asset(
-              _externalLinkIconAsset,
-              width: 20,
-              height: 20,
-              colorFilter: ColorFilter.mode(
-                IconTheme.of(context).color ?? const Color(0xFF111827),
-                BlendMode.srcIn,
-              ),
+      appBar: CommonAppBar(
+        title: widget.title,
+        primary: true,
+        trailing: IconButton(
+          onPressed: () {
+            OmnibotResourceService.openWithSystem(
+              sourcePath: widget.path,
+              mimeType: widget.mimeType,
+            );
+          },
+          icon: SvgPicture.asset(
+            _externalLinkIconAsset,
+            width: 20,
+            height: 20,
+            colorFilter: const ColorFilter.mode(
+              Color(0xFF111827),
+              BlendMode.srcIn,
             ),
           ),
-        ],
+        ),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

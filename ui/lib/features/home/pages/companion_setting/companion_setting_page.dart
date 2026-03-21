@@ -111,12 +111,10 @@ class _CompanionSettingPageState extends State<CompanionSettingPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FA),
+      appBar: const CommonAppBar(title: '应用权限授权', primary: true),
       body: SafeArea(
-        child: Column(
-          children: [
-            const CommonAppBar(title: '应用权限授权'),
-            Expanded(
-              child: SingleChildScrollView(
+        top: false,
+        child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,9 +196,6 @@ class _CompanionSettingPageState extends State<CompanionSettingPage> {
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

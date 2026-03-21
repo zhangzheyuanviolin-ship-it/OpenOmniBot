@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/features/my/pages/my/widgets/setting_section.dart';
 import 'package:ui/features/my/pages/my/widgets/setting_tile.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 enum ThemeOption { system, light, dark }
 
@@ -63,18 +64,10 @@ class _ThemeColorPageState extends State<ThemeColorPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        elevation: 0,
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        title: const Text(
-          '主题色彩',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 20),
-            onPressed: () => Navigator.of(context).maybePop(),
-        ),
+      appBar: CommonAppBar(
+        title: '主题色彩',
+        primary: true,
+        onBackPressed: () => Navigator.of(context).maybePop(),
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

@@ -6,6 +6,7 @@ import 'package:ui/models/mem0_config.dart';
 import 'package:ui/services/mem0_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class Mem0SettingPage extends StatefulWidget {
   const Mem0SettingPage({super.key});
@@ -156,35 +157,8 @@ class _Mem0SettingPageState extends State<Mem0SettingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: GestureDetector(
-          onTap: () => GoRouterManager.pop(),
-          child: Center(
-            child: SvgPicture.asset(
-              'assets/common/chevron_left.svg',
-              width: 24,
-              height: 24,
-              colorFilter: const ColorFilter.mode(
-                AppColors.text,
-                BlendMode.srcIn,
-              ),
-            ),
-          ),
-        ),
-        centerTitle: true,
-        title: const Text(
-          'Mem0 云记忆',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: AppColors.text,
-            fontFamily: 'SF Pro',
-          ),
-        ),
-      ),
+      backgroundColor: AppColors.background,
+      appBar: const CommonAppBar(title: 'Mem0 云记忆', primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

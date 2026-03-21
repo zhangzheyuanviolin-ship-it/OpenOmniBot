@@ -314,15 +314,13 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   Widget build(BuildContext context) {
     final scene = _selectedScene;
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
+      backgroundColor: AppColors.background,
+      appBar: const CommonAppBar(title: '场景模型配置', primary: true),
       body: SafeArea(
-        child: Column(
-          children: [
-            const CommonAppBar(title: '场景模型配置'),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView(
+        top: false,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
                         Container(
@@ -669,9 +667,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                         ),
                       ],
                     ),
-            ),
-          ],
-        ),
       ),
     );
   }

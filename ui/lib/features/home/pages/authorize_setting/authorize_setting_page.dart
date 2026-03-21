@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:flutter_switch/flutter_switch.dart';
-import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/utils/cache_util.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 /// 应用权限授权页面
 class AuthorizeSettingPage extends StatefulWidget {
@@ -83,41 +82,9 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF6F8FA),
-        elevation: 0,
-        leading: Container(
-          width: 44,
-          height: 44,
-          child: Center(
-            child: GestureDetector(
-              onTap: () => GoRouterManager.pop(),
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: SvgPicture.asset(
-                  'assets/common/chevron_left.svg',
-                  width: 24,
-                  height: 24,
-                  colorFilter: const ColorFilter.mode(
-                    Color(0xFF1A1A1A),
-                    BlendMode.srcIn,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        title: const Text(
-          '应用权限授权',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF1F2336),
-          ),
-        ),
-      ),
+      appBar: const CommonAppBar(title: '应用权限授权', primary: true),
       body: SafeArea(
+        top: false,
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(

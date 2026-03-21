@@ -53,38 +53,30 @@ class _PermissionGuidePageState extends State<PermissionGuidePage> {
     final topics = PermissionGuideRepository.topicsForBrand(_selectedBrand);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
+      backgroundColor: AppColors.background,
+      appBar: const CommonAppBar(title: '权限开通指引', primary: true),
       body: SafeArea(
-        child: Column(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: CommonAppBar(title: '权限开通指引'),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                children: [
-                  _buildHeroCard(brandInfo),
-                  const SizedBox(height: 16),
-                  _buildBrandSelector(),
-                  const SizedBox(height: 20),
-                  Text(
-                    '根据当前品牌推荐的权限指南',
-                    style: TextStyle(
-                      color: AppColors.text70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  for (final topic in topics) ...[
-                    _buildTopicCard(topic, brandInfo.id),
-                    const SizedBox(height: 10),
-                  ],
-                ],
+            _buildHeroCard(brandInfo),
+            const SizedBox(height: 16),
+            _buildBrandSelector(),
+            const SizedBox(height: 20),
+            Text(
+              '根据当前品牌推荐的权限指南',
+              style: TextStyle(
+                color: AppColors.text70,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
             ),
+            const SizedBox(height: 8),
+            for (final topic in topics) ...[
+              _buildTopicCard(topic, brandInfo.id),
+              const SizedBox(height: 10),
+            ],
           ],
         ),
       ),

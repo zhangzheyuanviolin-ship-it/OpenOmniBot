@@ -923,7 +923,14 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
     final hasMem0Section = _mem0Snapshot.shouldShowSection || _isMem0Loading;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
+      backgroundColor: AppColors.background,
+      appBar: _isSelectionMode
+          ? _buildSelectionAppBar(filteredCards)
+          : const CommonAppBar(
+              title: '记忆中心',
+              showAiBadge: true,
+              primary: true,
+            ),
       body: Stack(
         children: [
           // 主内容区域
@@ -948,15 +955,9 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                   //   ),
                   // ),
                   SafeArea(
+                    top: false,
                     child: Column(
                       children: [
-                        // 自定义 AppBar（选择模式下显示不同内容）
-                        _isSelectionMode
-                            ? _buildSelectionAppBar(filteredCards)
-                            : const CommonAppBar(
-                                title: '记忆中心',
-                                showAiBadge: true,
-                              ),
                         // 主内容
                         Expanded(
                           child: _isLoading
@@ -1094,57 +1095,47 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   // 选择模式下的 AppBar
-  Widget _buildSelectionAppBar(List<MemoryCardModel> filteredCards) {
+  PreferredSizeWidget _buildSelectionAppBar(List<MemoryCardModel> filteredCards) {
     final isAllSelected =
         _selectedCardIds.length == filteredCards.length &&
         filteredCards.isNotEmpty;
-    return Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          // 取消按钮
-          GestureDetector(
-            onTap: _exitSelectionMode,
-            child: Text(
-              '取消',
-              style: TextStyle(
-                color: const Color(0xFF007AFF),
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-                height: 1.57,
-              ),
-            ),
+    return CommonAppBar(
+      primary: true,
+      title: '已选择${_selectedCardIds.length}项',
+      titleStyle: const TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+        color: AppColors.text,
+        fontFamily: 'SF Pro',
+      ),
+      leadingWidth: 64,
+      leading: TextButton(
+        onPressed: _exitSelectionMode,
+        child: const Text(
+          '取消',
+          style: TextStyle(
+            color: Color(0xFF007AFF),
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
           ),
-          // 标题居中
-          Expanded(
-            child: Center(
-              child: Text(
-                '已选择${_selectedCardIds.length}项',
-                style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  height: 1.50,
-                ),
-              ),
-            ),
-          ),
-          // 全选/全不选按钮
-          GestureDetector(
-            onTap: () => _toggleSelectAll(filteredCards),
+        ),
+      ),
+      actions: [
+        SizedBox(
+          width: 72,
+          child: TextButton(
+            onPressed: () => _toggleSelectAll(filteredCards),
             child: Text(
               isAllSelected ? '全不选' : '全选',
-              style: TextStyle(
-                color: const Color(0xFF007AFF),
+              style: const TextStyle(
+                color: Color(0xFF007AFF),
                 fontSize: 14,
                 fontWeight: FontWeight.w400,
-                height: 1.57,
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

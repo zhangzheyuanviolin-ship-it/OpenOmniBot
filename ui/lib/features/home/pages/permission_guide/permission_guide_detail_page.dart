@@ -41,26 +41,18 @@ class _PermissionGuideDetailPageState extends State<PermissionGuideDetailPage> {
   Widget build(BuildContext context) {
     if (_topic == null) {
       return Scaffold(
-        backgroundColor: AppColors.backgroundGrey,
+        backgroundColor: AppColors.background,
+        appBar: const CommonAppBar(title: '权限指南', primary: true),
         body: const SafeArea(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              children: [
-                CommonAppBar(title: '权限指南'),
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      '未找到对应的权限指南',
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+          top: false,
+          child: Center(
+            child: Text(
+              '未找到对应的权限指南',
+              style: TextStyle(
+                color: AppColors.text,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),
@@ -76,16 +68,11 @@ class _PermissionGuideDetailPageState extends State<PermissionGuideDetailPage> {
         .toList(growable: false);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
+      backgroundColor: AppColors.background,
+      appBar: CommonAppBar(title: topic.title, primary: true),
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: CommonAppBar(title: topic.title),
-            ),
-            Expanded(
-              child: ListView(
+        top: false,
+        child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
                   _buildSummaryCard(topic, brandInfo),
@@ -127,9 +114,6 @@ class _PermissionGuideDetailPageState extends State<PermissionGuideDetailPage> {
                   ],
                 ],
               ),
-            ),
-          ],
-        ),
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),

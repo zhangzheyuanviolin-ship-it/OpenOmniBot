@@ -179,7 +179,7 @@ class _ScheduleTaskSheetState extends State<ScheduleTaskSheet> {
               margin: const EdgeInsets.symmetric(horizontal: 16),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.backgroundGrey,
+                color: AppColors.background,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -288,7 +288,7 @@ class _ScheduleTaskSheetState extends State<ScheduleTaskSheet> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.backgroundGrey,
+        color: AppColors.background,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(

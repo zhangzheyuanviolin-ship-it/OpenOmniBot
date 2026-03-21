@@ -1,11 +1,11 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class AlarmSettingPage extends StatefulWidget {
   const AlarmSettingPage({super.key});
@@ -139,28 +139,12 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
-      appBar: AppBar(
-        backgroundColor: AppColors.backgroundGrey,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 20),
-          color: AppColors.text,
-          onPressed: () => GoRouterManager.pop(),
-        ),
-        centerTitle: true,
-        title: const Text(
-          '闹钟设置',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppColors.text,
-          ),
-        ),
-      ),
+      backgroundColor: AppColors.background,
+      appBar: const CommonAppBar(title: '闹钟设置', primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(
+              top: false,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(

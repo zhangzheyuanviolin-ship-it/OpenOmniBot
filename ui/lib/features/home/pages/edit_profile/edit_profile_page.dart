@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class EditProfilePage extends StatefulWidget {
   final int? initialAvatarIndex;
@@ -57,26 +58,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     const lightGrey2 = Color(0xFFD8D8D8);
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          '编辑个人信息',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-
-        ],
-      ),
+      appBar: const CommonAppBar(title: '编辑个人信息', primary: true),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: primaryBlack))
           : Padding(

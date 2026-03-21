@@ -46,8 +46,7 @@ class AppColors {
   // 背景色
   static const Color white = Colors.white;
   static const Color background = Color(0xFFF5F5F5);
-  static const Color backgroundGrey = Color(0xFFF9FCFF);
-  
+    
   // 品牌渐变（基于设计系统）
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [primaryBlue, gradientAux],

@@ -10,6 +10,7 @@ import 'package:ui/services/conversation_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class ChatHistoryPage extends StatefulWidget {
   const ChatHistoryPage({super.key});
@@ -128,30 +129,15 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: Colors.grey[800], size: 20),
-          onPressed: () => Navigator.pop(context),
+      backgroundColor: AppColors.background,
+      appBar: CommonAppBar(
+        title: '\u804a\u5929\u8bb0\u5f55',
+        primary: true,
+        trailing: IconButton(
+          icon: Icon(Icons.add, color: Colors.grey[600], size: 24),
+          onPressed: _createConversation,
+          tooltip: '\u65b0\u5efa\u5bf9\u8bdd',
         ),
-        title: Text(
-          '\u804a\u5929\u8bb0\u5f55',
-          style: TextStyle(
-            color: Colors.grey[800],
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.add, color: Colors.grey[600], size: 24),
-            onPressed: _createConversation,
-            tooltip: '\u65b0\u5efa\u5bf9\u8bdd',
-          ),
-        ],
       ),
       body: _buildBody(),
     );

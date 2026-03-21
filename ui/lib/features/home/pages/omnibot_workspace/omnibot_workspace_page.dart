@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/omnibot_workspace/widgets/omnibot_workspace_browser.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class OmnibotWorkspacePage extends StatelessWidget {
   final String workspacePath;
@@ -16,7 +17,7 @@ class OmnibotWorkspacePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Workspace')),
+      appBar: const CommonAppBar(title: 'Workspace', primary: true),
       body: OmnibotWorkspaceBrowser(
         workspacePath: workspacePath,
         workspaceShellPath: workspaceShellPath,

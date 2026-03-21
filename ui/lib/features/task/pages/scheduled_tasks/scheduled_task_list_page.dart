@@ -10,6 +10,7 @@ import 'package:ui/services/scheduled_task_scheduler_service.dart';
 import 'package:ui/services/scheduled_task_storage_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/cache_util.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/widgets/image/cached_image.dart';
 
 /// 定时任务列表页面
@@ -387,25 +388,8 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
-      appBar: AppBar(
-        backgroundColor: AppColors.backgroundGrey,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 20),
-          color: AppColors.text,
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          '定时',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppColors.text,
-          ),
-        ),
-        centerTitle: true,
-      ),
+      backgroundColor: AppColors.background,
+      appBar: const CommonAppBar(title: '定时', primary: true),
       body: Column(
         children: [
           const SizedBox(height: 8),

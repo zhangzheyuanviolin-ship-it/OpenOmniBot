@@ -244,15 +244,10 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FA),
+      appBar: const CommonAppBar(title: 'Termux 设置', primary: true),
       body: SafeArea(
-        child: Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: CommonAppBar(title: 'Termux 设置'),
-            ),
-            Expanded(
-              child: RefreshIndicator(
+        top: false,
+        child: RefreshIndicator(
                 onRefresh: _refreshStatus,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -273,9 +268,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:ui/widgets/card/edit_task_card.dart';
 import 'package:ui/features/task/pages/task_history/task_execution_history_page.dart';
 import 'package:ui/services/task_storage_service.dart';
 import 'package:ui/models/task_models.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class TaskEditPage extends StatefulWidget {
   final String taskId;
@@ -165,11 +166,7 @@ class _TaskEditPageState extends State<TaskEditPage> with WidgetsBindingObserver
     // 加载中状态
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          centerTitle: true,
-          title: const Text('加载中...'),
-          leading: const BackButton(),
-        ),
+        appBar: const CommonAppBar(title: '加载中...', primary: true),
         body: const Center(
           child: CircularProgressIndicator(),
         ),
@@ -177,24 +174,21 @@ class _TaskEditPageState extends State<TaskEditPage> with WidgetsBindingObserver
     }
 
     return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: Text(taskTitle),
-        leading: BackButton(),
-        actions: [
-          TextButton(
-            onPressed: () {
-              // 跳转到编辑页面
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const TaskExecutionHistoryPage(),
-                ),
-              );
-            },
-            child: const Text('执行历史'),
-          )
-        ]
+      appBar: CommonAppBar(
+        title: taskTitle,
+        primary: true,
+        trailing: TextButton(
+          onPressed: () {
+            // 跳转到编辑页面
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const TaskExecutionHistoryPage(),
+              ),
+            );
+          },
+          child: const Text('执行历史'),
+        ),
       ),
       body: Padding(
         padding: EdgeInsetsGeometry.symmetric(horizontal: 16),

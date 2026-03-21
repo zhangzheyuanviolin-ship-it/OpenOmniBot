@@ -134,36 +134,30 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: const CommonAppBar(primary: true),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const CommonAppBar(),
-            Expanded(
-              child: _isLoading
-                  ? _buildLoadingIndicator()
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 16),
-                          _buildTaskHeader(),
-                          const SizedBox(height: 12),
-                          _buildDivider(),
-                          const SizedBox(height: 16),
-                          if (!_isSummaryType) _buildStatsRow(),
-                          const SizedBox(height: 8),
-                          // 根据类型组件化渲染不同内容
-                          _buildContentByType(),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-                    ),
-            ),
-          ],
-        ),
+        top: false,
+        child: _isLoading
+            ? _buildLoadingIndicator()
+            : SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    _buildTaskHeader(),
+                    const SizedBox(height: 12),
+                    _buildDivider(),
+                    const SizedBox(height: 16),
+                    if (!_isSummaryType) _buildStatsRow(),
+                    const SizedBox(height: 8),
+                    // 根据类型组件化渲染不同内容
+                    _buildContentByType(),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
       ),
     );
   }

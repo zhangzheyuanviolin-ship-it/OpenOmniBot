@@ -6,6 +6,7 @@ import '../../../../models/chat_models.dart';
 import '../../../../services/task_storage_service.dart';
 import '../../../../models/task_models.dart';
 import '../task_edit/task_edit_page.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class TaskCenterPage extends StatefulWidget {
   const TaskCenterPage({super.key});
@@ -83,23 +84,7 @@ class _TaskCenterPageState extends State<TaskCenterPage> {
     const backgroundColor = Color(0xFFF1F1F1);
     return Scaffold(
       backgroundColor: backgroundColor,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          '任务中心',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        centerTitle: true,
-      ),
+      appBar: const CommonAppBar(title: '任务中心', primary: true),
       body: Column(
         children: [
           // 任务列表

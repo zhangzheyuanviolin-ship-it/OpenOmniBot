@@ -4,6 +4,7 @@ import 'package:ui/models/remote_mcp_server.dart';
 import 'package:ui/services/remote_mcp_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class RemoteMcpServersPage extends StatefulWidget {
   const RemoteMcpServersPage({super.key});
@@ -249,13 +250,8 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('MCP 工具'),
-        centerTitle: true,
-      ),
+      backgroundColor: AppColors.background,
+      appBar: const CommonAppBar(title: 'MCP 工具', primary: true),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showServerEditor(),
         child: const Icon(Icons.add),
@@ -423,7 +419,7 @@ class _MetaChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color ?? AppColors.backgroundGrey,
+        color: color ?? AppColors.background,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(

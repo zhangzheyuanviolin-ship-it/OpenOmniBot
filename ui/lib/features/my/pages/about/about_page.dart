@@ -45,14 +45,12 @@ class _AboutPageState extends State<AboutPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: const CommonAppBar(title: '关于小万', primary: true),
       body: SafeArea(
-        child: Column(
-          children: [
-            const CommonAppBar(title: '关于小万'),
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                child: Column(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     const SizedBox(height: 80),
@@ -117,10 +115,7 @@ class _AboutPageState extends State<AboutPage> {
                     const SizedBox(height: 10),
                     const SizedBox(height: 154),
                   ],
-                ),
-              ),
-            ),
-          ],
+                  ),
         ),
       ),
     );

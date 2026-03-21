@@ -372,15 +372,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
+      backgroundColor: AppColors.background,
+      appBar: const CommonAppBar(title: '模型提供商', primary: true),
       body: SafeArea(
-        child: Column(
-          children: [
-            const CommonAppBar(title: '模型提供商'),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView(
+        top: false,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
                         Container(
@@ -627,9 +625,6 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         ),
                       ],
                     ),
-            ),
-          ],
-        ),
       ),
     );
   }

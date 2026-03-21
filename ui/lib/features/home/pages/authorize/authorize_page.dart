@@ -158,12 +158,14 @@ class _AuthorizePageState extends State<AuthorizePage>
 
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: CommonAppBar(
+        primary: true,
+        onBackPressed: () => Navigator.of(context).pop(false),
+      ),
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
-            CommonAppBar(
-              onBackPressed: () => Navigator.of(context).pop(false),
-            ),
             Expanded(
               child: SingleChildScrollView(
                 child: Padding(

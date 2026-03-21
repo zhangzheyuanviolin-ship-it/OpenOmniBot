@@ -11,7 +11,7 @@ import 'package:ui/widgets/ai_generated_badge.dart';
 /// - 标题模式：显示居中标题 + 返回按钮
 /// - 带 AI 标签模式：标题 + AI 标签 + 返回按钮
 /// - 完整模式：标题 + AI 标签 + 返回按钮 + 右侧操作
-class CommonAppBar extends StatelessWidget {
+class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// 标题文字（可选，不传则不显示标题区域）
   final String? title;
 
@@ -24,6 +24,18 @@ class CommonAppBar extends StatelessWidget {
   /// 右侧操作区域（可选）
   final Widget? trailing;
 
+  /// 右侧操作列表（优先级高于 trailing）
+  final List<Widget>? actions;
+
+  /// 是否显示默认返回按钮
+  final bool showLeading;
+
+  /// 自定义左侧区域
+  final Widget? leading;
+
+  /// 左侧区域宽度
+  final double? leadingWidth;
+
   /// 返回图标颜色
   final Color backIconColor;
 
@@ -33,75 +45,97 @@ class CommonAppBar extends StatelessWidget {
   /// AppBar 高度
   final double height;
 
+  /// 背景色
+  final Color backgroundColor;
+
+  /// 是否作为 Scaffold.appBar 使用
+  final bool primary;
+
+  /// 标题是否居中
+  final bool centerTitle;
+
   const CommonAppBar({
     super.key,
     this.title,
     this.showAiBadge = false,
     this.onBackPressed,
     this.trailing,
+    this.actions,
+    this.showLeading = true,
+    this.leading,
+    this.leadingWidth,
     this.backIconColor = AppColors.text,
     this.titleStyle,
     this.height = 44,
+    this.backgroundColor = Colors.white,
+    this.primary = false,
+    this.centerTitle = true,
   });
 
   @override
+  Size get preferredSize => Size.fromHeight(height);
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // 标题居中（如果有标题）
-          if (title != null)
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title!,
-                    style: titleStyle ?? const TextStyle(
-                      color: AppColors.text,
-                      fontSize: 16,
-                      fontFamily: 'PingFang SC',
-                      fontWeight: FontWeight.w500,
-                      height: 1.50,
+    final resolvedLeading =
+        leading ??
+        (showLeading
+            ? Center(
+                child: GestureDetector(
+                  onTap: onBackPressed ?? () => GoRouterManager.pop(),
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: SvgPicture.asset(
+                      'assets/common/chevron_left.svg',
+                      width: 24,
+                      height: 24,
+                      colorFilter: ColorFilter.mode(
+                        backIconColor,
+                        BlendMode.srcIn,
+                      ),
                     ),
                   ),
-                  if (showAiBadge) const AiGeneratedBadge(),
-                ],
-              ),
-            ),
-          
-          // 返回按钮（左侧）
-          Align(
-            alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              onTap: onBackPressed ?? () => GoRouterManager.pop(),
-              child: Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                child: SvgPicture.asset(
-                  'assets/common/chevron_left.svg',
-                  width: 20,//24??
-                  height: 20,
-                  colorFilter: ColorFilter.mode(
-                    backIconColor,
-                    BlendMode.srcIn,
-                  ),
                 ),
-              ),
-            ),
-          ),
+              )
+            : null);
 
-          // 右侧操作区域（如果有）
-          if (trailing != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: trailing!,
+    final resolvedActions = actions ?? (trailing == null ? null : [trailing!]);
+
+    return AppBar(
+      primary: primary,
+      automaticallyImplyLeading: false,
+      toolbarHeight: height,
+      backgroundColor: backgroundColor,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: backgroundColor,
+      shadowColor: Colors.transparent,
+      leadingWidth: resolvedLeading == null ? leadingWidth : leadingWidth ?? 56,
+      leading: resolvedLeading,
+      centerTitle: centerTitle,
+      title: title == null
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      titleStyle ??
+                      const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.text,
+                        fontFamily: 'SF Pro',
+                      ),
+                ),
+                if (showAiBadge) const AiGeneratedBadge(),
+              ],
             ),
-        ],
-      ),
+      actions: resolvedActions,
     );
   }
 }

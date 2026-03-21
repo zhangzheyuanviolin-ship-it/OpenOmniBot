@@ -234,47 +234,44 @@ class _WebViewPageState extends State<WebViewPage> {
         await _handleBackPress();
       },
       child: Scaffold(
+        appBar: widget.showAppBar
+            ? CommonAppBar(
+                primary: true,
+                title: widget.title ?? '网页浏览',
+                onBackPressed: _handleBackPress,
+                trailing: widget.showRefreshButton
+                    ? IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _reload,
+                        tooltip: '刷新',
+                      )
+                    : null,
+              )
+            : null,
         body: SafeArea(
-          child: Column(
+          top: !widget.showAppBar,
+          child: Stack(
             children: [
-              if (widget.showAppBar)
-                CommonAppBar(
-                  title: widget.title ?? '网页浏览',
-                  onBackPressed: _handleBackPress,
-                  trailing: widget.showRefreshButton
-                      ? IconButton(
-                          icon: const Icon(Icons.refresh),
-                          onPressed: _reload,
-                          tooltip: '刷新',
-                        )
-                      : null,
+              // WebView内容
+              if (_errorMessage == null)
+                WebViewWidget(controller: _controller)
+              else
+                _buildErrorWidget(),
+
+              // 加载进度条
+              if (_isLoading && _loadingProgress < 100)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: LinearProgressIndicator(
+                    value: _loadingProgress / 100,
+                    backgroundColor: Colors.grey[200],
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Theme.of(context).primaryColor,
+                    ),
+                  ),
                 ),
-              Expanded(
-                child: Stack(
-                  children: [
-                    // WebView内容
-                    if (_errorMessage == null)
-                      WebViewWidget(controller: _controller)
-                    else
-                      _buildErrorWidget(),
-                    
-                    // 加载进度条
-                    if (_isLoading && _loadingProgress < 100)
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: LinearProgressIndicator(
-                          value: _loadingProgress / 100,
-                          backgroundColor: Colors.grey[200],
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Theme.of(context).primaryColor,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),

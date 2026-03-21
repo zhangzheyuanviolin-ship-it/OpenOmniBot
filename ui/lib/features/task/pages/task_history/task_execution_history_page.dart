@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'widgets/history_card.dart';
 import 'package:intl/intl.dart';
 import 'package:ui/models/task_models.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class TaskExecutionHistoryPage extends StatelessWidget {
   const TaskExecutionHistoryPage({super.key});
@@ -11,20 +12,7 @@ class TaskExecutionHistoryPage extends StatelessWidget {
     final List<TaskHistorySection> sections = [];
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-      appBar: AppBar(
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          '执行历史',
-          style: TextStyle(
-            fontSize: 18,
-            color: Colors.black87,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-      ),
+      appBar: const CommonAppBar(title: '执行历史', primary: true),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

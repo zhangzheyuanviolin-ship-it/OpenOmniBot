@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 // 条款页面
 class TermsPage extends StatelessWidget {
   final String title;
@@ -12,21 +13,12 @@ class TermsPage extends StatelessWidget {
     const darkGrey = Color(0xFF666666);
     
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          title,
-          style: TextStyle(
-            color: primaryBlack, 
-            fontWeight: FontWeight.w600,
-            fontSize: 18.0,
-          ),
-        ),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios),
-          onPressed: () {
-            Navigator.pop(context); // 返回上一个页面
-          },
-        ),
+      appBar: CommonAppBar(
+        title: title,
+        primary: true,
+        onBackPressed: () {
+          Navigator.pop(context);
+        },
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

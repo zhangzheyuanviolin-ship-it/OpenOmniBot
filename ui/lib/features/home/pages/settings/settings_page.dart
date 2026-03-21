@@ -13,6 +13,7 @@ import 'package:ui/services/storage_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -284,45 +285,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final sections = _buildSections(mem0Subtitle);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F8),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.white,
-        shadowColor: Colors.transparent,
-        leading: Center(
-          child: GestureDetector(
-            onTap: () => GoRouterManager.pop(),
-            child: SizedBox(
-              width: 24,
-              height: 24,
-              child: SvgPicture.asset(
-                'assets/common/chevron_left.svg',
-                width: 24,
-                height: 24,
-                colorFilter: const ColorFilter.mode(
-                  AppColors.text,
-                  BlendMode.srcIn,
-                ),
-              ),
-            ),
-          ),
-        ),
-        centerTitle: true,
-        title: const Text(
-          '设置',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: AppColors.text,
-            fontFamily: 'SF Pro',
-          ),
-        ),
-      ),
+      backgroundColor: AppColors.background,
+      appBar: const CommonAppBar(title: '设置', primary: true),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -342,23 +309,6 @@ class _SettingsPageState extends State<SettingsPage> {
       _SettingSection(
         items: [
           _SettingItem(
-            icon: Icons.psychology_alt_outlined,
-            iconSvg: 'assets/home/unified_agent_setting_icon.svg',
-            title: '统一 Agent',
-            subtitle:
-                '已默认启用，任务分发统一走 Agent 单请求流程',
-          ),
-          _SettingItem(
-            icon: Icons.cloud_sync_outlined,
-            iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',
-            title: 'Mem0 云记忆配置',
-            subtitle: mem0Subtitle,
-            onTap: () async {
-              await GoRouterManager.pushForResult('/home/mem0_setting');
-              _loadMem0Config();
-            },
-          ),
-          _SettingItem(
             icon: Icons.smart_toy_outlined,
             iconSvg: 'assets/home/vlm_model_setting_icon.svg',
             title: '模型提供商',
@@ -376,10 +326,36 @@ class _SettingsPageState extends State<SettingsPage> {
               GoRouterManager.push('/home/scene_model_setting');
             },
           ),
+          
+          _SettingItem(
+            icon: Icons.cloud_sync_outlined,
+            iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',
+            title: 'Mem0 云记忆配置',
+            subtitle: mem0Subtitle,
+            onTap: () async {
+              await GoRouterManager.pushForResult('/home/mem0_setting');
+              _loadMem0Config();
+            },
+          ),
+          _SettingItem(
+            icon: Icons.psychology_alt_outlined,
+            iconSvg: 'assets/home/unified_agent_setting_icon.svg',
+            title: '统一 Agent',
+            subtitle:
+                '已默认启用，任务分发统一走 Agent 单请求流程',
+          ),
         ],
       ),
       _SettingSection(
         items: [
+          _SettingItem(
+            icon: Icons.alarm_outlined,
+            title: '闹钟设置',
+            subtitle: '配置默认铃声、本地 mp3 或 mp3 直链',
+            onTap: () {
+              GoRouterManager.push('/home/alarm_setting');
+            },
+          ),
           _SettingItem(
             icon: Icons.vibration,
             iconSvg: 'assets/home/vibration_icon.svg',
@@ -394,14 +370,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 });
               },
             ),
-          ),
-          _SettingItem(
-            icon: Icons.alarm_outlined,
-            title: '闹钟设置',
-            subtitle: '配置默认铃声、本地 mp3 或 mp3 直链',
-            onTap: () {
-              GoRouterManager.push('/home/alarm_setting');
-            },
           ),
           _SettingItem(
             icon: Icons.chat_outlined,
@@ -487,10 +455,6 @@ class _SettingsPageState extends State<SettingsPage> {
               }
             },
           ),
-        ],
-      ),
-      _SettingSection(
-        items: [
           _SettingItem(
             icon: Icons.info_outline,
             iconSvg: 'assets/home/about_icon.svg',

@@ -11,6 +11,7 @@ import 'package:ui/utils/ui.dart';
 import 'package:gal/gal.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:ui/widgets/context_menu.dart';
+import 'package:ui/widgets/common_app_bar.dart';
 
 class MemoryDetailPage extends StatelessWidget {
   final MemoryCardModel memory;
@@ -109,61 +110,46 @@ class MemoryDetailPage extends StatelessWidget {
     }
   }
 
-  Widget _buildCustomAppBar(BuildContext context) {
-    return Container(
-      height: 44 + MediaQuery.of(context).padding.top,
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // 返回按钮（左上角）
-          Align(
-            alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
-              child: Container(
-                width: 60,
-                height: 44,
-                alignment: Alignment.center,
-                child: AutoInvertSvgIcon.asset(
-                  'assets/common/chevron_left.svg',
-                  width: 24,
-                  height: 24,
-                  blendMode: BlendMode.difference,
-                ),
-              ),
-            ),
-          ),
-          // 更多按钮（右上角）
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: (details) {
-                _showContextMenu(memory, context, details.globalPosition);
-              },
-              child: Container(
-                width: 60,
-                height: 44,
-                alignment: Alignment.center,
-                child: AutoInvertIcon(
-                  Icons.more_vert,
-                  size: 24,
-                  blendMode: BlendMode.difference,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: AppColors.backgroundGrey,
+      backgroundColor: AppColors.background,
+      appBar: CommonAppBar(
+        primary: true,
+        backgroundColor: Colors.transparent,
+        leadingWidth: 60,
+        leading: GestureDetector(
+          onTap: () => Navigator.of(context).pop(),
+          child: Container(
+            width: 60,
+            height: 44,
+            alignment: Alignment.center,
+            child: AutoInvertSvgIcon.asset(
+              'assets/common/chevron_left.svg',
+              width: 24,
+              height: 24,
+              blendMode: BlendMode.difference,
+            ),
+          ),
+        ),
+        trailing: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (details) {
+            _showContextMenu(memory, context, details.globalPosition);
+          },
+          child: Container(
+            width: 60,
+            height: 44,
+            alignment: Alignment.center,
+            child: AutoInvertIcon(
+              Icons.more_vert,
+              size: 24,
+              blendMode: BlendMode.difference,
+            ),
+          ),
+        ),
+      ),
       body: SafeArea(
         top: false,
         bottom: true,
@@ -185,13 +171,6 @@ class MemoryDetailPage extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
-            // 自定义 AppBar
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _buildCustomAppBar(context),
             ),
             // 下半部分
             Positioned(

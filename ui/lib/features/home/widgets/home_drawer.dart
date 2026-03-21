@@ -229,13 +229,13 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   Widget build(BuildContext context) {
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.8,
-      backgroundColor: AppColors.backgroundGrey,
+      backgroundColor: AppColors.background,
       child: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -264,25 +264,23 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
                     _buildConversationSection(),
 
-                    const SizedBox(height: 8),
-
-                    _buildMenuSection([
-                      _DrawerMenuItem(
-                        icon: 'assets/home/setting_icon.svg',
-                        title: '设置',
-                        onTap: () {
-                          Navigator.pop(context);
-                          GoRouterManager.push('/home/settings');
-                        },
-                      ),
-                    ]),
-
                     const SizedBox(height: 16),
                   ],
                 ),
               ),
             ),
-          ),
+            _buildMenuSection([
+              _DrawerMenuItem(
+                icon: 'assets/home/setting_icon.svg',
+                title: '设置',
+                onTap: () {
+                  Navigator.pop(context);
+                  GoRouterManager.push('/home/settings');
+                },
+              ),
+            ]),
+            const SizedBox(height: 16),
+          ],
         ),
       ),
     );

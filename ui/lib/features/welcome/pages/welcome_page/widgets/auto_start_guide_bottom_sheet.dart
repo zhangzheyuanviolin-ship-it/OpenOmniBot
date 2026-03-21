@@ -138,7 +138,7 @@ class _AutoStartGuideBottomSheetState extends State<AutoStartGuideBottomSheet>
 
     return Container(
       decoration: const BoxDecoration(
-        color: AppColors.backgroundGrey,
+        color: AppColors.background,
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(8),
           topRight: Radius.circular(8),
