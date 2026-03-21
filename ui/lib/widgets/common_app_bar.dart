@@ -15,6 +15,9 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// 标题文字（可选，不传则不显示标题区域）
   final String? title;
 
+  /// 自定义标题区域（优先级高于 title）
+  final Widget? titleWidget;
+
   /// 是否显示 AI 生成标签（仅在有标题时生效）
   final bool showAiBadge;
 
@@ -57,6 +60,7 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
   const CommonAppBar({
     super.key,
     this.title,
+    this.titleWidget,
     this.showAiBadge = false,
     this.onBackPressed,
     this.trailing,
@@ -114,27 +118,28 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
       leadingWidth: resolvedLeading == null ? leadingWidth : leadingWidth ?? 56,
       leading: resolvedLeading,
       centerTitle: centerTitle,
-      title: title == null
-          ? null
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style:
-                      titleStyle ??
-                      const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.text,
-                        fontFamily: 'SF Pro',
-                      ),
-                ),
-                if (showAiBadge) const AiGeneratedBadge(),
-              ],
-            ),
+      title: titleWidget ??
+          (title == null
+              ? null
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          titleStyle ??
+                          const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.text,
+                            fontFamily: 'SF Pro',
+                          ),
+                    ),
+                    if (showAiBadge) const AiGeneratedBadge(),
+                  ],
+                )),
       actions: resolvedActions,
     );
   }

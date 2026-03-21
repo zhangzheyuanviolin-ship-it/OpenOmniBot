@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_text_styles.dart';
+import 'package:ui/utils/popup_menu_anchor_position.dart';
 
 enum RecordMenuAction { edit, delete }
 
@@ -93,7 +94,11 @@ Future<RecordMenuAction?> showRecordContextMenu({
 
   return showMenu<RecordMenuAction>(
     context: context,
-    position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
+    position: PopupMenuAnchorPosition.fromGlobalOffset(
+      context: context,
+      globalOffset: position,
+      estimatedMenuHeight: showEdit && showDelete ? 120 : 90,
+    ),
     color: const Color(0xFFF9F9F9).withOpacity(0.9),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     elevation: 5,

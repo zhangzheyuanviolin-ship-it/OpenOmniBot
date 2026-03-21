@@ -13,6 +13,14 @@ data class AgentWorkspaceDescriptor(
     val retentionPolicy: String
 )
 
+data class AgentModelOverride(
+    val providerProfileId: String,
+    val providerProfileName: String? = null,
+    val modelId: String,
+    val apiBase: String,
+    val apiKey: String
+)
+
 data class ArtifactAction(
     val type: String,
     val label: String,

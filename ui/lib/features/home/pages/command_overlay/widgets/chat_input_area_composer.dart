@@ -104,6 +104,10 @@ mixin _ChatInputAreaComposerMixin
                   _buildAttachmentPreview(),
                   const SizedBox(height: 8),
                 ],
+                if ((widget.selectedModelOverrideId ?? '').trim().isNotEmpty) ...[
+                  _buildSelectedModelOverrideChip(),
+                  const SizedBox(height: 8),
+                ],
                 _buildTextField(multiline: true),
                 const SizedBox(height: 6),
                 _buildLargeActionRow(theme: theme, hasPayload: hasPayload),
@@ -137,6 +141,58 @@ mixin _ChatInputAreaComposerMixin
           child: _buildLargeSendOrStopButton(hasPayload: hasPayload),
         ),
       ],
+    );
+  }
+
+  Widget _buildSelectedModelOverrideChip() {
+    final modelId = (widget.selectedModelOverrideId ?? '').trim();
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 230),
+        padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF4F7FD),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                '@$modelId',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF54627A),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (widget.onClearSelectedModelOverride != null) ...[
+              const SizedBox(width: 4),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onClearSelectedModelOverride,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF54627A).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 10,
+                    color: Color(0xFF54627A),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 

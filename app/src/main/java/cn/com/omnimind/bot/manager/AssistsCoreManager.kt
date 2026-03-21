@@ -12,10 +12,13 @@ import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.database.Conversation
 import cn.com.omnimind.baselib.http.Http429Exception
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
+import cn.com.omnimind.baselib.llm.ModelProviderProfile
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.llm.ModelSceneRegistry
 import cn.com.omnimind.baselib.llm.ProviderModelOption
 import cn.com.omnimind.baselib.llm.SceneCatalogItem
+import cn.com.omnimind.baselib.llm.SceneModelBindingEntry
+import cn.com.omnimind.baselib.llm.SceneModelBindingStore
 import cn.com.omnimind.baselib.llm.SceneModelOverrideEntry
 import cn.com.omnimind.baselib.llm.SceneModelOverrideStore
 import cn.com.omnimind.baselib.util.APPPackageUtil
@@ -27,6 +30,7 @@ import cn.com.omnimind.assists.controller.http.HttpController
 import cn.com.omnimind.baselib.util.SchemeUtil
 import cn.com.omnimind.bot.agent.AgentCallback
 import cn.com.omnimind.bot.agent.AgentAlarmToolService
+import cn.com.omnimind.bot.agent.AgentModelOverride
 import cn.com.omnimind.bot.agent.AgentResult
 import cn.com.omnimind.bot.agent.AgentRuntimeContextRepository
 import cn.com.omnimind.bot.agent.AgentScheduleToolBridge
@@ -121,9 +125,21 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
     private fun ModelProviderConfig.toMap(): Map<String, Any?> {
         return mapOf(
+            "id" to id,
+            "name" to name,
             "baseUrl" to baseUrl,
             "apiKey" to apiKey,
             "source" to source,
+            "configured" to isConfigured()
+        )
+    }
+
+    private fun ModelProviderProfile.toMap(): Map<String, Any?> {
+        return mapOf(
+            "id" to id,
+            "name" to name,
+            "baseUrl" to baseUrl,
+            "apiKey" to apiKey,
             "configured" to isConfigured()
         )
     }
@@ -142,11 +158,17 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "description" to description,
             "defaultModel" to defaultModel,
             "effectiveModel" to effectiveModel,
+            "effectiveProviderProfileId" to effectiveProviderProfileId,
+            "effectiveProviderProfileName" to effectiveProviderProfileName,
+            "boundProviderProfileId" to boundProviderProfileId,
+            "boundProviderProfileName" to boundProviderProfileName,
             "transport" to transport,
             "configSource" to configSource,
             "overrideApplied" to overrideApplied,
             "overrideModel" to overrideModel,
-            "providerConfigured" to providerConfigured
+            "providerConfigured" to providerConfigured,
+            "bindingExists" to bindingExists,
+            "bindingProfileMissing" to bindingProfileMissing
         )
     }
 
@@ -154,6 +176,14 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         return mapOf(
             "sceneId" to sceneId,
             "model" to model
+        )
+    }
+
+    private fun SceneModelBindingEntry.toMap(): Map<String, Any?> {
+        return mapOf(
+            "sceneId" to sceneId,
+            "providerProfileId" to providerProfileId,
+            "modelId" to modelId
         )
     }
 
@@ -1334,6 +1364,94 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
+    fun listModelProviderProfiles(call: MethodCall, result: MethodChannel.Result) {
+        workJob.launch {
+            try {
+                val profiles = ModelProviderConfigStore.listProfiles()
+                withContext(Dispatchers.Main) {
+                    result.success(
+                        mapOf(
+                            "profiles" to profiles.map { it.toMap() },
+                            "editingProfileId" to ModelProviderConfigStore.getEditingProfileId()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "listModelProviderProfiles error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("LIST_MODEL_PROVIDER_PROFILES_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun saveModelProviderProfile(call: MethodCall, result: MethodChannel.Result) {
+        val profileId = call.argument<String>("id")?.trim()
+        val name = call.argument<String>("name")?.trim().orEmpty()
+        val baseUrl = call.argument<String>("baseUrl")?.trim().orEmpty()
+        val apiKey = call.argument<String>("apiKey")?.trim().orEmpty()
+
+        workJob.launch {
+            try {
+                val saved = ModelProviderConfigStore.saveProfile(
+                    id = profileId,
+                    name = name,
+                    baseUrl = baseUrl,
+                    apiKey = apiKey
+                )
+                withContext(Dispatchers.Main) {
+                    result.success(saved.toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "saveModelProviderProfile error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("SAVE_MODEL_PROVIDER_PROFILE_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun deleteModelProviderProfile(call: MethodCall, result: MethodChannel.Result) {
+        val profileId = call.argument<String>("profileId")?.trim().orEmpty()
+
+        workJob.launch {
+            try {
+                val profiles = ModelProviderConfigStore.deleteProfile(profileId)
+                withContext(Dispatchers.Main) {
+                    result.success(
+                        mapOf(
+                            "profiles" to profiles.map { it.toMap() },
+                            "editingProfileId" to ModelProviderConfigStore.getEditingProfileId()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "deleteModelProviderProfile error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("DELETE_MODEL_PROVIDER_PROFILE_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun setEditingModelProviderProfile(call: MethodCall, result: MethodChannel.Result) {
+        val profileId = call.argument<String>("profileId")?.trim().orEmpty()
+
+        workJob.launch {
+            try {
+                val selected = ModelProviderConfigStore.setEditingProfile(profileId)
+                withContext(Dispatchers.Main) {
+                    result.success(selected.toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "setEditingModelProviderProfile error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("SET_EDITING_MODEL_PROVIDER_PROFILE_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
     fun saveModelProviderConfig(call: MethodCall, result: MethodChannel.Result) {
         val baseUrl = call.argument<String>("baseUrl")?.trim() ?: ""
         val apiKey = call.argument<String>("apiKey")?.trim() ?: ""
@@ -1435,26 +1553,34 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     fun getSceneModelCatalog(call: MethodCall, result: MethodChannel.Result) {
         workJob.launch {
             try {
-                val providerConfigured = ModelProviderConfigStore.getConfig().isConfigured()
-                val overrideMap = SceneModelOverrideStore.getOverrideMap()
+                val profilesById = ModelProviderConfigStore.listProfiles().associateBy { it.id }
+                val bindings = SceneModelBindingStore.getBindingMap()
                 val catalog = ModelSceneRegistry.listRuntimeProfiles()
                     .map { profile ->
-                        val overrideModel = overrideMap[profile.sceneId]
-                        val overrideApplied = providerConfigured && !overrideModel.isNullOrBlank()
+                        val binding = bindings[profile.sceneId]
+                        val boundProfile = binding?.providerProfileId?.let(profilesById::get)
+                        val bindingApplied = binding != null && boundProfile?.isConfigured() == true
+                        val bindingProfileMissing = binding != null && boundProfile == null
                         SceneCatalogItem(
                             sceneId = profile.sceneId,
                             description = profile.description,
                             defaultModel = profile.model,
-                            effectiveModel = if (overrideApplied) overrideModel.orEmpty() else profile.model,
-                            transport = if (overrideApplied) {
+                            effectiveModel = if (bindingApplied) binding.modelId else profile.model,
+                            effectiveProviderProfileId = if (bindingApplied) boundProfile?.id else null,
+                            effectiveProviderProfileName = if (bindingApplied) boundProfile?.name else null,
+                            boundProviderProfileId = binding?.providerProfileId,
+                            boundProviderProfileName = boundProfile?.name,
+                            transport = if (bindingApplied) {
                                 ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE.wireValue
                             } else {
                                 profile.transport.wireValue
                             },
                             configSource = profile.configSource.wireValue,
-                            overrideApplied = overrideApplied,
-                            overrideModel = overrideModel,
-                            providerConfigured = providerConfigured
+                            overrideApplied = bindingApplied,
+                            overrideModel = binding?.modelId,
+                            providerConfigured = boundProfile?.isConfigured() == true,
+                            bindingExists = binding != null,
+                            bindingProfileMissing = bindingProfileMissing
                         )
                     }
                 withContext(Dispatchers.Main) {
@@ -1464,6 +1590,59 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 OmniLog.e(TAG, "getSceneModelCatalog error: ${e.message}")
                 withContext(Dispatchers.Main) {
                     result.error("GET_SCENE_MODEL_CATALOG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun getSceneModelBindings(call: MethodCall, result: MethodChannel.Result) {
+        workJob.launch {
+            try {
+                withContext(Dispatchers.Main) {
+                    result.success(SceneModelBindingStore.getBindingEntries().map { it.toMap() })
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "getSceneModelBindings error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("GET_SCENE_MODEL_BINDINGS_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun saveSceneModelBinding(call: MethodCall, result: MethodChannel.Result) {
+        val sceneId = call.argument<String>("sceneId")?.trim().orEmpty()
+        val providerProfileId = call.argument<String>("providerProfileId")?.trim().orEmpty()
+        val modelId = call.argument<String>("modelId")?.trim().orEmpty()
+
+        workJob.launch {
+            try {
+                SceneModelBindingStore.saveBinding(sceneId, providerProfileId, modelId)
+                withContext(Dispatchers.Main) {
+                    result.success(SceneModelBindingStore.getBindingEntries().map { it.toMap() })
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "saveSceneModelBinding error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("SAVE_SCENE_MODEL_BINDING_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun clearSceneModelBinding(call: MethodCall, result: MethodChannel.Result) {
+        val sceneId = call.argument<String>("sceneId")?.trim().orEmpty()
+
+        workJob.launch {
+            try {
+                SceneModelBindingStore.clearBinding(sceneId)
+                withContext(Dispatchers.Main) {
+                    result.success(SceneModelBindingStore.getBindingEntries().map { it.toMap() })
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "clearSceneModelBinding error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("CLEAR_SCENE_MODEL_BINDING_ERROR", e.message, null)
                 }
             }
         }
@@ -1613,6 +1792,28 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             call.argument<List<Map<String, Any?>>>("conversationHistory") ?: emptyList()
         val attachments = call.argument<List<Map<String, Any?>>>("attachments") ?: emptyList()
         val conversationId = call.argument<Number>("conversationId")?.toLong()
+        val modelOverrideMap = call.argument<Map<String, Any?>>("modelOverride")
+        val modelOverride = modelOverrideMap?.let { raw ->
+            val providerProfileId = raw["providerProfileId"]?.toString()?.trim().orEmpty()
+            val modelId = raw["modelId"]?.toString()?.trim().orEmpty()
+            val providerProfile = ModelProviderConfigStore.getProfile(providerProfileId)
+            if (
+                providerProfileId.isEmpty() ||
+                modelId.isEmpty() ||
+                providerProfile == null ||
+                !providerProfile.isConfigured()
+            ) {
+                null
+            } else {
+                AgentModelOverride(
+                    providerProfileId = providerProfile.id,
+                    providerProfileName = providerProfile.name,
+                    modelId = modelId,
+                    apiBase = providerProfile.baseUrl,
+                    apiKey = providerProfile.apiKey
+                )
+            }
+        }
         if (taskId.isBlank()) {
             result.error("INVALID_ARGUMENTS", "taskId is empty", null)
             return
@@ -1783,6 +1984,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     currentPackageName,
                     attachments,
                     conversationId,
+                    modelOverride,
                     callback
                 )
 

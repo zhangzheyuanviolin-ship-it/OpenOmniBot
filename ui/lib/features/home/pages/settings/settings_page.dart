@@ -281,7 +281,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ? '加载中...'
         : mem0Configured
         ? '已配置完成，统一 Agent 会自动检索云记忆'
-        : '配置 Base URL、API Key 和 Agent ID，未配置时会自动降级为无记忆模式';
+        : '配置 Mem0 服务（可选）';
     final sections = _buildSections(mem0Subtitle);
 
     return Scaffold(
@@ -370,7 +370,7 @@ class _SettingsPageState extends State<SettingsPage> {
             iconSvg: 'assets/home/termux.svg',
             title: 'Termux',
             subtitle:
-                '管理安装、RUN_COMMAND 权限与终端实时输出环境',
+                '管理安装、RUN_COMMAND 权限',
             onTap: () {
               GoRouterManager.push('/home/termux_setting');
             },

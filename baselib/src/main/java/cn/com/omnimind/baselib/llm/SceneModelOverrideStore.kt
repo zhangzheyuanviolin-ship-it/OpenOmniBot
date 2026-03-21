@@ -8,7 +8,7 @@ import com.tencent.mmkv.MMKV
 object SceneModelOverrideStore {
     private const val TAG = "SceneModelOverrideStore"
     private const val KEY_SCENE_OVERRIDE_MAP = "scene_model_override_map"
-    private val ALLOWED_SCENES = setOf(
+    private val allowedScenes = setOf(
         "scene.dispatch.model",
         "scene.vlm.operation.primary",
         "scene.compactor.context",
@@ -17,42 +17,35 @@ object SceneModelOverrideStore {
     private val gson = Gson()
 
     fun getOverrideEntries(): List<SceneModelOverrideEntry> {
-        return getOverrideMap()
-            .entries
-            .sortedBy { it.key }
-            .map { SceneModelOverrideEntry(sceneId = it.key, model = it.value) }
+        return SceneModelBindingStore.getBindingEntries()
+            .map { SceneModelOverrideEntry(sceneId = it.sceneId, model = it.modelId) }
     }
 
     fun getOverrideMap(): Map<String, String> {
-        ModelProviderConfigStore.ModelProviderMigration.ensureMigrated()
-        val mmkv = MMKV.defaultMMKV() ?: return emptyMap()
-        return readOverrideMap(mmkv).toSortedMap()
+        return SceneModelBindingStore.getBindingEntries()
+            .associate { it.sceneId to it.modelId }
+            .toSortedMap()
     }
 
     fun getOverrideModel(sceneId: String): String? {
-        return getOverrideMap()[sceneId]?.trim()?.takeIf { it.isNotEmpty() }
+        return SceneModelBindingStore.getBinding(sceneId)?.modelId
     }
 
     fun saveOverride(sceneId: String, model: String) {
-        require(sceneId.trim().startsWith("scene.")) { "非法 sceneId: $sceneId" }
-        require(sceneId.trim() in ALLOWED_SCENES) { "不支持的 sceneId: $sceneId" }
-        require(isValidModelName(model)) { "非法模型名: $model" }
-        val mmkv = MMKV.defaultMMKV() ?: return
-        val current = readOverrideMap(mmkv).toMutableMap()
-        current[sceneId.trim()] = model.trim()
-        writeOverrideMap(mmkv, current)
+        val profileId = ModelProviderConfigStore.getEditingProfileId()
+        SceneModelBindingStore.saveBinding(
+            sceneId = sceneId,
+            providerProfileId = profileId,
+            modelId = model
+        )
     }
 
     fun clearOverride(sceneId: String) {
-        val mmkv = MMKV.defaultMMKV() ?: return
-        val current = readOverrideMap(mmkv).toMutableMap()
-        current.remove(sceneId.trim())
-        writeOverrideMap(mmkv, current)
+        SceneModelBindingStore.clearBinding(sceneId)
     }
 
     fun isValidModelName(value: String): Boolean {
-        val normalized = value.trim()
-        return normalized.isNotEmpty() && !normalized.startsWith("scene.")
+        return SceneModelBindingStore.isValidModelName(value)
     }
 
     internal fun readOverrideMap(mmkv: MMKV): Map<String, String> {
@@ -75,9 +68,11 @@ object SceneModelOverrideStore {
         val normalized = map.entries
             .mapNotNull { (sceneId, model) ->
                 val normalizedSceneId = sceneId.trim()
-                    .takeIf { it.startsWith("scene.") && it in ALLOWED_SCENES }
+                    .takeIf { it in allowedScenes }
                     ?: return@mapNotNull null
-                val normalizedModel = model.trim().takeIf { isValidModelName(it) } ?: return@mapNotNull null
+                val normalizedModel = model.trim()
+                    .takeIf { isValidModelName(it) }
+                    ?: return@mapNotNull null
                 normalizedSceneId to normalizedModel
             }
             .toMap()
@@ -91,9 +86,11 @@ object SceneModelOverrideStore {
             parsed.entries
                 .mapNotNull { (sceneId, model) ->
                     val normalizedSceneId = sceneId.trim()
-                        .takeIf { it.startsWith("scene.") && it in ALLOWED_SCENES }
+                        .takeIf { it in allowedScenes }
                         ?: return@mapNotNull null
-                    val normalizedModel = model.trim().takeIf { isValidModelName(it) } ?: return@mapNotNull null
+                    val normalizedModel = model.trim()
+                        .takeIf { isValidModelName(it) }
+                        ?: return@mapNotNull null
                     normalizedSceneId to normalizedModel
                 }
                 .toMap()

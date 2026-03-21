@@ -28,6 +28,7 @@ interface AgentLlmClient {
 
 class HttpAgentLlmClient(
     private val scope: CoroutineScope,
+    private val modelOverride: AgentModelOverride? = null,
     private val json: Json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -207,7 +208,10 @@ class HttpAgentLlmClient(
             eventSource = HttpController.postChatCompletionsStreamRequest(
                 model = model,
                 requestBodyJson = requestJson,
-                event = listener
+                event = listener,
+                explicitApiBase = modelOverride?.apiBase,
+                explicitApiKey = modelOverride?.apiKey,
+                explicitModel = modelOverride?.modelId
             )
             return streamDone.await()
         } finally {

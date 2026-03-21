@@ -5,6 +5,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -30,6 +31,8 @@ const String _kPackageSvg = '''
 </svg>
 ''';
 
+const double _kProviderSwitchPopupMaxHeight = 320;
+
 enum _ProviderModelSource { manual, remote }
 
 class _ProviderModelItem {
@@ -51,6 +54,7 @@ class VlmModelSettingPage extends StatefulWidget {
 }
 
 class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _baseUrlController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
 
@@ -66,36 +70,25 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   bool _isFetchingModels = false;
   bool _obscureApiKey = true;
   bool _isSyncingControllers = false;
-  bool _isSavingConfig = false;
+  bool _isSavingProfile = false;
   bool _saveQueued = false;
+  bool _isSwitchingProfile = false;
 
   Timer? _autoSaveTimer;
 
-  ModelProviderConfig _config = ModelProviderConfig.empty();
+  List<ModelProviderProfileSummary> _profiles = const [];
+  String _editingProfileId = '';
   List<ProviderModelOption> _remoteModels = const [];
   List<String> _manualModelIds = const [];
   Set<String> _deletingModelIds = <String>{};
 
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-    _baseUrlController.addListener(_onConfigChanged);
-    _apiKeyController.addListener(_onConfigChanged);
-  }
-
-  @override
-  void dispose() {
-    _autoSaveTimer?.cancel();
-    if (_shouldAutoSaveDraft) {
-      unawaited(_persistConfigDraft());
+  ModelProviderProfileSummary? get _currentProfile {
+    for (final profile in _profiles) {
+      if (profile.id == _editingProfileId) {
+        return profile;
+      }
     }
-    unawaited(_persistManualModelIds());
-    _baseUrlController.removeListener(_onConfigChanged);
-    _apiKeyController.removeListener(_onConfigChanged);
-    _baseUrlController.dispose();
-    _apiKeyController.dispose();
-    super.dispose();
+    return _profiles.isEmpty ? null : _profiles.first;
   }
 
   List<_ProviderModelItem> get _modelItems {
@@ -135,8 +128,33 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     return items;
   }
 
-  void _onConfigChanged() {
-    if (_isSyncingControllers || _isLoading) {
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    _nameController.addListener(_onProfileChanged);
+    _baseUrlController.addListener(_onProfileChanged);
+    _apiKeyController.addListener(_onProfileChanged);
+  }
+
+  @override
+  void dispose() {
+    _autoSaveTimer?.cancel();
+    if (_shouldAutoSaveDraft) {
+      unawaited(_persistProfileDraft());
+    }
+    unawaited(_persistManualModelIds());
+    _nameController.removeListener(_onProfileChanged);
+    _baseUrlController.removeListener(_onProfileChanged);
+    _apiKeyController.removeListener(_onProfileChanged);
+    _nameController.dispose();
+    _baseUrlController.dispose();
+    _apiKeyController.dispose();
+    super.dispose();
+  }
+
+  void _onProfileChanged() {
+    if (_isSyncingControllers || _isLoading || _isSwitchingProfile) {
       return;
     }
     _scheduleAutoSave();
@@ -149,79 +167,91 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     }
     _autoSaveTimer = Timer(_autoSaveDebounce, () {
       _autoSaveTimer = null;
-      unawaited(_persistConfigDraft());
+      unawaited(_persistProfileDraft());
     });
   }
 
   bool get _shouldAutoSaveDraft {
+    final current = _currentProfile;
+    if (current == null) {
+      return false;
+    }
     final normalizedBaseUrl = ModelProviderConfigService.normalizeApiBase(
       _baseUrlController.text,
     );
-    if (normalizedBaseUrl == null) {
-      return false;
-    }
-    return normalizedBaseUrl != _config.baseUrl ||
-        _apiKeyController.text.trim() != _config.apiKey;
+    final currentBaseUrl =
+        ModelProviderConfigService.normalizeApiBase(current.baseUrl) ?? '';
+    final nextBaseUrl = normalizedBaseUrl ?? '';
+    return _nameController.text.trim() != current.name ||
+        nextBaseUrl != currentBaseUrl ||
+        _apiKeyController.text.trim() != current.apiKey;
   }
 
   Future<void> _persistManualModelIds() async {
+    final current = _currentProfile;
+    if (current == null) {
+      return;
+    }
     try {
-      await ModelProviderConfigService.saveManualModelIds(_manualModelIds);
+      await ModelProviderConfigService.saveManualModelIds(
+        profileId: current.id,
+        ids: _manualModelIds,
+      );
     } catch (_) {
       // no-op
     }
   }
 
-  Future<void> _persistConfigDraft() async {
+  Future<void> _persistProfileDraft() async {
+    final current = _currentProfile;
+    if (current == null) {
+      return;
+    }
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
 
-    if (_isSavingConfig) {
+    if (_isSavingProfile) {
       _saveQueued = true;
       return;
     }
 
     do {
       _saveQueued = false;
-      final baseUrl = _baseUrlController.text.trim();
-      final normalizedBaseUrl = ModelProviderConfigService.normalizeApiBase(
-        baseUrl,
-      );
-      final apiKey = _apiKeyController.text.trim();
+      final nextName = _nameController.text.trim();
+      final nextBaseUrl =
+          ModelProviderConfigService.normalizeApiBase(
+            _baseUrlController.text,
+          ) ??
+          '';
+      final nextApiKey = _apiKeyController.text.trim();
+      final currentBaseUrl =
+          ModelProviderConfigService.normalizeApiBase(current.baseUrl) ?? '';
 
-      if (normalizedBaseUrl == null) {
+      if (nextName == current.name &&
+          nextBaseUrl == currentBaseUrl &&
+          nextApiKey == current.apiKey) {
         return;
       }
-      if (normalizedBaseUrl == _config.baseUrl && apiKey == _config.apiKey) {
-        return;
-      }
 
-      _isSavingConfig = true;
+      _isSavingProfile = true;
       try {
-        final config = await ModelProviderConfigService.saveConfig(
-          baseUrl: baseUrl,
-          apiKey: apiKey,
+        final saved = await ModelProviderConfigService.saveProfile(
+          id: current.id,
+          name: nextName.isEmpty ? current.name : nextName,
+          baseUrl: _baseUrlController.text.trim(),
+          apiKey: nextApiKey,
         );
         if (!mounted) return;
-
-        final latestNormalizedBaseUrl =
-            ModelProviderConfigService.normalizeApiBase(
-              _baseUrlController.text,
-            );
-        final latestApiKey = _apiKeyController.text.trim();
-        final draftChangedWhileSaving =
-            latestNormalizedBaseUrl != normalizedBaseUrl ||
-            latestApiKey != apiKey;
-
-        if (draftChangedWhileSaving) {
-          _saveQueued = true;
-        } else {
-          _applyConfig(config, syncControllers: false);
-        }
+        setState(() {
+          _profiles = _profiles
+              .map((profile) => profile.id == saved.id ? saved : profile)
+              .toList();
+          _editingProfileId = saved.id;
+        });
       } catch (_) {
         // Auto-save failures should not interrupt typing.
       } finally {
-        _isSavingConfig = false;
+        _isSavingProfile = false;
       }
     } while (_saveQueued && mounted);
   }
@@ -229,26 +259,31 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final config = await ModelProviderConfigService.getConfig();
-      final results = await Future.wait<dynamic>([
-        ModelProviderConfigService.getManualModelIds(),
+      final payload = await ModelProviderConfigService.listProfiles();
+      if (!mounted) return;
+
+      final editingProfile = payload.profiles.firstWhere(
+        (profile) => profile.id == payload.editingProfileId,
+        orElse: () => payload.profiles.first,
+      );
+      final storedModels = await Future.wait<dynamic>([
+        ModelProviderConfigService.getManualModelIds(
+          profileId: editingProfile.id,
+        ),
         ModelProviderConfigService.getCachedFetchedModels(
-          apiBase: config.baseUrl,
+          profileId: editingProfile.id,
+          apiBase: editingProfile.baseUrl,
         ),
       ]);
       if (!mounted) return;
 
-      final manualModelIds = results[0] as List<String>;
-      final cachedFetchedModels = results[1] as List<ProviderModelOption>;
-
-      _syncController(_baseUrlController, config.baseUrl);
-      _syncController(_apiKeyController, config.apiKey);
-
-      setState(() {
-        _config = config;
-        _manualModelIds = manualModelIds;
-        _remoteModels = cachedFetchedModels;
-      });
+      _applyProfile(
+        profiles: payload.profiles,
+        editingProfileId: editingProfile.id,
+        manualModelIds: storedModels[0] as List<String>,
+        remoteModels: storedModels[1] as List<ProviderModelOption>,
+        syncControllers: true,
+      );
     } catch (_) {
       if (!mounted) return;
       showToast('加载模型提供商配置失败', type: ToastType.error);
@@ -259,13 +294,27 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     }
   }
 
-  void _applyConfig(ModelProviderConfig config, {bool syncControllers = true}) {
+  void _applyProfile({
+    required List<ModelProviderProfileSummary> profiles,
+    required String editingProfileId,
+    required List<String> manualModelIds,
+    required List<ProviderModelOption> remoteModels,
+    required bool syncControllers,
+  }) {
+    final current = profiles.firstWhere(
+      (profile) => profile.id == editingProfileId,
+      orElse: () => profiles.first,
+    );
     if (syncControllers) {
-      _syncController(_baseUrlController, config.baseUrl);
-      _syncController(_apiKeyController, config.apiKey);
+      _syncController(_nameController, current.name);
+      _syncController(_baseUrlController, current.baseUrl);
+      _syncController(_apiKeyController, current.apiKey);
     }
     setState(() {
-      _config = config;
+      _profiles = profiles;
+      _editingProfileId = current.id;
+      _manualModelIds = manualModelIds;
+      _remoteModels = remoteModels;
     });
   }
 
@@ -281,8 +330,48 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     _isSyncingControllers = false;
   }
 
+  Future<void> _switchToProfile(String profileId) async {
+    if (_isSwitchingProfile || profileId == _editingProfileId) {
+      return;
+    }
+    final index = _profiles.indexWhere((profile) => profile.id == profileId);
+    if (index == -1) {
+      return;
+    }
+    _isSwitchingProfile = true;
+    try {
+      if (_shouldAutoSaveDraft) {
+        await _persistProfileDraft();
+      }
+      final selected = await ModelProviderConfigService.setEditingProfile(
+        profileId,
+      );
+      final storedModels = await Future.wait<dynamic>([
+        ModelProviderConfigService.getManualModelIds(profileId: selected.id),
+        ModelProviderConfigService.getCachedFetchedModels(
+          profileId: selected.id,
+          apiBase: selected.baseUrl,
+        ),
+      ]);
+      if (!mounted) return;
+      _applyProfile(
+        profiles: _profiles,
+        editingProfileId: selected.id,
+        manualModelIds: storedModels[0] as List<String>,
+        remoteModels: storedModels[1] as List<ProviderModelOption>,
+        syncControllers: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showToast('切换提供商失败：$e', type: ToastType.error);
+    } finally {
+      _isSwitchingProfile = false;
+    }
+  }
+
   Future<void> _fetchModels({bool silentError = false}) async {
-    if (_isFetchingModels) return;
+    final current = _currentProfile;
+    if (current == null || _isFetchingModels) return;
     final baseUrl = _baseUrlController.text.trim();
     final apiKey = _apiKeyController.text.trim();
 
@@ -304,6 +393,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       final models = await ModelProviderConfigService.fetchModels(
         apiBase: baseUrl,
         apiKey: apiKey,
+        profileId: current.id,
       );
       if (!mounted) return;
       setState(() {
@@ -325,7 +415,116 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     }
   }
 
+  Future<void> _promptAddProfile() async {
+    if (!mounted) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    final name = (await AppDialog.input(
+      context,
+      title: '新增 Provider',
+      hintText: '例如：DeepSeek',
+      confirmText: '新增',
+      cancelText: '取消',
+    ))?.trim();
+    if (name == null || name.isEmpty) {
+      return;
+    }
+    try {
+      final saved = await ModelProviderConfigService.saveProfile(
+        name: name,
+        baseUrl: '',
+        apiKey: '',
+      );
+      if (!mounted) return;
+      final nextProfiles = [..._profiles, saved];
+      _applyProfile(
+        profiles: nextProfiles,
+        editingProfileId: saved.id,
+        manualModelIds: const [],
+        remoteModels: const [],
+        syncControllers: true,
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        showToast('已新增 Provider', type: ToastType.success);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        showToast('新增 Provider 失败：$e', type: ToastType.error);
+      });
+    }
+  }
+
+  Future<void> _deleteCurrentProfile() async {
+    final current = _currentProfile;
+    if (current == null || _profiles.length <= 1) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('删除 Provider'),
+          content: Text('确定删除“${current.name}”吗？场景绑定会保留，但需要重新选择可用 Provider。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) {
+      return;
+    }
+    try {
+      final payload = await ModelProviderConfigService.deleteProfile(
+        current.id,
+      );
+      if (!mounted) return;
+      final fallback = payload.profiles.firstWhere(
+        (profile) => profile.id == payload.editingProfileId,
+        orElse: () => payload.profiles.first,
+      );
+      final storedModels = await Future.wait<dynamic>([
+        ModelProviderConfigService.getManualModelIds(profileId: fallback.id),
+        ModelProviderConfigService.getCachedFetchedModels(
+          profileId: fallback.id,
+          apiBase: fallback.baseUrl,
+        ),
+      ]);
+      if (!mounted) return;
+      _applyProfile(
+        profiles: payload.profiles,
+        editingProfileId: fallback.id,
+        manualModelIds: storedModels[0] as List<String>,
+        remoteModels: storedModels[1] as List<ProviderModelOption>,
+        syncControllers: true,
+      );
+      showToast('已删除 Provider', type: ToastType.success);
+    } catch (e) {
+      if (!mounted) return;
+      showToast('删除 Provider 失败：$e', type: ToastType.error);
+    }
+  }
+
   Future<void> _promptAddModel() async {
+    final current = _currentProfile;
+    if (current == null) {
+      return;
+    }
     final modelId = await showDialog<String>(
       context: context,
       useRootNavigator: false,
@@ -354,12 +553,16 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       _manualModelIds = nextManual;
     });
 
-    await _persistManualModelIds();
+    await ModelProviderConfigService.saveManualModelIds(
+      profileId: current.id,
+      ids: nextManual,
+    );
     showToast('已添加模型', type: ToastType.success);
   }
 
   Future<void> _deleteModel(_ProviderModelItem item) async {
-    if (_deletingModelIds.contains(item.id)) {
+    final current = _currentProfile;
+    if (current == null || _deletingModelIds.contains(item.id)) {
       return;
     }
 
@@ -373,14 +576,14 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     });
 
     try {
-      final cacheBase = _config.baseUrl.isNotEmpty
-          ? _config.baseUrl
-          : (_baseUrlController.text.trim());
-
       await Future.wait([
-        ModelProviderConfigService.saveManualModelIds(_manualModelIds),
+        ModelProviderConfigService.saveManualModelIds(
+          profileId: current.id,
+          ids: _manualModelIds,
+        ),
         ModelProviderConfigService.saveCachedFetchedModels(
-          apiBase: cacheBase,
+          profileId: current.id,
+          apiBase: _baseUrlController.text.trim(),
           models: _remoteModels,
         ),
       ]);
@@ -587,7 +790,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                               item.sourceLabel,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: AppColors.text.withOpacity(0.4),
+                                color: AppColors.text.withValues(alpha: 0.4),
                               ),
                             ),
                           ],
@@ -604,184 +807,404 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     );
   }
 
+  Future<void> _openProviderSwitchMenu(BuildContext anchorContext) async {
+    if (_profiles.isEmpty) {
+      return;
+    }
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+      return;
+    }
+    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final bottomRight = anchorBox.localToGlobal(
+      anchorBox.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
+    final popupWidth = anchorRect.width.clamp(220.0, 300.0).toDouble();
+    final estimatedHeight = (_profiles.length * 48 + 24)
+        .clamp(120.0, _kProviderSwitchPopupMaxHeight)
+        .toDouble();
+    final position = PopupMenuAnchorPosition.fromAnchorRect(
+      anchorRect: anchorRect,
+      overlaySize: overlay.size,
+      estimatedMenuHeight: estimatedHeight,
+      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
+      verticalGap: 6,
+    );
+    final selected = await showMenu<String>(
+      context: context,
+      color: Colors.white,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
+      position: position,
+      items: [
+        _ProviderSwitchPopupEntry(
+          width: popupWidth,
+          estimatedHeight: estimatedHeight,
+          profiles: _profiles,
+          selectedProfileId: _editingProfileId,
+        ),
+      ],
+    );
+    if (selected == null) {
+      return;
+    }
+    await _switchToProfile(selected);
+  }
+
+  Widget _buildProviderConfigTitle() {
+    final name = _currentProfile?.name.trim();
+    final displayName = (name == null || name.isEmpty) ? 'Provider' : name;
+    return Builder(
+      builder: (anchorContext) {
+        return InkWell(
+          onTap: _profiles.isEmpty
+              ? null
+              : () {
+                  unawaited(_openProviderSwitchMenu(anchorContext));
+                },
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 190),
+                  child: Text(
+                    '$displayName 配置',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: AppColors.text70,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final modelItems = _modelItems;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: const CommonAppBar(title: '模型提供商', primary: true),
+      appBar: CommonAppBar(title: '模型提供商', primary: true),
       body: SafeArea(
         top: false,
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                      padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildCard(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Provider 配置',
-                                style: TextStyle(
-                                  color: AppColors.text,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  fontFamily: 'PingFang SC',
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              TextField(
-                                controller: _baseUrlController,
-                                decoration: _buildInputDecoration(
-                                  hint:
-                                      '例如：https://api.openai.com 或 https://xxx/v1',
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                '支持直接输入根地址、/v1、/v1/models 或 /v1/chat/completions，保存时会自动归一化。',
-                                style: TextStyle(
-                                  color: AppColors.text50,
-                                  fontSize: 12,
-                                  fontFamily: 'PingFang SC',
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              TextField(
-                                controller: _apiKeyController,
-                                obscureText: _obscureApiKey,
-                                decoration: _buildInputDecoration(
-                                  hint: '例如：sk-xxxx',
-                                  suffixIcon: IconButton(
-                                    splashRadius: 18,
-                                    onPressed: () {
-                                      setState(() {
-                                        _obscureApiKey = !_obscureApiKey;
-                                      });
-                                    },
-                                    icon: Icon(
-                                      _obscureApiKey
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                      color: AppColors.text50,
-                                      size: 18,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                '未填写 API Key 时，会以无鉴权方式请求 Provider。',
-                                style: TextStyle(
-                                  color: AppColors.text50,
-                                  fontSize: 12,
-                                  fontFamily: 'PingFang SC',
-                                ),
-                              ),
-                            ],
+                        Row(
+                          children: [
+                            Expanded(child: _buildProviderConfigTitle()),
+                            _buildModelActionButton(
+                              svg: '''
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 6h18"/>
+  <path d="M8 6V4h8v2"/>
+  <path d="M19 6l-1 14H6L5 6"/>
+  <path d="M10 11v6"/>
+  <path d="M14 11v6"/>
+</svg>
+''',
+                              onPressed: _profiles.length <= 1
+                                  ? null
+                                  : _deleteCurrentProfile,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildModelActionButton(
+                              svg: _kPlusSvg,
+                              onPressed: _promptAddProfile,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _nameController,
+                          decoration: _buildInputDecoration(
+                            hint: 'Provider 名称',
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        _buildCard(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          '模型列表',
-                                          style: TextStyle(
-                                            color: AppColors.text,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            fontFamily: 'PingFang SC',
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '共 ${modelItems.length} 个模型',
-                                          style: const TextStyle(
-                                            color: AppColors.text70,
-                                            fontSize: 12,
-                                            fontFamily: 'PingFang SC',
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  _buildModelActionButton(
-                                    svg: _kPlusSvg,
-                                    onPressed: _promptAddModel,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _buildModelActionButton(
-                                    svg: _kArrowBigDownSvg,
-                                    onPressed: _isFetchingModels
-                                        ? null
-                                        : _fetchModels,
-                                    highlighted: true,
-                                    loading: _isFetchingModels,
-                                  ),
-                                ],
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _baseUrlController,
+                          decoration: _buildInputDecoration(
+                            hint: '例如：https://api.openai.com 或 https://xxx/v1',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          '支持直接输入根地址、/v1、/v1/models 或 /v1/chat/completions，保存时会自动归一化。',
+                          style: TextStyle(
+                            color: AppColors.text50,
+                            fontSize: 12,
+                            fontFamily: 'PingFang SC',
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _apiKeyController,
+                          obscureText: _obscureApiKey,
+                          decoration: _buildInputDecoration(
+                            hint: '例如：sk-xxxx',
+                            suffixIcon: IconButton(
+                              splashRadius: 18,
+                              onPressed: () {
+                                setState(() {
+                                  _obscureApiKey = !_obscureApiKey;
+                                });
+                              },
+                              icon: Icon(
+                                _obscureApiKey
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                                color: AppColors.text50,
+                                size: 18,
                               ),
-                              const SizedBox(height: 12),
-                              Container(
-                                height: 280,
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF4F7FB),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0x1A000000)),
-                                ),
-                                child: modelItems.isEmpty
-                                    ? Center(
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            SvgPicture.string(
-                                              _kPackageSvg,
-                                              width: 64,
-                                              height: 64,
-                                              colorFilter:
-                                                  const ColorFilter.mode(
-                                                    AppColors.text50,
-                                                    BlendMode.srcIn,
-                                                  ),
-                                            ),
-                                            const SizedBox(height: 10),
-                                            const Text(
-                                              '请添加模型！',
-                                              style: TextStyle(
-                                                color: AppColors.text70,
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                                fontFamily: 'PingFang SC',
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      )
-                                    : ListView.builder(
-                                        itemCount: modelItems.length,
-                                        itemBuilder: (context, index) {
-                                          return _buildSwipeModelItem(
-                                            modelItems[index],
-                                          );
-                                        },
-                                      ),
-                              ),
-                            ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          '未填写 API Key 时，会以无鉴权方式请求 Provider。',
+                          style: TextStyle(
+                            color: AppColors.text50,
+                            fontSize: 12,
+                            fontFamily: 'PingFang SC',
                           ),
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    '模型列表',
+                                    style: TextStyle(
+                                      color: AppColors.text,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: 'PingFang SC',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '共 ${modelItems.length} 个模型',
+                                    style: const TextStyle(
+                                      color: AppColors.text70,
+                                      fontSize: 12,
+                                      fontFamily: 'PingFang SC',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _buildModelActionButton(
+                              svg: _kPlusSvg,
+                              onPressed: _promptAddModel,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildModelActionButton(
+                              svg: _kArrowBigDownSvg,
+                              onPressed: _isFetchingModels
+                                  ? null
+                                  : _fetchModels,
+                              highlighted: true,
+                              loading: _isFetchingModels,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          height: 280,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4F7FB),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0x1A000000)),
+                          ),
+                          child: modelItems.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SvgPicture.string(
+                                        _kPackageSvg,
+                                        width: 64,
+                                        height: 64,
+                                        colorFilter: const ColorFilter.mode(
+                                          AppColors.text50,
+                                          BlendMode.srcIn,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      const Text(
+                                        '请添加模型！',
+                                        style: TextStyle(
+                                          color: AppColors.text70,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          fontFamily: 'PingFang SC',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.builder(
+                                  itemCount: modelItems.length,
+                                  itemBuilder: (context, index) {
+                                    return _buildSwipeModelItem(
+                                      modelItems[index],
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _ProviderSwitchPopupEntry extends PopupMenuEntry<String> {
+  const _ProviderSwitchPopupEntry({
+    required this.width,
+    required this.estimatedHeight,
+    required this.profiles,
+    required this.selectedProfileId,
+  });
+
+  final double width;
+  final double estimatedHeight;
+  final List<ModelProviderProfileSummary> profiles;
+  final String selectedProfileId;
+
+  @override
+  double get height => estimatedHeight;
+
+  @override
+  bool represents(String? value) => false;
+
+  @override
+  State<_ProviderSwitchPopupEntry> createState() =>
+      _ProviderSwitchPopupEntryState();
+}
+
+class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
+  Widget _buildProviderTile(ModelProviderProfileSummary profile) {
+    final selected = profile.id == widget.selectedProfileId;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).pop(profile.id);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  profile.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+              if (selected)
+                const Icon(
+                  Icons.check_rounded,
+                  size: 16,
+                  color: Color(0xFF2C7FEB),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final dynamicMaxHeight =
+        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
+            .clamp(120.0, widget.estimatedHeight)
+            .toDouble();
+    return SizedBox(
+      width: widget.width,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+        child: widget.profiles.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '暂无 Provider',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              )
+            : Scrollbar(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: widget.profiles.length,
+                  itemBuilder: (context, index) {
+                    return _buildProviderTile(widget.profiles[index]);
+                  },
+                ),
+              ),
       ),
     );
   }
@@ -833,16 +1256,11 @@ class _AddModelIdDialogState extends State<_AddModelIdDialog> {
         content: TextField(
           controller: _controller,
           focusNode: _focusNode,
-          decoration: const InputDecoration(
-            hintText: '输入模型 ID',
-          ),
+          decoration: const InputDecoration(hintText: '输入模型 ID'),
           onSubmitted: (_) => _close(_controller.text.trim()),
         ),
         actions: [
-          TextButton(
-            onPressed: () => _close(),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => _close(), child: const Text('取消')),
           TextButton(
             onPressed: () => _close(_controller.text.trim()),
             child: const Text('添加'),

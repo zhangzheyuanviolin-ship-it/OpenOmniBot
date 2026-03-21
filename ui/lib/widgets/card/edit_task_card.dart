@@ -5,6 +5,7 @@ import '../buttons_group_two.dart';
 import '../../models/block_models.dart';
 import '../../services/task_storage_service.dart';
 import '../../models/task_models.dart';
+import 'package:ui/utils/popup_menu_anchor_position.dart';
 
 class EditTaskCard extends StatefulWidget {
   final DateTime selectedDate;
@@ -209,9 +210,17 @@ class _EditTaskCardState extends State<EditTaskCard> {
   }
 
   void _showRepeatOptions(Offset position) {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) {
+      return;
+    }
     showMenu(
       context: context,
-      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
+      position: PopupMenuAnchorPosition.fromOverlayOffset(
+        overlayOffset: position,
+        overlaySize: overlay.size,
+        estimatedMenuHeight: 200,
+      ),
       color: Colors.white,
       items: [
         PopupMenuItem(
@@ -442,4 +451,3 @@ class _EditTaskCardExampleState extends State<EditTaskCardExample> {
     );
   }
 }
-

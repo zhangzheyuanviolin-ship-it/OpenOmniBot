@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ui/utils/popup_menu_anchor_position.dart';
 import '../features/home/pages/edit_profile/edit_profile_page.dart';
 import '../features/task/pages/task_center/task_center_page.dart';
 import '../features/memory/pages/memory_center/memory_center_page.dart';
@@ -66,18 +67,16 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
           children: [
             // 用户信息区域
             _buildUserHeader(),
-            
+
             // 新建任务按钮
             _buildNewTaskButton(),
-            
+
             // 功能菜单
             _buildMenuItems(),
-            
+
             // 历史记录区域
-            Expanded(
-              child: _buildHistorySection(),
-            ),
-            
+            Expanded(child: _buildHistorySection()),
+
             // 底部设置按钮
             _buildBottomSettings(),
           ],
@@ -154,11 +153,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.edit_outlined,
-              color: Colors.grey[600],
-              size: 20,
-            ),
+            Icon(Icons.edit_outlined, color: Colors.grey[600], size: 20),
             SizedBox(width: 8),
             Text(
               "新建任务",
@@ -204,7 +199,12 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
                 );
               },
             ),
-            Divider(height: 1, color: Colors.grey[100], indent: 60, endIndent: 20),
+            Divider(
+              height: 1,
+              color: Colors.grey[100],
+              indent: 60,
+              endIndent: 20,
+            ),
             _buildMenuItem(
               icon: Icons.memory_outlined,
               title: "记忆中心",
@@ -219,7 +219,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
             ),
           ],
         ),
-      )
+      ),
     );
   }
 
@@ -231,11 +231,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
   }) {
     return ListTile(
       contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-      leading: Icon(
-        icon,
-        color: Colors.grey[600],
-        size: 24,
-      ),
+      leading: Icon(icon, color: Colors.grey[600], size: 24),
       title: Text(
         title,
         style: TextStyle(
@@ -244,10 +240,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
           fontWeight: FontWeight.w500,
         ),
       ),
-      trailing: Icon(
-        Icons.chevron_right,
-        color: Colors.grey[400],
-      ),
+      trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
       onTap: onTap,
     );
   }
@@ -275,27 +268,26 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
             child: isLoadingConversations
                 ? Center(
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.grey[400]!),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Colors.grey[400]!,
+                      ),
                     ),
                   )
                 : conversations.isEmpty
-                    ? Center(
-                        child: Text(
-                          "暂无历史对话",
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[500],
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: conversations.length,
-                        itemBuilder: (context, index) {
-                          final conversation = conversations[index];
-                          return _buildHistoryItem(conversation);
-                        },
-                      ),
+                ? Center(
+                    child: Text(
+                      "暂无历史对话",
+                      style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: conversations.length,
+                    itemBuilder: (context, index) {
+                      final conversation = conversations[index];
+                      return _buildHistoryItem(conversation);
+                    },
+                  ),
           ),
         ],
       ),
@@ -311,15 +303,13 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
         GoRouterManager.push('/home/chat', extra: [conversation.id.toString()]);
       },
       onLongPressStart: (LongPressStartDetails details) {
-        final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-        final RelativeRect position = RelativeRect.fromRect(
-          Rect.fromLTWH(details.globalPosition.dx, details.globalPosition.dy, 0, 0),
-          Offset.zero & overlay.size,
-        );
-
         showMenu(
           context: context,
-          position: position,
+          position: PopupMenuAnchorPosition.fromGlobalOffset(
+            context: context,
+            globalOffset: details.globalPosition,
+            estimatedMenuHeight: 120,
+          ),
           color: Colors.white,
           items: [
             PopupMenuItem(
@@ -369,10 +359,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
             SizedBox(width: 30),
             Text(
               conversation.timeDisplay,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[500],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
           ],
         ),
@@ -384,7 +371,8 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
     final newTitle = await showDialog<String>(
       context: context,
       useRootNavigator: false,
-      builder: (_) => _RenameConversationDialog(initialTitle: conversation.title),
+      builder: (_) =>
+          _RenameConversationDialog(initialTitle: conversation.title),
     );
 
     if (!mounted) return;
@@ -433,7 +421,9 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
     );
 
     if (confirmed == true) {
-      final success = await ConversationService.deleteConversation(conversationId);
+      final success = await ConversationService.deleteConversation(
+        conversationId,
+      );
       if (success) {
         setState(() {
           conversations.removeWhere((c) => c.id == conversationId);
@@ -517,10 +507,7 @@ class _RenameConversationDialogState extends State<_RenameConversationDialog> {
           onSubmitted: (_) => _close(_controller.text.trim()),
         ),
         actions: [
-          TextButton(
-            onPressed: () => _close(),
-            child: const Text("取消"),
-          ),
+          TextButton(onPressed: () => _close(), child: const Text("取消")),
           TextButton(
             onPressed: () => _close(_controller.text.trim()),
             child: const Text("确定"),

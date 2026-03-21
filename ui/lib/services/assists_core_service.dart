@@ -1011,6 +1011,7 @@ class AssistsMessageService {
     required List<Map<String, dynamic>> conversationHistory,
     List<Map<String, dynamic>> attachments = const [],
     int? conversationId,
+    Map<String, dynamic>? modelOverride,
   }) async {
     try {
       final args = <String, dynamic>{
@@ -1023,6 +1024,9 @@ class AssistsMessageService {
       }
       if (attachments.isNotEmpty) {
         args['attachments'] = attachments;
+      }
+      if (modelOverride != null) {
+        args['modelOverride'] = modelOverride;
       }
       final result = await assistCore.invokeMethod('createAgentTask', {
         ...args,

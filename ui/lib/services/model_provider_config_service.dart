@@ -5,12 +5,16 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/storage_service.dart';
 
 class ModelProviderConfig {
+  final String id;
+  final String name;
   final String baseUrl;
   final String apiKey;
   final String source;
   final bool configured;
 
   const ModelProviderConfig({
+    required this.id,
+    required this.name,
     required this.baseUrl,
     required this.apiKey,
     required this.source,
@@ -19,6 +23,8 @@ class ModelProviderConfig {
 
   factory ModelProviderConfig.empty() {
     return const ModelProviderConfig(
+      id: '',
+      name: '',
       baseUrl: '',
       apiKey: '',
       source: 'none',
@@ -31,10 +37,71 @@ class ModelProviderConfig {
       return ModelProviderConfig.empty();
     }
     return ModelProviderConfig(
+      id: (map['id'] ?? '').toString(),
+      name: (map['name'] ?? '').toString(),
       baseUrl: (map['baseUrl'] ?? '').toString(),
       apiKey: (map['apiKey'] ?? '').toString(),
       source: (map['source'] ?? 'none').toString(),
       configured: map['configured'] == true,
+    );
+  }
+}
+
+class ModelProviderProfileSummary {
+  final String id;
+  final String name;
+  final String baseUrl;
+  final String apiKey;
+  final bool configured;
+
+  const ModelProviderProfileSummary({
+    required this.id,
+    required this.name,
+    required this.baseUrl,
+    required this.apiKey,
+    required this.configured,
+  });
+
+  factory ModelProviderProfileSummary.fromMap(Map<dynamic, dynamic>? map) {
+    return ModelProviderProfileSummary(
+      id: (map?['id'] ?? '').toString(),
+      name: (map?['name'] ?? '').toString(),
+      baseUrl: (map?['baseUrl'] ?? '').toString(),
+      apiKey: (map?['apiKey'] ?? '').toString(),
+      configured: map?['configured'] == true,
+    );
+  }
+
+  ModelProviderConfig toConfig({String source = 'profile'}) {
+    return ModelProviderConfig(
+      id: id,
+      name: name,
+      baseUrl: baseUrl,
+      apiKey: apiKey,
+      source: source,
+      configured: configured,
+    );
+  }
+}
+
+class ModelProviderProfilesPayload {
+  final List<ModelProviderProfileSummary> profiles;
+  final String editingProfileId;
+
+  const ModelProviderProfilesPayload({
+    required this.profiles,
+    required this.editingProfileId,
+  });
+
+  factory ModelProviderProfilesPayload.fromMap(Map<dynamic, dynamic>? map) {
+    final profiles = ((map?['profiles'] as List?) ?? const [])
+        .map((item) => ModelProviderProfileSummary.fromMap(item as Map?))
+        .where((item) => item.id.isNotEmpty)
+        .toList();
+    final editingProfileId = (map?['editingProfileId'] ?? '').toString();
+    return ModelProviderProfilesPayload(
+      profiles: profiles,
+      editingProfileId: editingProfileId,
     );
   }
 }
@@ -59,9 +126,20 @@ class ProviderModelOption {
   }
 }
 
+class ProviderModelGroup {
+  final ModelProviderProfileSummary profile;
+  final List<ProviderModelOption> models;
+
+  const ProviderModelGroup({required this.profile, required this.models});
+}
+
 class ModelProviderConfigService {
-  static const String _kManualModelIdsKey = 'manual_provider_model_ids_v1';
+  static const String _kManualModelIdsKey = 'manual_provider_model_ids_v2';
   static const String _kCachedFetchedModelsKey =
+      'cached_provider_models_with_base_v2';
+  static const String _kLegacyManualModelIdsKey =
+      'manual_provider_model_ids_v1';
+  static const String _kLegacyCachedFetchedModelsKey =
       'cached_provider_models_with_base_v1';
 
   static Future<ModelProviderConfig> getConfig() async {
@@ -72,6 +150,63 @@ class ModelProviderConfigService {
     } on PlatformException {
       return ModelProviderConfig.empty();
     }
+  }
+
+  static Future<ModelProviderProfilesPayload> listProfiles() async {
+    try {
+      final result = await AssistsMessageService.assistCore
+          .invokeMethod<Map<dynamic, dynamic>>('listModelProviderProfiles');
+      return ModelProviderProfilesPayload.fromMap(result);
+    } on PlatformException {
+      final fallback = await getConfig();
+      final profile = ModelProviderProfileSummary(
+        id: fallback.id.isNotEmpty ? fallback.id : 'profile-1',
+        name: fallback.name.isNotEmpty ? fallback.name : 'Provider 1',
+        baseUrl: fallback.baseUrl,
+        apiKey: fallback.apiKey,
+        configured: fallback.configured,
+      );
+      return ModelProviderProfilesPayload(
+        profiles: [profile],
+        editingProfileId: profile.id,
+      );
+    }
+  }
+
+  static Future<ModelProviderProfileSummary> saveProfile({
+    String? id,
+    required String name,
+    required String baseUrl,
+    required String apiKey,
+  }) async {
+    final result = await AssistsMessageService.assistCore
+        .invokeMethod<Map<dynamic, dynamic>>('saveModelProviderProfile', {
+          if (id != null && id.trim().isNotEmpty) 'id': id.trim(),
+          'name': name,
+          'baseUrl': baseUrl,
+          'apiKey': apiKey,
+        });
+    return ModelProviderProfileSummary.fromMap(result);
+  }
+
+  static Future<ModelProviderProfilesPayload> deleteProfile(
+    String profileId,
+  ) async {
+    final result = await AssistsMessageService.assistCore
+        .invokeMethod<Map<dynamic, dynamic>>('deleteModelProviderProfile', {
+          'profileId': profileId,
+        });
+    return ModelProviderProfilesPayload.fromMap(result);
+  }
+
+  static Future<ModelProviderProfileSummary> setEditingProfile(
+    String profileId,
+  ) async {
+    final result = await AssistsMessageService.assistCore
+        .invokeMethod<Map<dynamic, dynamic>>('setEditingModelProviderProfile', {
+          'profileId': profileId,
+        });
+    return ModelProviderProfileSummary.fromMap(result);
   }
 
   static Future<ModelProviderConfig> saveConfig({
@@ -95,6 +230,7 @@ class ModelProviderConfigService {
   static Future<List<ProviderModelOption>> fetchModels({
     String apiBase = '',
     String apiKey = '',
+    String? profileId,
   }) async {
     final result = await AssistsMessageService.assistCore
         .invokeMethod<List<dynamic>>('fetchProviderModels', {
@@ -106,23 +242,32 @@ class ModelProviderConfigService {
         .where((item) => item.id.isNotEmpty)
         .toList();
 
-    try {
-      var cacheBase = normalizeApiBase(apiBase) ?? '';
-      if (cacheBase.isEmpty) {
-        final config = await getConfig();
-        cacheBase = config.baseUrl;
+    final targetProfileId = await _resolveProfileId(profileId);
+    if (targetProfileId != null) {
+      try {
+        var cacheBase = normalizeApiBase(apiBase) ?? '';
+        if (cacheBase.isEmpty) {
+          final config = await getConfig();
+          cacheBase = config.baseUrl;
+        }
+        await _saveCachedFetchedModels(
+          profileId: targetProfileId,
+          apiBase: cacheBase,
+          models: models,
+        );
+      } catch (_) {
+        // ignore cache write failures
       }
-      await _saveCachedFetchedModels(cacheBase, models);
-    } catch (_) {
-      // ignore cache write failures
     }
 
     return models;
   }
 
   static Future<List<ProviderModelOption>> getCachedFetchedModels({
+    required String profileId,
     String apiBase = '',
   }) async {
+    await _migrateLegacyStorageIfNeeded(profileId);
     final raw = StorageService.getString(
       _kCachedFetchedModelsKey,
       defaultValue: '',
@@ -134,48 +279,51 @@ class ModelProviderConfigService {
     final requestedBase = normalizeApiBase(apiBase) ?? '';
     try {
       final decoded = jsonDecode(raw);
-
-      if (decoded is Map<String, dynamic>) {
-        final cacheBase = (decoded['apiBase'] ?? '').toString();
-        if (requestedBase.isNotEmpty && cacheBase != requestedBase) {
-          return const [];
-        }
-        final modelsRaw = decoded['models'];
-        if (modelsRaw is! List) {
-          return const [];
-        }
-        return modelsRaw
-            .map((item) => ProviderModelOption.fromMap(item as Map?))
-            .where((item) => item.id.isNotEmpty)
-            .toList();
+      if (decoded is! Map<String, dynamic>) {
+        return const [];
       }
-
-      if (decoded is List) {
-        // Backward-compatible fallback if older cache shape exists.
-        return decoded
-            .map((item) => ProviderModelOption.fromMap(item as Map?))
-            .where((item) => item.id.isNotEmpty)
-            .toList();
+      final bucket = decoded[profileId];
+      if (bucket is! Map<String, dynamic>) {
+        return const [];
       }
-      return const [];
+      final cacheBase = (bucket['apiBase'] ?? '').toString();
+      if (requestedBase.isNotEmpty && cacheBase != requestedBase) {
+        return const [];
+      }
+      final modelsRaw = bucket['models'];
+      if (modelsRaw is! List) {
+        return const [];
+      }
+      return modelsRaw
+          .map((item) => ProviderModelOption.fromMap(item as Map?))
+          .where((item) => item.id.isNotEmpty)
+          .toList();
     } catch (_) {
       return const [];
     }
   }
 
   static Future<void> saveCachedFetchedModels({
+    required String profileId,
     required String apiBase,
     required List<ProviderModelOption> models,
   }) async {
-    await _saveCachedFetchedModels(apiBase, models);
+    await _saveCachedFetchedModels(
+      profileId: profileId,
+      apiBase: apiBase,
+      models: models,
+    );
   }
 
-  static Future<void> _saveCachedFetchedModels(
-    String apiBase,
-    List<ProviderModelOption> models,
-  ) async {
+  static Future<void> _saveCachedFetchedModels({
+    required String profileId,
+    required String apiBase,
+    required List<ProviderModelOption> models,
+  }) async {
+    await _migrateLegacyStorageIfNeeded(profileId);
+    final current = _readJsonMap(_kCachedFetchedModelsKey);
     final normalizedBase = normalizeApiBase(apiBase) ?? '';
-    final payload = {
+    current[profileId] = {
       'apiBase': normalizedBase,
       'models': models
           .map(
@@ -187,19 +335,54 @@ class ModelProviderConfigService {
           )
           .toList(),
     };
-    await StorageService.setString(_kCachedFetchedModelsKey, jsonEncode(payload));
+    await StorageService.setString(
+      _kCachedFetchedModelsKey,
+      jsonEncode(current),
+    );
   }
 
-  static Future<List<String>> getManualModelIds() async {
-    final ids =
-        StorageService.getStringList(_kManualModelIdsKey, defaultValue: []) ??
-        [];
-    return _normalizeModelIds(ids);
+  static Future<List<String>> getManualModelIds({
+    required String profileId,
+  }) async {
+    await _migrateLegacyStorageIfNeeded(profileId);
+    final current = _readJsonMap(_kManualModelIdsKey);
+    final rawIds = (current[profileId] as List?)
+        ?.map((item) => item.toString())
+        .toList();
+    return _normalizeModelIds(rawIds ?? const []);
   }
 
-  static Future<void> saveManualModelIds(List<String> ids) async {
-    final normalized = _normalizeModelIds(ids);
-    await StorageService.setStringList(_kManualModelIdsKey, normalized);
+  static Future<void> saveManualModelIds({
+    required String profileId,
+    required List<String> ids,
+  }) async {
+    await _migrateLegacyStorageIfNeeded(profileId);
+    final current = _readJsonMap(_kManualModelIdsKey);
+    current[profileId] = _normalizeModelIds(ids);
+    await StorageService.setString(_kManualModelIdsKey, jsonEncode(current));
+  }
+
+  static Future<List<ProviderModelOption>> getStoredModelOptionsForProfile(
+    String profileId,
+  ) async {
+    final results = await Future.wait<dynamic>([
+      getManualModelIds(profileId: profileId),
+      getCachedFetchedModels(profileId: profileId),
+    ]);
+    return mergeModelOptions(
+      remoteModels: results[1] as List<ProviderModelOption>,
+      manualModelIds: results[0] as List<String>,
+    );
+  }
+
+  static Future<List<ProviderModelGroup>> loadModelGroups() async {
+    final payload = await listProfiles();
+    final groups = <ProviderModelGroup>[];
+    for (final profile in payload.profiles) {
+      final models = await getStoredModelOptionsForProfile(profile.id);
+      groups.add(ProviderModelGroup(profile: profile, models: models));
+    }
+    return groups;
   }
 
   static List<ProviderModelOption> mergeModelOptions({
@@ -227,6 +410,76 @@ class ModelProviderConfigService {
       }
     }
     return merged;
+  }
+
+  static Future<String?> _resolveProfileId(String? profileId) async {
+    if (profileId != null && profileId.trim().isNotEmpty) {
+      return profileId.trim();
+    }
+    final config = await getConfig();
+    return config.id.trim().isEmpty ? null : config.id.trim();
+  }
+
+  static Map<String, dynamic> _readJsonMap(String key) {
+    final raw = StorageService.getString(key, defaultValue: '');
+    if (raw == null || raw.trim().isEmpty) {
+      return <String, dynamic>{};
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // ignore broken cache
+    }
+    return <String, dynamic>{};
+  }
+
+  static Future<void> _migrateLegacyStorageIfNeeded(String profileId) async {
+    final targetProfileId = profileId.trim();
+    if (targetProfileId.isEmpty) {
+      return;
+    }
+
+    final currentManual = _readJsonMap(_kManualModelIdsKey);
+    if (!currentManual.containsKey(targetProfileId)) {
+      final legacyManual = StorageService.getStringList(
+        _kLegacyManualModelIdsKey,
+        defaultValue: [],
+      );
+      if (legacyManual != null && legacyManual.isNotEmpty) {
+        currentManual[targetProfileId] = _normalizeModelIds(legacyManual);
+        await StorageService.setString(
+          _kManualModelIdsKey,
+          jsonEncode(currentManual),
+        );
+        await StorageService.remove(_kLegacyManualModelIdsKey);
+      }
+    }
+
+    final currentCached = _readJsonMap(_kCachedFetchedModelsKey);
+    if (!currentCached.containsKey(targetProfileId)) {
+      final legacyRaw = StorageService.getString(
+        _kLegacyCachedFetchedModelsKey,
+        defaultValue: '',
+      );
+      if (legacyRaw != null && legacyRaw.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(legacyRaw);
+          if (decoded is Map<String, dynamic>) {
+            currentCached[targetProfileId] = decoded;
+            await StorageService.setString(
+              _kCachedFetchedModelsKey,
+              jsonEncode(currentCached),
+            );
+            await StorageService.remove(_kLegacyCachedFetchedModelsKey);
+          }
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
   }
 
   static List<String> _normalizeModelIds(List<String> ids) {

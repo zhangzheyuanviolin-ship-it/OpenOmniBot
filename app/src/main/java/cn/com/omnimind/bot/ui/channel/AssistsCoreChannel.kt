@@ -58,6 +58,18 @@ class AssistsCoreChannel {
                 "getModelProviderConfig" -> {
                     assistsCoreManager!!.getModelProviderConfig(call, result)
                 }
+                "listModelProviderProfiles" -> {
+                    assistsCoreManager!!.listModelProviderProfiles(call, result)
+                }
+                "saveModelProviderProfile" -> {
+                    assistsCoreManager!!.saveModelProviderProfile(call, result)
+                }
+                "deleteModelProviderProfile" -> {
+                    assistsCoreManager!!.deleteModelProviderProfile(call, result)
+                }
+                "setEditingModelProviderProfile" -> {
+                    assistsCoreManager!!.setEditingModelProviderProfile(call, result)
+                }
                 "saveModelProviderConfig" -> {
                     assistsCoreManager!!.saveModelProviderConfig(call, result)
                 }
@@ -69,6 +81,15 @@ class AssistsCoreChannel {
                 }
                 "getSceneModelCatalog" -> {
                     assistsCoreManager!!.getSceneModelCatalog(call, result)
+                }
+                "getSceneModelBindings" -> {
+                    assistsCoreManager!!.getSceneModelBindings(call, result)
+                }
+                "saveSceneModelBinding" -> {
+                    assistsCoreManager!!.saveSceneModelBinding(call, result)
+                }
+                "clearSceneModelBinding" -> {
+                    assistsCoreManager!!.clearSceneModelBinding(call, result)
                 }
                 "getSceneModelOverrides" -> {
                     assistsCoreManager!!.getSceneModelOverrides(call, result)

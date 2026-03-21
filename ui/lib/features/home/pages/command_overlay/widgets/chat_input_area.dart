@@ -82,6 +82,8 @@ class ChatInputArea extends StatefulWidget {
   final Future<void> Function()? onPickAttachment;
   final List<ChatInputAttachment> attachments;
   final ValueChanged<String>? onRemoveAttachment;
+  final String? selectedModelOverrideId;
+  final VoidCallback? onClearSelectedModelOverride;
 
   const ChatInputArea({
     super.key,
@@ -102,6 +104,8 @@ class ChatInputArea extends StatefulWidget {
     this.onPickAttachment,
     this.attachments = const [],
     this.onRemoveAttachment,
+    this.selectedModelOverrideId,
+    this.onClearSelectedModelOverride,
   });
 
   @override
@@ -223,7 +227,8 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.attachments != widget.attachments ||
         oldWidget.useLargeComposerStyle != widget.useLargeComposerStyle ||
-        oldWidget.useFrostedGlass != widget.useFrostedGlass) {
+        oldWidget.useFrostedGlass != widget.useFrostedGlass ||
+        oldWidget.selectedModelOverrideId != widget.selectedModelOverrideId) {
       _reportInputHeightAfterBuild();
     }
   }

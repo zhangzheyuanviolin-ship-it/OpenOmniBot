@@ -18,10 +18,14 @@ import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/widgets/permission_bottom_sheet.dart';
 import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/app_update_service.dart';
+import 'package:ui/services/conversation_model_override_service.dart';
 import 'package:ui/services/device_service.dart';
+import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/permission_registry.dart';
 import 'package:ui/services/permission_service.dart';
+import 'package:ui/services/scene_model_config_service.dart';
+import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/utils/ui.dart';
 
@@ -85,7 +89,15 @@ class _ChatPageState extends State<ChatPage>
   ChatSurfaceMode _activeSurfaceMode = ChatSurfaceMode.normal;
   ChatPageMode _activeConversationMode = ChatPageMode.normal;
   bool _showSlashCommandPanel = false;
+  bool _showModelMentionPanel = false;
   bool _openClawPanelExpanded = false;
+  _ActiveModelMentionToken? _activeModelMentionToken;
+  List<ModelProviderProfileSummary> _modelProviderProfiles = const [];
+  Map<String, List<ProviderModelOption>> _modelOptionsByProfileId = const {};
+  List<SceneCatalogItem> _sceneCatalog = const [];
+  ConversationModelOverride? _conversationModelOverride;
+  _ChatModelOverrideSelection? _pendingConversationModelOverride;
+  bool _showConversationModelMentionChip = false;
   final TextEditingController _openClawBaseUrlController =
       TextEditingController();
   final TextEditingController _openClawTokenController =
@@ -188,7 +200,9 @@ class _ChatPageState extends State<ChatPage>
       mode: _modeKey(mode),
     );
   }
-  ChatConversationRuntimeState? get _activeRuntime => _runtimeForMode(_activeMode);
+
+  ChatConversationRuntimeState? get _activeRuntime =>
+      _runtimeForMode(_activeMode);
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
@@ -206,6 +220,7 @@ class _ChatPageState extends State<ChatPage>
     }
     _isAiRespondingByMode[_activeMode] = value;
   }
+
   bool get _isCheckingExecutableTask =>
       _activeRuntime?.isCheckingExecutableTask ??
       (_isCheckingExecutableTaskByMode[_activeMode] ?? false);
@@ -217,6 +232,7 @@ class _ChatPageState extends State<ChatPage>
     }
     _isCheckingExecutableTaskByMode[_activeMode] = value;
   }
+
   bool get _isSubmittingVlmReply =>
       _activeRuntime?.isSubmittingVlmReply ??
       (_isSubmittingVlmReplyByMode[_activeMode] ?? false);
@@ -228,6 +244,7 @@ class _ChatPageState extends State<ChatPage>
     }
     _isSubmittingVlmReplyByMode[_activeMode] = value;
   }
+
   String? get _vlmInfoQuestion =>
       _activeRuntime?.vlmInfoQuestion ?? _vlmInfoQuestionByMode[_activeMode];
   set _vlmInfoQuestion(String? value) {
@@ -238,8 +255,10 @@ class _ChatPageState extends State<ChatPage>
     }
     _vlmInfoQuestionByMode[_activeMode] = value;
   }
+
   Map<String, String> get _currentAiMessages =>
-      _activeRuntime?.currentAiMessages ?? _currentAiMessagesByMode[_activeMode]!;
+      _activeRuntime?.currentAiMessages ??
+      _currentAiMessagesByMode[_activeMode]!;
   String get _deepThinkingContent =>
       _activeRuntime?.deepThinkingContent ??
       (_deepThinkingContentByMode[_activeMode] ?? '');
@@ -251,8 +270,10 @@ class _ChatPageState extends State<ChatPage>
     }
     _deepThinkingContentByMode[_activeMode] = value;
   }
+
   bool get _isDeepThinking =>
-      _activeRuntime?.isDeepThinking ?? (_isDeepThinkingByMode[_activeMode] ?? false);
+      _activeRuntime?.isDeepThinking ??
+      (_isDeepThinkingByMode[_activeMode] ?? false);
   set _isDeepThinking(bool value) {
     final runtime = _activeRuntime;
     if (runtime != null) {
@@ -261,6 +282,7 @@ class _ChatPageState extends State<ChatPage>
     }
     _isDeepThinkingByMode[_activeMode] = value;
   }
+
   String? get _currentDispatchTaskId =>
       _activeRuntime?.currentDispatchTaskId ??
       _currentDispatchTaskIdByMode[_activeMode];
@@ -272,6 +294,7 @@ class _ChatPageState extends State<ChatPage>
     }
     _currentDispatchTaskIdByMode[_activeMode] = value;
   }
+
   int get _currentThinkingStage =>
       _activeRuntime?.currentThinkingStage ??
       (_currentThinkingStageByMode[_activeMode] ?? 1);
@@ -283,6 +306,7 @@ class _ChatPageState extends State<ChatPage>
     }
     _currentThinkingStageByMode[_activeMode] = value;
   }
+
   bool get _isInputAreaVisible =>
       _activeRuntime?.isInputAreaVisible ??
       (_isInputAreaVisibleByMode[_activeMode] ?? true);
@@ -294,8 +318,10 @@ class _ChatPageState extends State<ChatPage>
     }
     _isInputAreaVisibleByMode[_activeMode] = value;
   }
+
   bool get _isExecutingTask =>
-      _activeRuntime?.isExecutingTask ?? (_isExecutingTaskByMode[_activeMode] ?? false);
+      _activeRuntime?.isExecutingTask ??
+      (_isExecutingTaskByMode[_activeMode] ?? false);
   set _isExecutingTask(bool value) {
     final runtime = _activeRuntime;
     if (runtime != null) {
@@ -304,6 +330,7 @@ class _ChatPageState extends State<ChatPage>
     }
     _isExecutingTaskByMode[_activeMode] = value;
   }
+
   int? get _currentConversationId => _currentConversationIdByMode[_activeMode];
   set _currentConversationId(int? value) =>
       _currentConversationIdByMode[_activeMode] = value;
@@ -316,8 +343,61 @@ class _ChatPageState extends State<ChatPage>
       runtime.conversation = value;
     }
   }
+
   List<ChatInputAttachment> get _pendingAttachments =>
       _pendingAttachmentsByMode[_activeMode]!;
+  _ChatModelOverrideSelection? get _activeConversationModelOverrideSelection {
+    final pending = _pendingConversationModelOverride;
+    if (pending != null) {
+      return pending;
+    }
+    final persisted = _conversationModelOverride;
+    if (persisted == null) {
+      return null;
+    }
+    return _ChatModelOverrideSelection(
+      providerProfileId: persisted.providerProfileId,
+      modelId: persisted.modelId,
+    );
+  }
+
+  SceneCatalogItem? get _dispatchSceneCatalogItem {
+    for (final item in _sceneCatalog) {
+      if (item.sceneId == 'scene.dispatch.model') {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  String? get _activeNormalChatModelId {
+    final dispatchScene = _dispatchSceneCatalogItem;
+    final effectiveModel = dispatchScene?.effectiveModel.trim() ?? '';
+    if (effectiveModel.isNotEmpty) {
+      return effectiveModel;
+    }
+    final defaultModel = dispatchScene?.defaultModel.trim() ?? '';
+    if (defaultModel.isNotEmpty) {
+      return defaultModel;
+    }
+    return null;
+  }
+
+  _ChatModelOverrideSelection? get _activeDispatchSceneSelection {
+    final dispatchScene = _dispatchSceneCatalogItem;
+    if (dispatchScene == null) {
+      return null;
+    }
+    final providerProfileId = dispatchScene.effectiveProviderProfileId.trim();
+    final modelId = dispatchScene.effectiveModel.trim();
+    if (providerProfileId.isEmpty || modelId.isEmpty) {
+      return null;
+    }
+    return _ChatModelOverrideSelection(
+      providerProfileId: providerProfileId,
+      modelId: modelId,
+    );
+  }
 
   // ===================== Mixin 接口实现 =====================
 
@@ -437,6 +517,12 @@ class _ChatPageState extends State<ChatPage>
     } else if (conversation != null) {
       runtime.conversation = conversation;
     }
+    if (mode == ChatPageMode.normal) {
+      unawaited(
+        _loadConversationModelOverrideForNormalConversation(conversationId),
+      );
+      unawaited(_loadNormalChatModelContext());
+    }
     if (mounted) {
       setState(() {});
     }
@@ -455,6 +541,11 @@ class _ChatPageState extends State<ChatPage>
       conversation: conversation,
       messages: messages,
     );
+    if (_activeMode == ChatPageMode.normal) {
+      unawaited(
+        _persistPendingConversationModelOverrideIfNeeded(conversationId),
+      );
+    }
   }
 
   @override
@@ -581,6 +672,396 @@ class _ChatPageState extends State<ChatPage>
     _isExecutingTaskByMode[mode] = false;
     _pendingAttachmentsByMode[mode]!.clear();
     _draftMessageByMode[mode] = '';
+    if (mode == ChatPageMode.normal) {
+      _conversationModelOverride = null;
+      _pendingConversationModelOverride = null;
+      _showConversationModelMentionChip = false;
+      _showModelMentionPanel = false;
+      _activeModelMentionToken = null;
+    }
+  }
+
+  Map<String, List<ProviderModelOption>> _mergeChatModelOptions({
+    required List<ModelProviderProfileSummary> profiles,
+    required Map<String, List<ProviderModelOption>> source,
+    required List<SceneCatalogItem> sceneCatalog,
+    _ChatModelOverrideSelection? overrideSelection,
+  }) {
+    final result = <String, List<ProviderModelOption>>{
+      for (final entry in source.entries)
+        entry.key: List<ProviderModelOption>.from(entry.value),
+    };
+    final knownProfileIds = profiles.map((item) => item.id).toSet();
+
+    void ensureOption(String profileId, String modelId, String ownedBy) {
+      final normalizedProfileId = profileId.trim();
+      final normalizedModelId = modelId.trim();
+      if (normalizedProfileId.isEmpty || normalizedModelId.isEmpty) {
+        return;
+      }
+      if (!knownProfileIds.contains(normalizedProfileId)) {
+        return;
+      }
+      final bucket = result.putIfAbsent(
+        normalizedProfileId,
+        () => <ProviderModelOption>[],
+      );
+      final exists = bucket.any((item) => item.id == normalizedModelId);
+      if (!exists) {
+        bucket.insert(
+          0,
+          ProviderModelOption(
+            id: normalizedModelId,
+            displayName: normalizedModelId,
+            ownedBy: ownedBy,
+          ),
+        );
+      }
+    }
+
+    if (overrideSelection != null) {
+      ensureOption(
+        overrideSelection.providerProfileId,
+        overrideSelection.modelId,
+        'override',
+      );
+    }
+
+    final dispatchScene = sceneCatalog.where(
+      (item) => item.sceneId == 'scene.dispatch.model',
+    );
+    if (dispatchScene.isNotEmpty) {
+      final scene = dispatchScene.first;
+      ensureOption(
+        scene.effectiveProviderProfileId,
+        scene.effectiveModel,
+        'scene',
+      );
+      ensureOption(scene.boundProviderProfileId, scene.overrideModel, 'scene');
+    }
+
+    return result;
+  }
+
+  Future<void> _loadNormalChatModelContext() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        ModelProviderConfigService.loadModelGroups(),
+        SceneModelConfigService.getSceneCatalog(),
+      ]);
+      if (!mounted) return;
+
+      final groups = results[0] as List<ProviderModelGroup>;
+      final catalog = results[1] as List<SceneCatalogItem>;
+      final profiles = groups.map((group) => group.profile).toList();
+      final modelOptionsByProfileId = <String, List<ProviderModelOption>>{
+        for (final group in groups)
+          group.profile.id: List<ProviderModelOption>.from(group.models),
+      };
+
+      setState(() {
+        _sceneCatalog = catalog;
+        _modelProviderProfiles = profiles;
+        _modelOptionsByProfileId = _mergeChatModelOptions(
+          profiles: profiles,
+          source: modelOptionsByProfileId,
+          sceneCatalog: catalog,
+          overrideSelection: _activeConversationModelOverrideSelection,
+        );
+      });
+      await _syncInvalidNormalConversationOverrideIfNeeded();
+    } catch (e) {
+      debugPrint('加载聊天模型上下文失败: $e');
+    }
+  }
+
+  Future<void> _syncInvalidNormalConversationOverrideIfNeeded() async {
+    if (_modelProviderProfiles.isEmpty) {
+      return;
+    }
+    final configuredProfileIds = _modelProviderProfiles
+        .where((item) => item.configured)
+        .map((item) => item.id)
+        .toSet();
+    final persisted = _conversationModelOverride;
+    final pending = _pendingConversationModelOverride;
+    final shouldClearPersisted =
+        persisted != null &&
+        !configuredProfileIds.contains(persisted.providerProfileId);
+    final shouldClearPending =
+        pending != null &&
+        !configuredProfileIds.contains(pending.providerProfileId);
+
+    if (!shouldClearPersisted && !shouldClearPending) {
+      return;
+    }
+
+    final normalConversationId =
+        _currentConversationIdByMode[ChatPageMode.normal];
+    if (shouldClearPersisted && normalConversationId != null) {
+      await ConversationModelOverrideService.clearOverride(
+        normalConversationId,
+      );
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      if (shouldClearPersisted) {
+        _conversationModelOverride = null;
+      }
+      if (shouldClearPending) {
+        _pendingConversationModelOverride = null;
+      }
+      if (_conversationModelOverride == null &&
+          _pendingConversationModelOverride == null) {
+        _showConversationModelMentionChip = false;
+      }
+      _modelOptionsByProfileId = _mergeChatModelOptions(
+        profiles: _modelProviderProfiles,
+        source: _modelOptionsByProfileId,
+        sceneCatalog: _sceneCatalog,
+        overrideSelection: _activeConversationModelOverrideSelection,
+      );
+    });
+  }
+
+  Future<void> _loadConversationModelOverrideForNormalConversation(
+    int? conversationId,
+  ) async {
+    if (conversationId == null) {
+      if (!mounted) return;
+      setState(() {
+        _conversationModelOverride = null;
+        if (_pendingConversationModelOverride == null) {
+          _showConversationModelMentionChip = false;
+        }
+      });
+      return;
+    }
+    final override = await ConversationModelOverrideService.getOverride(
+      conversationId,
+    );
+    if (!mounted) return;
+    final nextSelection = override == null
+        ? _pendingConversationModelOverride
+        : _ChatModelOverrideSelection(
+            providerProfileId: override.providerProfileId,
+            modelId: override.modelId,
+          );
+    setState(() {
+      _conversationModelOverride = override;
+      _pendingConversationModelOverride = null;
+      _showConversationModelMentionChip = override != null;
+      _modelOptionsByProfileId = _mergeChatModelOptions(
+        profiles: _modelProviderProfiles,
+        source: _modelOptionsByProfileId,
+        sceneCatalog: _sceneCatalog,
+        overrideSelection: nextSelection,
+      );
+    });
+    await _syncInvalidNormalConversationOverrideIfNeeded();
+  }
+
+  Future<void> _persistPendingConversationModelOverrideIfNeeded(
+    int conversationId,
+  ) async {
+    final pending = _pendingConversationModelOverride;
+    if (pending == null) {
+      if (_conversationModelOverride?.conversationId == conversationId) {
+        return;
+      }
+      await _loadConversationModelOverrideForNormalConversation(conversationId);
+      return;
+    }
+
+    final value = ConversationModelOverride(
+      conversationId: conversationId,
+      providerProfileId: pending.providerProfileId,
+      modelId: pending.modelId,
+    );
+    await ConversationModelOverrideService.saveOverride(value);
+    if (!mounted) return;
+    setState(() {
+      _conversationModelOverride = value;
+      _pendingConversationModelOverride = null;
+      _modelOptionsByProfileId = _mergeChatModelOptions(
+        profiles: _modelProviderProfiles,
+        source: _modelOptionsByProfileId,
+        sceneCatalog: _sceneCatalog,
+        overrideSelection: _ChatModelOverrideSelection(
+          providerProfileId: value.providerProfileId,
+          modelId: value.modelId,
+        ),
+      );
+    });
+  }
+
+  void _removeActiveModelMentionTokenFromInput() {
+    final token = _activeModelMentionToken;
+    if (token == null) {
+      return;
+    }
+    final value = _messageController.value;
+    final text = value.text;
+    final start = token.start.clamp(0, text.length);
+    final end = token.end.clamp(start, text.length);
+    final before = text.substring(0, start);
+    final after = text.substring(end);
+    var nextText = '$before$after';
+    if (before.endsWith(' ') && after.startsWith(' ')) {
+      nextText = '$before${after.substring(1)}';
+    }
+    if (nextText.startsWith(' ')) {
+      nextText = nextText.substring(1);
+    }
+    final nextOffset = start > nextText.length ? nextText.length : start;
+    _messageController.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextOffset),
+    );
+  }
+
+  Future<void> _applyConversationModelOverride({
+    required String providerProfileId,
+    required String modelId,
+    bool displayAsMentionChip = false,
+  }) async {
+    _removeActiveModelMentionTokenFromInput();
+    final selection = _ChatModelOverrideSelection(
+      providerProfileId: providerProfileId,
+      modelId: modelId,
+    );
+    final normalConversationId =
+        _currentConversationIdByMode[ChatPageMode.normal];
+
+    if (normalConversationId == null) {
+      if (!mounted) return;
+      setState(() {
+        _pendingConversationModelOverride = selection;
+        _conversationModelOverride = null;
+        _showConversationModelMentionChip = displayAsMentionChip;
+        _showModelMentionPanel = false;
+        _activeModelMentionToken = null;
+        _modelOptionsByProfileId = _mergeChatModelOptions(
+          profiles: _modelProviderProfiles,
+          source: _modelOptionsByProfileId,
+          sceneCatalog: _sceneCatalog,
+          overrideSelection: selection,
+        );
+      });
+    } else {
+      final value = ConversationModelOverride(
+        conversationId: normalConversationId,
+        providerProfileId: providerProfileId,
+        modelId: modelId,
+      );
+      await ConversationModelOverrideService.saveOverride(value);
+      if (!mounted) return;
+      setState(() {
+        _conversationModelOverride = value;
+        _pendingConversationModelOverride = null;
+        _showConversationModelMentionChip = displayAsMentionChip;
+        _showModelMentionPanel = false;
+        _activeModelMentionToken = null;
+        _modelOptionsByProfileId = _mergeChatModelOptions(
+          profiles: _modelProviderProfiles,
+          source: _modelOptionsByProfileId,
+          sceneCatalog: _sceneCatalog,
+          overrideSelection: selection,
+        );
+      });
+    }
+
+    final switchedLabel = displayAsMentionChip ? '@$modelId' : modelId;
+    showToast('已切换到 $switchedLabel', type: ToastType.success);
+  }
+
+  Future<void> _clearConversationModelOverride() async {
+    final hasOverride = _activeConversationModelOverrideSelection != null;
+    if (!hasOverride) {
+      return;
+    }
+    final normalConversationId =
+        _currentConversationIdByMode[ChatPageMode.normal];
+    if (normalConversationId != null) {
+      await ConversationModelOverrideService.clearOverride(
+        normalConversationId,
+      );
+    }
+    if (!mounted) return;
+    setState(() {
+      _conversationModelOverride = null;
+      _pendingConversationModelOverride = null;
+      _showConversationModelMentionChip = false;
+      _modelOptionsByProfileId = _mergeChatModelOptions(
+        profiles: _modelProviderProfiles,
+        source: _modelOptionsByProfileId,
+        sceneCatalog: _sceneCatalog,
+        overrideSelection: null,
+      );
+    });
+    showToast('已恢复场景默认模型', type: ToastType.success);
+  }
+
+  Map<String, dynamic>? _buildAgentModelOverridePayload() {
+    if (_activeConversationMode != ChatPageMode.normal) {
+      return null;
+    }
+    if (!_showConversationModelMentionChip) {
+      return null;
+    }
+    final override = _activeConversationModelOverrideSelection;
+    if (override == null) {
+      return null;
+    }
+    return {
+      'providerProfileId': override.providerProfileId,
+      'modelId': override.modelId,
+    };
+  }
+
+  _ActiveModelMentionToken? _parseActiveModelMentionToken(
+    TextEditingValue value,
+  ) {
+    if (_activeConversationMode != ChatPageMode.normal || _isOpenClawSurface) {
+      return null;
+    }
+    final selectionEnd = value.selection.baseOffset;
+    final text = value.text;
+    if (selectionEnd < 0 || selectionEnd > text.length) {
+      return null;
+    }
+
+    var tokenStart = selectionEnd;
+    while (tokenStart > 0) {
+      final char = text.substring(tokenStart - 1, tokenStart);
+      if (RegExp(r'\s').hasMatch(char)) {
+        break;
+      }
+      tokenStart -= 1;
+    }
+
+    if (tokenStart >= text.length ||
+        text.substring(tokenStart, tokenStart + 1) != '@') {
+      return null;
+    }
+    if (tokenStart > 0) {
+      final previousChar = text.substring(tokenStart - 1, tokenStart);
+      if (!RegExp(r'\s').hasMatch(previousChar)) {
+        return null;
+      }
+    }
+
+    final query = text.substring(tokenStart + 1, selectionEnd);
+    if (query.contains(RegExp(r'\s'))) {
+      return null;
+    }
+    return _ActiveModelMentionToken(
+      query: query,
+      start: tokenStart,
+      end: selectionEnd,
+    );
   }
 
   void _syncRuntimeSnapshotForMode(
@@ -601,7 +1082,9 @@ class _ChatPageState extends State<ChatPage>
         messages ?? runtime?.messages ?? _messagesByMode[mode]!,
       ),
       conversation:
-          conversation ?? runtime?.conversation ?? _currentConversationByMode[mode],
+          conversation ??
+          runtime?.conversation ??
+          _currentConversationByMode[mode],
       isAiResponding:
           runtime?.isAiResponding ?? (_isAiRespondingByMode[mode] ?? false),
       isCheckingExecutableTask:
@@ -615,15 +1098,18 @@ class _ChatPageState extends State<ChatPage>
         runtime?.currentAiMessages ?? _currentAiMessagesByMode[mode]!,
       ),
       deepThinkingContent:
-          runtime?.deepThinkingContent ?? (_deepThinkingContentByMode[mode] ?? ''),
+          runtime?.deepThinkingContent ??
+          (_deepThinkingContentByMode[mode] ?? ''),
       isDeepThinking:
           runtime?.isDeepThinking ?? (_isDeepThinkingByMode[mode] ?? false),
       currentDispatchTaskId:
           runtime?.currentDispatchTaskId ?? _currentDispatchTaskIdByMode[mode],
       currentThinkingStage:
-          runtime?.currentThinkingStage ?? (_currentThinkingStageByMode[mode] ?? 1),
+          runtime?.currentThinkingStage ??
+          (_currentThinkingStageByMode[mode] ?? 1),
       isInputAreaVisible:
-          runtime?.isInputAreaVisible ?? (_isInputAreaVisibleByMode[mode] ?? true),
+          runtime?.isInputAreaVisible ??
+          (_isInputAreaVisibleByMode[mode] ?? true),
       isExecutingTask:
           runtime?.isExecutingTask ?? (_isExecutingTaskByMode[mode] ?? false),
       lastAgentTaskId: runtime?.lastAgentTaskId,
@@ -769,12 +1255,12 @@ class _ChatPageState extends State<ChatPage>
     _inputFocusNode.addListener(_onFocusChange);
     _messageController.addListener(_handleSlashCommandInput);
     _loadOpenClawConfig();
+    unawaited(_loadNormalChatModelContext());
     initializeConversation();
     _notifySummarySheetReadyIfNeeded();
   }
 
-  void _unusedSetupAiServiceCallbacks() {
-  }
+  void _unusedSetupAiServiceCallbacks() {}
 
   void _setupAssistsCallbacks() {
     /*
@@ -1117,7 +1603,9 @@ class _ChatPageState extends State<ChatPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _runtimeCoordinator.removeListener(_handleRuntimeCoordinatorChanged);
-    AppUpdateService.statusNotifier.removeListener(_handleAppUpdateStatusChanged);
+    AppUpdateService.statusNotifier.removeListener(
+      _handleAppUpdateStatusChanged,
+    );
     _messageController.removeListener(_handleSlashCommandInput);
     _messageController.dispose();
     _normalMessageScrollController.dispose();
@@ -1311,6 +1799,8 @@ class _ChatPageState extends State<ChatPage>
         _activeSurfaceMode = ChatSurfaceMode.openclaw;
         _activeConversationMode = ChatPageMode.openclaw;
         _openClawEnabled = hasConfig;
+        _showModelMentionPanel = false;
+        _activeModelMentionToken = null;
       });
       _applyDraftForConversationMode(ChatPageMode.openclaw);
       await StorageService.setBool(kOpenClawEnabledKey, hasConfig);
@@ -1329,6 +1819,7 @@ class _ChatPageState extends State<ChatPage>
     _applyDraftForConversationMode(ChatPageMode.normal);
     await StorageService.setBool(kOpenClawEnabledKey, false);
     _hideSlashCommandPanel();
+    unawaited(_loadNormalChatModelContext());
     if (syncPage) _jumpToCurrentModePage();
   }
 
@@ -1461,21 +1952,33 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _handleSlashCommandInput() {
-    final text = _messageController.text.trimLeft();
-    final shouldShow = text.startsWith('/');
+    final value = _messageController.value;
+    final shouldShowSlash = value.text.trimLeft().startsWith('/');
+    final nextMentionToken = shouldShowSlash
+        ? null
+        : _parseActiveModelMentionToken(value);
+    final shouldShowModelMention = nextMentionToken != null;
+    final shouldCollapseOpenClawPanel = !shouldShowSlash || !_isOpenClawSurface;
+
     if (!mounted) return;
-    if (shouldShow != _showSlashCommandPanel) {
-      setState(() {
-        _showSlashCommandPanel = shouldShow;
-        if (!shouldShow) {
-          _openClawPanelExpanded = false;
-        }
-      });
-    } else if (!_isOpenClawSurface && _openClawPanelExpanded) {
-      setState(() {
-        _openClawPanelExpanded = false;
-      });
+
+    final shouldUpdate =
+        shouldShowSlash != _showSlashCommandPanel ||
+        shouldShowModelMention != _showModelMentionPanel ||
+        nextMentionToken != _activeModelMentionToken ||
+        (shouldCollapseOpenClawPanel && _openClawPanelExpanded);
+    if (!shouldUpdate) {
+      return;
     }
+
+    setState(() {
+      _showSlashCommandPanel = shouldShowSlash;
+      _showModelMentionPanel = shouldShowModelMention;
+      _activeModelMentionToken = nextMentionToken;
+      if (shouldCollapseOpenClawPanel) {
+        _openClawPanelExpanded = false;
+      }
+    });
   }
 
   void _showOpenClawCommandPanel({bool expand = false}) {
@@ -1486,6 +1989,8 @@ class _ChatPageState extends State<ChatPage>
     if (!mounted) return;
     setState(() {
       _showSlashCommandPanel = true;
+      _showModelMentionPanel = false;
+      _activeModelMentionToken = null;
       _openClawPanelExpanded = expand;
       if (expand) {
         _openClawBaseUrlController.text = _openClawBaseUrl;
@@ -1499,6 +2004,7 @@ class _ChatPageState extends State<ChatPage>
     if (!mounted) return;
     setState(() {
       _showSlashCommandPanel = false;
+      _showModelMentionPanel = false;
       _openClawPanelExpanded = false;
     });
   }
@@ -1514,7 +2020,11 @@ class _ChatPageState extends State<ChatPage>
   }
 
   Future<void> _handleOutsideTap(Offset position) async {
-    if (!_showSlashCommandPanel && !_openClawPanelExpanded) return;
+    if (!_showSlashCommandPanel &&
+        !_showModelMentionPanel &&
+        !_openClawPanelExpanded) {
+      return;
+    }
     if (_isPointerInside(_openClawPanelKey, position) ||
         _isPointerInside(_inputAreaKey, position)) {
       return;
@@ -1628,6 +2138,7 @@ class _ChatPageState extends State<ChatPage>
       _notifySummarySheetReadyIfNeeded();
       unawaited(_checkCompanionTaskState());
       unawaited(AppUpdateService.refreshIfNeeded());
+      unawaited(_loadNormalChatModelContext());
     }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
@@ -1800,6 +2311,7 @@ class _ChatPageState extends State<ChatPage>
         conversationHistory: history,
         attachments: attachments,
         conversationId: _currentConversationId,
+        modelOverride: _buildAgentModelOverridePayload(),
       );
       if (!success) {
         _runtimeCoordinator.unregisterTask(aiMessageId);
@@ -2009,9 +2521,127 @@ class _ChatPageState extends State<ChatPage>
     await OpenClawConnectionChecker.checkAndToast(_openClawBaseUrl);
   }
 
+  Future<void> _openConversationModelSelector(
+    BuildContext anchorContext,
+  ) async {
+    if (_activeMode != ChatPageMode.normal) {
+      return;
+    }
+    if (_showSlashCommandPanel ||
+        _showModelMentionPanel ||
+        _openClawPanelExpanded) {
+      setState(() {
+        _showSlashCommandPanel = false;
+        _showModelMentionPanel = false;
+        _openClawPanelExpanded = false;
+      });
+    }
+    final hasSelectableModels = _modelProviderProfiles.any((profile) {
+      if (!profile.configured) {
+        return false;
+      }
+      final models =
+          _modelOptionsByProfileId[profile.id] ?? const <ProviderModelOption>[];
+      return models.isNotEmpty;
+    });
+    if (!hasSelectableModels) {
+      return;
+    }
+    _inputFocusNode.unfocus();
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+      return;
+    }
+    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final bottomRight = anchorBox.localToGlobal(
+      anchorBox.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
+    final popupWidth = anchorBox.size.width.clamp(160.0, 320.0).toDouble();
+    const popupMaxHeight = 360.0;
+    final position = PopupMenuAnchorPosition.fromAnchorRect(
+      anchorRect: anchorRect,
+      overlaySize: overlay.size,
+      estimatedMenuHeight: popupMaxHeight,
+      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
+    );
+    final selected = await showMenu<_ChatModelOverrideSelection>(
+      context: context,
+      color: Colors.white,
+      elevation: 8,
+      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      position: position,
+      items: [
+        _ConversationModelSelectorPopupEntry(
+          width: popupWidth,
+          estimatedHeight: popupMaxHeight,
+          profiles: _modelProviderProfiles,
+          providerModelsByProfileId: _modelOptionsByProfileId,
+          currentSelection: _activeDispatchSceneSelection,
+        ),
+      ],
+    );
+    if (selected == null) {
+      return;
+    }
+    await _applyDispatchSceneModelSelection(
+      providerProfileId: selected.providerProfileId,
+      modelId: selected.modelId,
+    );
+  }
+
+  Future<void> _applyDispatchSceneModelSelection({
+    required String providerProfileId,
+    required String modelId,
+  }) async {
+    const sceneId = 'scene.dispatch.model';
+    final currentSelection = _activeDispatchSceneSelection;
+    if (currentSelection != null &&
+        currentSelection.providerProfileId == providerProfileId &&
+        currentSelection.modelId == modelId) {
+      return;
+    }
+    try {
+      await SceneModelConfigService.saveSceneModelBinding(
+        sceneId: sceneId,
+        providerProfileId: providerProfileId,
+        modelId: modelId,
+      );
+      await _loadNormalChatModelContext();
+      if (!mounted) return;
+      showToast('Agent 模型已切换到 $modelId', type: ToastType.success);
+    } catch (e) {
+      if (!mounted) return;
+      showToast('更新 Agent 模型失败：$e', type: ToastType.error);
+    }
+  }
+
+  Widget _buildModelMentionPanel() {
+    return _ChatModelMentionPanel(
+      profiles: _modelProviderProfiles,
+      providerModelsByProfileId: _modelOptionsByProfileId,
+      query: _activeModelMentionToken?.query ?? '',
+      currentSelection: _activeConversationModelOverrideSelection,
+      onSelect: (selection) {
+        unawaited(
+          _applyConversationModelOverride(
+            providerProfileId: selection.providerProfileId,
+            modelId: selection.modelId,
+            displayAsMentionChip: true,
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildSlashCommandPanel() {
     final visible =
         _showSlashCommandPanel ||
+        _showModelMentionPanel ||
         (_isOpenClawSurface && _openClawPanelExpanded);
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
@@ -2031,16 +2661,17 @@ class _ChatPageState extends State<ChatPage>
           ? const SizedBox.shrink()
           : Container(
               key: _openClawPanelKey,
-              margin: const EdgeInsets.fromLTRB(24, 0, 24, 6),
-              padding: const EdgeInsets.all(12),
+              padding: _showModelMentionPanel
+                  ? EdgeInsets.zero
+                  : const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
@@ -2084,54 +2715,68 @@ class _ChatPageState extends State<ChatPage>
                         ),
                       ],
                     )
+                  : _showModelMentionPanel
+                  ? _buildModelMentionPanel()
                   : !_isOpenClawSurface
-                  ? Row(
-                      children: const [
-                        Icon(
-                          Icons.info_outline,
-                          size: 16,
+                  ? Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFD),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        '请滑到右侧 OpenClaw 模式',
+                        style: TextStyle(
+                          fontSize: 12,
                           color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
                         ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '/openclaw 在普通聊天模式下已停用，请滑到右侧 OpenClaw 模式',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF475569),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     )
                   : InkWell(
                       onTap: () {
                         _showOpenClawCommandPanel(expand: true);
                       },
-                      borderRadius: BorderRadius.circular(10),
-                      child: Row(
-                        children: const [
-                          Icon(Icons.link, size: 16, color: Color(0xFF2563EB)),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'OpenClaw',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF1F2937),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFD),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(
+                              Icons.link_rounded,
+                              size: 16,
+                              color: Color(0xFF2C7FEB),
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '/openclaw',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF1F2937),
+                                ),
                               ),
                             ),
-                          ),
-                          Text(
-                            '配置',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF6B7280),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 16,
+                              color: Color(0xFF94A3B8),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
             ),
@@ -2230,14 +2875,24 @@ class _ChatPageState extends State<ChatPage>
   @override
   Widget build(BuildContext context) {
     const edgeInset = 24.0;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final viewPaddingBottom = MediaQuery.of(context).viewPadding.bottom;
-    // 消除键盘收起时输入框“先下后上”弹跳：
-    // 输入框距屏幕底 = Scaffold留白(bottomInset) + SafeArea(max(0,vp-bi)) + SizedBox
-    // 目标总和 = max(bottomInset, viewPadding+edgeInset)，保证与左右边距一致
-    // clamp(0,edgeInset) 保证键盘高于静止位时 SizedBox=0，接近时平滑补齐
-    final inputBottomPadding = (viewPaddingBottom + edgeInset - bottomInset)
-        .clamp(0.0, edgeInset);
+    final mediaQuery = MediaQuery.of(context);
+    final bottomInset = mediaQuery.viewInsets.bottom;
+    final viewPaddingBottom = mediaQuery.viewPadding.bottom;
+    final shouldLiftComposerForKeyboard = _inputFocusNode.hasFocus;
+    final composerKeyboardLift = shouldLiftComposerForKeyboard
+        ? bottomInset
+        : 0.0;
+    // 只在聊天输入框聚焦时抬升输入区；其它面板（例如顶部模型搜索）唤起键盘不影响底部输入栏。
+    final inputBottomPadding =
+        (viewPaddingBottom + edgeInset - composerKeyboardLift)
+            .clamp(0.0, edgeInset)
+            .toDouble();
+    final keyboardSpacer = shouldLiftComposerForKeyboard
+        ? composerKeyboardLift
+        : 0.0;
+    final commandPanelBottomOffset =
+        (_popupMenuBottomOffset() + inputBottomPadding + keyboardSpacer + 6)
+            .toDouble();
 
     return PopScope(
       canPop: false,
@@ -2253,6 +2908,7 @@ class _ChatPageState extends State<ChatPage>
       child: Scaffold(
         key: _scaffoldKey,
         backgroundColor: const Color(0xFFF9FCFF),
+        resizeToAvoidBottomInset: false,
         drawer: HomeDrawer(key: _drawerKey),
         onDrawerChanged: (isOpen) {
           if (isOpen) {
@@ -2282,6 +2938,17 @@ class _ChatPageState extends State<ChatPage>
                       onModeChanged: (value) {
                         unawaited(_switchChatMode(value, syncPage: true));
                       },
+                      activeModelId:
+                          _activeSurfaceMode == ChatSurfaceMode.normal
+                          ? _activeNormalChatModelId
+                          : null,
+                      onModelTap: _activeSurfaceMode == ChatSurfaceMode.normal
+                          ? (anchorContext) {
+                              unawaited(
+                                _openConversationModelSelector(anchorContext),
+                              );
+                            }
+                          : null,
                       isCompanionModeEnabled: _isCompanionModeEnabled,
                       isCompanionToggleLoading: _isCompanionToggleLoading,
                     ),
@@ -2318,7 +2985,6 @@ class _ChatPageState extends State<ChatPage>
                         onSubmit: onSubmitVlmInfo,
                         onDismiss: dismissVlmInfo,
                       ),
-                    if (!_isWorkspaceSurface) _buildSlashCommandPanel(),
                     // 输入框区域
                     if (_isInputAreaVisible && !_isWorkspaceSurface)
                       Container(
@@ -2336,18 +3002,39 @@ class _ChatPageState extends State<ChatPage>
                           onPickAttachment: _pickAttachments,
                           attachments: _pendingAttachments,
                           onRemoveAttachment: _removePendingAttachment,
+                          selectedModelOverrideId:
+                              _activeMode == ChatPageMode.normal &&
+                                  _showConversationModelMentionChip
+                              ? _activeConversationModelOverrideSelection
+                                    ?.modelId
+                              : null,
+                          onClearSelectedModelOverride:
+                              _activeMode == ChatPageMode.normal &&
+                                  _activeConversationModelOverrideSelection !=
+                                      null
+                              ? () {
+                                  unawaited(_clearConversationModelOverride());
+                                }
+                              : null,
                           topBanner: _buildAppUpdateBanner(),
                         ),
                       ),
-                    SizedBox(height: inputBottomPadding),
+                    SizedBox(height: inputBottomPadding + keyboardSpacer),
                   ],
                 ),
+                if (!_isWorkspaceSurface)
+                  Positioned(
+                    left: 24,
+                    right: 24,
+                    bottom: commandPanelBottomOffset,
+                    child: _buildSlashCommandPanel(),
+                  ),
                 // Popup menu
                 if (_isPopupVisible && !_isWorkspaceSurface)
                   Positioned(
                     right: 24,
-                    // Scaffold 已经根据键盘重排了 body，这里不再叠加 bottomInset，
-                    // 否则键盘弹出时会把菜单额外上推，出现跑到屏幕顶部的问题。
+                    // 顶部模型搜索等场景会弹键盘，但这里保持固定锚点偏移，
+                    // 避免底部菜单随全局 viewInsets 产生额外跳动。
                     bottom: _popupMenuBottomOffset(),
                     child:
                         _chatInputAreaKey.currentState?.buildPopupMenu() ??
@@ -2356,6 +3043,592 @@ class _ChatPageState extends State<ChatPage>
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveModelMentionToken {
+  final String query;
+  final int start;
+  final int end;
+
+  const _ActiveModelMentionToken({
+    required this.query,
+    required this.start,
+    required this.end,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is _ActiveModelMentionToken &&
+        other.query == query &&
+        other.start == start &&
+        other.end == end;
+  }
+
+  @override
+  int get hashCode => Object.hash(query, start, end);
+}
+
+class _ChatModelOverrideSelection {
+  final String providerProfileId;
+  final String modelId;
+
+  const _ChatModelOverrideSelection({
+    required this.providerProfileId,
+    required this.modelId,
+  });
+}
+
+class _ChatModelMentionPanel extends StatefulWidget {
+  final List<ModelProviderProfileSummary> profiles;
+  final Map<String, List<ProviderModelOption>> providerModelsByProfileId;
+  final String query;
+  final _ChatModelOverrideSelection? currentSelection;
+  final ValueChanged<_ChatModelOverrideSelection> onSelect;
+
+  const _ChatModelMentionPanel({
+    required this.profiles,
+    required this.providerModelsByProfileId,
+    required this.query,
+    required this.currentSelection,
+    required this.onSelect,
+  });
+
+  @override
+  State<_ChatModelMentionPanel> createState() => _ChatModelMentionPanelState();
+}
+
+class _ChatModelMentionPanelState extends State<_ChatModelMentionPanel> {
+  List<ProviderModelOption> _filteredModels(String profileId) {
+    final normalizedQuery = widget.query.trim().toLowerCase();
+    final models =
+        widget.providerModelsByProfileId[profileId] ??
+        const <ProviderModelOption>[];
+    if (normalizedQuery.isEmpty) {
+      return models;
+    }
+    return models.where((item) {
+      final modelId = item.id.toLowerCase();
+      final displayName = item.displayName.toLowerCase();
+      return modelId.contains(normalizedQuery) ||
+          displayName.contains(normalizedQuery);
+    }).toList();
+  }
+
+  Widget _buildProviderHeader(
+    ModelProviderProfileSummary profile,
+    int modelCount,
+  ) {
+    final isCurrentProvider =
+        widget.currentSelection?.providerProfileId == profile.id;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF4F6FA),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                profile.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Text(
+              '$modelCount',
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF9AA4B6),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (isCurrentProvider) ...[
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.check_circle_rounded,
+                size: 13,
+                color: Color(0xFF2C7FEB),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModelRow({
+    required ModelProviderProfileSummary profile,
+    required ProviderModelOption item,
+  }) {
+    final selected =
+        widget.currentSelection?.providerProfileId == profile.id &&
+        widget.currentSelection?.modelId == item.id;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: InkWell(
+        onTap: () {
+          widget.onSelect(
+            _ChatModelOverrideSelection(
+              providerProfileId: profile.id,
+              modelId: item.id,
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.id,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF1F2937),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (selected)
+                const Icon(
+                  Icons.check_rounded,
+                  size: 15,
+                  color: Color(0xFF2C7FEB),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleProfiles = widget.profiles.where((profile) {
+      if (!profile.configured) {
+        return false;
+      }
+      return _filteredModels(profile.id).isNotEmpty;
+    }).toList();
+
+    if (visibleProfiles.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final mediaQuery = MediaQuery.of(context);
+    final dynamicMaxHeight =
+        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 180)
+            .clamp(150.0, 240.0)
+            .toDouble();
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+      child: Scrollbar(
+        child: ListView.builder(
+          padding: const EdgeInsets.only(bottom: 6),
+          itemCount: visibleProfiles.length,
+          itemBuilder: (context, index) {
+            final profile = visibleProfiles[index];
+            final models = _filteredModels(profile.id);
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildProviderHeader(profile, models.length),
+                if (models.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
+                    child: Text(
+                      '没有匹配的模型',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  )
+                else
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: models
+                        .map(
+                          (item) =>
+                              _buildModelRow(profile: profile, item: item),
+                        )
+                        .toList(),
+                  ),
+                if (index != visibleProfiles.length - 1)
+                  const SizedBox(height: 4),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ConversationModelSelectorPopupEntry
+    extends PopupMenuEntry<_ChatModelOverrideSelection> {
+  const _ConversationModelSelectorPopupEntry({
+    required this.width,
+    required this.estimatedHeight,
+    required this.profiles,
+    required this.providerModelsByProfileId,
+    required this.currentSelection,
+  });
+
+  final double width;
+  final double estimatedHeight;
+  final List<ModelProviderProfileSummary> profiles;
+  final Map<String, List<ProviderModelOption>> providerModelsByProfileId;
+  final _ChatModelOverrideSelection? currentSelection;
+
+  @override
+  double get height => estimatedHeight;
+
+  @override
+  bool represents(_ChatModelOverrideSelection? value) => false;
+
+  @override
+  State<_ConversationModelSelectorPopupEntry> createState() =>
+      _ConversationModelSelectorPopupEntryState();
+}
+
+class _ConversationModelSelectorPopupEntryState
+    extends State<_ConversationModelSelectorPopupEntry> {
+  final TextEditingController _searchController = TextEditingController();
+  late final Set<String> _expandedProfileIds;
+
+  bool get _hasSearchQuery => _searchController.text.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandedProfileIds = <String>{
+      if (widget.currentSelection != null)
+        widget.currentSelection!.providerProfileId,
+    };
+    if (_expandedProfileIds.isEmpty && widget.profiles.isNotEmpty) {
+      _expandedProfileIds.add(widget.profiles.first.id);
+    }
+    _searchController.addListener(() {
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<ProviderModelOption> _filteredModels(String profileId) {
+    final query = _searchController.text.trim().toLowerCase();
+    final models = widget.providerModelsByProfileId[profileId] ?? const [];
+    if (query.isEmpty) {
+      return models;
+    }
+    return models.where((item) {
+      final modelId = item.id.toLowerCase();
+      final displayName = item.displayName.toLowerCase();
+      return modelId.contains(query) || displayName.contains(query);
+    }).toList();
+  }
+
+  List<ModelProviderProfileSummary> get _visibleProfiles {
+    final configuredProfiles = widget.profiles
+        .where((profile) => profile.configured)
+        .toList();
+    if (!_hasSearchQuery) {
+      return configuredProfiles;
+    }
+    return configuredProfiles.where((profile) {
+      return _filteredModels(profile.id).isNotEmpty;
+    }).toList();
+  }
+
+  bool _isExpanded(String profileId) {
+    if (_hasSearchQuery) {
+      return true;
+    }
+    return _expandedProfileIds.contains(profileId);
+  }
+
+  Widget _buildSearchRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      child: Row(
+        children: [
+          const Icon(Icons.search, size: 18, color: Color(0xFF9AA4B6)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              autofocus: false,
+              scrollPadding: EdgeInsets.zero,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF1F2937),
+                fontWeight: FontWeight.w500,
+              ),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: '搜索模型 ID',
+                hintStyle: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF9AA4B6),
+                  fontWeight: FontWeight.w500,
+                ),
+                border: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileHeader(ModelProviderProfileSummary profile) {
+    final expanded = _isExpanded(profile.id);
+    final models = _filteredModels(profile.id);
+    final isSelectedProvider =
+        widget.currentSelection?.providerProfileId == profile.id;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: InkWell(
+        onTap: () {
+          if (_hasSearchQuery) {
+            return;
+          }
+          setState(() {
+            if (expanded) {
+              _expandedProfileIds.remove(profile.id);
+            } else {
+              _expandedProfileIds.add(profile.id);
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F6FA),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  profile.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                '${models.length}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF9AA4B6),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (isSelectedProvider) ...[
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  size: 13,
+                  color: Color(0xFF2C7FEB),
+                ),
+              ],
+              const SizedBox(width: 6),
+              Icon(
+                _hasSearchQuery
+                    ? Icons.unfold_more_rounded
+                    : expanded
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded,
+                size: 16,
+                color: const Color(0xFF94A3B8),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModelRow({
+    required ModelProviderProfileSummary profile,
+    required ProviderModelOption model,
+  }) {
+    final selected =
+        widget.currentSelection?.providerProfileId == profile.id &&
+        widget.currentSelection?.modelId == model.id;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).pop(
+            _ChatModelOverrideSelection(
+              providerProfileId: profile.id,
+              modelId: model.id,
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  model.id,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF1F2937),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (selected)
+                const Icon(
+                  Icons.check_rounded,
+                  size: 15,
+                  color: Color(0xFF2C7FEB),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final dynamicMaxHeight =
+        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
+            .clamp(220.0, widget.estimatedHeight)
+            .toDouble();
+    final configuredProfiles = widget.profiles
+        .where((profile) => profile.configured)
+        .toList();
+    final visibleProfiles = _visibleProfiles;
+    return SizedBox(
+      width: widget.width,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildSearchRow(),
+            if (configuredProfiles.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '请先在模型提供商页配置 Provider',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              )
+            else if (visibleProfiles.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '没有匹配的模型',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              )
+            else
+              Flexible(
+                child: Scrollbar(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: visibleProfiles.length,
+                    itemBuilder: (context, index) {
+                      final profile = visibleProfiles[index];
+                      final expanded = _isExpanded(profile.id);
+                      final models = _filteredModels(profile.id);
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildProfileHeader(profile),
+                          if (expanded)
+                            if (models.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
+                                child: Text(
+                                  '该 Provider 暂无可选模型',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                ),
+                              )
+                            else
+                              Column(
+                                children: models
+                                    .map(
+                                      (item) => _buildModelRow(
+                                        profile: profile,
+                                        model: item,
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                          if (index != visibleProfiles.length - 1)
+                            const SizedBox(height: 6),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

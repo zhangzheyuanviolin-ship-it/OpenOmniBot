@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../../models/chat_message_model.dart';
@@ -12,6 +14,8 @@ class ChatAppBar extends StatelessWidget {
   final VoidCallback onCompanionTap;
   final ChatSurfaceMode activeMode;
   final ValueChanged<ChatSurfaceMode> onModeChanged;
+  final String? activeModelId;
+  final ValueChanged<BuildContext>? onModelTap;
   final bool isCompanionModeEnabled;
   final bool isCompanionToggleLoading;
 
@@ -21,6 +25,8 @@ class ChatAppBar extends StatelessWidget {
     required this.onCompanionTap,
     required this.activeMode,
     required this.onModeChanged,
+    this.activeModelId,
+    this.onModelTap,
     this.isCompanionModeEnabled = false,
     this.isCompanionToggleLoading = false,
   });
@@ -50,10 +56,12 @@ class ChatAppBar extends StatelessWidget {
           Expanded(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 168),
-                child: ChatModeSlider(
+                constraints: const BoxConstraints(maxWidth: 176),
+                child: _ChatModeModelSwitcher(
                   activeMode: activeMode,
-                  onChanged: onModeChanged,
+                  onModeChanged: onModeChanged,
+                  activeModelId: activeModelId,
+                  onModelTap: onModelTap,
                 ),
               ),
             ),
@@ -96,14 +104,218 @@ class ChatAppBar extends StatelessWidget {
   }
 }
 
+class _ChatModeModelSwitcher extends StatefulWidget {
+  const _ChatModeModelSwitcher({
+    required this.activeMode,
+    required this.onModeChanged,
+    this.activeModelId,
+    this.onModelTap,
+  });
+
+  final ChatSurfaceMode activeMode;
+  final ValueChanged<ChatSurfaceMode> onModeChanged;
+  final String? activeModelId;
+  final ValueChanged<BuildContext>? onModelTap;
+
+  @override
+  State<_ChatModeModelSwitcher> createState() => _ChatModeModelSwitcherState();
+}
+
+class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
+  static const Duration _idleDelay = Duration(milliseconds: 1700);
+  static const Duration _switchDuration = Duration(milliseconds: 460);
+  static const double _verticalSwitchThreshold = 10;
+  static const double _verticalVelocityThreshold = 240;
+
+  Timer? _idleTimer;
+  bool _showModelLabel = false;
+  double _verticalDragDelta = 0;
+
+  String get _modelLabel {
+    final text = (widget.activeModelId ?? '').trim();
+    if (text.isEmpty) {
+      return '未设置模型';
+    }
+    return text;
+  }
+
+  bool get _canRevealModelLabel =>
+      widget.activeMode == ChatSurfaceMode.normal &&
+      (widget.activeModelId ?? '').trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _armIdleTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatModeModelSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeMode != widget.activeMode) {
+      _markInteraction();
+      return;
+    }
+    final previousModelId = (oldWidget.activeModelId ?? '').trim();
+    final currentModelId = (widget.activeModelId ?? '').trim();
+    if (previousModelId != currentModelId && !_showModelLabel) {
+      _armIdleTimer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _idleTimer?.cancel();
+    super.dispose();
+  }
+
+  void _armIdleTimer() {
+    _idleTimer?.cancel();
+    if (!_canRevealModelLabel) {
+      if (_showModelLabel && mounted) {
+        setState(() => _showModelLabel = false);
+      }
+      return;
+    }
+    _idleTimer = Timer(_idleDelay, () {
+      if (!mounted || !_canRevealModelLabel) {
+        return;
+      }
+      setState(() => _showModelLabel = true);
+    });
+  }
+
+  void _markInteraction() {
+    _idleTimer?.cancel();
+    if (!_canRevealModelLabel) {
+      if (_showModelLabel && mounted) {
+        setState(() => _showModelLabel = false);
+      }
+      return;
+    }
+    if (_showModelLabel && mounted) {
+      setState(() => _showModelLabel = false);
+    }
+    _armIdleTimer();
+  }
+
+  void _handleVerticalDragUpdate(DragUpdateDetails details) {
+    _verticalDragDelta += details.delta.dy;
+  }
+
+  void _handleVerticalDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final shouldToggle = _verticalDragDelta.abs() > _verticalSwitchThreshold ||
+        velocity.abs() > _verticalVelocityThreshold;
+    if (!shouldToggle) {
+      _verticalDragDelta = 0;
+      return;
+    }
+    final intent = _verticalDragDelta + velocity * 0.015;
+    _verticalDragDelta = 0;
+
+    if (intent > 0) {
+      if (_canRevealModelLabel && !_showModelLabel) {
+        _idleTimer?.cancel();
+        setState(() => _showModelLabel = true);
+      }
+      return;
+    }
+    if (_showModelLabel) {
+      _markInteraction();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final modelLabelWidget = Builder(
+      builder: (anchorContext) {
+        final text = Text(
+          _modelLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 14,
+            color: Color(0xFF9DA9BB),
+            fontWeight: FontWeight.w500,
+          ),
+        );
+        if (widget.onModelTap == null) {
+          return Center(child: text);
+        }
+        return InkWell(
+          onTap: () {
+            widget.onModelTap?.call(anchorContext);
+          },
+          borderRadius: BorderRadius.circular(999),
+          child: Center(child: text),
+        );
+      },
+    );
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFD9E6FB), width: 1),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(999),
+        child: SizedBox(
+          height: 32,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragUpdate: _handleVerticalDragUpdate,
+            onVerticalDragEnd: _handleVerticalDragEnd,
+            onVerticalDragCancel: () {
+              _verticalDragDelta = 0;
+            },
+            child: Stack(
+              fit: StackFit.expand,
+              clipBehavior: Clip.hardEdge,
+              children: [
+                AnimatedPositioned(
+                  duration: _switchDuration,
+                  curve: Curves.easeInOutCubicEmphasized,
+                  left: 0,
+                  right: 0,
+                  height: 32,
+                  top: _showModelLabel ? 32 : 0,
+                  child: ChatModeSlider(
+                    activeMode: widget.activeMode,
+                    onChanged: widget.onModeChanged,
+                    onInteracted: _markInteraction,
+                  ),
+                ),
+                AnimatedPositioned(
+                  duration: _switchDuration,
+                  curve: Curves.easeInOutCubicEmphasized,
+                  left: 0,
+                  right: 0,
+                  height: 32,
+                  top: _showModelLabel ? 0 : -32,
+                  child: modelLabelWidget,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ChatModeSlider extends StatefulWidget {
   final ChatSurfaceMode activeMode;
   final ValueChanged<ChatSurfaceMode> onChanged;
+  final VoidCallback? onInteracted;
 
   const ChatModeSlider({
     super.key,
     required this.activeMode,
     required this.onChanged,
+    this.onInteracted,
   });
 
   @override
@@ -155,11 +367,14 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
       behavior: HitTestBehavior.opaque,
       onHorizontalDragUpdate: (details) {
         _dragDelta += details.delta.dx;
+        widget.onInteracted?.call();
       },
       onHorizontalDragEnd: (details) {
+        widget.onInteracted?.call();
         _handleDragEnd(velocity: details.primaryVelocity ?? 0);
       },
       onTapUp: (details) {
+        widget.onInteracted?.call();
         final box = context.findRenderObject() as RenderBox?;
         if (box == null || !box.hasSize) return;
         final local = box.globalToLocal(details.globalPosition);
@@ -174,9 +389,8 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
         height: 32,
         padding: const EdgeInsets.all(2),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFD9E6FB), width: 1),
         ),
         child: Stack(
           children: [
@@ -426,6 +640,8 @@ class ChatInputWrapper extends StatelessWidget {
   final List<ChatInputAttachment> attachments;
   final ValueChanged<String>? onRemoveAttachment;
   final Widget? topBanner;
+  final String? selectedModelOverrideId;
+  final VoidCallback? onClearSelectedModelOverride;
 
   const ChatInputWrapper({
     super.key,
@@ -445,6 +661,8 @@ class ChatInputWrapper extends StatelessWidget {
     this.attachments = const [],
     this.onRemoveAttachment,
     this.topBanner,
+    this.selectedModelOverrideId,
+    this.onClearSelectedModelOverride,
   });
 
   @override
@@ -475,6 +693,8 @@ class ChatInputWrapper extends StatelessWidget {
             onPickAttachment: onPickAttachment,
             attachments: attachments,
             onRemoveAttachment: onRemoveAttachment,
+            selectedModelOverrideId: selectedModelOverrideId,
+            onClearSelectedModelOverride: onClearSelectedModelOverride,
           ),
         ],
       ),

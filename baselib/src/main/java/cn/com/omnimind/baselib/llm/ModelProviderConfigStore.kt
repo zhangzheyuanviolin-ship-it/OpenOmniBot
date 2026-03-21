@@ -1,40 +1,165 @@
 package cn.com.omnimind.baselib.llm
 
-import cn.com.omnimind.baselib.util.OssIdentity
 import cn.com.omnimind.baselib.util.OmniLog
+import cn.com.omnimind.baselib.util.OssIdentity
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.tencent.mmkv.MMKV
 
 object ModelProviderConfigStore {
     private const val TAG = "ModelProviderConfigStore"
+
     internal const val KEY_PROVIDER_BASE_URL = "model_provider_openai_base_url"
     internal const val KEY_PROVIDER_API_KEY = "model_provider_openai_api_key"
+    private const val KEY_PROVIDER_PROFILES = "model_provider_profiles_v1"
+    private const val KEY_EDITING_PROFILE_ID = "model_provider_editing_profile_id"
 
     internal const val LEGACY_MODEL_OVERRIDE_KEY = "vlm_operation_model_override"
     internal const val LEGACY_API_BASE_OVERRIDE_KEY = "vlm_operation_api_base_override"
     internal const val LEGACY_API_KEY_OVERRIDE_KEY = "vlm_operation_api_key_override"
-    internal const val MIGRATION_DONE_KEY = "model_provider_scene_config_flattened_v2"
+    internal const val MIGRATION_DONE_KEY = "model_provider_scene_config_flattened_v3"
+    internal const val LEGACY_DEFAULT_PROFILE_ID = "legacy-default"
+
+    private const val DEFAULT_PROFILE_ID = "profile-1"
+    private const val DEFAULT_PROFILE_NAME = "Provider 1"
+
+    private val gson = Gson()
+
+    fun listProfiles(): List<ModelProviderProfile> {
+        ModelProviderMigration.ensureMigrated()
+        val mmkv = MMKV.defaultMMKV() ?: return defaultProfiles()
+        val current = readProfiles(mmkv)
+        if (current.isNotEmpty()) {
+            ensureEditingProfile(mmkv, current)
+            return current
+        }
+        val created = defaultProfiles()
+        writeProfiles(mmkv, created)
+        mmkv.encode(KEY_EDITING_PROFILE_ID, created.first().id)
+        return created
+    }
+
+    fun getEditingProfileId(): String {
+        val profiles = listProfiles()
+        val mmkv = MMKV.defaultMMKV()
+        if (mmkv == null) return profiles.first().id
+        return ensureEditingProfile(mmkv, profiles)
+    }
+
+    fun getEditingProfile(): ModelProviderProfile {
+        val profiles = listProfiles()
+        val editingId = getEditingProfileId()
+        return profiles.firstOrNull { it.id == editingId } ?: profiles.first()
+    }
+
+    fun getProfile(profileId: String?): ModelProviderProfile? {
+        if (profileId.isNullOrBlank()) return null
+        return listProfiles().firstOrNull { it.id == profileId.trim() }
+    }
+
+    fun setEditingProfile(profileId: String): ModelProviderProfile {
+        val normalizedId = profileId.trim()
+        require(normalizedId.isNotEmpty()) { "profileId is empty" }
+        val profiles = listProfiles()
+        val target = profiles.firstOrNull { it.id == normalizedId }
+            ?: throw IllegalArgumentException("profile not found: $normalizedId")
+        val mmkv = MMKV.defaultMMKV()
+        mmkv?.encode(KEY_EDITING_PROFILE_ID, target.id)
+        return target
+    }
+
+    fun saveProfile(
+        id: String? = null,
+        name: String,
+        baseUrl: String,
+        apiKey: String
+    ): ModelProviderProfile {
+        ModelProviderMigration.ensureMigrated()
+        val mmkv = MMKV.defaultMMKV() ?: return ModelProviderProfile(
+            id = id?.trim().orEmpty().ifEmpty { DEFAULT_PROFILE_ID },
+            name = name.trim().ifEmpty { DEFAULT_PROFILE_NAME },
+            baseUrl = normalizeBaseUrl(baseUrl).orEmpty(),
+            apiKey = apiKey.trim()
+        )
+
+        val current = readProfiles(mmkv).toMutableList().ifEmpty {
+            defaultProfiles().toMutableList()
+        }
+        val normalizedId = id?.trim()?.takeIf { it.isNotEmpty() } ?: generateProfileId(current)
+        val currentIndex = current.indexOfFirst { it.id == normalizedId }
+        val sanitizedName = sanitizeProfileName(
+            raw = name,
+            profiles = current,
+            existingId = if (currentIndex >= 0) normalizedId else null
+        )
+        val nextProfile = ModelProviderProfile(
+            id = normalizedId,
+            name = sanitizedName,
+            baseUrl = normalizeBaseUrl(baseUrl).orEmpty(),
+            apiKey = apiKey.trim()
+        )
+
+        if (currentIndex >= 0) {
+            current[currentIndex] = nextProfile
+        } else {
+            current.add(nextProfile)
+        }
+
+        writeProfiles(mmkv, current)
+        mmkv.encode(KEY_EDITING_PROFILE_ID, nextProfile.id)
+        syncLegacyFlatConfig(mmkv, nextProfile)
+        return nextProfile
+    }
+
+    fun deleteProfile(profileId: String): List<ModelProviderProfile> {
+        ModelProviderMigration.ensureMigrated()
+        val mmkv = MMKV.defaultMMKV() ?: return defaultProfiles()
+        val normalizedId = profileId.trim()
+        val current = readProfiles(mmkv).toMutableList().ifEmpty {
+            defaultProfiles().toMutableList()
+        }
+        require(current.size > 1) { "at least one provider profile must remain" }
+        val removed = current.removeAll { it.id == normalizedId }
+        require(removed) { "profile not found: $normalizedId" }
+
+        writeProfiles(mmkv, current)
+        val editingId = mmkv.decodeString(KEY_EDITING_PROFILE_ID)?.trim().orEmpty()
+        if (editingId == normalizedId || editingId.isEmpty()) {
+            mmkv.encode(KEY_EDITING_PROFILE_ID, current.first().id)
+            syncLegacyFlatConfig(mmkv, current.first())
+        }
+        return current
+    }
 
     fun getConfig(): ModelProviderConfig {
-        ModelProviderMigration.ensureMigrated()
-        val mmkv = MMKV.defaultMMKV() ?: return ModelProviderConfig()
-        val globalConfig = readConfig(mmkv)
-        if (globalConfig.baseUrl.isNotBlank() || globalConfig.apiKey.isNotBlank()) {
-            return globalConfig.copy(source = "global")
-        }
-        return ModelProviderConfig()
+        val profile = getEditingProfile()
+        return ModelProviderConfig(
+            id = profile.id,
+            name = profile.name,
+            baseUrl = profile.baseUrl,
+            apiKey = profile.apiKey,
+            source = "profile"
+        )
     }
 
     fun saveConfig(baseUrl: String, apiKey: String) {
-        val normalizedBaseUrl = normalizeBaseUrl(baseUrl).orEmpty()
-        val mmkv = MMKV.defaultMMKV() ?: return
-        mmkv.encode(KEY_PROVIDER_BASE_URL, normalizedBaseUrl)
-        mmkv.encode(KEY_PROVIDER_API_KEY, apiKey.trim())
+        val current = getEditingProfile()
+        saveProfile(
+            id = current.id,
+            name = current.name,
+            baseUrl = baseUrl,
+            apiKey = apiKey
+        )
     }
 
     fun clearConfig() {
-        val mmkv = MMKV.defaultMMKV() ?: return
-        mmkv.encode(KEY_PROVIDER_BASE_URL, "")
-        mmkv.encode(KEY_PROVIDER_API_KEY, "")
+        val current = getEditingProfile()
+        saveProfile(
+            id = current.id,
+            name = current.name,
+            baseUrl = "",
+            apiKey = ""
+        )
     }
 
     fun isValidBaseUrl(value: String): Boolean = normalizeBaseUrl(value) != null
@@ -68,7 +193,7 @@ object ModelProviderConfigStore {
             ?.let(::normalizeBaseUrl)
             .orEmpty()
         val apiKey = mmkv.decodeString(KEY_PROVIDER_API_KEY)?.trim().orEmpty()
-        return ModelProviderConfig(baseUrl = baseUrl, apiKey = apiKey)
+        return ModelProviderConfig(baseUrl = baseUrl, apiKey = apiKey, source = "legacy")
     }
 
     internal fun readConfigForScope(mmkv: MMKV, userId: String?): ModelProviderConfig {
@@ -76,7 +201,7 @@ object ModelProviderConfigStore {
             ?.let(::normalizeBaseUrl)
             .orEmpty()
         val apiKey = readScopedString(mmkv, KEY_PROVIDER_API_KEY, userId).orEmpty()
-        return ModelProviderConfig(baseUrl = baseUrl, apiKey = apiKey)
+        return ModelProviderConfig(baseUrl = baseUrl, apiKey = apiKey, source = "legacy_scope")
     }
 
     internal fun readLegacyConfigForScope(mmkv: MMKV, userId: String?): ModelProviderConfig {
@@ -84,7 +209,7 @@ object ModelProviderConfigStore {
             ?.let(::normalizeBaseUrl)
             .orEmpty()
         val apiKey = readScopedString(mmkv, LEGACY_API_KEY_OVERRIDE_KEY, userId).orEmpty()
-        return ModelProviderConfig(baseUrl = baseUrl, apiKey = apiKey)
+        return ModelProviderConfig(baseUrl = baseUrl, apiKey = apiKey, source = "legacy_vlm")
     }
 
     internal fun scopedKey(key: String, userId: String?): String {
@@ -92,14 +217,116 @@ object ModelProviderConfigStore {
     }
 
     internal fun readScopedString(mmkv: MMKV, key: String, userId: String?): String? {
-        val value = mmkv.decodeString(scopedKey(key, userId))
+        return mmkv.decodeString(scopedKey(key, userId))
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
-        return value
+    }
+
+    private fun ensureEditingProfile(
+        mmkv: MMKV,
+        profiles: List<ModelProviderProfile>
+    ): String {
+        val currentId = mmkv.decodeString(KEY_EDITING_PROFILE_ID)?.trim().orEmpty()
+        if (profiles.any { it.id == currentId }) {
+            return currentId
+        }
+        val fallback = profiles.first().id
+        mmkv.encode(KEY_EDITING_PROFILE_ID, fallback)
+        return fallback
+    }
+
+    private fun sanitizeProfileName(
+        raw: String,
+        profiles: List<ModelProviderProfile>,
+        existingId: String?
+    ): String {
+        val normalized = raw.trim()
+        if (normalized.isNotEmpty()) {
+            return normalized
+        }
+        val existingIndex = if (existingId == null) -1 else profiles.indexOfFirst { it.id == existingId }
+        if (existingIndex >= 0) {
+            return profiles[existingIndex].name
+        }
+        var nextIndex = 1
+        val existingNames = profiles.map { it.name }.toSet()
+        while (true) {
+            val candidate = "Provider $nextIndex"
+            if (!existingNames.contains(candidate)) {
+                return candidate
+            }
+            nextIndex += 1
+        }
+    }
+
+    private fun defaultProfiles(): List<ModelProviderProfile> {
+        return listOf(
+            ModelProviderProfile(
+                id = DEFAULT_PROFILE_ID,
+                name = DEFAULT_PROFILE_NAME
+            )
+        )
+    }
+
+    private fun generateProfileId(profiles: List<ModelProviderProfile>): String {
+        var nextIndex = profiles.size + 1
+        while (true) {
+            val candidate = "profile-$nextIndex"
+            if (profiles.none { it.id == candidate }) {
+                return candidate
+            }
+            nextIndex += 1
+        }
+    }
+
+    private fun readProfiles(mmkv: MMKV): List<ModelProviderProfile> {
+        val raw = mmkv.decodeString(KEY_PROVIDER_PROFILES)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<ModelProviderProfile>>() {}.type
+            val parsed: List<ModelProviderProfile> = gson.fromJson(raw, type) ?: emptyList()
+            val seen = LinkedHashSet<String>()
+            parsed.mapNotNull { profile ->
+                val normalizedId = profile.id.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                if (!seen.add(normalizedId)) {
+                    return@mapNotNull null
+                }
+                ModelProviderProfile(
+                    id = normalizedId,
+                    name = profile.name.trim().ifEmpty { DEFAULT_PROFILE_NAME },
+                    baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
+                    apiKey = profile.apiKey.trim()
+                )
+            }
+        } catch (t: Throwable) {
+            OmniLog.w(TAG, "read provider profiles failed: ${t.message}")
+            emptyList()
+        }
+    }
+
+    private fun writeProfiles(mmkv: MMKV, profiles: List<ModelProviderProfile>) {
+        val normalized = profiles.mapIndexedNotNull { index, profile ->
+            val id = profile.id.trim().takeIf { it.isNotEmpty() }
+                ?: return@mapIndexedNotNull null
+            ModelProviderProfile(
+                id = id,
+                name = profile.name.trim().ifEmpty { "Provider ${index + 1}" },
+                baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
+                apiKey = profile.apiKey.trim()
+            )
+        }
+        mmkv.encode(KEY_PROVIDER_PROFILES, gson.toJson(normalized))
+    }
+
+    private fun syncLegacyFlatConfig(mmkv: MMKV, profile: ModelProviderProfile) {
+        mmkv.encode(KEY_PROVIDER_BASE_URL, profile.baseUrl)
+        mmkv.encode(KEY_PROVIDER_API_KEY, profile.apiKey)
     }
 
     internal object ModelProviderMigration {
-        private const val PRIMARY_SCENE = "scene.vlm.operation.primary"
+        private const val PRIMARY_SCENE = "scene.dispatch.model"
 
         fun ensureMigrated() {
             val mmkv = MMKV.defaultMMKV() ?: return
@@ -108,14 +335,30 @@ object ModelProviderConfigStore {
             }
 
             try {
+                val existingProfiles = readProfiles(mmkv)
+                if (existingProfiles.isNotEmpty()) {
+                    ensureEditingProfile(mmkv, existingProfiles)
+                    syncLegacyFlatConfig(mmkv, existingProfiles.first())
+                    return
+                }
+
                 val legacyUserId = OssIdentity.currentUserIdOrNull()
                 val providerConfig = resolveEffectiveLegacyConfig(mmkv, legacyUserId)
-                if (providerConfig.baseUrl.isNotBlank()) {
-                    mmkv.encode(KEY_PROVIDER_BASE_URL, providerConfig.baseUrl)
+                val initialProfile = if (
+                    providerConfig.baseUrl.isNotBlank() || providerConfig.apiKey.isNotBlank()
+                ) {
+                    ModelProviderProfile(
+                        id = LEGACY_DEFAULT_PROFILE_ID,
+                        name = DEFAULT_PROFILE_NAME,
+                        baseUrl = providerConfig.baseUrl,
+                        apiKey = providerConfig.apiKey
+                    )
+                } else {
+                    defaultProfiles().first()
                 }
-                if (providerConfig.apiKey.isNotBlank()) {
-                    mmkv.encode(KEY_PROVIDER_API_KEY, providerConfig.apiKey)
-                }
+                writeProfiles(mmkv, listOf(initialProfile))
+                mmkv.encode(KEY_EDITING_PROFILE_ID, initialProfile.id)
+                syncLegacyFlatConfig(mmkv, initialProfile)
 
                 val mergedOverrides = SceneModelOverrideStore.readLegacyOverrideMapForScope(mmkv, null)
                     .toMutableMap()
@@ -160,6 +403,7 @@ object ModelProviderConfigStore {
                     add(readLegacyConfigForScope(mmkv, userId))
                 }
                 add(readLegacyConfigForScope(mmkv, null))
+                add(readConfig(mmkv))
             }
             return candidates.firstOrNull { it.baseUrl.isNotBlank() || it.apiKey.isNotBlank() }
                 ?: ModelProviderConfig()

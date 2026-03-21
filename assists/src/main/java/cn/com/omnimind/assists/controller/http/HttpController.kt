@@ -13,7 +13,7 @@ import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.baselib.llm.ModelSceneRegistry
 import cn.com.omnimind.baselib.llm.ProviderModelOption
-import cn.com.omnimind.baselib.llm.SceneModelOverrideStore
+import cn.com.omnimind.baselib.llm.SceneModelBindingStore
 import cn.com.omnimind.omniintelligence.models.AgentRequest.Payload
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -52,8 +52,12 @@ object HttpController {
         val responseParser: ModelSceneRegistry.ResponseParser,
         val apiBase: String?,
         val apiKey: String?,
+        val providerProfileId: String?,
+        val providerProfileName: String?,
         val routeTag: String?,
         val customApiBaseApplied: Boolean,
+        val bindingApplied: Boolean,
+        val bindingProfileMissing: Boolean,
         val overrideApplied: Boolean,
         val overrideModel: String?
     )
@@ -189,7 +193,7 @@ object HttpController {
         val profile = resolved.sceneProfile ?: return
         OmniLog.i(
             TAG,
-            "scene_profile scene=${profile.sceneId} model=${resolved.resolvedModel} transport=${resolved.effectiveTransport.wireValue} parser=${resolved.responseParser.wireValue} source=${profile.modelSource.wireValue} config_source=${profile.configSource.wireValue} override_group=${profile.overrideGroup.orEmpty()} custom_api_base=${resolved.customApiBaseApplied} override_applied=${resolved.overrideApplied} override_model=${resolved.overrideModel.orEmpty()}"
+            "scene_profile scene=${profile.sceneId} model=${resolved.resolvedModel} transport=${resolved.effectiveTransport.wireValue} parser=${resolved.responseParser.wireValue} source=${profile.modelSource.wireValue} config_source=${profile.configSource.wireValue} override_group=${profile.overrideGroup.orEmpty()} custom_api_base=${resolved.customApiBaseApplied} binding_applied=${resolved.bindingApplied} binding_profile=${resolved.providerProfileId.orEmpty()} binding_profile_missing=${resolved.bindingProfileMissing} override_applied=${resolved.overrideApplied} override_model=${resolved.overrideModel.orEmpty()}"
         )
     }
 
@@ -197,6 +201,7 @@ object HttpController {
         modelOrScene: String,
         explicitApiBase: String? = null,
         explicitApiKey: String? = null,
+        explicitModel: String? = null,
         @Suppress("UNUSED_PARAMETER") defaultTransport: ModelSceneRegistry.SceneTransport = ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE
     ): ResolvedSceneRequest {
         val requestedModel = modelOrScene.trim()
@@ -213,21 +218,41 @@ object HttpController {
 
         val explicitBase = explicitApiBase?.let(::normalizeApiBase)
         val explicitKey = explicitApiKey?.trim()?.takeIf { it.isNotEmpty() }
+        val explicitResolvedModel = explicitModel?.trim()?.takeIf { it.isNotEmpty() }
         val providerConfig = if (explicitBase == null) {
             ModelProviderConfigStore.getConfig()
         } else {
             ModelProviderConfig(baseUrl = explicitBase, apiKey = explicitKey.orEmpty(), source = "explicit")
         }
-        val overrideModel = sceneProfile?.sceneId?.let(SceneModelOverrideStore::getOverrideModel)
-        val overrideApplied = !overrideModel.isNullOrBlank() && explicitBase == null && providerConfig.isConfigured()
+        val sceneBinding = sceneProfile?.sceneId?.let(SceneModelBindingStore::getBinding)
+        val boundProfile = sceneBinding?.providerProfileId?.let(ModelProviderConfigStore::getProfile)
+        val bindingApplied =
+            explicitBase == null &&
+                explicitResolvedModel == null &&
+                sceneBinding != null &&
+                boundProfile?.isConfigured() == true
+        val bindingProfileMissing =
+            explicitBase == null &&
+                explicitResolvedModel == null &&
+                sceneBinding != null &&
+                boundProfile == null
+        val overrideModel = when {
+            explicitResolvedModel != null -> explicitResolvedModel
+            bindingApplied -> sceneBinding?.modelId
+            else -> null
+        }
+        val overrideApplied =
+            explicitBase != null || explicitResolvedModel != null || bindingApplied
 
         val providerBase = when {
             explicitBase != null -> explicitBase
+            bindingApplied -> boundProfile?.baseUrl
             providerConfig.isConfigured() -> providerConfig.baseUrl
             else -> null
         }
         val providerKey = when {
             explicitBase != null -> explicitKey
+            bindingApplied -> boundProfile?.apiKey?.takeIf { it.isNotBlank() }
             providerBase != null -> providerConfig.apiKey.takeIf { it.isNotBlank() }
             else -> null
         }
@@ -238,7 +263,7 @@ object HttpController {
             ModelSceneRegistry.SceneTransport.CONVERSATION_CHAT -> ModelSceneRegistry.ResponseParser.TEXT_CONTENT
         }
         val routeTag = when {
-            overrideApplied || explicitBase != null -> ROUTE_CUSTOM_OPENAI_COMPAT
+            overrideApplied -> ROUTE_CUSTOM_OPENAI_COMPAT
             effectiveTransport == ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE -> "openai_compatible"
             effectiveTransport == ModelSceneRegistry.SceneTransport.VLM_CHAT -> "vlm_chat"
             effectiveTransport == ModelSceneRegistry.SceneTransport.CONVERSATION_CHAT -> "conversation_chat"
@@ -247,14 +272,22 @@ object HttpController {
 
         return ResolvedSceneRequest(
             requestedModel = requestedModel,
-            resolvedModel = if (overrideApplied) overrideModel.orEmpty() else defaultResolvedModel,
+            resolvedModel = when {
+                explicitResolvedModel != null -> explicitResolvedModel
+                bindingApplied -> sceneBinding?.modelId.orEmpty()
+                else -> defaultResolvedModel
+            },
             sceneProfile = sceneProfile,
             effectiveTransport = effectiveTransport,
             responseParser = responseParser,
             apiBase = providerBase,
             apiKey = providerKey,
+            providerProfileId = if (bindingApplied) boundProfile?.id else null,
+            providerProfileName = if (bindingApplied) boundProfile?.name else null,
             routeTag = routeTag,
             customApiBaseApplied = !providerBase.isNullOrBlank(),
+            bindingApplied = bindingApplied,
+            bindingProfileMissing = bindingProfileMissing,
             overrideApplied = overrideApplied,
             overrideModel = overrideModel
         )
@@ -674,9 +707,17 @@ object HttpController {
     suspend fun postChatCompletionsStreamRequest(
         model: String,
         requestBodyJson: String,
-        event: EventSourceListener
+        event: EventSourceListener,
+        explicitApiBase: String? = null,
+        explicitApiKey: String? = null,
+        explicitModel: String? = null
     ): EventSource {
-        val resolved = resolveSceneRequest(model)
+        val resolved = resolveSceneRequest(
+            modelOrScene = model,
+            explicitApiBase = explicitApiBase,
+            explicitApiKey = explicitApiKey,
+            explicitModel = explicitModel
+        )
         logSceneProfile(resolved)
         return postOpenAIChatCompletionsStreamRequest(
             resolved = resolved,

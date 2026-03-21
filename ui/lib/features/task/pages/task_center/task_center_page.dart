@@ -7,6 +7,7 @@ import '../../../../services/task_storage_service.dart';
 import '../../../../models/task_models.dart';
 import '../task_edit/task_edit_page.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/utils/popup_menu_anchor_position.dart';
 
 class TaskCenterPage extends StatefulWidget {
   const TaskCenterPage({super.key});
@@ -210,17 +211,13 @@ class _TaskCenterPageState extends State<TaskCenterPage> {
                 ),
                 GestureDetector(
                   onTapDown: (TapDownDetails details) {
-                    final RenderBox overlay =
-                        Overlay.of(context).context.findRenderObject() as RenderBox;
-                    final RelativeRect position = RelativeRect.fromRect(
-                      Rect.fromLTWH(details.globalPosition.dx,
-                          details.globalPosition.dy, 0, 0),
-                      Offset.zero & overlay.size,
-                    );
-
                     showMenu(
                       context: context,
-                      position: position,
+                      position: PopupMenuAnchorPosition.fromGlobalOffset(
+                        context: context,
+                        globalOffset: details.globalPosition,
+                        estimatedMenuHeight: 160,
+                      ),
                       color: Colors.white,
                       items: [
                         PopupMenuItem(
@@ -385,4 +382,3 @@ class _TaskCenterPageState extends State<TaskCenterPage> {
     );
   }
 }
-

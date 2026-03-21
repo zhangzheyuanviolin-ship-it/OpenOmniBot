@@ -38,6 +38,7 @@ class OmniAgentExecutor(
         currentPackageName: String?,
         attachments: List<Map<String, Any?>>,
         conversationId: Long?,
+        modelOverride: AgentModelOverride?,
         callback: AgentCallback
     ): AgentResult {
         val mem0Config = Mem0ConfigStore.getEffectiveConfig()
@@ -78,7 +79,11 @@ class OmniAgentExecutor(
             resolvedSkills = resolvedSkills
         )
 
-        val llmClient = HttpAgentLlmClient(scope = scope, json = json)
+        val llmClient = HttpAgentLlmClient(
+            scope = scope,
+            json = json,
+            modelOverride = modelOverride
+        )
         val toolRouter = AgentToolRouter(
             context = context,
             scope = scope,

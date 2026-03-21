@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+
+const double _kSceneSelectionPopupMaxHeight = 420;
 
 class SceneModelSettingPage extends StatefulWidget {
   const SceneModelSettingPage({super.key});
@@ -38,10 +41,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   bool _isRefreshingModels = false;
 
   List<SceneCatalogItem> _catalog = const [];
-  List<SceneModelOverrideEntry> _overrides = const [];
-  List<ProviderModelOption> _providerModels = const [];
+  List<SceneModelBindingEntry> _bindings = const [];
+  List<ModelProviderProfileSummary> _profiles = const [];
+  Map<String, List<ProviderModelOption>> _providerModelsByProfileId = {};
   Set<String> _savingSceneIds = <String>{};
-  Map<String, String> _sceneSelectedModels = {};
 
   @override
   void initState() {
@@ -65,6 +68,12 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     return ordered;
   }
 
+  Map<String, SceneModelBindingEntry> get _bindingMap {
+    return {
+      for (final item in _bindings) item.sceneId: item,
+    };
+  }
+
   String _sceneDisplayName(String sceneId) {
     return _sceneDisplayNameMap[sceneId] ?? sceneId;
   }
@@ -80,84 +89,41 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     return item.sceneId;
   }
 
-  Map<String, String> _buildSceneSelectedModels(
-    List<SceneCatalogItem> catalog,
-    List<SceneModelOverrideEntry> overrides,
-  ) {
-    final selectedMap = <String, String>{
-      for (final item in catalog) item.sceneId: '',
-    };
-
-    for (final entry in overrides) {
-      if (selectedMap.containsKey(entry.sceneId)) {
-        selectedMap[entry.sceneId] = entry.model;
-      }
-    }
-    return selectedMap;
-  }
-
-  List<ProviderModelOption> _buildModelOptions({
-    required List<ProviderModelOption> remoteModels,
-    required List<String> manualModelIds,
-    required List<SceneModelOverrideEntry> overrides,
-  }) {
-    final merged = ModelProviderConfigService.mergeModelOptions(
-      remoteModels: remoteModels,
-      manualModelIds: manualModelIds,
-    ).toList();
-
-    final existing = merged.map((item) => item.id).toSet();
-    for (final override in overrides) {
-      final modelId = override.model.trim();
-      if (modelId.isEmpty || !existing.add(modelId)) {
-        continue;
-      }
-      merged.add(
-        ProviderModelOption(
-          id: modelId,
-          displayName: modelId,
-          ownedBy: 'override',
-        ),
-      );
-    }
-
-    merged.sort((a, b) => a.id.toLowerCase().compareTo(b.id.toLowerCase()));
-    return merged;
+  bool _isSavingScene(String sceneId) {
+    return _savingSceneIds.contains(sceneId);
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final baseData = await Future.wait<dynamic>([
+      final results = await Future.wait<dynamic>([
         SceneModelConfigService.getSceneCatalog(),
-        SceneModelConfigService.getSceneModelOverrides(),
-        ModelProviderConfigService.getManualModelIds(),
+        SceneModelConfigService.getSceneModelBindings(),
+        ModelProviderConfigService.listProfiles(),
       ]);
-
       if (!mounted) return;
 
-      final catalog = baseData[0] as List<SceneCatalogItem>;
-      final overrides = baseData[1] as List<SceneModelOverrideEntry>;
-      final manualModelIds = baseData[2] as List<String>;
-
-      List<ProviderModelOption> remoteModels = const [];
-      try {
-        remoteModels = await ModelProviderConfigService.fetchModels();
-      } catch (_) {
-        remoteModels = const [];
+      final catalog = results[0] as List<SceneCatalogItem>;
+      final bindings = results[1] as List<SceneModelBindingEntry>;
+      final profilesPayload = results[2] as ModelProviderProfilesPayload;
+      final providerModelsByProfileId = <String, List<ProviderModelOption>>{};
+      for (final profile in profilesPayload.profiles) {
+        providerModelsByProfileId[profile.id] =
+            await ModelProviderConfigService.getStoredModelOptionsForProfile(
+              profile.id,
+            );
       }
 
-      if (!mounted) return;
+      final enriched = _mergeBindingModels(
+        providerModelsByProfileId: providerModelsByProfileId,
+        bindings: bindings,
+      );
 
       setState(() {
         _catalog = catalog;
-        _overrides = overrides;
-        _providerModels = _buildModelOptions(
-          remoteModels: remoteModels,
-          manualModelIds: manualModelIds,
-          overrides: overrides,
-        );
-        _sceneSelectedModels = _buildSceneSelectedModels(catalog, overrides);
+        _bindings = bindings;
+        _profiles = profilesPayload.profiles;
+        _providerModelsByProfileId = enriched;
       });
     } catch (_) {
       if (!mounted) return;
@@ -169,30 +135,69 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     }
   }
 
+  Map<String, List<ProviderModelOption>> _mergeBindingModels({
+    required Map<String, List<ProviderModelOption>> providerModelsByProfileId,
+    required List<SceneModelBindingEntry> bindings,
+  }) {
+    final result = {
+      for (final entry in providerModelsByProfileId.entries)
+        entry.key: [...entry.value],
+    };
+    for (final binding in bindings) {
+      final bucket = result.putIfAbsent(binding.providerProfileId, () => []);
+      final exists = bucket.any((item) => item.id == binding.modelId);
+      if (!exists) {
+        bucket.add(
+          ProviderModelOption(
+            id: binding.modelId,
+            displayName: binding.modelId,
+            ownedBy: 'binding',
+          ),
+        );
+      }
+    }
+    return result;
+  }
+
   Future<void> _refreshProviderModels() async {
     if (_isRefreshingModels) return;
     setState(() => _isRefreshingModels = true);
     try {
-      final results = await Future.wait<dynamic>([
-        ModelProviderConfigService.fetchModels(),
-        ModelProviderConfigService.getManualModelIds(),
-      ]);
-
-      if (!mounted) return;
-
-      final remoteModels = results[0] as List<ProviderModelOption>;
-      final manualModelIds = results[1] as List<String>;
-
-      setState(() {
-        _providerModels = _buildModelOptions(
+      final nextModels = <String, List<ProviderModelOption>>{};
+      var refreshedCount = 0;
+      for (final profile in _profiles) {
+        if (!profile.configured) {
+          nextModels[profile.id] =
+              await ModelProviderConfigService.getStoredModelOptionsForProfile(
+                profile.id,
+              );
+          continue;
+        }
+        final remoteModels = await ModelProviderConfigService.fetchModels(
+          apiBase: profile.baseUrl,
+          apiKey: profile.apiKey,
+          profileId: profile.id,
+        );
+        final manualModelIds = await ModelProviderConfigService.getManualModelIds(
+          profileId: profile.id,
+        );
+        nextModels[profile.id] = ModelProviderConfigService.mergeModelOptions(
           remoteModels: remoteModels,
           manualModelIds: manualModelIds,
-          overrides: _overrides,
+        );
+        refreshedCount += remoteModels.length;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _providerModelsByProfileId = _mergeBindingModels(
+          providerModelsByProfileId: nextModels,
+          bindings: _bindings,
         );
       });
       showToast(
-        _providerModels.isEmpty ? '当前没有可用模型' : '已更新 ${_providerModels.length} 个模型',
-        type: _providerModels.isEmpty ? ToastType.warning : ToastType.success,
+        refreshedCount == 0 ? '当前没有可用模型' : '已更新 $refreshedCount 个模型',
+        type: refreshedCount == 0 ? ToastType.warning : ToastType.success,
       );
     } catch (e) {
       if (!mounted) return;
@@ -204,62 +209,151 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     }
   }
 
-  bool _isSavingScene(String sceneId) {
-    return _savingSceneIds.contains(sceneId);
-  }
-
-  Future<void> _saveSceneSelection(SceneCatalogItem scene, String modelId) async {
+  Future<void> _saveSceneBinding({
+    required SceneCatalogItem scene,
+    required String providerProfileId,
+    required String modelId,
+  }) async {
     final sceneId = scene.sceneId;
-    final normalizedModel = modelId.trim();
-    final current = _sceneSelectedModels[sceneId] ?? '';
-    if (normalizedModel == current) {
+    final current = _bindingMap[sceneId];
+    if (current?.providerProfileId == providerProfileId &&
+        current?.modelId == modelId) {
       return;
     }
-
-    if (normalizedModel.isNotEmpty &&
-        !SceneModelConfigService.isValidModelName(normalizedModel)) {
+    if (!SceneModelConfigService.isValidModelName(modelId)) {
       showToast('模型 ID 不能以 scene. 开头', type: ToastType.error);
       return;
     }
 
     setState(() {
       _savingSceneIds = {..._savingSceneIds, sceneId};
-      _sceneSelectedModels = {..._sceneSelectedModels, sceneId: normalizedModel};
     });
-
     try {
-      final overrides = normalizedModel.isEmpty
-          ? await SceneModelConfigService.clearSceneModelOverride(sceneId)
-          : await SceneModelConfigService.saveSceneModelOverride(
-              sceneId: sceneId,
-              model: normalizedModel,
-            );
-
+      final bindings = await SceneModelConfigService.saveSceneModelBinding(
+        sceneId: sceneId,
+        providerProfileId: providerProfileId,
+        modelId: modelId,
+      );
       if (!mounted) return;
-
       setState(() {
-        _overrides = overrides;
-        _sceneSelectedModels = _buildSceneSelectedModels(_catalog, overrides);
+        _bindings = bindings;
+        _providerModelsByProfileId = _mergeBindingModels(
+          providerModelsByProfileId: _providerModelsByProfileId,
+          bindings: bindings,
+        );
       });
-
       showToast(
-        normalizedModel.isEmpty
-            ? '${_sceneDisplayName(sceneId)} 已恢复默认模型'
-            : '${_sceneDisplayName(sceneId)} 已绑定 $normalizedModel',
+        '${_sceneDisplayName(sceneId)} 已绑定 $modelId',
         type: ToastType.success,
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _sceneSelectedModels = {..._sceneSelectedModels, sceneId: current};
-      });
-      showToast('保存 ${_sceneDisplayName(sceneId)} 配置失败', type: ToastType.error);
+      showToast('保存 ${_sceneDisplayName(sceneId)} 配置失败：$e', type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
           _savingSceneIds = {..._savingSceneIds}..remove(sceneId);
         });
       }
+    }
+  }
+
+  Future<void> _clearSceneBinding(SceneCatalogItem scene) async {
+    final sceneId = scene.sceneId;
+    if (!_bindingMap.containsKey(sceneId)) {
+      return;
+    }
+    setState(() {
+      _savingSceneIds = {..._savingSceneIds, sceneId};
+    });
+    try {
+      final bindings = await SceneModelConfigService.clearSceneModelBinding(
+        sceneId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _bindings = bindings;
+      });
+      showToast(
+        '${_sceneDisplayName(sceneId)} 已恢复默认模型',
+        type: ToastType.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showToast('清除 ${_sceneDisplayName(sceneId)} 配置失败：$e', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _savingSceneIds = {..._savingSceneIds}..remove(sceneId);
+        });
+      }
+    }
+  }
+
+  Future<void> _openSceneSelector(
+    SceneCatalogItem scene,
+    BuildContext anchorContext,
+  ) async {
+    final binding = _bindingMap[scene.sceneId];
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+      return;
+    }
+    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final bottomRight = anchorBox.localToGlobal(
+      anchorBox.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
+    final popupWidth = anchorBox.size.width
+        .clamp(160.0, overlay.size.width - 16.0)
+        .toDouble();
+    final position = PopupMenuAnchorPosition.fromAnchorRect(
+      anchorRect: anchorRect,
+      overlaySize: overlay.size,
+      estimatedMenuHeight: _kSceneSelectionPopupMaxHeight,
+      reservedBottom: (() {
+        final viewInsetBottom = MediaQuery.of(context).viewInsets.bottom;
+        return viewInsetBottom > 0 ? viewInsetBottom : 280.0;
+      })(),
+    );
+
+    final result = await showMenu<_SceneSelectionAction>(
+      context: context,
+      color: Colors.white,
+      elevation: 8,
+      constraints: BoxConstraints(
+        minWidth: popupWidth,
+        maxWidth: popupWidth,
+      ),
+      position: position,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: [
+        _SceneSelectionPopupEntry(
+          width: popupWidth,
+          estimatedHeight: _kSceneSelectionPopupMaxHeight,
+          scene: scene,
+          profiles: _profiles,
+          providerModelsByProfileId: _providerModelsByProfileId,
+          currentBinding: binding,
+        ),
+      ],
+    );
+    if (result == null) {
+      return;
+    }
+    if (result.restoreDefault) {
+      await _clearSceneBinding(scene);
+      return;
+    }
+    if (result.providerProfileId.isNotEmpty && result.modelId.isNotEmpty) {
+      await _saveSceneBinding(
+        scene: scene,
+        providerProfileId: result.providerProfileId,
+        modelId: result.modelId,
+      );
     }
   }
 
@@ -276,8 +370,17 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     );
   }
 
+  String _selectionLabel(SceneCatalogItem scene) {
+    final binding = _bindingMap[scene.sceneId];
+    if (binding == null) {
+      return '默认：${scene.defaultModel}';
+    }
+    final profile = _profiles.where((item) => item.id == binding.providerProfileId);
+    final profileName = profile.isEmpty ? 'Provider 已失效' : profile.first.name;
+    return '$profileName / ${binding.modelId}';
+  }
+
   Widget _buildSceneRow(SceneCatalogItem scene) {
-    final selectedModel = _sceneSelectedModels[scene.sceneId] ?? '';
     final isSaving = _isSavingScene(scene.sceneId);
 
     return Container(
@@ -322,63 +425,43 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
           const SizedBox(width: 10),
           Expanded(
             flex: 6,
-            child: DropdownButtonFormField<String>(
-              value: selectedModel,
-              isExpanded: true,
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 9,
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
+            child: Builder(
+              builder: (fieldContext) {
+                return InkWell(
+                  onTap: isSaving ? null : () => _openSceneSelector(scene, fieldContext),
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0x1A000000)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0x1A000000)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF2C7FEB)),
-                ),
-              ),
-              items: [
-                DropdownMenuItem<String>(
-                  value: '',
-                  child: Text(
-                    '跟随默认（${scene.defaultModel}）',
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.text70,
-                      fontSize: 13,
-                      fontFamily: 'PingFang SC',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0x1A000000)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _selectionLabel(scene),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.text,
+                              fontSize: 13,
+                              fontFamily: 'PingFang SC',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 18,
+                          color: AppColors.text50,
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                ..._providerModels.map((item) {
-                  return DropdownMenuItem<String>(
-                    value: item.id,
-                    child: Text(
-                      item.id,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 13,
-                        fontFamily: 'PingFang SC',
-                      ),
-                    ),
-                  );
-                }),
-              ],
-              onChanged: isSaving
-                  ? null
-                  : (value) {
-                      _saveSceneSelection(scene, value ?? '');
-                    },
+                );
+              },
             ),
           ),
           if (isSaving) ...[
@@ -404,82 +487,497 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                      padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildCard(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Expanded(
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                '场景与模型映射',
+                                style: TextStyle(
+                                  color: AppColors.text,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  fontFamily: 'PingFang SC',
+                                ),
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: _isRefreshingModels
+                                  ? null
+                                  : _refreshProviderModels,
+                              icon: _isRefreshingModels
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.refresh, size: 16),
+                              label: const Text('刷新模型列表'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          '点击右侧按钮后，可按 Provider 搜索、折叠并选择模型；顶部搜索框固定不随列表滚动。',
+                          style: TextStyle(
+                            color: AppColors.text70,
+                            fontSize: 12,
+                            height: 1.5,
+                            fontFamily: 'PingFang SC',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (_orderedCatalog.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Text(
+                              '暂无可配置场景',
+                              style: TextStyle(
+                                color: AppColors.text70,
+                                fontSize: 12,
+                                fontFamily: 'PingFang SC',
+                              ),
+                            ),
+                          )
+                        else
+                          ListView.separated(
+                            physics: const NeverScrollableScrollPhysics(),
+                            shrinkWrap: true,
+                            itemCount: _orderedCatalog.length,
+                            itemBuilder: (context, index) {
+                              final scene = _orderedCatalog[index];
+                              return _buildSceneRow(scene);
+                            },
+                            separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _SceneSelectionAction {
+  final bool restoreDefault;
+  final String providerProfileId;
+  final String modelId;
+
+  const _SceneSelectionAction.restore()
+      : restoreDefault = true,
+        providerProfileId = '',
+        modelId = '';
+
+  const _SceneSelectionAction.select({
+    required this.providerProfileId,
+    required this.modelId,
+  }) : restoreDefault = false;
+}
+
+class _SceneSelectionPopupEntry extends PopupMenuEntry<_SceneSelectionAction> {
+  const _SceneSelectionPopupEntry({
+    required this.width,
+    required this.estimatedHeight,
+    required this.scene,
+    required this.profiles,
+    required this.providerModelsByProfileId,
+    required this.currentBinding,
+  });
+
+  final double width;
+  final double estimatedHeight;
+  final SceneCatalogItem scene;
+  final List<ModelProviderProfileSummary> profiles;
+  final Map<String, List<ProviderModelOption>> providerModelsByProfileId;
+  final SceneModelBindingEntry? currentBinding;
+
+  @override
+  double get height => estimatedHeight;
+
+  @override
+  bool represents(_SceneSelectionAction? value) => false;
+
+  @override
+  State<_SceneSelectionPopupEntry> createState() =>
+      _SceneSelectionPopupEntryState();
+}
+
+class _SceneSelectionPopupEntryState
+    extends State<_SceneSelectionPopupEntry> {
+  final TextEditingController _searchController = TextEditingController();
+  late final Set<String> _expandedProfileIds;
+
+  bool get _hasSearchQuery => _searchController.text.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandedProfileIds = <String>{
+      if (widget.currentBinding != null) widget.currentBinding!.providerProfileId,
+    };
+    if (_expandedProfileIds.isEmpty && widget.profiles.isNotEmpty) {
+      _expandedProfileIds.add(widget.profiles.first.id);
+    }
+    _searchController.addListener(() {
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<ProviderModelOption> _filteredModels(String profileId) {
+    final query = _searchController.text.trim().toLowerCase();
+    final models = widget.providerModelsByProfileId[profileId] ?? const [];
+    if (query.isEmpty) {
+      return models;
+    }
+    return models
+        .where((item) => item.id.toLowerCase().contains(query))
+        .toList();
+  }
+
+  List<ModelProviderProfileSummary> get _visibleProfiles {
+    if (!_hasSearchQuery) {
+      return widget.profiles;
+    }
+    return widget.profiles.where((profile) {
+      return _filteredModels(profile.id).isNotEmpty;
+    }).toList();
+  }
+
+  bool _isExpanded(String profileId) {
+    if (_hasSearchQuery) {
+      return true;
+    }
+    return _expandedProfileIds.contains(profileId);
+  }
+
+  Widget _buildSearchRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      child: Row(
+        children: [
+          const Icon(Icons.search, size: 18, color: Color(0xFF9AA4B6)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              autofocus: false,
+              scrollPadding: EdgeInsets.zero,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF1F2937),
+                fontWeight: FontWeight.w500,
+                fontFamily: 'PingFang SC',
+              ),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: '快速筛选模型 ID',
+                hintStyle: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF9AA4B6),
+                  fontWeight: FontWeight.w500,
+                  fontFamily: 'PingFang SC',
+                ),
+                border: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestoreDefaultTile() {
+    final selected = widget.currentBinding == null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 4),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).pop(const _SceneSelectionAction.restore());
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '恢复默认（${widget.scene.defaultModel}）',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+              if (selected)
+                const Icon(
+                  Icons.check_rounded,
+                  size: 15,
+                  color: Color(0xFF2C7FEB),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(ModelProviderProfileSummary profile) {
+    final expanded = _isExpanded(profile.id);
+    final models = _filteredModels(profile.id);
+    final isCurrent = widget.currentBinding?.providerProfileId == profile.id;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: InkWell(
+        onTap: () {
+          if (_hasSearchQuery) {
+            return;
+          }
+          setState(() {
+            if (expanded) {
+              _expandedProfileIds.remove(profile.id);
+            } else {
+              _expandedProfileIds.add(profile.id);
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F6FA),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  profile.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+              Text(
+                profile.configured ? '${models.length}' : '未配置',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF9AA4B6),
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'PingFang SC',
+                ),
+              ),
+              if (isCurrent) ...[
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  size: 13,
+                  color: Color(0xFF2C7FEB),
+                ),
+              ],
+              const SizedBox(width: 6),
+              Icon(
+                _hasSearchQuery
+                    ? Icons.unfold_more_rounded
+                    : expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                size: 16,
+                color: const Color(0xFF94A3B8),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModelRow({
+    required ModelProviderProfileSummary profile,
+    required ProviderModelOption item,
+  }) {
+    final selected =
+        widget.currentBinding?.providerProfileId == profile.id &&
+        widget.currentBinding?.modelId == item.id;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).pop(
+            _SceneSelectionAction.select(
+              providerProfileId: profile.id,
+              modelId: item.id,
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.id,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+              if (selected)
+                const Icon(
+                  Icons.check_rounded,
+                  size: 15,
+                  color: Color(0xFF2C7FEB),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final dynamicMaxHeight =
+        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
+            .clamp(220.0, _kSceneSelectionPopupMaxHeight)
+            .toDouble();
+    final visibleProfiles = _visibleProfiles;
+    return SizedBox(
+      width: widget.width,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildSearchRow(),
+            _buildRestoreDefaultTile(),
+            if (widget.profiles.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '还没有可用 Provider，请先配置模型提供商。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              )
+            else if (visibleProfiles.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '没有匹配的模型',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              )
+            else
+              Flexible(
+                child: Scrollbar(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: visibleProfiles.length,
+                    itemBuilder: (context, index) {
+                      final profile = visibleProfiles[index];
+                      final expanded = _isExpanded(profile.id);
+                      final models = _filteredModels(profile.id);
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildSectionHeader(profile),
+                          if (expanded)
+                            profile.configured
+                                ? models.isEmpty
+                                    ? const Padding(
+                                        padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
+                                        child: Text(
+                                          '当前 Provider 没有可选模型',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Color(0xFF94A3B8),
+                                            fontFamily: 'PingFang SC',
+                                          ),
+                                        ),
+                                      )
+                                    : Column(
+                                        children: models.map((item) {
+                                          return _buildModelRow(
+                                            profile: profile,
+                                            item: item,
+                                          );
+                                        }).toList(),
+                                      )
+                                : const Padding(
+                                    padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
                                     child: Text(
-                                      '场景与模型映射',
+                                      '请先在模型提供商页配置该 Provider',
                                       style: TextStyle(
-                                        color: AppColors.text,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                        color: Color(0xFF94A3B8),
                                         fontFamily: 'PingFang SC',
                                       ),
                                     ),
                                   ),
-                                  OutlinedButton.icon(
-                                    onPressed: _isRefreshingModels
-                                        ? null
-                                        : _refreshProviderModels,
-                                    icon: _isRefreshingModels
-                                        ? const SizedBox(
-                                            width: 14,
-                                            height: 14,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Icon(Icons.refresh, size: 16),
-                                    label: const Text('刷新模型列表'),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                '左侧场景名称可点击查看功能说明；右侧下拉选择模型 ID，选择后立即保存。',
-                                style: TextStyle(
-                                  color: AppColors.text70,
-                                  fontSize: 12,
-                                  height: 1.5,
-                                  fontFamily: 'PingFang SC',
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              if (_orderedCatalog.isEmpty)
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 12),
-                                  child: Text(
-                                    '暂无可配置场景',
-                                    style: TextStyle(
-                                      color: AppColors.text70,
-                                      fontSize: 12,
-                                      fontFamily: 'PingFang SC',
-                                    ),
-                                  ),
-                                )
-                              else
-                                ListView.separated(
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  shrinkWrap: true,
-                                  itemCount: _orderedCatalog.length,
-                                  itemBuilder: (context, index) {
-                                    final scene = _orderedCatalog[index];
-                                    return _buildSceneRow(scene);
-                                  },
-                                  separatorBuilder: (_, _) =>
-                                      const SizedBox(height: 8),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                          if (index != visibleProfiles.length - 1)
+                            const SizedBox(height: 6),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
