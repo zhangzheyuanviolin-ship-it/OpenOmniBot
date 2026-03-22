@@ -1835,40 +1835,15 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
             ),
           ),
           const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                '快去探索，添加喜欢的内容吧',
-                style: TextStyle(
-                  fontSize: AppTextStyles.fontSizeMain,
-                  fontWeight: AppTextStyles.fontWeightRegular,
-                  color: AppColors.text20,
-                  height: AppTextStyles.lineHeightH3,
-                  letterSpacing: AppTextStyles.letterSpacingWide,
-                ),
-              ),
-              InkWell(
-                onTap: () async {
-                  await AppDialog.alert(
-                    context,
-                    title: '如何添加至记忆中心',
-                    content: '使用手机时，长按小万再点击“学习”\n就能把内容加入记忆中心啦～',
-                    confirmText: '我知道啦',
-                  );
-                },
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.all(4), // 增加点击区域
-                  child: SvgPicture.asset(
-                    'assets/memory/question_icon.svg',
-                    width: 16,
-                    height: 16,
-                  ),
-                ),
-              ),
-            ],
+          Text(
+            '快去探索，添加喜欢的内容吧',
+            style: TextStyle(
+              fontSize: AppTextStyles.fontSizeMain,
+              fontWeight: AppTextStyles.fontWeightRegular,
+              color: AppColors.text20,
+              height: AppTextStyles.lineHeightH3,
+              letterSpacing: AppTextStyles.letterSpacingWide,
+            ),
           ),
         ],
       ),
