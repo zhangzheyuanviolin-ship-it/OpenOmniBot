@@ -59,7 +59,8 @@ class _ChatPageState extends State<ChatPage>
         DispatchStreamHandler,
         AgentStreamHandler,
         TaskExecutionHandler,
-        ConversationManager {
+        ConversationManager
+    implements RouteAware {
   static const int kCompanionCountdownDuration = 2;
 
   // ===================== Controllers =====================
@@ -186,6 +187,7 @@ class _ChatPageState extends State<ChatPage>
   bool _showCompanionCountdown = false;
   Timer? _companionCountdownTimer;
   AppUpdateStatus? _appUpdateStatus;
+  ModalRoute<dynamic>? _subscribedRoute;
 
   ChatPageMode get _activeMode => _activeConversationMode;
   String _modeKey(ChatPageMode mode) => switch (mode) {
@@ -1260,6 +1262,19 @@ class _ChatPageState extends State<ChatPage>
     _notifySummarySheetReadyIfNeeded();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute && route != _subscribedRoute) {
+      if (_subscribedRoute != null) {
+        GoRouterManager.routeObserver.unsubscribe(this);
+      }
+      _subscribedRoute = route;
+      GoRouterManager.routeObserver.subscribe(this, route);
+    }
+  }
+
   void _unusedSetupAiServiceCallbacks() {}
 
   void _setupAssistsCallbacks() {
@@ -1602,6 +1617,10 @@ class _ChatPageState extends State<ChatPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_subscribedRoute != null) {
+      GoRouterManager.routeObserver.unsubscribe(this);
+      _subscribedRoute = null;
+    }
     _runtimeCoordinator.removeListener(_handleRuntimeCoordinatorChanged);
     AppUpdateService.statusNotifier.removeListener(
       _handleAppUpdateStatusChanged,
@@ -1622,6 +1641,22 @@ class _ChatPageState extends State<ChatPage>
 
     super.dispose();
   }
+
+  @override
+  void didPopNext() {
+    // Return from settings pages should immediately refresh the model chip
+    // displayed in chat app bar.
+    unawaited(_loadNormalChatModelContext());
+  }
+
+  @override
+  void didPush() {}
+
+  @override
+  void didPop() {}
+
+  @override
+  void didPushNext() {}
 
   void _onFocusChange() {}
 

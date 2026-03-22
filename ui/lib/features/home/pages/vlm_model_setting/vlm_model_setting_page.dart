@@ -1052,6 +1052,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         Container(
                           height: 280,
                           padding: const EdgeInsets.all(10),
+                          clipBehavior: Clip.antiAlias,
                           decoration: BoxDecoration(
                             color: const Color(0xFFF4F7FB),
                             borderRadius: BorderRadius.circular(10),
