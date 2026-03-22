@@ -1,8 +1,6 @@
 package cn.com.omnimind.bot.ui.channel
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.activity.MainActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -50,12 +48,12 @@ class AppStateChannel {
                 OmniLog.d(TAG, "Received exitApp call from Flutter")
                 val context = this.context
                 if (context is MainActivity) {
-                    // 延迟3秒后彻底杀死APP
-                    Handler(Looper.getMainLooper()).postDelayed({
+                    // Return to launcher immediately on back from home chat page.
+                    // Avoid delayed process kill, which makes users press back repeatedly.
+                    val movedToBackground = context.moveTaskToBack(true)
+                    if (!movedToBackground) {
                         context.finish()
-                        val pid = android.os.Process.myPid()
-                        android.os.Process.killProcess(pid)
-                    }, 3000)
+                    }
                     result.success(true)
                 } else {
                     OmniLog.e(TAG, "Context is not MainActivity, cannot exit app")

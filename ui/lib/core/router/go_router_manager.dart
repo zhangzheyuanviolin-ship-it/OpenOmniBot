@@ -12,21 +12,15 @@ import 'package:ui/services/method_channel_service.dart';
 class RouteOptions {
   final bool noAnim;
 
-  const RouteOptions({
-    this.noAnim = false,
-  });
+  const RouteOptions({this.noAnim = false});
 
   Map<String, dynamic> toMap() {
-    return {
-      'noAnim': noAnim,
-    };
+    return {'noAnim': noAnim};
   }
 
   factory RouteOptions.fromMap(Map<String, dynamic>? map) {
     if (map == null) return const RouteOptions();
-    return RouteOptions(
-      noAnim: map['noAnim'] == true,
-    );
+    return RouteOptions(noAnim: map['noAnim'] == true);
   }
 }
 
@@ -39,7 +33,7 @@ class GoRouterManager {
       GlobalKey<NavigatorState>();
   static String? _initialRoute;
   static bool _isSubEngine = false;
-  
+
   /// 全局 RouteObserver，用于监听页面生命周期
   static final RouteObserver<ModalRoute<void>> routeObserver =
       RouteObserver<ModalRoute<void>>();
@@ -109,10 +103,7 @@ class GoRouterManager {
         transitionDuration: const Duration(milliseconds: 250),
         reverseTransitionDuration: const Duration(milliseconds: 250),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+          return FadeTransition(opacity: animation, child: child);
         },
       );
     }
@@ -151,7 +142,9 @@ class GoRouterManager {
       path: route.path,
       name: route.name,
       redirect: route.redirect,
-      routes: route.routes.map((r) => r is GoRoute ? _wrapRoute(r) : r).toList(),
+      routes: route.routes
+          .map((r) => r is GoRoute ? _wrapRoute(r) : r)
+          .toList(),
       pageBuilder: (context, state) {
         final parsed = _parseExtra(state.extra);
 
@@ -182,7 +175,9 @@ class GoRouterManager {
   static GoRouter createRouter(WidgetRef ref) {
     MethodChannelService.initialize();
 
-    final wrappedRoutes = AppRouterConfig.getAllRoutes().map(_wrapRoute).toList();
+    final wrappedRoutes = AppRouterConfig.getAllRoutes()
+        .map(_wrapRoute)
+        .toList();
 
     print('initialLocation: $_initialRoute');
 
@@ -198,7 +193,9 @@ class GoRouterManager {
           path: '/',
           pageBuilder: (context, state) {
             final parsed = _parseExtra(state.extra);
-            final child = _isSubEngine ? const SizedBox.shrink() : const ChatPage();
+            final child = _isSubEngine
+                ? const SizedBox.shrink()
+                : const ChatPage();
             return _buildPage(
               key: state.pageKey,
               child: child,
@@ -213,14 +210,17 @@ class GoRouterManager {
   }
 
   /// 将 queryParams 转换为 query string 并拼接到路由上
-  static String _buildRouteWithQueryParams(String route, Map<String, dynamic>? queryParams) {
+  static String _buildRouteWithQueryParams(
+    String route,
+    Map<String, dynamic>? queryParams,
+  ) {
     if (queryParams == null || queryParams.isEmpty) {
       return route;
     }
-    
+
     final uri = Uri.parse(route);
     final Map<String, String> queryStringMap = {};
-    
+
     // 遍历 queryParams，将复杂对象转换为 JSON 字符串
     queryParams.forEach((key, value) {
       if (value is Map || value is List) {
@@ -229,58 +229,95 @@ class GoRouterManager {
         queryStringMap[key] = value.toString();
       }
     });
-    
+
     // 构建新的 URI，保留原有的 query parameters（如果有）
     final newUri = uri.replace(
-      queryParameters: {
-        ...uri.queryParameters,
-        ...queryStringMap,
-      },
+      queryParameters: {...uri.queryParameters, ...queryStringMap},
     );
-    
+
     return newUri.toString();
   }
 
-  static void go(String route, {Object? extra, Map<String, dynamic>? queryParams, RouteOptions? options}) {
-    print('[GoRouterManager] go: $route, extra: $extra, queryParams: $queryParams, options: $options');
+  static void go(
+    String route, {
+    Object? extra,
+    Map<String, dynamic>? queryParams,
+    RouteOptions? options,
+  }) {
+    print(
+      '[GoRouterManager] go: $route, extra: $extra, queryParams: $queryParams, options: $options',
+    );
     print('[GoRouterManager] go 调用堆栈: ${StackTrace.current}');
     final context = _rootNavigatorKey.currentContext;
     if (context != null) {
-      final finalRoute = _buildRouteWithQueryParams(route, queryParams);
+      final finalRoute = _normalizeHomeRoute(
+        _buildRouteWithQueryParams(route, queryParams),
+      );
       final wrappedExtra = _wrapExtra(extra, options ?? const RouteOptions());
       GoRouter.of(context).go(finalRoute, extra: wrappedExtra);
     }
   }
 
-  static void clearAndNavigateTo(String route, {Object? extra, Map<String, dynamic>? queryParams, RouteOptions? options}) {
-    print('[GoRouterManager] clearAndNavigateTo: $route, extra: $extra, queryParams: $queryParams, options: $options');
+  static void clearAndNavigateTo(
+    String route, {
+    Object? extra,
+    Map<String, dynamic>? queryParams,
+    RouteOptions? options,
+  }) {
+    print(
+      '[GoRouterManager] clearAndNavigateTo: $route, extra: $extra, queryParams: $queryParams, options: $options',
+    );
     print('[GoRouterManager] clearAndNavigateTo 调用堆栈: ${StackTrace.current}');
     final context = _rootNavigatorKey.currentContext;
     if (context != null) {
-      final finalRoute = _buildRouteWithQueryParams(route, queryParams);
+      final finalRoute = _normalizeHomeRoute(
+        _buildRouteWithQueryParams(route, queryParams),
+      );
       final wrappedExtra = _wrapExtra(extra, options ?? const RouteOptions());
       GoRouter.of(context).go(finalRoute, extra: wrappedExtra);
     }
   }
 
-  static void push(String route, {Object? extra, Map<String, dynamic>? queryParams, RouteOptions? options}) {
+  static void push(
+    String route, {
+    Object? extra,
+    Map<String, dynamic>? queryParams,
+    RouteOptions? options,
+  }) {
     final context = _rootNavigatorKey.currentContext;
-    print('[GoRouterManager] push route: $route, extra: $extra, queryParams: $queryParams, options: $options');
+    print(
+      '[GoRouterManager] push route: $route, extra: $extra, queryParams: $queryParams, options: $options',
+    );
     print('[GoRouterManager] push context: $context');
     if (context != null) {
-      final finalRoute = _buildRouteWithQueryParams(route, queryParams);
+      final finalRoute = _normalizeHomeRoute(
+        _buildRouteWithQueryParams(route, queryParams),
+      );
       final wrappedExtra = _wrapExtra(extra, options ?? const RouteOptions());
+      if (_isHomeChatRoute(finalRoute)) {
+        GoRouter.of(context).go(finalRoute, extra: wrappedExtra);
+        return;
+      }
       GoRouter.of(context).push(finalRoute, extra: wrappedExtra);
     }
   }
 
   /// push 并等待返回结果，支持 .then() 回调
-  static Future<T?> pushForResult<T>(String route, {Object? extra, Map<String, dynamic>? queryParams, RouteOptions? options}) async {
+  static Future<T?> pushForResult<T>(
+    String route, {
+    Object? extra,
+    Map<String, dynamic>? queryParams,
+    RouteOptions? options,
+  }) async {
     final context = _rootNavigatorKey.currentContext;
-    print('[GoRouterManager] push route(for result): $route, extra: $extra, queryParams: $queryParams, options: $options');
+    print(
+      '[GoRouterManager] push route(for result): $route, extra: $extra, queryParams: $queryParams, options: $options',
+    );
     print('[GoRouterManager] push context: $context');
     if (context != null) {
-      final finalRoute = _buildRouteWithQueryParams(route, queryParams);
+      final finalRoute = _normalizeHomeRoute(
+        _buildRouteWithQueryParams(route, queryParams),
+      );
       final wrappedExtra = _wrapExtra(extra, options ?? const RouteOptions());
       return GoRouter.of(context).push<T>(finalRoute, extra: wrappedExtra);
     }
@@ -296,11 +333,20 @@ class GoRouterManager {
   }
 
   /// 替换当前路由（先 pop 再 push），避免路由栈堆积
-  static void pushReplacement(String route, {Object? extra, Map<String, dynamic>? queryParams, RouteOptions? options}) {
+  static void pushReplacement(
+    String route, {
+    Object? extra,
+    Map<String, dynamic>? queryParams,
+    RouteOptions? options,
+  }) {
     final context = _rootNavigatorKey.currentContext;
-    print('[GoRouterManager] pushReplacement route: $route, extra: $extra, queryParams: $queryParams, options: $options');
+    print(
+      '[GoRouterManager] pushReplacement route: $route, extra: $extra, queryParams: $queryParams, options: $options',
+    );
     if (context != null) {
-      final finalRoute = _buildRouteWithQueryParams(route, queryParams);
+      final finalRoute = _normalizeHomeRoute(
+        _buildRouteWithQueryParams(route, queryParams),
+      );
       final wrappedExtra = _wrapExtra(extra, options ?? const RouteOptions());
       GoRouter.of(context).pushReplacement(finalRoute, extra: wrappedExtra);
     }
@@ -321,27 +367,42 @@ class GoRouterManager {
     return route;
   }
 
+  static bool _isHomeChatRoute(String route) {
+    final normalized = _normalizeHomeRoute(route);
+    final uri = Uri.parse(normalized);
+    return uri.path == homeRoute;
+  }
+
   /// 重置回到首页并跳转到指定路由
   /// 如果目标路由就是首页，则只执行 clearAndNavigateTo，不再 push
-  static void resetToHomeAndPush(String route, {Object? extra, Map<String, dynamic>? queryParams, RouteOptions? options}) {
+  static void resetToHomeAndPush(
+    String route, {
+    Object? extra,
+    Map<String, dynamic>? queryParams,
+    RouteOptions? options,
+  }) {
     final context = _rootNavigatorKey.currentContext;
-    print('[GoRouterManager] resetToHomeAndPush route: $route, extra: $extra, queryParams: $queryParams, options: $options');
+    print(
+      '[GoRouterManager] resetToHomeAndPush route: $route, extra: $extra, queryParams: $queryParams, options: $options',
+    );
     if (context == null) return;
 
     final finalRoute = _normalizeHomeRoute(
       _buildRouteWithQueryParams(route, queryParams),
     );
-    
-    // 如果目标就是首页，直接 clearAndNavigateTo 即可，不需要再 push
-    if (finalRoute == homeRoute) {
-      print('[GoRouterManager] resetToHomeAndPush: target is home, only clearAndNavigateTo');
+
+    // 如果目标是聊天主页（包含 query 参数场景），直接替换到目标路由，不再 push
+    if (_isHomeChatRoute(finalRoute)) {
+      print(
+        '[GoRouterManager] resetToHomeAndPush: target is home, only clearAndNavigateTo',
+      );
       clearAndNavigateTo(finalRoute, extra: extra, options: options);
       return;
     }
 
     // 1. 先回到首页
     clearAndNavigateTo(homeRoute);
-    
+
     // 2. 在下一帧推入新页面
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 重新获取 context，因为页面可能已经变动

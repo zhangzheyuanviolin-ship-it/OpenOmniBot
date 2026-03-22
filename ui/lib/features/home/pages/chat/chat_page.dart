@@ -1384,6 +1384,10 @@ class _ChatPageState extends State<ChatPage>
       debugPrint(
         '[ChatPage] args changed: ${oldWidget.args} -> ${widget.args}',
       );
+      if (_activeSurfaceMode == ChatSurfaceMode.workspace &&
+          _shouldOpenNormalChatForArgs(widget.args)) {
+        _forceSwitchToNormalSurface();
+      }
       _resetAndReloadConversation();
       _notifySummarySheetReadyIfNeeded();
     }
@@ -1396,6 +1400,35 @@ class _ChatPageState extends State<ChatPage>
       if (oldArgs[i] != newArgs[i]) return true;
     }
     return false;
+  }
+
+  bool _shouldOpenNormalChatForArgs(List<String> args) {
+    if (args.isEmpty) {
+      return false;
+    }
+    final first = args.first.trim();
+    if (first.isEmpty) {
+      return false;
+    }
+    if (first == 'new' || first == '__new__') {
+      return true;
+    }
+    return int.tryParse(first) != null;
+  }
+
+  void _forceSwitchToNormalSurface() {
+    _storeDraftForActiveConversationMode();
+    if (!mounted) return;
+    setState(() {
+      _activeSurfaceMode = ChatSurfaceMode.normal;
+      _activeConversationMode = ChatPageMode.normal;
+      _showSlashCommandPanel = false;
+      _showModelMentionPanel = false;
+      _activeModelMentionToken = null;
+      _openClawPanelExpanded = false;
+    });
+    _applyDraftForConversationMode(ChatPageMode.normal);
+    _jumpToCurrentModePage(animate: false);
   }
 
   /// 重置状态并重新加载对话
