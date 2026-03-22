@@ -240,6 +240,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   }) {
     final runtime = runtimeFor(conversationId: conversationId, mode: mode);
     if (runtime == null) return;
+    runtime.currentDispatchTaskId = null;
+    runtime.deepThinkingContent = '';
+    runtime.isDeepThinking = false;
+    runtime.currentThinkingStage = ThinkingStage.thinking.value;
     runtime.lastAgentTaskId = null;
     runtime.pendingAgentTextTaskId = null;
     runtime.activeToolCardId = null;
@@ -1100,7 +1104,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final cardData = {
       'type': 'deep_thinking',
       'isLoading': isLoading ?? runtime.isDeepThinking,
-      'thinkingContent': thinkingContent ?? runtime.deepThinkingContent,
+      'thinkingContent': thinkingContent ?? '',
       'stage': stage ?? runtime.currentThinkingStage,
       'taskID': taskId,
       'startTime': startTime,

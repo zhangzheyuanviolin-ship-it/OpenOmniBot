@@ -142,4 +142,41 @@ void main() {
     expect(runtimeA.vlmInfoQuestion, 'Need more info');
     expect(runtimeB.vlmInfoQuestion, isNull);
   });
+
+  test('clears transient agent thinking state when a session ends', () {
+    const conversationId = 4001;
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = 'agent-task';
+    runtime.deepThinkingContent = 'old thinking';
+    runtime.isDeepThinking = true;
+    runtime.currentThinkingStage = 4;
+    runtime.lastAgentTaskId = 'agent-task';
+    runtime.activeToolCardId = 'agent-task-tool-1';
+    runtime.activeThinkingCardId = 'agent-task-thinking';
+    runtime.pendingAgentTextTaskId = 'agent-task';
+    runtime.pendingThinkingRoundSplit = true;
+    runtime.toolCardSequence = 3;
+    runtime.thinkingRound = 2;
+
+    coordinator.clearConversationRuntimeSession(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    expect(runtime.currentDispatchTaskId, isNull);
+    expect(runtime.deepThinkingContent, isEmpty);
+    expect(runtime.isDeepThinking, isFalse);
+    expect(runtime.currentThinkingStage, 1);
+    expect(runtime.lastAgentTaskId, isNull);
+    expect(runtime.activeToolCardId, isNull);
+    expect(runtime.activeThinkingCardId, isNull);
+    expect(runtime.pendingAgentTextTaskId, isNull);
+    expect(runtime.pendingThinkingRoundSplit, isFalse);
+    expect(runtime.toolCardSequence, 0);
+    expect(runtime.thinkingRound, 0);
+  });
 }

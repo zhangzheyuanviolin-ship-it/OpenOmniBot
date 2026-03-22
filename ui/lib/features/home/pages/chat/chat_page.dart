@@ -1162,7 +1162,7 @@ class _ChatPageState extends State<ChatPage>
     final cardData = {
       'type': 'deep_thinking',
       'isLoading': isLoading ?? _isDeepThinking,
-      'thinkingContent': thinkingContent ?? _deepThinkingContent,
+      'thinkingContent': thinkingContent ?? '',
       'stage': stage ?? _currentThinkingStage,
       'taskID': taskID,
       'startTime': startTime,
@@ -2295,6 +2295,8 @@ class _ChatPageState extends State<ChatPage>
   Future<bool> _tryAgentFlow(String aiMessageId, String userMessageId) async {
     try {
       _currentDispatchTaskId = aiMessageId;
+      _deepThinkingContent = '';
+      _isDeepThinking = false;
       _currentThinkingStage = 1;
 
       createThinkingCard(aiMessageId);

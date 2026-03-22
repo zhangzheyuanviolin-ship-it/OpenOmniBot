@@ -1075,7 +1075,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     final cardData = {
       'type': 'deep_thinking',
       'isLoading': isLoading ?? _isDeepThinking,
-      'thinkingContent': thinkingContent ?? _deepThinkingContent,
+      'thinkingContent': thinkingContent ?? '',
       'stage': stage ?? _currentThinkingStage,
       'taskID': taskID, // 添加taskID用于创建稳定的key
       'startTime': startTime, // 添加开始时间
@@ -1370,6 +1370,8 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     try {
       setState(() {
         _currentDispatchTaskId = aiMessageId;
+        _deepThinkingContent = '';
+        _isDeepThinking = false;
         _currentThinkingStage = 1;
       });
 
