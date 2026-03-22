@@ -1,0 +1,3 @@
+[submodule "OperitTerminalCore"]
+	path = OperitTerminalCore
+	url = https://github.com/XuYouo/TerminalCore.git
