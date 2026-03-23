@@ -6,6 +6,7 @@ import 'package:ui/services/special_permission.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 class TermuxSettingPage extends StatefulWidget {
   const TermuxSettingPage({super.key});
@@ -32,7 +33,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   bool _isUpdatingGatewayAutoStart = false;
   bool _isStartingGateway = false;
   bool _isStoppingGateway = false;
-  bool _isOpeningNativeTerminal = false;
+  bool _isPollingGatewayStatus = false;
 
   String? _wrapperMessage;
   bool? _wrapperReady;
@@ -41,7 +42,10 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   final List<String> _prepareLogLines = <String>[];
   late final ScrollController _prepareLogScrollController;
   Timer? _prepareSnapshotPoller;
+  Timer? _gatewayStatusPoller;
+  Timer? _gatewayUptimeTicker;
   OpenClawGatewayStatus? _gatewayStatus;
+  DateTime? _gatewayStatusSnapshotAt;
 
   bool get _isFullyReady {
     return _isDeviceSupported && _isRuntimeReady && _isBasePackagesReady;
@@ -57,12 +61,16 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     super.initState();
     _prepareLogScrollController = ScrollController();
     WidgetsBinding.instance.addObserver(this);
+    _startGatewayStatusPolling();
+    _startGatewayUptimeTicker();
     _refreshStatus();
   }
 
   @override
   void dispose() {
     _prepareSnapshotPoller?.cancel();
+    _gatewayStatusPoller?.cancel();
+    _gatewayUptimeTicker?.cancel();
     _prepareLogScrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -71,8 +79,40 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _startGatewayStatusPolling();
+      _startGatewayUptimeTicker();
       _refreshStatus();
+      return;
     }
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _gatewayStatusPoller?.cancel();
+      _gatewayStatusPoller = null;
+      _gatewayUptimeTicker?.cancel();
+      _gatewayUptimeTicker = null;
+    }
+  }
+
+  void _startGatewayStatusPolling() {
+    _gatewayStatusPoller?.cancel();
+    _gatewayStatusPoller = Timer.periodic(const Duration(seconds: 3), (_) {
+      unawaited(_refreshGatewayStatusOnly());
+    });
+  }
+
+  void _startGatewayUptimeTicker() {
+    _gatewayUptimeTicker?.cancel();
+    _gatewayUptimeTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) {
+        return;
+      }
+      final status = _gatewayStatus;
+      if (status == null || !(status.running && status.healthy)) {
+        return;
+      }
+      setState(() {});
+    });
   }
 
   Future<void> _refreshStatus() async {
@@ -104,6 +144,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _runtimeStatusMessage = status.message;
         _wrapperReady = status.allReady;
         _gatewayStatus = gatewayStatus;
+        _gatewayStatusSnapshotAt = DateTime.now();
         _isLoadingStatus = false;
         _isLoadingGatewayStatus = false;
       });
@@ -129,6 +170,9 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _wrapperReady = false;
         _isLoadingStatus = false;
         _gatewayStatus = gatewayStatus;
+        _gatewayStatusSnapshotAt = gatewayStatus == null
+            ? null
+            : DateTime.now();
         _isLoadingGatewayStatus = false;
       });
     } catch (_) {
@@ -153,8 +197,45 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _wrapperReady = false;
         _isLoadingStatus = false;
         _gatewayStatus = gatewayStatus;
+        _gatewayStatusSnapshotAt = gatewayStatus == null
+            ? null
+            : DateTime.now();
         _isLoadingGatewayStatus = false;
       });
+    }
+  }
+
+  Future<void> _refreshGatewayStatusOnly({bool showLoading = false}) async {
+    if (!mounted || _isPollingGatewayStatus) {
+      return;
+    }
+    if (showLoading) {
+      setState(() {
+        _isLoadingGatewayStatus = true;
+      });
+    }
+    _isPollingGatewayStatus = true;
+    try {
+      final gatewayStatus = await getOpenClawGatewayStatus();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _gatewayStatus = gatewayStatus;
+        _gatewayStatusSnapshotAt = DateTime.now();
+        _isLoadingGatewayStatus = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      if (showLoading) {
+        setState(() {
+          _isLoadingGatewayStatus = false;
+        });
+      }
+    } finally {
+      _isPollingGatewayStatus = false;
     }
   }
 
@@ -227,28 +308,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       if (mounted) {
         setState(() {
           _isStoppingGateway = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _handleOpenNativeTerminal() async {
-    if (_isOpeningNativeTerminal) {
-      return;
-    }
-    setState(() {
-      _isOpeningNativeTerminal = true;
-    });
-    try {
-      await openNativeTerminal();
-    } on PlatformException catch (e) {
-      showToast(e.message ?? '打开原生终端失败', type: ToastType.error);
-    } catch (_) {
-      showToast('打开原生终端失败', type: ToastType.error);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isOpeningNativeTerminal = false;
         });
       }
     }
@@ -441,7 +500,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FA),
-      appBar: const CommonAppBar(title: '内嵌终端设置', primary: true),
+      appBar: const CommonAppBar(title: 'Ubuntu 与 OpenClaw', primary: true),
       body: SafeArea(
         top: false,
         child: RefreshIndicator(
@@ -729,6 +788,12 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     final subtitle = _isLoadingGatewayStatus
         ? '正在检查 OpenClaw Gateway 状态'
         : statusText;
+    final isRunning = gatewayStatus?.running == true;
+    final canOperate =
+        gatewayStatus != null &&
+        !_isLoadingGatewayStatus &&
+        !_isStartingGateway &&
+        !_isStoppingGateway;
 
     return _buildSectionCard(
       title: 'OpenClaw Gateway',
@@ -745,27 +810,53 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: AppColors.text,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    height: 1.5,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildGatewayIconAction(
+                          icon: Icons.refresh_rounded,
+                          tooltip: '重启 Gateway',
+                          onTap: canOperate
+                              ? () => _handleStartGateway(forceRestart: true)
+                              : null,
+                        ),
+                        const SizedBox(width: 6),
+                        _buildGatewayIconAction(
+                          icon: isRunning
+                              ? Icons.stop_circle_outlined
+                              : Icons.play_circle_fill_rounded,
+                          tooltip: isRunning ? '停止 Gateway' : '启动 Gateway',
+                          onTap: canOperate
+                              ? () {
+                                  if (isRunning) {
+                                    _handleStopGateway();
+                                  } else {
+                                    _handleStartGateway(forceRestart: false);
+                                  }
+                                }
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  gatewayStatus?.dashboardUrl?.isNotEmpty == true
-                      ? gatewayStatus!.dashboardUrl!
-                      : '部署成功后会固定回连到 http://127.0.0.1:18789',
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    height: 1.5,
-                  ),
-                ),
+                _buildGatewayAddressLink(gatewayStatus),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -829,46 +920,88 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton(
-                onPressed:
-                    (_isLoadingGatewayStatus ||
-                        _isStartingGateway ||
-                        gatewayStatus == null)
-                    ? null
-                    : () => _handleStartGateway(forceRestart: false),
-                child: Text(_isStartingGateway ? '启动中...' : '启动 Gateway'),
-              ),
-              FilledButton.tonal(
-                onPressed:
-                    (_isLoadingGatewayStatus ||
-                        _isStartingGateway ||
-                        gatewayStatus == null)
-                    ? null
-                    : () => _handleStartGateway(forceRestart: true),
-                child: const Text('重启 Gateway'),
-              ),
-              OutlinedButton(
-                onPressed: (_isLoadingGatewayStatus || _isStoppingGateway)
-                    ? null
-                    : _handleStopGateway,
-                child: Text(_isStoppingGateway ? '停止中...' : '停止 Gateway'),
-              ),
-              OutlinedButton(
-                onPressed: _isOpeningNativeTerminal
-                    ? null
-                    : _handleOpenNativeTerminal,
-                child: Text(_isOpeningNativeTerminal ? '打开中...' : '打开原生终端'),
-              ),
-            ],
-          ),
         ],
       ),
     );
+  }
+
+  Widget _buildGatewayIconAction({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onTap,
+  }) {
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onTap,
+        icon: Icon(icon),
+        iconSize: 20,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          minimumSize: const Size(34, 34),
+          maximumSize: const Size(34, 34),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          foregroundColor: enabled
+              ? AppColors.buttonPrimary
+              : const Color(0xFF9CA3AF),
+          backgroundColor: enabled
+              ? const Color(0x1A4A7CFF)
+              : const Color(0x10000000),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGatewayAddressLink(OpenClawGatewayStatus? status) {
+    final url = (status?.dashboardUrl ?? '').trim();
+    final normalizedUrl = url.isNotEmpty ? url : 'http://127.0.0.1:18789';
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '地址：',
+          style: TextStyle(
+            color: Color(0xFF64748B),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            height: 1.5,
+          ),
+        ),
+        Expanded(
+          child: InkWell(
+            onTap: () => _openExternalUrl(normalizedUrl),
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 1),
+              child: Text(
+                normalizedUrl,
+                style: const TextStyle(
+                  color: Color(0xFF2563EB),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.5,
+                  decoration: TextDecoration.underline,
+                  decorationColor: Color(0xFF2563EB),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openExternalUrl(String url) async {
+    final launched = await launchUrlString(
+      url,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched) {
+      showToast('打开 Gateway 地址失败', type: ToastType.error);
+    }
   }
 
   String _buildGatewayStatusText(OpenClawGatewayStatus? status) {
@@ -888,15 +1021,35 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       return 'Gateway 正在退避重启中';
     }
     if (status.running && status.healthy) {
-      final uptimeText = status.uptimeSeconds == null
+      final liveUptimeSeconds = _effectiveGatewayUptimeSeconds(status);
+      final uptimeText = liveUptimeSeconds == null
           ? ''
-          : '，已运行 ${_formatUptime(status.uptimeSeconds!)}';
+          : '，已运行 ${_formatUptime(liveUptimeSeconds)}';
       return 'Gateway 正在运行且健康$uptimeText';
     }
     if (status.running) {
       return 'Gateway 已启动，正在等待健康检查';
     }
     return 'Gateway 当前未运行';
+  }
+
+  int? _effectiveGatewayUptimeSeconds(OpenClawGatewayStatus status) {
+    final base = status.uptimeSeconds;
+    if (base == null) {
+      return null;
+    }
+    if (!status.running) {
+      return base;
+    }
+    final snapshotAt = _gatewayStatusSnapshotAt;
+    if (snapshotAt == null) {
+      return base;
+    }
+    final elapsed = DateTime.now().difference(snapshotAt).inSeconds;
+    if (elapsed <= 0) {
+      return base;
+    }
+    return base + elapsed;
   }
 
   String _formatUptime(int totalSeconds) {

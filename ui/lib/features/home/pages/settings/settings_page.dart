@@ -326,7 +326,7 @@ class _SettingsPageState extends State<SettingsPage> {
               GoRouterManager.push('/home/scene_model_setting');
             },
           ),
-          
+
           _SettingItem(
             icon: Icons.cloud_sync_outlined,
             iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',
@@ -369,9 +369,8 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.code,
             iconSvg: 'assets/home/termux.svg',
             iconColor: AppColors.buttonPrimary,
-            title: '内嵌终端',
-            subtitle:
-                '管理应用内 Ubuntu 终端与 workspace 映射',
+            title: 'Ubuntu 与 OpenClaw',
+            subtitle: '管理应用内 Ubuntu、OpenClaw Gateway 与 workspace 映射',
             onTap: () {
               GoRouterManager.push('/home/termux_setting');
             },
@@ -431,8 +430,7 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.security,
             iconSvg: 'assets/home/companion_permission_setting_icon.svg',
             title: '陪伴权限授权',
-            subtitle:
-                '仅访问您授权的 App，隐私安全更有保障',
+            subtitle: '仅访问您授权的 App，隐私安全更有保障',
             onTap: () async {
               try {
                 final granted = await ensureInstalledAppsPermission();
@@ -577,11 +575,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   : null,
             )
           : item.icon != null
-          ? Icon(
-              item.icon,
-              size: 16,
-              color: item.iconColor,
-            )
+          ? Icon(item.icon, size: 16, color: item.iconColor)
           : const SizedBox.shrink(),
     );
   }
@@ -630,9 +624,7 @@ class _SettingsPageState extends State<SettingsPage> {
 class _SettingSection {
   final List<_SettingItem> items;
 
-  const _SettingSection({
-    required this.items,
-  });
+  const _SettingSection({required this.items});
 }
 
 class _SettingItem {
