@@ -368,39 +368,87 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
     return '搜索 $label 的模型';
   }
 
+  List<ModelProviderProfileSummary> get _quickModelPickerAvailableProfiles {
+    return _modelProviderProfiles.where((profile) {
+      if (!profile.configured) {
+        return false;
+      }
+      final models =
+          _modelOptionsByProfileId[profile.id] ?? const <ProviderModelOption>[];
+      return models.isNotEmpty;
+    }).toList();
+  }
+
+  List<ProviderModelOption> _quickModelPickerModelsForProvider(
+    String providerProfileId,
+  ) {
+    final models =
+        _modelOptionsByProfileId[providerProfileId] ??
+        const <ProviderModelOption>[];
+    return List<ProviderModelOption>.from(models);
+  }
+
   _QuickModelPickerSession? _resolveQuickModelPickerSession() {
-    final configuredProfiles = _modelProviderProfiles
-        .where((profile) => profile.configured)
-        .toList();
-    if (configuredProfiles.isEmpty) {
+    final availableProfiles = _quickModelPickerAvailableProfiles;
+    if (availableProfiles.isEmpty) {
       return null;
     }
     final activeSelection = _activeDispatchSceneSelection;
     if (activeSelection != null) {
-      final activeModels =
-          _modelOptionsByProfileId[activeSelection.providerProfileId] ??
-          const <ProviderModelOption>[];
-      final hasConfiguredProvider = configuredProfiles.any(
+      final activeModels = _quickModelPickerModelsForProvider(
+        activeSelection.providerProfileId,
+      );
+      final hasConfiguredProvider = availableProfiles.any(
         (profile) => profile.id == activeSelection.providerProfileId,
       );
       if (hasConfiguredProvider && activeModels.isNotEmpty) {
         return _QuickModelPickerSession(
           providerProfileId: activeSelection.providerProfileId,
-          models: List<ProviderModelOption>.from(activeModels),
+          models: activeModels,
         );
       }
     }
-    for (final profile in configuredProfiles) {
-      final models =
-          _modelOptionsByProfileId[profile.id] ?? const <ProviderModelOption>[];
+    for (final profile in availableProfiles) {
+      final models = _quickModelPickerModelsForProvider(profile.id);
       if (models.isNotEmpty) {
         return _QuickModelPickerSession(
           providerProfileId: profile.id,
-          models: List<ProviderModelOption>.from(models),
+          models: models,
         );
       }
     }
     return null;
+  }
+
+  void _selectQuickModelPickerProvider(String providerProfileId) {
+    final models = _quickModelPickerModelsForProvider(providerProfileId);
+    if (models.isEmpty) {
+      return;
+    }
+    _stopQuickModelPickerAutoScroll();
+    if (!mounted) {
+      _quickModelPickerProviderProfileId = providerProfileId;
+      _quickModelPickerModels = models;
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerPointerPosition = null;
+      _quickModelPickerHasEnteredList = false;
+      return;
+    }
+    setState(() {
+      _quickModelPickerProviderProfileId = providerProfileId;
+      _quickModelPickerModels = models;
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerPointerPosition = null;
+      _quickModelPickerHasEnteredList = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !_isQuickModelPickerActive ||
+          _quickModelPickerProviderProfileId != providerProfileId) {
+        return;
+      }
+      _primeQuickModelPickerScrollPosition();
+    });
   }
 
   void _primeQuickModelPickerScrollPosition() {
@@ -884,25 +932,25 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
 
   @override
   Widget? _buildQuickModelPickerOverlay() {
+    final providers = _quickModelPickerAvailableProfiles;
     final providerProfileId = _quickModelPickerProviderProfileId;
-    final provider = providerProfileId == null
-        ? null
-        : _findProviderProfile(providerProfileId);
     final visibleModels = _filteredQuickModelPickerModels;
     if (!_isQuickModelPickerActive ||
         providerProfileId == null ||
+        providers.isEmpty ||
         _quickModelPickerModels.isEmpty) {
       return null;
     }
     return _QuickModelPickerOverlay(
       panelKey: _quickModelPickerPanelKey,
       listKey: _quickModelPickerListKey,
-      title: provider?.name ?? providerProfileId,
+      providers: providers,
       providerProfileId: providerProfileId,
       models: visibleModels,
       currentSelection: _activeDispatchSceneSelection,
       hoverSelection: _quickModelPickerHoverSelection,
       scrollController: _quickModelPickerScrollController,
+      onProviderChanged: _selectQuickModelPickerProvider,
       onSelect: (selection) {
         unawaited(
           _handleConversationModelSelectorSelection(selection),
@@ -983,23 +1031,25 @@ class _QuickModelPickerOverlay extends StatelessWidget {
 
   final Key? panelKey;
   final Key? listKey;
-  final String title;
+  final List<ModelProviderProfileSummary> providers;
   final String providerProfileId;
   final List<ProviderModelOption> models;
   final _ChatModelOverrideSelection? currentSelection;
   final _ChatModelOverrideSelection? hoverSelection;
   final ScrollController scrollController;
+  final ValueChanged<String> onProviderChanged;
   final ValueChanged<_ChatModelOverrideSelection> onSelect;
 
   const _QuickModelPickerOverlay({
     this.panelKey,
     this.listKey,
-    required this.title,
+    required this.providers,
     required this.providerProfileId,
     required this.models,
     required this.currentSelection,
     required this.hoverSelection,
     required this.scrollController,
+    required this.onProviderChanged,
     required this.onSelect,
   });
 
@@ -1035,27 +1085,62 @@ class _QuickModelPickerOverlay extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(4, 2, 4, 8),
                   child: Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF64748B),
-                            fontWeight: FontWeight.w600,
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: providers.map((profile) {
+                              final label = profile.name.trim().isEmpty
+                                  ? profile.id
+                                  : profile.name.trim();
+                              final selected = profile.id == providerProfileId;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: InkWell(
+                                  onTap: selected
+                                      ? null
+                                      : () {
+                                          onProviderChanged(profile.id);
+                                        },
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 120),
+                                    curve: Curves.easeOut,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? const Color(0xFFEAF3FF)
+                                          : const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: selected
+                                          ? Border.all(
+                                              color: const Color(0xFF7FB6FF),
+                                            )
+                                          : null,
+                                    ),
+                                    child: Text(
+                                      label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: selected
+                                            ? const Color(0xFF2C7FEB)
+                                            : const Color(0xFF64748B),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
                           ),
                         ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 8),
                       Text(
                         '${models.length} 项',
                         style: const TextStyle(
