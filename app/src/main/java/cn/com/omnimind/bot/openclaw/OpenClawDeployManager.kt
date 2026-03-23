@@ -437,9 +437,20 @@ class OpenClawDeployManager(
               exit 0
             fi
 
-            mkdir -p /tmp/npm-cache
+            reset_npm_cache() {
+              rm -rf /tmp/npm-cache /root/.npm/_cacache
+              mkdir -p /tmp/npm-cache/_cacache/tmp /tmp/npm-cache/_cacache/content-v2 /tmp/npm-cache/_cacache/index-v5 /tmp/npm-cache/_logs
+              mkdir -p /root/.npm /root/.config /root/.cache /root/.local/share
+            }
+
+            rm -rf /usr/local/lib/node_modules/openclaw /usr/local/bin/openclaw /usr/local/bin/openclaw.cmd || true
+            reset_npm_cache
+
             export npm_config_cache=/tmp/npm-cache
             export npm_config_prefix=/usr/local
+            export npm_config_update_notifier=false
+            export npm_config_fund=false
+            export npm_config_audit=false
 
             NPM_CLI=""
             for candidate in \
@@ -457,7 +468,20 @@ class OpenClawDeployManager(
             fi
 
             echo "Using npm CLI: ${'$'}NPM_CLI"
-            node /root/.openclaw/node-wrapper.js "${'$'}NPM_CLI" install -g --unsafe-perm openclaw
+            install_openclaw() {
+              node /root/.openclaw/node-wrapper.js "${'$'}NPM_CLI" install -g --unsafe-perm \
+                --no-audit --no-fund \
+                --fetch-retries=5 --fetch-retry-factor=2 \
+                --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=20000 \
+                openclaw
+            }
+
+            if ! install_openclaw; then
+              echo "openclaw install attempt #1 failed; clearing caches and retrying once..." >&2
+              rm -rf /usr/local/lib/node_modules/openclaw /usr/local/bin/openclaw /usr/local/bin/openclaw.cmd || true
+              reset_npm_cache
+              install_openclaw
+            fi
 
             echo "openclaw installed"
             openclaw --version || true
