@@ -1261,7 +1261,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     final List<Map<String, dynamic>> history = [];
     final recentMessages = ChatService.getRecentMessages(
       _messages,
-      maxCount: 10,
+      maxCount: 20,
     );
 
     for (final message in recentMessages) {
@@ -1281,11 +1281,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
   }
 
   List<Map<String, dynamic>> _buildOpenClawHistory() {
-    final latest = _latestUserUtterance();
-    if (latest.isEmpty) return _buildConversationHistory();
-    return [
-      {'role': 'user', 'content': latest},
-    ];
+    return _buildConversationHistory();
   }
 
   /// 发送消息（支持输入框发送、初始消息和恢复场景重发）

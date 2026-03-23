@@ -3,7 +3,7 @@ import 'package:ui/models/chat_message_model.dart';
 class ChatService {
   static List<ChatMessageModel> getRecentMessages(
     List<ChatMessageModel> messages, {
-    int maxCount = 10,
+    int maxCount = 20,
   }) {
     final errorMessageIds = messages
         .where((msg) => msg.isError)

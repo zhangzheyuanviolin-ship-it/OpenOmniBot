@@ -77,7 +77,7 @@ mixin TaskExecutionHandler<T extends StatefulWidget> on State<T> {
     final List<Map<String, dynamic>> history = [];
     final recentMessages = ChatService.getRecentMessages(
       messages,
-      maxCount: 10,
+      maxCount: 20,
     );
 
     for (final message in recentMessages) {
