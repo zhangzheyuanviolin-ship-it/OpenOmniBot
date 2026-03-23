@@ -54,10 +54,7 @@ class ChatConversationRuntimeState {
 }
 
 class _TaskBinding {
-  const _TaskBinding({
-    required this.conversationId,
-    required this.mode,
-  });
+  const _TaskBinding({required this.conversationId, required this.mode});
 
   final int conversationId;
   final String mode;
@@ -298,15 +295,18 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final snapshotMessages = List<ChatMessageModel>.from(runtime.messages);
     final snapshotConversation = runtime.conversation;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final lastMessage =
-        snapshotMessages.isNotEmpty ? (snapshotMessages[0].text ?? '') : '';
+    final lastMessage = snapshotMessages.isNotEmpty
+        ? (snapshotMessages[0].text ?? '')
+        : '';
     final messageCount = snapshotMessages.length;
     final firstUserMessage = snapshotMessages.firstWhere(
       (m) => m.user == 1,
       orElse: () => ChatMessageModel.userMessage("default"),
     );
     final userText = firstUserMessage.text ?? 'conversation';
-    final title = userText.length > 20 ? '${userText.substring(0, 20)}...' : userText;
+    final title = userText.length > 20
+        ? '${userText.substring(0, 20)}...'
+        : userText;
 
     String? summary = snapshotConversation?.summary;
     if (generateSummary) {
@@ -323,7 +323,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       snapshotMessages,
     );
 
-    final baseConversation = snapshotConversation ??
+    final baseConversation =
+        snapshotConversation ??
         ConversationModel(
           id: conversationId,
           title: title,
@@ -373,6 +374,12 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     if (isRateLimited) {
       messageText = kRateLimitErrorMessage;
       isError = true;
+      isSummarizing = false;
+      runtime.currentAiMessages.remove(taskId);
+    } else if (isErrorMessage &&
+        _isOpenClawGatewayInitializingError(runtime, content)) {
+      messageText = kOpenClawGatewayInitializingMessage;
+      isError = false;
       isSummarizing = false;
       runtime.currentAiMessages.remove(taskId);
     } else if (isErrorMessage) {
@@ -443,7 +450,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final runtime = _runtimeForTask(taskId);
     if (runtime == null) return;
 
-    final resolvedTaskId = runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
+    final resolvedTaskId =
+        runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (resolvedTaskId == null || resolvedTaskId != taskId) return;
 
     runtime.lastAgentTaskId = taskId;
@@ -484,7 +492,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   void _handleAgentThinkingUpdate(String taskId, String thinking) {
     final runtime = _runtimeForTask(taskId);
     if (runtime == null) return;
-    final resolvedTaskId = runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
+    final resolvedTaskId =
+        runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (resolvedTaskId == null || resolvedTaskId != taskId) return;
 
     if (runtime.pendingThinkingRoundSplit) {
@@ -505,7 +514,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       }
 
       runtime.thinkingRound += 1;
-      runtime.activeThinkingCardId = '$taskId-thinking-${runtime.thinkingRound}';
+      runtime.activeThinkingCardId =
+          '$taskId-thinking-${runtime.thinkingRound}';
       _createThinkingCard(
         runtime,
         taskId,
@@ -620,11 +630,14 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   }) {
     final runtime = _runtimeForTask(taskId);
     if (runtime == null) return;
-    final resolvedTaskId = runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
+    final resolvedTaskId =
+        runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (resolvedTaskId == null || resolvedTaskId != taskId) return;
 
     final aiTextMessageId = '$taskId-text';
-    final index = runtime.messages.indexWhere((msg) => msg.id == aiTextMessageId);
+    final index = runtime.messages.indexWhere(
+      (msg) => msg.id == aiTextMessageId,
+    );
     if (index == -1) {
       runtime.messages.insert(
         0,
@@ -670,7 +683,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   ) {
     final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
-    if (binding == null || runtime == null || runtime.currentDispatchTaskId == null) {
+    if (binding == null ||
+        runtime == null ||
+        runtime.currentDispatchTaskId == null) {
       return;
     }
 
@@ -758,7 +773,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           !hasVisibleOutput;
       if (shouldInjectFallback) {
         final fallbackId = '$taskId-text';
-        final index = runtime.messages.indexWhere((msg) => msg.id == fallbackId);
+        final index = runtime.messages.indexWhere(
+          (msg) => msg.id == fallbackId,
+        );
         if (index == -1) {
           runtime.messages.insert(
             0,
@@ -766,10 +783,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
               id: fallbackId,
               type: 1,
               user: 2,
-              content: {
-                'text': '暂时无法生成回复，请重试。',
-                'id': fallbackId,
-              },
+              content: {'text': '暂时无法生成回复，请重试。', 'id': fallbackId},
             ),
           );
         }
@@ -869,7 +883,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   void _handleAgentPermissionRequired(String taskId, List<String> missing) {
     final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
-    if (binding == null || runtime == null || runtime.currentDispatchTaskId == null) {
+    if (binding == null ||
+        runtime == null ||
+        runtime.currentDispatchTaskId == null) {
       return;
     }
 
@@ -896,9 +912,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         executionPermissionIds.isNotEmpty &&
         executionPermissionIds.length == missing.length;
     final names = missing.join('、');
-    final message = names.isEmpty
-        ? '执行任务前需要先开启权限'
-        : '执行任务前，请先开启：$names';
+    final message = names.isEmpty ? '执行任务前需要先开启权限' : '执行任务前，请先开启：$names';
 
     interruptActiveToolCard(
       conversationId: binding.conversationId,
@@ -1133,7 +1147,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     bool lockCompleted = true,
   }) {
     final thinkingCardId = cardId ?? '$taskId-thinking';
-    final index = runtime.messages.indexWhere((msg) => msg.id == thinkingCardId);
+    final index = runtime.messages.indexWhere(
+      (msg) => msg.id == thinkingCardId,
+    );
     if (index == -1) return;
 
     final existing = runtime.messages[index];
@@ -1150,7 +1166,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       endTime = DateTime.now().millisecondsSinceEpoch;
     }
 
-    cardData['thinkingContent'] = thinkingContent ?? runtime.deepThinkingContent;
+    cardData['thinkingContent'] =
+        thinkingContent ?? runtime.deepThinkingContent;
     cardData['isLoading'] = isLoading ?? runtime.isDeepThinking;
     cardData['stage'] = newStage;
     cardData['taskID'] = taskId;
@@ -1199,7 +1216,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final index = runtime.messages.indexWhere((msg) => msg.id == cardId);
     final existingCardData = index == -1
         ? const <String, dynamic>{}
-        : Map<String, dynamic>.from(runtime.messages[index].cardData ?? const {});
+        : Map<String, dynamic>.from(
+            runtime.messages[index].cardData ?? const {},
+          );
     final existingTerminalOutput = (existingCardData['terminalOutput'] ?? '')
         .toString();
     final terminalOutput = event.toolType == 'terminal'
@@ -1252,7 +1271,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     };
 
     if (index == -1) {
-      runtime.messages.insert(0, ChatMessageModel.cardMessage(cardData, id: cardId));
+      runtime.messages.insert(
+        0,
+        ChatMessageModel.cardMessage(cardData, id: cardId),
+      );
     } else {
       runtime.messages[index] = runtime.messages[index].copyWith(
         content: {'cardData': cardData, 'id': cardId},
@@ -1321,6 +1343,47 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.messages.removeWhere((msg) => msg.id == waitingCardId);
   }
 
+  bool _isOpenClawGatewayInitializingError(
+    ChatConversationRuntimeState runtime,
+    String rawContent,
+  ) {
+    if (runtime.mode != kChatRuntimeModeOpenClaw) {
+      return false;
+    }
+    final payload = safeDecodeMap(rawContent);
+    final text = (payload['text'] ?? payload['message'] ?? rawContent)
+        .toString()
+        .trim()
+        .toLowerCase();
+    if (text.isEmpty) {
+      return false;
+    }
+
+    final hasOpenClawContext =
+        text.contains('openclaw') ||
+        text.contains('gateway') ||
+        text.contains('127.0.0.1') ||
+        text.contains('localhost') ||
+        text.contains('18789');
+    if (!hasOpenClawContext) {
+      return false;
+    }
+
+    return text.contains('econnrefused') ||
+        text.contains('connection refused') ||
+        text.contains('fetch failed') ||
+        text.contains('connect error') ||
+        text.contains('socket hang up') ||
+        text.contains('timeout') ||
+        text.contains('timed out') ||
+        text.contains('initializing') ||
+        text.contains('not ready') ||
+        text.contains('starting') ||
+        text.contains('restarting') ||
+        text.contains('初始化') ||
+        text.contains('启动中');
+  }
+
   String _buildConversationHistoryText(List<ChatMessageModel> messages) {
     final buffer = StringBuffer();
     for (final message in messages) {
@@ -1332,10 +1395,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     return buffer.toString().trim();
   }
 
-  String _runtimeKey({
-    required int conversationId,
-    required String mode,
-  }) {
+  String _runtimeKey({required int conversationId, required String mode}) {
     return '$mode:$conversationId';
   }
 }

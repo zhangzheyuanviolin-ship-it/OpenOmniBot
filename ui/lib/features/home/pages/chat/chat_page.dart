@@ -12,6 +12,7 @@ import '../../../../services/assists_core_service.dart';
 import '../../widgets/home_drawer.dart';
 import '../authorize/authorize_page_args.dart';
 import '../command_overlay/widgets/chat_input_area.dart';
+import '../command_overlay/constants/messages.dart';
 import '../common/openclaw_connection_checker.dart';
 import '../omnibot_workspace/widgets/omnibot_workspace_browser.dart';
 import 'services/chat_conversation_runtime_coordinator.dart';
@@ -204,6 +205,14 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   static const String _openClawGatewayTokenEnvRef =
       r'${OPENCLAW_GATEWAY_TOKEN}';
   static const String _openClawSessionKeyPrefix = 'openclaw';
+  static const Duration _openClawGatewayReadyTimeout = Duration(seconds: 70);
+  static const Duration _openClawGatewayReadyPollInterval = Duration(
+    milliseconds: 1200,
+  );
+  static const Duration _openClawGatewayInitToastCooldown = Duration(
+    seconds: 3,
+  );
+  DateTime? _lastOpenClawGatewayInitToastAt;
   int _workspaceSurfaceSeed = 0;
   bool _hasInitializedHalfScreen = false;
   bool _isCompanionModeEnabled = false;
