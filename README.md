@@ -1,19 +1,38 @@
-# OpenOmniBot
+<p align="center">
+  <picture>
+    <img alt="OpenOmniBot" src="docs/pic/OpenOmniBot.png" width="50%">
+  </picture>
+</p>
 
-> 那晚豆包和龙虾都喝多了...<br> 一个Android端真正可“执行”的Agent，而不仅仅是一个对话式聊天机器人
-
+<h3 align="center">
+那晚豆包和龙虾都喝多了...
+</h3>
+<p align="center">
+| 
+<a href="#-demo"><b>Demo</b></a> 
+| 
+<a href="#-快速开始"><b>Quick Start</b></a> 
+| 
+<a href="https://github.com/omnimind-ai/OpenOmniBot/releases"><b>Release</b></a> 
+|
+<a href="https://github.com/omnimind-ai/OmniInfer-LLM/issues"><b>Issues</b></a> 
+|
+</p>
 
 ## ✨ 项目简介
 OpenOmniBot 是一个基于 Android 原生与 Flutter 混合架构的智能机器人助手应用。
-与传统 AI App 不同，它关注的是：**从理解 → 决策 → 执行 → 反馈的完整闭环**。
+与传统 AI App 不同，它关注的是：**从理解 → 决策 → 执行 → 反馈的完整闭环**, 是一个 Android 端真正可“执行”的 Agent。
 
-## 当前已具备的核心能力包括：
+## 🧠 核心能力：
 
-- 🧠 **统一 Agent 入口**：根据用户意图自动决定「直接回答」或「调用工具执行」或 「使用Skill」
-- 🧩 **工具生态扩展**：Termux，浏览器、MCP、OpenClaw、安卓系统工具...
-- 📱 **手机任务自动化**：支持用视觉模型操作手机界面，结合无障碍、截图、状态机完成跨 App 的自动点击、输入、滚动、流程执行。
+- 🧩 **工具生态扩展**：Ubuntu，原生手机端OpenClaw、浏览器、MCP、安卓系统工具...
+
+- 📱 **手机任务自动化**：支持用视觉模型操作手机界面。
+
 - ⏰ **系统级能力**：支持定时任务、闹钟提醒、日历事件创建/查询/修改。
-- 🧬 **记忆系统**：有“本地记忆”和“Mem0 云端长期记忆”，可以查看、编辑、删除，并用于个性化建议和长期偏好沉淀。
+
+- 🧬 **记忆系统**：有“本地记忆”和“Mem0 云端长期记忆”。
+
 - 🔨 **生产力工具**：支持读写文件、浏览工作区、调用浏览器、调用终端。
 
 
@@ -33,7 +52,6 @@ OpenOmniBot/
 
 ### 环境要求
 
-- Android Studio (推荐最新版)
 - Flutter SDK (3.9.2+)
 - JDK 11+
 
@@ -58,13 +76,19 @@ cd ..
 在APP的设置页中配置：
 
 - 模型提供商
+
 - 场景模型配置
+
 - Mem0云记忆配置
+
 - MCP工具
-- Termux安装与配置
+
+- Ubuntu安装与配置
+
+- Openclaw安装与配置
 
 
-## 🧪 最小可运行示例
+## 🧪 Demo
 
 ### ✅ 示例 1：闹钟（Tool Calling）
 ```
@@ -87,7 +111,7 @@ cd ..
 <table align="center">
   <tr>
     <td align="center">
-      <img src="docs/pic/wechat_2026-3-21.jpg" alt="WeChat Group" width="220"/><br/>
+      <img src="docs/pic/wechat_2026-3-23.jpg" alt="WeChat Group" width="220"/><br/>
       <b>WeChat Group</b>
     </td>
   </tr>
