@@ -203,6 +203,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       'OMNIBOT_OPENCLAW_PROVIDER_API_KEY';
   static const String _openClawGatewayTokenEnvRef =
       r'${OPENCLAW_GATEWAY_TOKEN}';
+  static const String _openClawSessionKeyPrefix = 'openclaw';
   int _workspaceSurfaceSeed = 0;
   bool _hasInitializedHalfScreen = false;
   bool _isCompanionModeEnabled = false;
@@ -631,6 +632,14 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       mode: _modeKey(_activeMode),
       summary: summary,
     );
+  }
+
+  String _buildOpenClawSessionKey(int conversationId) {
+    final normalizedUserId = _openClawUserId.trim();
+    if (normalizedUserId.isNotEmpty) {
+      return '$_openClawSessionKeyPrefix:$normalizedUserId:conversation:$conversationId';
+    }
+    return '$_openClawSessionKeyPrefix:conversation:$conversationId';
   }
 
   String _openClawWaitingCardId(String taskId) => '$taskId-openclaw-waiting';

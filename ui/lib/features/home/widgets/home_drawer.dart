@@ -208,6 +208,14 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
   }
 
+  void _openNewConversation() {
+    Navigator.pop(context);
+    GoRouterManager.pushReplacement(
+      '/home/chat',
+      extra: ['new', DateTime.now().microsecondsSinceEpoch.toString()],
+    );
+  }
+
   Future<void> _triggerDeleteHaptic() async {
     try {
       final enabled = await CacheUtil.getBool(
@@ -557,16 +565,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                   const SizedBox(width: 12),
                   _buildIconActionButton(
                     iconPath: 'assets/home/chat_add_icon.svg',
-                    onTap: () {
-                      Navigator.pop(context);
-                      GoRouterManager.pushReplacement(
-                        '/home/chat',
-                        extra: [
-                          'new',
-                          DateTime.now().millisecondsSinceEpoch.toString(),
-                        ],
-                      );
-                    },
+                    onTap: _openNewConversation,
                   ),
                 ],
               ),
@@ -629,18 +628,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             ),
             const SizedBox(height: 12),
             GestureDetector(
-              onTap: () {
-                Navigator.pop(context);
-                // 使用 pushReplacement 替换当前页面，避免路由栈堆积
-                // 添加时间戳确保每次都是新的 Page 参数，触发 ChatPage 的 didUpdateWidget
-                GoRouterManager.pushReplacement(
-                  '/home/chat',
-                  extra: [
-                    'new',
-                    DateTime.now().millisecondsSinceEpoch.toString(),
-                  ],
-                );
-              },
+              onTap: _openNewConversation,
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,

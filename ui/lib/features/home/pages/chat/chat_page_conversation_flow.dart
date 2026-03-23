@@ -339,14 +339,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       handleAgentError('统一 Agent 已启用，旧聊天链路已移除，请检查配置后重试。');
       return;
     }
-    final history = buildConversationHistory();
-    final openClawConfig = {
-      'baseUrl': _openClawBaseUrl,
-      if (_openClawToken.isNotEmpty) 'token': _openClawToken,
-      if (_openClawUserId.isNotEmpty) 'userId': _openClawUserId,
-      if (_openClawUserId.isNotEmpty)
-        'sessionKey': 'openclaw:${_openClawUserId.trim()}',
-    };
     try {
       await _ensureActiveConversationReadyForStreaming();
     } catch (_) {
@@ -355,6 +347,20 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       }
       return;
     }
+    final conversationId = _currentConversationId;
+    if (conversationId == null) {
+      if (mounted) {
+        handleAgentError('Conversation setup failed. Please retry.');
+      }
+      return;
+    }
+    final history = buildConversationHistory();
+    final openClawConfig = {
+      'baseUrl': _openClawBaseUrl,
+      if (_openClawToken.isNotEmpty) 'token': _openClawToken,
+      if (_openClawUserId.isNotEmpty) 'userId': _openClawUserId,
+      'sessionKey': _buildOpenClawSessionKey(conversationId),
+    };
     _showOpenClawWaitingCard(aiMessageId);
     _syncRuntimeSnapshotForMode(_activeMode);
     _registerActiveTaskBinding(aiMessageId);
