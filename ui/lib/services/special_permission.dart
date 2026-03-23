@@ -187,6 +187,47 @@ class OpenClawDeploySnapshot {
   }
 }
 
+class OpenClawGatewayStatus {
+  const OpenClawGatewayStatus({
+    required this.installed,
+    required this.configured,
+    required this.autoStartEnabled,
+    required this.running,
+    required this.healthy,
+    required this.restarting,
+    required this.dashboardUrl,
+    required this.lastError,
+    required this.legacyConfigNeedsRedeploy,
+    required this.uptimeSeconds,
+  });
+
+  final bool installed;
+  final bool configured;
+  final bool autoStartEnabled;
+  final bool running;
+  final bool healthy;
+  final bool restarting;
+  final String? dashboardUrl;
+  final String? lastError;
+  final bool legacyConfigNeedsRedeploy;
+  final int? uptimeSeconds;
+
+  factory OpenClawGatewayStatus.fromMap(Map<dynamic, dynamic>? map) {
+    return OpenClawGatewayStatus(
+      installed: map?['installed'] == true,
+      configured: map?['configured'] == true,
+      autoStartEnabled: map?['autoStartEnabled'] == true,
+      running: map?['running'] == true,
+      healthy: map?['healthy'] == true,
+      restarting: map?['restarting'] == true,
+      dashboardUrl: (map?['dashboardUrl'] as String?)?.trim(),
+      lastError: (map?['lastError'] as String?)?.trim(),
+      legacyConfigNeedsRedeploy: map?['legacyConfigNeedsRedeploy'] == true,
+      uptimeSeconds: (map?['uptimeSeconds'] as num?)?.toInt(),
+    );
+  }
+}
+
 Stream<EmbeddedTerminalInitProgress> get embeddedTerminalInitProgressStream {
   return _specialPermissionEvents.receiveBroadcastStream().map((event) {
     final payload = event is Map
@@ -225,6 +266,33 @@ Future<OpenClawDeploySnapshot> getOpenClawDeploySnapshot() async {
     'getOpenClawDeploySnapshot',
   );
   return OpenClawDeploySnapshot.fromMap(result ?? const {});
+}
+
+Future<OpenClawGatewayStatus> getOpenClawGatewayStatus() async {
+  final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
+    'getOpenClawGatewayStatus',
+  );
+  return OpenClawGatewayStatus.fromMap(result ?? const {});
+}
+
+Future<void> setOpenClawGatewayAutoStart(bool enabled) async {
+  await spePermission.invokeMethod<void>('setOpenClawGatewayAutoStart', {
+    'enabled': enabled,
+  });
+}
+
+Future<void> startOpenClawGateway({bool forceRestart = false}) async {
+  await spePermission.invokeMethod<void>('startOpenClawGateway', {
+    'forceRestart': forceRestart,
+  });
+}
+
+Future<void> stopOpenClawGateway() async {
+  await spePermission.invokeMethod<void>('stopOpenClawGateway');
+}
+
+Future<void> openNativeTerminal() async {
+  await spePermission.invokeMethod<void>('openNativeTerminal');
 }
 
 /// 检查无障碍权限，如果没有权限则弹出授权对话框

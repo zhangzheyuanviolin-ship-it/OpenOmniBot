@@ -302,11 +302,6 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
     if (authMode != 'token') {
       return 'gateway.auth.mode 必须保持为 token';
     }
-    final tokenValue = (auth['token'] ?? '').toString().trim();
-    if (tokenValue != _ChatPageStateBase._openClawGatewayTokenEnvRef) {
-      return 'gateway.auth.token 必须保持为 '
-          '${_ChatPageStateBase._openClawGatewayTokenEnvRef}';
-    }
     return null;
   }
 
@@ -434,6 +429,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
       setState(() {
         _openClawDeployRuntimeStatus = null;
         _openClawDeploySnapshot = null;
+        _openClawGatewayStatus = null;
         _isLoadingOpenClawDeployStatus = false;
       });
       return;
@@ -446,6 +442,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
     }
     EmbeddedTerminalRuntimeStatus? runtimeStatus;
     OpenClawDeploySnapshot? snapshot;
+    OpenClawGatewayStatus? gatewayStatus;
     try {
       runtimeStatus = await getEmbeddedTerminalRuntimeStatus();
     } catch (_) {
@@ -456,10 +453,16 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
     } catch (_) {
       snapshot = _openClawDeploySnapshot;
     }
+    try {
+      gatewayStatus = await getOpenClawGatewayStatus();
+    } catch (_) {
+      gatewayStatus = _openClawGatewayStatus;
+    }
     if (!mounted) return;
     setState(() {
       _openClawDeployRuntimeStatus = runtimeStatus;
       _openClawDeploySnapshot = snapshot;
+      _openClawGatewayStatus = gatewayStatus;
       _isLoadingOpenClawDeployStatus = false;
     });
     final panelState = _buildOpenClawDeployPanelState();
@@ -520,8 +523,21 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
     }
     _hasHandledOpenClawDeployCompletion = true;
     if (snapshot.success == true) {
-      final baseUrl = (snapshot.gatewayBaseUrl ?? '').trim();
-      final token = (snapshot.gatewayToken ?? '').trim();
+      var baseUrl = (snapshot.gatewayBaseUrl ?? '').trim();
+      var token = (snapshot.gatewayToken ?? '').trim();
+      if ((baseUrl.isEmpty || token.isEmpty) &&
+          (_openClawGatewayStatus?.dashboardUrl?.isNotEmpty ?? false)) {
+        final dashboardUrl = _openClawGatewayStatus!.dashboardUrl!;
+        final uri = Uri.tryParse(dashboardUrl);
+        final fragment = uri?.fragment ?? '';
+        final fragmentToken = RegExp(
+          r'(?:^|&)token=([^&]+)',
+        ).firstMatch(fragment)?.group(1)?.trim();
+        token = token.isNotEmpty ? token : (fragmentToken ?? '');
+        baseUrl = baseUrl.isNotEmpty
+            ? baseUrl
+            : (_openClawGatewayStatus!.dashboardUrl!.split('/#').first.trim());
+      }
       if (baseUrl.isEmpty || token.isEmpty) {
         if (mounted) {
           _showSnackBar('OpenClaw 部署已完成，但缺少回连参数');
@@ -1005,15 +1021,29 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'API key 与 Gateway token 会通过环境变量注入，不直接明文写入配置文件。',
-              style: TextStyle(
+            Text(
+              _openClawGatewayStatus?.legacyConfigNeedsRedeploy == true
+                  ? '检测到旧版部署痕迹，本次部署会写入真实 gateway token，并把 Provider API key 保存到原生安全存储。'
+                  : 'Provider API key 会保存到原生安全存储，部署时会把真实 gateway token 归一化写入配置。',
+              style: const TextStyle(
                 fontSize: 11,
                 color: Color(0xFF64748B),
                 fontWeight: FontWeight.w500,
                 height: 1.45,
               ),
             ),
+            if ((_openClawGatewayStatus?.lastError ?? '').isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                _openClawGatewayStatus!.lastError!,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFFB34A40),
+                  fontWeight: FontWeight.w600,
+                  height: 1.45,
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Container(
               width: double.infinity,

@@ -2,9 +2,6 @@ package cn.com.omnimind.bot.openclaw
 
 import android.content.Context
 import cn.com.omnimind.baselib.util.OmniLog
-import cn.com.omnimind.bot.termux.TermuxCommandResult
-import cn.com.omnimind.bot.termux.TermuxCommandRunner
-import cn.com.omnimind.bot.termux.TermuxCommandSpec
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -12,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 import java.security.SecureRandom
 
 class OpenClawDeployManager(
@@ -74,47 +72,14 @@ class OpenClawDeployManager(
 
     private companion object {
         private const val TAG = "OpenClawDeployManager"
-        private const val LOOPBACK_BASE_URL = "http://127.0.0.1:18789"
-        private const val MAX_LOG_LINES = 160
+        private const val MAX_LOG_LINES = 200
         private const val DEFAULT_COMMAND_TIMEOUT_SECONDS = 15 * 60
-        private const val HEALTH_TIMEOUT_SECONDS = 75
-        private const val NODE_BYPASS_PATH = "/root/.openclaw/bionic-bypass.js"
-        private const val OPENCLAW_CONFIG_PATH = "/root/.openclaw/openclaw.json"
-        private const val OPENCLAW_WORKSPACE_PATH = "/root/.openclaw/workspace"
-        private const val OPENCLAW_LOG_PATH = "/root/openclaw.log"
-        private const val PROVIDER_API_KEY_ENV = "OMNIBOT_OPENCLAW_PROVIDER_API_KEY"
-        private const val GATEWAY_TOKEN_ENV = "OPENCLAW_GATEWAY_TOKEN"
-        private const val GATEWAY_TOKEN_ENV_REF = "${'$'}{OPENCLAW_GATEWAY_TOKEN}"
-
+        private const val HEALTH_TIMEOUT_MS = 75_000L
         private val secureRandom = SecureRandom()
-
-        private val bypassScript = """
-            const os = require('os');
-            const originalNetworkInterfaces = os.networkInterfaces;
-
-            os.networkInterfaces = function() {
-              try {
-                const interfaces = originalNetworkInterfaces.call(os);
-                if (interfaces && Object.keys(interfaces).length > 0) {
-                  return interfaces;
-                }
-              } catch (e) {}
-
-              return {
-                lo: [{
-                  address: '127.0.0.1',
-                  netmask: '255.0.0.0',
-                  family: 'IPv4',
-                  mac: '00:00:00:00:00:00',
-                  internal: true,
-                  cidr: '127.0.0.1/8'
-                }]
-              };
-            };
-        """.trimIndent()
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val installRunner = OpenClawInstallCommandRunner(context)
     private val lock = Any()
     private var state = DeployState()
 
@@ -195,64 +160,99 @@ class OpenClawDeployManager(
             }
 
             val gatewayToken = generateGatewayToken()
-            val commandContext = buildCommandContext(request, gatewayToken)
+            val normalizedConfigJson = OpenClawRuntimeSupport.normalizeConfigJson(
+                request.configJson,
+                gatewayToken
+            )
 
             updateState(
-                progress = 0.08,
-                stage = "检查 Node.js",
+                progress = 0.06,
+                stage = "预检运行环境",
                 appendLines = listOf(
                     "[系统] 将使用模型 ${request.modelId}",
                     "[系统] Provider: ${request.providerBaseUrl}"
                 )
             )
+
+            updateState(
+                progress = 0.12,
+                stage = "写入兼容补丁",
+                appendLines = listOf("[阶段] 写入 Android / proot 兼容脚本")
+            )
+            OpenClawRuntimeSupport.ensureRuntimeFiles(context)
+            OpenClawRuntimeSupport.saveProviderApiKey(context, request.providerApiKey)
+            OpenClawRuntimeSupport.persistGatewayToken(context, gatewayToken)
+            updateState(appendLines = listOf("[完成] 兼容脚本与安全存储已就绪"))
+
+            val currentNodeMajor = probeNodeMajorVersion()
+            val nodeLayoutNeedsRepair = OpenClawRuntimeSupport.nodeLayoutNeedsRepair(context)
+            var nodeTarballPath = ""
+            if (currentNodeMajor < OpenClawRuntimeSupport.TARGET_NODE_MAJOR || nodeLayoutNeedsRepair) {
+                updateState(
+                    progress = 0.18,
+                    stage = "下载 Node.js",
+                    appendLines = listOf(
+                        if (nodeLayoutNeedsRepair) {
+                            "[阶段] 检测到 Node.js 安装布局异常，准备下载官方 arm64 tarball 进行修复"
+                        } else {
+                            "[阶段] Node.js 版本过低，准备下载官方 arm64 tarball"
+                        }
+                    )
+                )
+                val tarball = OpenClawRuntimeSupport.downloadNodeTarball(context)
+                nodeTarballPath = tarball.absolutePath
+                updateState(
+                    appendLines = listOf("[完成] Node.js tarball 已就绪：${tarball.name}")
+                )
+            } else {
+                updateState(
+                    appendLines = listOf("[系统] 已检测到 Node.js $currentNodeMajor，跳过下载")
+                )
+            }
+
             executeStep(
-                stage = "检查 Node.js",
-                progress = 0.16,
-                command = commandContext.nodeSetupCommand,
+                stage = "安装或修复 Node.js",
+                progress = 0.32,
+                command = buildNodeSetupCommand(nodeTarballPath),
                 timeoutSeconds = DEFAULT_COMMAND_TIMEOUT_SECONDS
             )
 
             executeStep(
                 stage = "安装 OpenClaw CLI",
-                progress = 0.32,
-                command = commandContext.installOpenClawCommand,
+                progress = 0.50,
+                command = buildInstallOpenClawCommand(),
                 timeoutSeconds = DEFAULT_COMMAND_TIMEOUT_SECONDS
             )
 
-            executeStep(
-                stage = "写入 Android 兼容补丁",
-                progress = 0.48,
-                command = commandContext.configureBypassCommand,
-                timeoutSeconds = 120
+            if (!OpenClawRuntimeSupport.ensureOpenClawWrapper(context)) {
+                throw IllegalStateException("OpenClaw CLI 安装完成后未能修复 /usr/local/bin/openclaw")
+            }
+            updateState(
+                progress = 0.56,
+                stage = "修复 CLI 入口",
+                appendLines = listOf("[完成] /usr/local/bin/openclaw 已校验")
             )
 
-            executeStep(
-                stage = "写入 OpenClaw 配置",
-                progress = 0.66,
-                command = commandContext.writeConfigCommand,
-                timeoutSeconds = 120
-            )
+            writeConfigWithFallback(normalizedConfigJson)
 
             executeStep(
                 stage = "校验 OpenClaw 配置",
                 progress = 0.74,
-                command = commandContext.validateConfigCommand,
+                command = buildValidateConfigCommand(request.providerApiKey),
                 timeoutSeconds = DEFAULT_COMMAND_TIMEOUT_SECONDS
             )
 
-            executeStep(
+            updateState(
+                progress = 0.84,
                 stage = "启动 Gateway",
-                progress = 0.82,
-                command = commandContext.launchGatewayCommand,
-                timeoutSeconds = 120
+                appendLines = listOf("[阶段] 正在交给原生 GatewayService 接管运行")
             )
-
-            executeStep(
-                stage = "验证本机 Gateway",
-                progress = 0.92,
-                command = commandContext.healthCheckCommand,
-                timeoutSeconds = HEALTH_TIMEOUT_SECONDS
-            )
+            OpenClawGatewayManager.startGateway(context, forceRestart = true)
+            val healthy = OpenClawGatewayManager.awaitHealthy(context, HEALTH_TIMEOUT_MS)
+            if (!healthy) {
+                val gatewayStatus = OpenClawGatewayManager.getGatewayStatus(context)
+                throw IllegalStateException(gatewayStatus.lastError ?: "Gateway 健康检查超时")
+            }
 
             synchronized(lock) {
                 state = state.copy(
@@ -263,9 +263,9 @@ class OpenClawDeployManager(
                     stage = "部署完成",
                     logLines = appendLinesLocked(
                         state.logLines,
-                        listOf("[成功] OpenClaw 已部署并通过本机健康检查。")
+                        listOf("[成功] OpenClaw 已部署完成，Gateway 运行正常。")
                     ),
-                    gatewayBaseUrl = LOOPBACK_BASE_URL,
+                    gatewayBaseUrl = OpenClawRuntimeSupport.LOOPBACK_BASE_URL,
                     gatewayToken = gatewayToken,
                     errorMessage = null
                 )
@@ -293,8 +293,12 @@ class OpenClawDeployManager(
         )
         val result = executeCommand(command, timeoutSeconds)
         if (!result.success) {
-            val output = (result.stderr.ifBlank { result.stdout.ifBlank { result.errorMessage.orEmpty() } }).trim()
-            val errorText = if (output.isNotBlank()) output else "执行失败，exit=${result.resultCode ?: result.errorCode ?: -1}"
+            val output = result.output.ifBlank { result.errorMessage.orEmpty() }.trim()
+            val errorText = if (output.isNotBlank()) {
+                output
+            } else {
+                "执行失败，exit=${result.exitCode ?: -1}"
+            }
             throw IllegalStateException(errorText)
         }
         updateState(appendLines = listOf("[完成] $stage"))
@@ -303,22 +307,182 @@ class OpenClawDeployManager(
     private suspend fun executeCommand(
         command: String,
         timeoutSeconds: Int
-    ): TermuxCommandResult {
-        return TermuxCommandRunner.execute(
-            context = context,
-            spec = TermuxCommandSpec(
-                command = command,
-                executionMode = TermuxCommandSpec.EXECUTION_MODE_PROOT,
-                prootDistro = TermuxCommandSpec.DEFAULT_PROOT_DISTRO,
-                workingDirectory = "/root",
-                timeoutSeconds = timeoutSeconds
-            ),
-            onLiveUpdate = { update ->
-                if (update.outputDelta.isNotBlank()) {
-                    appendLogChunk(update.outputDelta)
-                }
-            }
+    ): OpenClawInstallCommandRunner.Result {
+        return installRunner.execute(
+            command = command,
+            timeoutSeconds = timeoutSeconds,
+            onOutputChunk = ::appendLogChunk
         )
+    }
+
+    private suspend fun writeConfigWithFallback(normalizedConfigJson: String) {
+        updateState(
+            progress = 0.62,
+            stage = "写入 OpenClaw 配置",
+            appendLines = listOf("[阶段] 正在写入 openclaw.json")
+        )
+        val result = executeCommand(
+            buildWriteConfigCommand(normalizedConfigJson),
+            timeoutSeconds = 120
+        )
+        if (result.success) {
+            updateState(appendLines = listOf("[完成] OpenClaw 配置已通过 Ubuntu 内写入"))
+            return
+        }
+        val fallbackFile = OpenClawRuntimeSupport.openClawConfigHostFile(context)
+        fallbackFile.parentFile?.mkdirs()
+        fallbackFile.writeText(normalizedConfigJson)
+        updateState(
+            appendLines = listOf(
+                "[系统] Ubuntu 内写入失败，已自动切换为 rootfs 直写兜底。",
+                "[完成] openclaw.json 已写入 ${fallbackFile.absolutePath}"
+            )
+        )
+    }
+
+    private suspend fun probeNodeMajorVersion(): Int {
+        val result = executeCommand(
+            """
+            if command -v node >/dev/null 2>&1; then
+              node -p "parseInt(process.versions.node.split('.')[0], 10)" 2>/dev/null || echo 0
+            else
+              echo 0
+            fi
+            """.trimIndent(),
+            timeoutSeconds = 20
+        )
+        if (!result.success) {
+            return 0
+        }
+        return result.output
+            .lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.matches(Regex("""\d+""")) }
+            ?.toIntOrNull()
+            ?: 0
+    }
+
+    private fun buildNodeSetupCommand(nodeTarballPath: String): String {
+        val quotedTarballPath = quoteShell(nodeTarballPath)
+        return """
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y ca-certificates curl procps psmisc xz-utils
+
+            NODE_MAJOR=0
+            if command -v node >/dev/null 2>&1; then
+              NODE_MAJOR=$(node -p "parseInt(process.versions.node.split('.')[0], 10)" 2>/dev/null || echo 0)
+            fi
+            NODE_LAYOUT_OK=1
+            if [ -L /usr/local/lib/node_modules ] || [ ! -f /usr/local/lib/node_modules/npm/bin/npm-cli.js ]; then
+              NODE_LAYOUT_OK=0
+            fi
+
+            if [ "${'$'}NODE_MAJOR" -lt ${OpenClawRuntimeSupport.TARGET_NODE_MAJOR} ] || [ "${'$'}NODE_LAYOUT_OK" -ne 1 ]; then
+              NODE_TARBALL=$quotedTarballPath
+              if [ ! -f "${'$'}NODE_TARBALL" ]; then
+                echo "Node.js tarball missing: ${'$'}NODE_TARBALL" >&2
+                exit 1
+              fi
+              if [ -L /usr/local/lib/node_modules ]; then
+                rm -f /usr/local/lib/node_modules
+              fi
+              rm -f /usr/local/bin/node /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+              TMP_NODE_DIR=$(mktemp -d)
+              tar -xJf "${'$'}NODE_TARBALL" -C "${'$'}TMP_NODE_DIR"
+              NODE_EXTRACTED_DIR="${'$'}TMP_NODE_DIR/node-v${OpenClawRuntimeSupport.TARGET_NODE_VERSION}-linux-arm64"
+              if [ ! -d "${'$'}NODE_EXTRACTED_DIR" ]; then
+                echo "Node.js extraction layout unexpected: ${'$'}NODE_EXTRACTED_DIR" >&2
+                rm -rf "${'$'}TMP_NODE_DIR"
+                exit 1
+              fi
+              mkdir -p /usr/local
+              cp -a "${'$'}NODE_EXTRACTED_DIR"/. /usr/local/
+              rm -rf "${'$'}TMP_NODE_DIR"
+            fi
+
+            NPM_CLI=""
+            for candidate in \
+              /usr/local/lib/node_modules/npm/bin/npm-cli.js \
+              /usr/share/nodejs/npm/bin/npm-cli.js; do
+              if [ -f "${'$'}candidate" ]; then
+                NPM_CLI="${'$'}candidate"
+                break
+              fi
+            done
+
+            node --version
+            if [ -n "${'$'}NPM_CLI" ]; then
+              node /root/.openclaw/node-wrapper.js "${'$'}NPM_CLI" --version
+            else
+              npm --version
+            fi
+        """.trimIndent()
+    }
+
+    private fun buildInstallOpenClawCommand(): String {
+        return """
+            set -euo pipefail
+            mkdir -p /root/.openclaw /root/.openclaw/workspace
+            mkdir -p /root/.npm /root/.config /root/.cache /root/.local/share
+            mkdir -p /tmp/npm-cache/_cacache/tmp /tmp/npm-cache/_cacache/content-v2 /tmp/npm-cache/_cacache/index-v5 /tmp/npm-cache/_logs
+            mkdir -p /usr/local/lib/node_modules /usr/local/bin
+            if command -v openclaw >/dev/null 2>&1 && [ -f /usr/local/lib/node_modules/openclaw/package.json ]; then
+              echo "openclaw already installed: $(command -v openclaw)"
+              openclaw --version || true
+              exit 0
+            fi
+
+            mkdir -p /tmp/npm-cache
+            export npm_config_cache=/tmp/npm-cache
+            export npm_config_prefix=/usr/local
+
+            NPM_CLI=""
+            for candidate in \
+              /usr/local/lib/node_modules/npm/bin/npm-cli.js \
+              /usr/share/nodejs/npm/bin/npm-cli.js; do
+              if [ -f "${'$'}candidate" ]; then
+                NPM_CLI="${'$'}candidate"
+                break
+              fi
+            done
+
+            if [ -z "${'$'}NPM_CLI" ]; then
+              echo "Unable to locate npm-cli.js after Node.js setup; refusing to run bare npm inside proot." >&2
+              exit 1
+            fi
+
+            echo "Using npm CLI: ${'$'}NPM_CLI"
+            node /root/.openclaw/node-wrapper.js "${'$'}NPM_CLI" install -g --unsafe-perm openclaw
+
+            echo "openclaw installed"
+            openclaw --version || true
+        """.trimIndent()
+    }
+
+    private fun buildWriteConfigCommand(normalizedConfigJson: String): String {
+        return listOf(
+            "set -euo pipefail",
+            "mkdir -p /root/.openclaw",
+            "mkdir -p /root/.openclaw/workspace",
+            "cat > ${OpenClawRuntimeSupport.OPENCLAW_CONFIG_PATH} <<'EOF'",
+            normalizedConfigJson,
+            "EOF",
+            "test -s ${OpenClawRuntimeSupport.OPENCLAW_CONFIG_PATH}",
+            "echo \"openclaw config written\""
+        ).joinToString("\n")
+    }
+
+    private fun buildValidateConfigCommand(providerApiKey: String): String {
+        val quotedApiKey = quoteShell(providerApiKey)
+        return """
+            set -euo pipefail
+            export NODE_OPTIONS="--require /root/.openclaw/bionic-bypass.js"
+            export ${OpenClawRuntimeSupport.PROVIDER_API_KEY_ENV}=$quotedApiKey
+            openclaw config validate
+            echo "openclaw config validated"
+        """.trimIndent()
     }
 
     private fun updateState(
@@ -352,9 +516,7 @@ class OpenClawDeployManager(
             return
         }
         synchronized(lock) {
-            state = state.copy(
-                logLines = appendLinesLocked(state.logLines, lines)
-            )
+            state = state.copy(logLines = appendLinesLocked(state.logLines, lines))
         }
     }
 
@@ -383,168 +545,7 @@ class OpenClawDeployManager(
         }
     }
 
-    private fun buildCommandContext(
-        request: DeployRequest,
-        gatewayToken: String
-    ): CommandContext {
-        val quotedApiKey = quoteShell(request.providerApiKey)
-        val quotedGatewayToken = quoteShell(gatewayToken)
-        val quotedBypassPath = quoteShell(NODE_BYPASS_PATH)
-        val quotedConfigPath = quoteShell(OPENCLAW_CONFIG_PATH)
-        val quotedWorkspacePath = quoteShell(OPENCLAW_WORKSPACE_PATH)
-        val configJson = request.configJson.trim()
-
-        val nodeSetupCommand = """
-            set -euo pipefail
-            export DEBIAN_FRONTEND=noninteractive
-            if ! command -v pkill >/dev/null 2>&1 || ! command -v fuser >/dev/null 2>&1; then
-              apt-get update
-              apt-get install -y procps psmisc
-            fi
-            NODE_MAJOR=0
-            if command -v node >/dev/null 2>&1; then
-              NODE_MAJOR=$(node -p "parseInt(process.versions.node.split('.')[0], 10)" 2>/dev/null || echo 0)
-            fi
-            if [ "${'$'}NODE_MAJOR" -ge 22 ]; then
-              echo "Node.js already ready: $(node -v)"
-              exit 0
-            fi
-            apt-get update
-            apt-get install -y ca-certificates curl gnupg procps psmisc
-            curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-            apt-get install -y nodejs
-            echo "Node.js installed: $(node -v)"
-            echo "npm installed: $(npm -v)"
-        """.trimIndent()
-
-        val installOpenClawCommand = """
-            set -euo pipefail
-            if command -v openclaw >/dev/null 2>&1; then
-              echo "openclaw already installed: $(command -v openclaw)"
-              openclaw --version || true
-              exit 0
-            fi
-            npm install -g openclaw
-            echo "openclaw installed: $(command -v openclaw)"
-            openclaw --version || true
-        """.trimIndent()
-
-        val configureBypassCommand = listOf(
-            "set -euo pipefail",
-            "mkdir -p /root/.openclaw",
-            "cat > $quotedBypassPath <<'EOF'",
-            bypassScript,
-            "EOF",
-            "touch /root/.bashrc",
-            "if ! grep -Fqx 'export NODE_OPTIONS=\"--require /root/.openclaw/bionic-bypass.js\"' /root/.bashrc; then",
-            "  printf '\\n%s\\n' 'export NODE_OPTIONS=\"--require /root/.openclaw/bionic-bypass.js\"' >> /root/.bashrc",
-            "fi",
-            "echo \"bionic bypass configured\""
-        ).joinToString("\n")
-
-        val writeConfigCommand = listOf(
-            "set -euo pipefail",
-            "mkdir -p /root/.openclaw",
-            "mkdir -p $quotedWorkspacePath",
-            "cat > $quotedConfigPath <<'EOF'",
-            configJson,
-            "EOF",
-            "echo \"openclaw config written: $OPENCLAW_CONFIG_PATH\""
-        ).joinToString("\n")
-
-        val validateConfigCommand = """
-            set -euo pipefail
-            export NODE_OPTIONS="--require /root/.openclaw/bionic-bypass.js"
-            export $PROVIDER_API_KEY_ENV=$quotedApiKey
-            export $GATEWAY_TOKEN_ENV=$quotedGatewayToken
-            openclaw config validate
-            echo "openclaw config validated"
-        """.trimIndent()
-
-        val launchGatewayCommand = """
-            set -euo pipefail
-            if command -v pkill >/dev/null 2>&1; then
-              pkill -f "openclaw gateway" || true
-            else
-              EXISTING_PIDS=$(ps -eo pid,args | awk '/[o]penclaw gateway/ {print $1}')
-              if [ -n "${'$'}EXISTING_PIDS" ]; then
-                echo "${'$'}EXISTING_PIDS" | xargs kill || true
-              fi
-            fi
-            if command -v fuser >/dev/null 2>&1; then
-              fuser -k 18789/tcp >/dev/null 2>&1 || true
-            fi
-            rm -f $OPENCLAW_LOG_PATH
-            export NODE_OPTIONS="--require /root/.openclaw/bionic-bypass.js"
-            export $PROVIDER_API_KEY_ENV=$quotedApiKey
-            export $GATEWAY_TOKEN_ENV=$quotedGatewayToken
-            nohup openclaw gateway run --port 18789 > $OPENCLAW_LOG_PATH 2>&1 &
-            GATEWAY_PID=${'$'}!
-            sleep 2
-            if ! kill -0 "${'$'}GATEWAY_PID" 2>/dev/null; then
-              echo "gateway exited early"
-              tail -n 60 $OPENCLAW_LOG_PATH || true
-              exit 1
-            fi
-            echo "gateway started in background: ${'$'}GATEWAY_PID"
-        """.trimIndent()
-
-        val healthCheckCommand = listOf(
-            "set -euo pipefail",
-            "if python3 - <<'PY'",
-            "import socket",
-            "import sys",
-            "import time",
-            "",
-            "deadline = time.time() + 60",
-            "attempt = 0",
-            "last_error = None",
-            "while time.time() < deadline:",
-            "    attempt += 1",
-            "    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)",
-            "    sock.settimeout(2.0)",
-            "    try:",
-            "        sock.connect(('127.0.0.1', 18789))",
-            "        print(f'gateway tcp probe ok on attempt {attempt}')",
-            "        sys.exit(0)",
-            "    except Exception as exc:",
-            "        last_error = exc",
-            "        print(f'gateway tcp probe retry {attempt}: {exc}')",
-            "        time.sleep(3)",
-            "    finally:",
-            "        try:",
-            "            sock.close()",
-            "        except Exception:",
-            "            pass",
-            "",
-            "print(f'gateway tcp probe failed: {last_error}', file=sys.stderr)",
-            "sys.exit(1)",
-            "PY",
-            "then",
-            "  echo \"gateway tcp probe completed\"",
-            "else",
-            "  status=${'$'}?",
-            "  echo \"Gateway tcp probe failed\"",
-            "  tail -n 40 $OPENCLAW_LOG_PATH || true",
-            "  exit \"${'$'}status\"",
-            "fi"
-        ).joinToString("\n")
-
-        return CommandContext(
-            nodeSetupCommand = nodeSetupCommand,
-            installOpenClawCommand = installOpenClawCommand,
-            configureBypassCommand = configureBypassCommand,
-            writeConfigCommand = writeConfigCommand,
-            validateConfigCommand = validateConfigCommand,
-            launchGatewayCommand = launchGatewayCommand,
-            healthCheckCommand = healthCheckCommand
-        )
-    }
-
-    private fun appendLinesLocked(
-        current: List<String>,
-        incoming: List<String>
-    ): List<String> {
+    private fun appendLinesLocked(current: List<String>, incoming: List<String>): List<String> {
         if (incoming.isEmpty()) {
             return current
         }
@@ -580,10 +581,6 @@ class OpenClawDeployManager(
             ?: throw IllegalArgumentException("configJson 缺少 gateway.auth 配置")
         val authMode = auth.optString("mode").trim()
         require(authMode == "token") { "gateway.auth.mode 必须保持为 token" }
-        val token = auth.optString("token").trim()
-        require(token == GATEWAY_TOKEN_ENV_REF) {
-            "gateway.auth.token 必须保持为 $GATEWAY_TOKEN_ENV_REF"
-        }
     }
 
     private fun generateGatewayToken(): String {
@@ -593,14 +590,4 @@ class OpenClawDeployManager(
             bytes.forEach { append("%02x".format(it)) }
         }
     }
-
-    private data class CommandContext(
-        val nodeSetupCommand: String,
-        val installOpenClawCommand: String,
-        val configureBypassCommand: String,
-        val writeConfigCommand: String,
-        val validateConfigCommand: String,
-        val launchGatewayCommand: String,
-        val healthCheckCommand: String
-    )
 }

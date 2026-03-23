@@ -105,6 +105,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _isLoadingOpenClawDeployStatus = false;
   EmbeddedTerminalRuntimeStatus? _openClawDeployRuntimeStatus;
   OpenClawDeploySnapshot? _openClawDeploySnapshot;
+  OpenClawGatewayStatus? _openClawGatewayStatus;
   Timer? _openClawDeploySnapshotPoller;
   bool _hasHandledOpenClawDeployCompletion = false;
   bool _openClawDeployConfigTouched = false;

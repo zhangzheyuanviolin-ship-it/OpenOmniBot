@@ -12,6 +12,7 @@ import 'package:ui/utils/ui.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/features/memory/services/mem0_memory_service.dart';
+import 'package:ui/services/special_permission.dart';
 
 /// 首页侧边栏
 class HomeDrawer extends ConsumerStatefulWidget {
@@ -251,13 +252,24 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                     _buildMenuItem(
                       icon: 'assets/home/task_record_icon.svg',
                       title: '任务记录',
-                      onTap: () => GoRouterManager.push('/task/execution_history'),
+                      onTap: () =>
+                          GoRouterManager.push('/task/execution_history'),
                     ),
 
                     _buildMenuItem(
                       icon: 'assets/common/schedule_icon.svg',
                       title: '定时',
-                      onTap: () => GoRouterManager.push('/task/scheduled_tasks'),
+                      onTap: () =>
+                          GoRouterManager.push('/task/scheduled_tasks'),
+                    ),
+
+                    _buildMenuItem(
+                      icon: 'assets/home/termux.svg',
+                      title: '终端',
+                      onTap: () {
+                        Navigator.pop(context);
+                        unawaited(openNativeTerminal());
+                      },
                     ),
 
                     const SizedBox(height: 16),
@@ -726,7 +738,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         ..removeAt(originalIndex);
     });
 
-    final deleted = await ConversationService.deleteConversation(conversation.id);
+    final deleted = await ConversationService.deleteConversation(
+      conversation.id,
+    );
     if (!mounted) {
       return;
     }

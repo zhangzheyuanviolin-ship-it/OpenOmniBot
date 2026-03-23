@@ -28,6 +28,11 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
 
   bool _isPreparingWrapper = false;
   bool _isOpeningWorkspaceStorageSettings = false;
+  bool _isLoadingGatewayStatus = true;
+  bool _isUpdatingGatewayAutoStart = false;
+  bool _isStartingGateway = false;
+  bool _isStoppingGateway = false;
+  bool _isOpeningNativeTerminal = false;
 
   String? _wrapperMessage;
   bool? _wrapperReady;
@@ -36,6 +41,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   final List<String> _prepareLogLines = <String>[];
   late final ScrollController _prepareLogScrollController;
   Timer? _prepareSnapshotPoller;
+  OpenClawGatewayStatus? _gatewayStatus;
 
   bool get _isFullyReady {
     return _isDeviceSupported && _isRuntimeReady && _isBasePackagesReady;
@@ -76,10 +82,16 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
 
     setState(() {
       _isLoadingStatus = true;
+      _isLoadingGatewayStatus = true;
     });
 
     try {
-      final status = await getEmbeddedTerminalRuntimeStatus();
+      final results = await Future.wait<dynamic>([
+        getEmbeddedTerminalRuntimeStatus(),
+        getOpenClawGatewayStatus(),
+      ]);
+      final status = results[0] as EmbeddedTerminalRuntimeStatus;
+      final gatewayStatus = results[1] as OpenClawGatewayStatus;
       if (!mounted) {
         return;
       }
@@ -91,11 +103,19 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _missingCommands = status.missingCommands;
         _runtimeStatusMessage = status.message;
         _wrapperReady = status.allReady;
+        _gatewayStatus = gatewayStatus;
         _isLoadingStatus = false;
+        _isLoadingGatewayStatus = false;
       });
     } on PlatformException {
       final supported = await isTermuxInstalled();
       final workspaceStorageGranted = await isWorkspaceStorageAccessGranted();
+      OpenClawGatewayStatus? gatewayStatus;
+      try {
+        gatewayStatus = await getOpenClawGatewayStatus();
+      } catch (_) {
+        gatewayStatus = null;
+      }
       if (!mounted) {
         return;
       }
@@ -108,10 +128,18 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _runtimeStatusMessage = '状态探测失败，请尝试初始化。';
         _wrapperReady = false;
         _isLoadingStatus = false;
+        _gatewayStatus = gatewayStatus;
+        _isLoadingGatewayStatus = false;
       });
     } catch (_) {
       final supported = await isTermuxInstalled();
       final workspaceStorageGranted = await isWorkspaceStorageAccessGranted();
+      OpenClawGatewayStatus? gatewayStatus;
+      try {
+        gatewayStatus = await getOpenClawGatewayStatus();
+      } catch (_) {
+        gatewayStatus = null;
+      }
       if (!mounted) {
         return;
       }
@@ -124,7 +152,105 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _runtimeStatusMessage = '状态探测失败，请尝试初始化。';
         _wrapperReady = false;
         _isLoadingStatus = false;
+        _gatewayStatus = gatewayStatus;
+        _isLoadingGatewayStatus = false;
       });
+    }
+  }
+
+  Future<void> _handleGatewayAutoStartChanged(bool enabled) async {
+    if (_isUpdatingGatewayAutoStart) {
+      return;
+    }
+    setState(() {
+      _isUpdatingGatewayAutoStart = true;
+    });
+    try {
+      await setOpenClawGatewayAutoStart(enabled);
+      await _refreshStatus();
+    } on PlatformException catch (e) {
+      showToast(e.message ?? '更新自动守护开关失败', type: ToastType.error);
+    } catch (_) {
+      showToast('更新自动守护开关失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingGatewayAutoStart = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleStartGateway({bool forceRestart = false}) async {
+    if (_isStartingGateway) {
+      return;
+    }
+    setState(() {
+      _isStartingGateway = true;
+    });
+    try {
+      await startOpenClawGateway(forceRestart: forceRestart);
+      showToast(
+        forceRestart ? 'Gateway 正在重启' : 'Gateway 正在启动',
+        type: ToastType.success,
+      );
+      await _refreshStatus();
+    } on PlatformException catch (e) {
+      showToast(e.message ?? '启动 Gateway 失败', type: ToastType.error);
+    } catch (_) {
+      showToast('启动 Gateway 失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStartingGateway = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleStopGateway() async {
+    if (_isStoppingGateway) {
+      return;
+    }
+    setState(() {
+      _isStoppingGateway = true;
+    });
+    try {
+      await stopOpenClawGateway();
+      showToast('Gateway 已停止', type: ToastType.success);
+      await _refreshStatus();
+    } on PlatformException catch (e) {
+      showToast(e.message ?? '停止 Gateway 失败', type: ToastType.error);
+    } catch (_) {
+      showToast('停止 Gateway 失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStoppingGateway = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleOpenNativeTerminal() async {
+    if (_isOpeningNativeTerminal) {
+      return;
+    }
+    setState(() {
+      _isOpeningNativeTerminal = true;
+    });
+    try {
+      await openNativeTerminal();
+    } on PlatformException catch (e) {
+      showToast(e.message ?? '打开原生终端失败', type: ToastType.error);
+    } catch (_) {
+      showToast('打开原生终端失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isOpeningNativeTerminal = false;
+        });
+      }
     }
   }
 
@@ -325,7 +451,11 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [_buildStatusAndActionsCard()],
+              children: [
+                _buildStatusAndActionsCard(),
+                const SizedBox(height: 12),
+                _buildGatewayCard(),
+              ],
             ),
           ),
         ),
@@ -592,6 +722,196 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     );
   }
 
+  Widget _buildGatewayCard() {
+    final gatewayStatus = _gatewayStatus;
+    final lastError = gatewayStatus?.lastError?.trim() ?? '';
+    final statusText = _buildGatewayStatusText(gatewayStatus);
+    final subtitle = _isLoadingGatewayStatus
+        ? '正在检查 OpenClaw Gateway 状态'
+        : statusText;
+
+    return _buildSectionCard(
+      title: 'OpenClaw Gateway',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFD),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0x14000000)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  gatewayStatus?.dashboardUrl?.isNotEmpty == true
+                      ? gatewayStatus!.dashboardUrl!
+                      : '部署成功后会固定回连到 http://127.0.0.1:18789',
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '应用内 Auto-start Gateway',
+                            style: TextStyle(
+                              color: AppColors.text,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            gatewayStatus?.autoStartEnabled == true
+                                ? 'App 冷启动时会自动恢复 GatewayService'
+                                : '默认关闭，避免未确认的后台保活',
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: gatewayStatus?.autoStartEnabled == true,
+                      onChanged:
+                          (_isLoadingGatewayStatus ||
+                              _isUpdatingGatewayAutoStart ||
+                              gatewayStatus == null)
+                          ? null
+                          : _handleGatewayAutoStartChanged,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (lastError.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0x14EF6B5F),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                lastError,
+                style: const TextStyle(
+                  color: Color(0xFFB34A40),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton(
+                onPressed:
+                    (_isLoadingGatewayStatus ||
+                        _isStartingGateway ||
+                        gatewayStatus == null)
+                    ? null
+                    : () => _handleStartGateway(forceRestart: false),
+                child: Text(_isStartingGateway ? '启动中...' : '启动 Gateway'),
+              ),
+              FilledButton.tonal(
+                onPressed:
+                    (_isLoadingGatewayStatus ||
+                        _isStartingGateway ||
+                        gatewayStatus == null)
+                    ? null
+                    : () => _handleStartGateway(forceRestart: true),
+                child: const Text('重启 Gateway'),
+              ),
+              OutlinedButton(
+                onPressed: (_isLoadingGatewayStatus || _isStoppingGateway)
+                    ? null
+                    : _handleStopGateway,
+                child: Text(_isStoppingGateway ? '停止中...' : '停止 Gateway'),
+              ),
+              OutlinedButton(
+                onPressed: _isOpeningNativeTerminal
+                    ? null
+                    : _handleOpenNativeTerminal,
+                child: Text(_isOpeningNativeTerminal ? '打开中...' : '打开原生终端'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _buildGatewayStatusText(OpenClawGatewayStatus? status) {
+    if (status == null) {
+      return '尚未获取到 Gateway 状态';
+    }
+    if (!status.installed) {
+      return 'OpenClaw CLI 尚未安装，请先在聊天页完成一键部署';
+    }
+    if (!status.configured) {
+      return 'OpenClaw 配置尚未写入，请先完成部署';
+    }
+    if (status.legacyConfigNeedsRedeploy) {
+      return '检测到旧版部署痕迹，需要重新保存或重新部署一次';
+    }
+    if (status.restarting) {
+      return 'Gateway 正在退避重启中';
+    }
+    if (status.running && status.healthy) {
+      final uptimeText = status.uptimeSeconds == null
+          ? ''
+          : '，已运行 ${_formatUptime(status.uptimeSeconds!)}';
+      return 'Gateway 正在运行且健康$uptimeText';
+    }
+    if (status.running) {
+      return 'Gateway 已启动，正在等待健康检查';
+    }
+    return 'Gateway 当前未运行';
+  }
+
+  String _formatUptime(int totalSeconds) {
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m ${seconds}s';
+    }
+    if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    }
+    return '${seconds}s';
+  }
+
   Widget _buildSectionCard({required String title, required Widget child}) {
     return Container(
       width: double.infinity,
@@ -688,7 +1008,9 @@ class _StatusActionRow extends StatelessWidget {
             onTap: onTap,
             child: Container(
               height: 36,
-              constraints: const BoxConstraints(minWidth: _actionButtonMinWidth),
+              constraints: const BoxConstraints(
+                minWidth: _actionButtonMinWidth,
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: actionColor.withValues(alpha: enabled ? 0.14 : 0.10),

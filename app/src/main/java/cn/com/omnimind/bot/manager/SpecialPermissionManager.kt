@@ -11,6 +11,8 @@ import androidx.core.content.ContextCompat
 import cn.com.omnimind.baselib.permission.PermissionRequest
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.openclaw.OpenClawDeployManager
+import cn.com.omnimind.bot.openclaw.OpenClawGatewayManager
+import cn.com.omnimind.bot.activity.TerminalActivity
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.termux.TermuxCommandRunner
 import cn.com.omnimind.bot.util.AssistsUtil
@@ -200,7 +202,15 @@ class SpecialPermissionManager(private val context: Context) {
 
     fun openTermuxApp(result: MethodChannel.Result) {
         try {
-            result.success(EmbeddedTerminalRuntime.isSupportedDevice())
+            if (!EmbeddedTerminalRuntime.isSupportedDevice()) {
+                result.success(false)
+                return
+            }
+            val intent = Intent(context, TerminalActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            ContextCompat.startActivity(context, intent, null)
+            result.success(true)
         } catch (e: Exception) {
             OmniLog.e(TAG, "请求打开内嵌终端时发生异常。", e)
             result.error(
@@ -400,6 +410,91 @@ class SpecialPermissionManager(private val context: Context) {
             result.error(
                 "READ_DEPLOY_SNAPSHOT_FAILED",
                 "Failed to read OpenClaw deploy snapshot.",
+                e.message
+            )
+        }
+    }
+
+    fun getOpenClawGatewayStatus(result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val status = OpenClawGatewayManager.getGatewayStatus(context)
+                withContext(Dispatchers.Main) {
+                    result.success(status.toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error reading OpenClaw gateway status", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "READ_GATEWAY_STATUS_FAILED",
+                        "Failed to read OpenClaw gateway status.",
+                        e.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun setOpenClawGatewayAutoStart(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val enabled = call.argument<Boolean>("enabled") == true
+            OpenClawGatewayManager.setAutoStartEnabled(context, enabled)
+            result.success(
+                mapOf(
+                    "enabled" to enabled
+                )
+            )
+        } catch (e: Exception) {
+            OmniLog.e(TAG, "Error updating OpenClaw auto-start setting", e)
+            result.error(
+                "SET_GATEWAY_AUTOSTART_FAILED",
+                "Failed to update OpenClaw auto-start setting.",
+                e.message
+            )
+        }
+    }
+
+    fun startOpenClawGateway(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val forceRestart = call.argument<Boolean>("forceRestart") == true
+            OpenClawGatewayManager.startGateway(context, forceRestart = forceRestart)
+            result.success(true)
+        } catch (e: Exception) {
+            OmniLog.e(TAG, "Error starting OpenClaw gateway", e)
+            result.error(
+                "START_GATEWAY_FAILED",
+                "Failed to start OpenClaw gateway.",
+                e.message
+            )
+        }
+    }
+
+    fun stopOpenClawGateway(result: MethodChannel.Result) {
+        try {
+            OpenClawGatewayManager.stopGateway(context)
+            result.success(true)
+        } catch (e: Exception) {
+            OmniLog.e(TAG, "Error stopping OpenClaw gateway", e)
+            result.error(
+                "STOP_GATEWAY_FAILED",
+                "Failed to stop OpenClaw gateway.",
+                e.message
+            )
+        }
+    }
+
+    fun openNativeTerminal(result: MethodChannel.Result) {
+        try {
+            val intent = Intent(context, TerminalActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            ContextCompat.startActivity(context, intent, null)
+            result.success(true)
+        } catch (e: Exception) {
+            OmniLog.e(TAG, "Error opening native terminal", e)
+            result.error(
+                "OPEN_NATIVE_TERMINAL_FAILED",
+                "Failed to open native terminal.",
                 e.message
             )
         }

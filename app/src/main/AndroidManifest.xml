@@ -28,6 +28,7 @@
     <!-- 添加通知权限，Android 13+ (API 33+) 需要 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" /><!--查询安装包权限-->
@@ -110,6 +111,11 @@
             android:theme="@style/Theme.OmnibotApp.Splash"
             android:screenOrientation="portrait" />
 
+        <activity
+            android:name=".activity.TerminalActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OmnibotApp" />
+
         <!-- 伪装为 Google SelectToSpeak 无障碍服务，绕过微信等应用的反无障碍检测 -->
         <service
             android:name="com.google.android.accessibility.selecttospeak.SelectToSpeakService"
@@ -189,6 +195,11 @@
             android:enabled="true"
             android:foregroundServiceType="specialUse"
             android:exported="false" />
+        <service
+            android:name=".openclaw.OpenClawGatewayService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
         <!-- Android 10+ 录屏/截屏必须在此类型前台服务中创建 MediaProjection -->
         <service
             android:name="cn.com.omnimind.accessibility.service.MediaProjectionForegroundService"

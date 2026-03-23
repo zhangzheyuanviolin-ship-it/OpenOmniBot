@@ -4,6 +4,7 @@ import BaseApplication
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.McpServerManager
+import cn.com.omnimind.bot.openclaw.OpenClawGatewayManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
@@ -126,6 +127,9 @@ class App : BaseApplication() {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
                 EmbeddedTerminalRuntime.warmup(this@App)
+            }
+            runCatching {
+                OpenClawGatewayManager.restoreIfNeeded(this@App)
             }
         }
         OmniLog.d(

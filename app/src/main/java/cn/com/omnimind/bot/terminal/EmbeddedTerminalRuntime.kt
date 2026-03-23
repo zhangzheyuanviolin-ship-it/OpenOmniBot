@@ -104,14 +104,17 @@ object EmbeddedTerminalRuntime {
     private val packageInstallMutex = Mutex()
     private val requiredCliCommands = listOf(
         "curl",
+        "fuser",
         "git",
         "node",
         "npm",
+        "pkill",
         "python",
         "python3",
         "pip3",
         "rg",
-        "tmux"
+        "tmux",
+        "xz"
     )
 
     private val ansiEscapeRegex = Regex("""\u001B(?:\[[0-?]*[ -/]*[@-~]|\([A-Za-z0-9])""")
@@ -129,12 +132,15 @@ object EmbeddedTerminalRuntime {
           git \
           nodejs \
           npm \
+          procps \
+          psmisc \
           python-is-python3 \
           python3 \
           python3-pip \
           python3-venv \
           ripgrep \
-          tmux
+          tmux \
+          xz-utils
     """.trimIndent()
 
     fun isSupportedDevice(): Boolean {
