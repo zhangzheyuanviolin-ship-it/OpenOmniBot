@@ -16,7 +16,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 1
-        versionName = "0.0.8"
+        versionName = "0.0.9"
         manifestPlaceholders["operitDocumentsAuthority"] = "${applicationId}.documents.ubuntu"
 
         ndk {
