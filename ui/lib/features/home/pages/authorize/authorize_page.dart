@@ -113,7 +113,9 @@ class _AuthorizePageState extends State<AuthorizePage>
     );
   }
 
-  void _appendWorkspaceStoragePermissionIfNeeded(List<PermissionData> permissions) {
+  void _appendWorkspaceStoragePermissionIfNeeded(
+    List<PermissionData> permissions,
+  ) {
     if (!_requiredPermissionIds.contains(kWorkspaceStoragePermissionId)) {
       return;
     }
@@ -129,8 +131,8 @@ class _AuthorizePageState extends State<AuthorizePage>
         iconPath: 'assets/welcome/permission_installed_apps.svg',
         iconWidth: 32,
         iconHeight: 32,
-        name: '公共 workspace 访问权限',
-        description: '允许 Omnibot 读写 /storage/emulated/0/workspace 中的共享工作区文件',
+        name: '内置 workspace',
+        description: 'Omnibot 会在应用内部维护 `/workspace`，通常无需再单独授予公共存储权限',
         onAuthorize: () async {
           await openWorkspaceStorageSettings();
         },

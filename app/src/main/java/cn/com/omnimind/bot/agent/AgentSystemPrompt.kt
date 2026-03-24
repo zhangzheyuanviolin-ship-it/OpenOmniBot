@@ -57,7 +57,7 @@ object AgentSystemPrompt {
             - conversationContextId: ${workspace.id}
             - shellWorkspaceRoot: ${workspace.rootPath}
             - shellCurrentCwd: ${workspace.currentCwd}
-            - androidPublicWorkspacePath: ${workspace.androidRootPath}
+            - androidWorkspacePath: ${workspace.androidRootPath}
             - uriRoot: ${workspace.uriRoot}
             - shellRootPath: ${workspace.shellRootPath}
 
@@ -68,7 +68,7 @@ object AgentSystemPrompt {
             - 对模型来说，workspace 的主路径语义始终是 Ubuntu 内 shell 路径，例如 `${workspace.rootPath}`。
             - 默认整个 `${workspace.rootPath}` 都是共享工作区，不要假设每个对话都有独立目录；如果需要隔离，请显式创建子目录。
             - 不要用 shell heredoc、echo 重定向等方式偷偷写文件；只有在确实需要 CLI 程序生成结果时才用终端。
-            - `${workspace.shellRootPath}` 是通过 proot bind 挂载到 Android 公共目录 `${AgentWorkspaceManager.ROOT_PATH}` 的共享目录；Ubuntu 与 App 看到的是同一份文件。
+            - `${workspace.shellRootPath}` 是通过 proot bind 挂载到 Omnibot 应用内部目录 `${workspace.androidRootPath}` 的共享目录；Ubuntu 与 App 看到的是同一份文件。
             - 结果文件会以 `omnibot://` 资源返回，必要时同时附带 Android 绝对路径。
             - 如果终端输出很长，应依赖工具返回的 artifacts，而不是在回复里粘贴大段原文。
             - 当工具结果含有 `artifacts` 时，优先在最终回复里直接引用 artifact 的 `renderMarkdown`，不要只依赖工具卡片。

@@ -10,16 +10,16 @@ class AgentSystemPromptTest {
             workspace = AgentWorkspaceDescriptor(
                 id = "conversation-1",
                 rootPath = "/workspace",
-                androidRootPath = "/storage/emulated/0/workspace",
+                androidRootPath = "/data/user/0/cn.com.omnimind.bot/files/workspace",
                 uriRoot = "omnibot://workspace",
                 currentCwd = "/workspace/demo",
-                androidCurrentCwd = "/storage/emulated/0/workspace/demo",
+                androidCurrentCwd = "/data/user/0/cn.com.omnimind.bot/files/workspace/demo",
                 shellRootPath = "/workspace",
                 retentionPolicy = "shared_root"
             ),
             installedSkills = emptyList(),
             skillsRootShellPath = "/workspace/.omnibot/skills",
-            skillsRootAndroidPath = "/storage/emulated/0/workspace/.omnibot/skills",
+            skillsRootAndroidPath = "/data/user/0/cn.com.omnimind.bot/files/workspace/.omnibot/skills",
             resolvedSkills = emptyList()
         )
 

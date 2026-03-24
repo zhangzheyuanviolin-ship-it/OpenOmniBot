@@ -44,6 +44,7 @@ import org.json.JSONTokener
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.net.URLDecoder
 import java.util.Locale
@@ -910,33 +911,31 @@ class BrowserUseEngine(
         val tab = requirePageTab(request)
         val currentUrl = tab.currentUrl?.takeIf { it.isNotBlank() && it != "about:blank" }
             ?: throw IllegalStateException("当前标签页没有可用页面，无法读取 cookies")
-        val rawCookieHeader = CookieManager.getInstance().getCookie(currentUrl).orEmpty()
-        val cookiePairs = rawCookieHeader.split(';')
-            .mapNotNull { pair ->
-                val parts = pair.trim().split("=", limit = 2)
-                if (parts.size != 2) {
-                    null
-                } else {
-                    parts[0].trim() to parts[1]
-                }
-            }
+        val cookiePairs = collectCookiesForUrl(currentUrl).toList()
         val matchedNames = BrowserUseSupport.filterCookieNames(
             names = cookiePairs.map { it.first },
             keywords = request.keywords,
             fuzzy = request.fuzzy
         )
-        val filteredPairs = cookiePairs.filter { (name, _) -> matchedNames.contains(name) }
+        val fallbackToAllCookies =
+            matchedNames.isEmpty() && request.keywords.isNotEmpty() && cookiePairs.isNotEmpty()
+        val exportedPairs = if (fallbackToAllCookies) {
+            cookiePairs
+        } else {
+            cookiePairs.filter { (name, _) -> matchedNames.contains(name) }
+        }
+        val exportedNames = exportedPairs.map { it.first }
         val envFile = workspaceManager.newOffloadFile(
             agentRunId = currentAgentRunId,
             prefix = "env_cookies",
             extension = "sh"
         )
-        val filteredHeader = filteredPairs.joinToString("; ") { (name, value) -> "$name=$value" }
+        val filteredHeader = exportedPairs.joinToString("; ") { (name, value) -> "$name=$value" }
         val script = buildString {
             appendLine("#!/bin/sh")
             appendLine("export BROWSER_COOKIE_HEADER='${BrowserUseSupport.escapeShellValue(filteredHeader)}'")
-            appendLine("export BROWSER_COOKIE_COUNT='${filteredPairs.size}'")
-            filteredPairs.forEach { (name, value) ->
+            appendLine("export BROWSER_COOKIE_COUNT='${exportedPairs.size}'")
+            exportedPairs.forEach { (name, value) ->
                 appendLine(
                     "export ${BrowserUseSupport.sanitizeCookieEnvName(name)}='${BrowserUseSupport.escapeShellValue(value)}'"
                 )
@@ -951,10 +950,14 @@ class BrowserUseEngine(
                 action = request.action,
                 extra = mapOf(
                     "siteRoot" to siteRootFromUrl(currentUrl),
-                    "matchedCount" to filteredPairs.size,
+                    "matchedCount" to exportedPairs.size,
                     "cookieNames" to matchedNames,
+                    "availableCookieNames" to cookiePairs.map { it.first },
+                    "exportedCookieNames" to exportedNames,
                     "envShellPath" to envShellPath,
                     "envAndroidPath" to envFile.absolutePath,
+                    "cookieLookupUrls" to buildCookieLookupUrls(currentUrl),
+                    "keywordFallbackToAll" to fallbackToAllCookies,
                     "fuzzy" to request.fuzzy,
                     "keywords" to request.keywords
                 )
@@ -1506,6 +1509,55 @@ class BrowserUseEngine(
         val parsed = URL(rawUrl)
         val portPart = if (parsed.port > 0 && parsed.port != parsed.defaultPort) ":${parsed.port}" else ""
         return "${parsed.protocol}://${parsed.host}$portPart/"
+    }
+
+    private suspend fun collectCookiesForUrl(rawUrl: String): LinkedHashMap<String, String> {
+        withContext(Dispatchers.Main.immediate) {
+            CookieManager.getInstance().flush()
+        }
+        val cookieManager = CookieManager.getInstance()
+        val cookies = linkedMapOf<String, String>()
+        buildCookieLookupUrls(rawUrl).forEach { candidateUrl ->
+            parseCookieHeader(cookieManager.getCookie(candidateUrl).orEmpty()).forEach { (name, value) ->
+                if (!cookies.containsKey(name)) {
+                    cookies[name] = value
+                }
+            }
+        }
+        return cookies
+    }
+
+    private fun buildCookieLookupUrls(rawUrl: String): List<String> {
+        return runCatching {
+            val parsed = URL(rawUrl)
+            val normalizedUri = URI(rawUrl)
+            val portPart =
+                if (parsed.port > 0 && parsed.port != parsed.defaultPort) ":${parsed.port}" else ""
+            val origin = "${parsed.protocol}://${parsed.host}$portPart"
+            linkedSetOf(
+                rawUrl,
+                normalizedUri.run {
+                    val path = path?.takeIf { it.isNotBlank() } ?: "/"
+                    "$origin$path"
+                },
+                origin,
+                "$origin/"
+            ).toList()
+        }.getOrElse {
+            listOf(rawUrl)
+        }
+    }
+
+    private fun parseCookieHeader(rawCookieHeader: String): List<Pair<String, String>> {
+        return rawCookieHeader.split(';')
+            .mapNotNull { pair ->
+                val parts = pair.trim().split("=", limit = 2)
+                if (parts.size != 2) {
+                    null
+                } else {
+                    parts[0].trim() to parts[1]
+                }
+            }
     }
 
     private fun buildTargetedScript(

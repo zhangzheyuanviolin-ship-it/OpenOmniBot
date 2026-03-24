@@ -256,8 +256,7 @@ object EmbeddedTerminalRuntime {
             )
         )
         withContext(Dispatchers.IO) {
-            File(AgentWorkspaceManager.ROOT_PATH).mkdirs()
-            File(AgentWorkspaceManager.ROOT_PATH, ".omnibot").mkdirs()
+            AgentWorkspaceManager(context).ensureRuntimeDirectories()
         }
 
         val manager = terminalManager(context)
@@ -783,6 +782,7 @@ object EmbeddedTerminalRuntime {
 
     internal fun buildPythonEnvironmentPrelude(): String = """
         export PATH="${'$'}HOME/.local/bin:${'$'}PATH"
+        export UV_LINK_MODE=copy
 
         __omni_find_python_project_root() {
           __omni_current_dir="${'$'}PWD"

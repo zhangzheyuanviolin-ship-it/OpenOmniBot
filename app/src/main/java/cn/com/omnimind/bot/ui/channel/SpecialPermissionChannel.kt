@@ -98,6 +98,8 @@ class SpecialPermissionChannel {
                         .isWorkspaceStorageAccessGranted(result)
                     "openWorkspaceStorageSettings" -> specialPermissionManager!!
                         .openWorkspaceStorageSettings(result)
+                    "getWorkspacePathSnapshot" -> specialPermissionManager!!
+                        .getWorkspacePathSnapshot(result)
                     "getEmbeddedTerminalRuntimeStatus" -> specialPermissionManager!!
                         .getEmbeddedTerminalRuntimeStatus(result)
                     "startOpenClawDeploy" -> specialPermissionManager!!

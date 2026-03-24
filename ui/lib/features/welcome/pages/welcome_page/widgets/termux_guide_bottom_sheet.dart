@@ -214,7 +214,7 @@ class _TermuxGuideBottomSheetState extends State<TermuxGuideBottomSheet>
           ),
           const SizedBox(height: 12),
           const Text(
-            '开启后，小万会直接在应用内的 Ubuntu（proot）环境执行终端命令，不需要再单独安装 Termux；/workspace 也会继续映射到安卓公共工作区。',
+            '开启后，小万会直接在应用内的 Ubuntu（proot）环境执行终端命令，不需要再单独安装 Termux；/workspace 会映射到 Omnibot 应用内部工作区。',
             style: TextStyle(
               color: AppColors.text,
               fontSize: 14,
@@ -255,16 +255,15 @@ class _TermuxGuideBottomSheetState extends State<TermuxGuideBottomSheet>
         SizedBox(height: 12),
         _GuideItem(
           index: '3',
-          title: '共享工作区保持不变',
+          title: '工作区仍叫 /workspace',
           description:
-              '安卓公共目录 /storage/emulated/0/workspace 会映射到 Ubuntu 内的 /workspace，现有 agent 与 skills 可以继续沿用。',
+              'Ubuntu 内依然使用 /workspace 这套路径语义，但底层已经切到 Omnibot 应用内部目录，更适合运行 uv、venv 和其它开发工具。',
         ),
         SizedBox(height: 12),
         _GuideItem(
           index: '4',
           title: '异常时重新检查',
-          description:
-              '如果终端输出异常或基础包缺失，可以在设置页重新执行环境检查，并确认网络与 workspace 权限正常。',
+          description: '如果终端输出异常或基础包缺失，可以在设置页重新执行环境检查，并确认网络正常。',
         ),
       ],
     );

@@ -451,7 +451,7 @@ Future<bool> isWorkspaceStorageAccessGranted() async {
         ) ??
         false;
   } catch (e) {
-    debugPrint('检查公共 workspace 访问权限失败: $e');
+    debugPrint('检查内置 workspace 状态失败: $e');
     return false;
   }
 }

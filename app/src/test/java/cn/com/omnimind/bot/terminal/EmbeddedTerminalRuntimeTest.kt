@@ -11,6 +11,7 @@ class EmbeddedTerminalRuntimeTest {
 
         assertTrue(prelude.contains(AgentWorkspaceManager.SHELL_ROOT_PATH))
         assertTrue(prelude.contains("HOME/.local/bin"))
+        assertTrue(prelude.contains("UV_LINK_MODE=copy"))
         assertTrue(prelude.contains("__omni_prepare_python_env"))
         assertTrue(prelude.contains("command python3 -m venv --copies"))
         assertTrue(prelude.contains("command python -m pip"))

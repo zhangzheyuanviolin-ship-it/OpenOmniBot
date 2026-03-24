@@ -32,13 +32,83 @@ class OmnibotResourceMetadata {
   });
 }
 
+class OmnibotWorkspacePaths {
+  final String rootPath;
+  final String shellRootPath;
+  final String internalRootPath;
+
+  const OmnibotWorkspacePaths({
+    required this.rootPath,
+    required this.shellRootPath,
+    required this.internalRootPath,
+  });
+
+  factory OmnibotWorkspacePaths.fromMap(Map<dynamic, dynamic> map) {
+    final rootPath =
+        (map['rootPath'] as String?)?.trim() ??
+        '/data/user/0/cn.com.omnimind.bot/files/workspace';
+    final shellRootPath =
+        (map['shellRootPath'] as String?)?.trim() ?? '/workspace';
+    final internalRootPath =
+        (map['internalRootPath'] as String?)?.trim() ?? '$rootPath/.omnibot';
+    return OmnibotWorkspacePaths(
+      rootPath: rootPath,
+      shellRootPath: shellRootPath,
+      internalRootPath: internalRootPath,
+    );
+  }
+}
+
 class OmnibotResourceService {
-  static const String rootPath = '/storage/emulated/0/workspace';
-  static const String shellRootPath = '/workspace';
-  static const String internalRootPath = '$rootPath/.omnibot';
   static const MethodChannel _fileChannel = MethodChannel(
     'cn.com.omnimind.bot/file_save',
   );
+  static const OmnibotWorkspacePaths _defaultWorkspacePaths =
+      OmnibotWorkspacePaths(
+        rootPath: '/data/user/0/cn.com.omnimind.bot/files/workspace',
+        shellRootPath: '/workspace',
+        internalRootPath:
+            '/data/user/0/cn.com.omnimind.bot/files/workspace/.omnibot',
+      );
+
+  static OmnibotWorkspacePaths _workspacePaths = _defaultWorkspacePaths;
+  static Future<OmnibotWorkspacePaths>? _workspacePathsFuture;
+
+  static String get rootPath => _workspacePaths.rootPath;
+  static String get shellRootPath => _workspacePaths.shellRootPath;
+  static String get internalRootPath => _workspacePaths.internalRootPath;
+
+  static Future<OmnibotWorkspacePaths> ensureWorkspacePathsLoaded({
+    bool forceRefresh = false,
+  }) {
+    if (forceRefresh) {
+      _workspacePathsFuture = null;
+    }
+    final existing = _workspacePathsFuture;
+    if (existing != null) {
+      return existing;
+    }
+    final future = _loadWorkspacePaths();
+    _workspacePathsFuture = future;
+    return future;
+  }
+
+  static Future<OmnibotWorkspacePaths> _loadWorkspacePaths() async {
+    try {
+      final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
+        'getWorkspacePathSnapshot',
+      );
+      if (result != null) {
+        _workspacePaths = OmnibotWorkspacePaths.fromMap(result);
+      }
+    } catch (_) {}
+    return _workspacePaths;
+  }
+
+  static void debugSetWorkspacePaths(OmnibotWorkspacePaths paths) {
+    _workspacePaths = paths;
+    _workspacePathsFuture = Future<OmnibotWorkspacePaths>.value(paths);
+  }
 
   static Future<bool> handleLinkTap(String href) async {
     if (href.startsWith('omnibot://')) {
@@ -53,6 +123,7 @@ class OmnibotResourceService {
   }
 
   static Future<void> openUri(String uri) async {
+    await ensureWorkspacePathsLoaded();
     if (!await _ensureWorkspaceStorageAccess()) {
       return;
     }
@@ -88,6 +159,7 @@ class OmnibotResourceService {
     String? mimeType,
     String? shellPath,
   }) async {
+    await ensureWorkspacePathsLoaded();
     if (!await _ensureWorkspaceStorageAccess()) {
       return;
     }
@@ -120,6 +192,7 @@ class OmnibotResourceService {
     String? shellPath,
     String? uri,
   }) async {
+    await ensureWorkspacePathsLoaded();
     if (!await _ensureWorkspaceStorageAccess()) {
       return;
     }
@@ -142,6 +215,7 @@ class OmnibotResourceService {
     required String fileName,
     required String mimeType,
   }) async {
+    await ensureWorkspacePathsLoaded();
     if (!await _ensureWorkspaceStorageAccess()) {
       return null;
     }
@@ -156,6 +230,7 @@ class OmnibotResourceService {
     required String sourcePath,
     required String mimeType,
   }) async {
+    await ensureWorkspacePathsLoaded();
     if (!await _ensureWorkspaceStorageAccess()) {
       return false;
     }

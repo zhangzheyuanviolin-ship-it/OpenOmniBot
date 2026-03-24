@@ -11,11 +11,14 @@ class AgentWorkspaceManager(
     private val context: Context
 ) {
     companion object {
-        const val ROOT_PATH = "/storage/emulated/0/workspace"
         const val SHELL_ROOT_PATH = "/workspace"
         const val URI_SCHEME = "omnibot"
 
+        const val LEGACY_EXTERNAL_ROOT_PATH = "/storage/emulated/0/workspace"
+
+        private const val ROOT_DIR_NAME = "workspace"
         private const val INTERNAL_DIR = ".omnibot"
+        private const val WORKSPACE_MIGRATION_MARKER = ".workspace_migrated_v1"
         private const val DIR_ATTACHMENTS = "attachments"
         private const val DIR_WORKSPACE = "workspace"
         private const val DIR_SHARED = "shared"
@@ -23,9 +26,33 @@ class AgentWorkspaceManager(
         private const val DIR_BROWSER = "browser"
         private const val DIR_SKILLS = "skills"
         private const val DIR_MEMORY = "memory"
+
+        fun rootDirectory(context: Context): File {
+            return File(context.applicationContext.filesDir, ROOT_DIR_NAME)
+        }
+
+        fun internalRootDirectory(context: Context): File {
+            return File(rootDirectory(context), INTERNAL_DIR)
+        }
+
+        fun androidRootPath(context: Context): String {
+            return rootDirectory(context).absolutePath
+        }
+
+        fun internalRootPath(context: Context): String {
+            return internalRootDirectory(context).absolutePath
+        }
+
+        fun workspacePathSnapshot(context: Context): Map<String, String> {
+            return linkedMapOf(
+                "rootPath" to androidRootPath(context),
+                "shellRootPath" to SHELL_ROOT_PATH,
+                "internalRootPath" to internalRootPath(context)
+            )
+        }
     }
 
-    private val rootDir = File(ROOT_PATH)
+    private val rootDir = rootDirectory(context)
     private val internalDir = File(rootDir, INTERNAL_DIR)
     private val attachmentsDir = File(internalDir, DIR_ATTACHMENTS)
     private val sharedDir = File(internalDir, DIR_SHARED)
@@ -33,8 +60,11 @@ class AgentWorkspaceManager(
     private val browserDir = File(internalDir, DIR_BROWSER)
     private val skillsDir = File(internalDir, DIR_SKILLS)
     private val memoryDir = File(internalDir, DIR_MEMORY)
+    private val migrationMarker = File(internalDir, WORKSPACE_MIGRATION_MARKER)
+    private val legacyRootDir = File(LEGACY_EXTERNAL_ROOT_PATH)
 
     fun ensureRuntimeDirectories() {
+        migrateLegacyWorkspaceIfNeeded()
         listOf(
             rootDir,
             internalDir,
@@ -48,6 +78,40 @@ class AgentWorkspaceManager(
             if (!directory.exists()) {
                 directory.mkdirs()
             }
+        }
+    }
+
+    private fun migrateLegacyWorkspaceIfNeeded() {
+        if (migrationMarker.exists()) {
+            return
+        }
+        val legacyRoot = legacyRootDir
+        if (!legacyRoot.exists()) {
+            return
+        }
+        val currentFiles = rootDir.listFiles()
+        if (rootDir.exists() && !currentFiles.isNullOrEmpty()) {
+            markMigrationCompleted()
+            return
+        }
+        runCatching {
+            rootDir.mkdirs()
+            legacyRoot.listFiles()?.forEach { child ->
+                val target = File(rootDir, child.name)
+                if (!target.exists()) {
+                    child.copyRecursively(target, overwrite = false)
+                }
+            }
+            markMigrationCompleted()
+        }
+    }
+
+    private fun markMigrationCompleted() {
+        if (!internalDir.exists()) {
+            internalDir.mkdirs()
+        }
+        runCatching {
+            migrationMarker.writeText("migrated=true\n")
         }
     }
 
