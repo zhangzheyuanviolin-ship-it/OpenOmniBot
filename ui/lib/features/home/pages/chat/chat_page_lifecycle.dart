@@ -498,7 +498,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         _messageController.clear();
         _setChatIslandDisplayLayerForMode(
           ChatPageMode.normal,
-          ChatIslandDisplayLayer.mode,
+          ChatIslandDisplayLayer.model,
         );
         _isBrowserOverlayVisible = false;
       });
@@ -517,7 +517,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         _activeModelMentionToken = null;
         _setChatIslandDisplayLayerForMode(
           ChatPageMode.normal,
-          ChatIslandDisplayLayer.mode,
+          ChatIslandDisplayLayer.model,
         );
         _isBrowserOverlayVisible = false;
       });

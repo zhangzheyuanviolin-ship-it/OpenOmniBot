@@ -153,6 +153,28 @@ class _ChatModeModelSwitcher extends StatefulWidget {
 }
 
 class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
+  static const String _terminalIconSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+      'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+      'stroke-linecap="round" stroke-linejoin="round">'
+      '<path d="m7 11 2-2-2-2"/>'
+      '<path d="M11 13h4"/>'
+      '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>'
+      '</svg>';
+  static const String _browserIconSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+      'fill="none" viewBox="0 0 24 24">'
+      '<path stroke="currentColor" stroke-linecap="round" '
+      'stroke-linejoin="round" '
+      'd="M12 8C9.79086 8 8 9.79086 8 12C8 12.7286 8.19479 13.4117 8.53513 14'
+      'M12 8C14.2091 8 16 9.79086 16 12C16 13.0144 15.6224 13.9407 15 14.6458'
+      'M12 8H20.0645M15 14.6458C14.2671 15.4762 13.1947 16 12 16C10.5194 16 '
+      '9.22675 15.1956 8.53513 14M15 14.6458L10.7394 20.9124'
+      'M8.53513 14L4.36907 7.22607M4.36907 7.22607C3.50156 8.60982 3 10.2463 '
+      '3 12C3 16.5427 6.36566 20.2994 10.7394 20.9124M4.36907 7.22607'
+      'C5.9604 4.68775 8.7831 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 '
+      '16.9706 21 12 21C11.5722 21 11.1513 20.9702 10.7394 20.9124"/>'
+      '</svg>';
   static const Duration _idleDelay = Duration(milliseconds: 1700);
   static const Duration _switchDuration = Duration(milliseconds: 460);
   static const double _verticalSwitchThreshold = 10;
@@ -161,6 +183,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
 
   Timer? _idleTimer;
   double _verticalDragDelta = 0;
+  double _horizontalDragDelta = 0;
 
   String get _modelLabel {
     final text = (widget.activeModelId ?? '').trim();
@@ -179,9 +202,9 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       widget.displayLayer == ChatIslandDisplayLayer.mode;
 
   int _layerOrder(ChatIslandDisplayLayer layer) => switch (layer) {
-    ChatIslandDisplayLayer.model => 0,
-    ChatIslandDisplayLayer.mode => 1,
-    ChatIslandDisplayLayer.tools => 2,
+    ChatIslandDisplayLayer.tools => 0,
+    ChatIslandDisplayLayer.model => 1,
+    ChatIslandDisplayLayer.mode => 2,
   };
 
   @override
@@ -226,11 +249,39 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
 
   void _handleSliderInteraction() {
     _idleTimer?.cancel();
-    if (widget.activeMode == ChatSurfaceMode.normal &&
-        widget.displayLayer != ChatIslandDisplayLayer.mode) {
-      widget.onDisplayLayerChanged(ChatIslandDisplayLayer.mode);
-    }
     _armIdleTimer();
+  }
+
+  void _handleHorizontalDragUpdate(DragUpdateDetails details) {
+    if (widget.activeMode != ChatSurfaceMode.normal ||
+        widget.displayLayer != ChatIslandDisplayLayer.model) {
+      return;
+    }
+    _horizontalDragDelta += details.delta.dx;
+  }
+
+  void _handleHorizontalDragEnd(DragEndDetails details) {
+    if (widget.activeMode != ChatSurfaceMode.normal ||
+        widget.displayLayer != ChatIslandDisplayLayer.model) {
+      _horizontalDragDelta = 0;
+      return;
+    }
+    final velocity = details.primaryVelocity ?? 0;
+    final shouldSwitch =
+        _horizontalDragDelta.abs() > 14 || velocity.abs() > 250;
+    if (!shouldSwitch) {
+      _horizontalDragDelta = 0;
+      return;
+    }
+    final intent = _horizontalDragDelta + velocity * 0.015;
+    _horizontalDragDelta = 0;
+    final currentIndex = ChatSurfaceMode.values.indexOf(widget.activeMode);
+    final delta = intent > 0 ? 1 : -1;
+    final targetIndex = (currentIndex + delta).clamp(
+      0,
+      ChatSurfaceMode.values.length - 1,
+    );
+    widget.onModeChanged(ChatSurfaceMode.values[targetIndex]);
   }
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
@@ -300,8 +351,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
           Expanded(
             child: _ChatIslandToolButton(
               key: const ValueKey('chat-island-terminal-button'),
-              icon: Icons.code_rounded,
-              label: '终端',
+              svgIcon: _terminalIconSvg,
               isActive: widget.activeToolType?.trim() == 'terminal',
               tooltip: '打开终端',
               onTap: () {
@@ -314,8 +364,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
           Expanded(
             child: _ChatIslandToolButton(
               key: const ValueKey('chat-island-browser-button'),
-              icon: Icons.language_rounded,
-              label: '浏览器',
+              svgIcon: _browserIconSvg,
               isActive: widget.activeToolType?.trim() == 'browser',
               isEnabled: widget.isBrowserEnabled,
               tooltip: widget.isBrowserEnabled
@@ -348,6 +397,8 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
           height: _switcherHeight,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
+            onHorizontalDragUpdate: _handleHorizontalDragUpdate,
+            onHorizontalDragEnd: _handleHorizontalDragEnd,
             onVerticalDragUpdate: _handleVerticalDragUpdate,
             onVerticalDragEnd: _handleVerticalDragEnd,
             onVerticalDragCancel: () {
@@ -400,16 +451,14 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
 class _ChatIslandToolButton extends StatelessWidget {
   const _ChatIslandToolButton({
     super.key,
-    required this.icon,
-    required this.label,
+    required this.svgIcon,
     required this.onTap,
     this.isEnabled = true,
     this.isActive = false,
     this.tooltip,
   });
 
-  final IconData icon;
-  final String label;
+  final String svgIcon;
   final VoidCallback onTap;
   final bool isEnabled;
   final bool isActive;
@@ -429,25 +478,18 @@ class _ChatIslandToolButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
           color: background,
           borderRadius: BorderRadius.circular(999),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 14, color: foreground),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: foreground,
-              ),
-            ),
-          ],
+        child: Center(
+          child: SvgPicture.string(
+            svgIcon,
+            width: 16,
+            height: 16,
+            colorFilter: ColorFilter.mode(foreground, BlendMode.srcIn),
+          ),
         ),
       ),
     );

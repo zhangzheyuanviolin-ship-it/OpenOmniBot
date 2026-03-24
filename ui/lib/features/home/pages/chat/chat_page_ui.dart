@@ -202,9 +202,13 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           child: Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (event) {
+              _handlePagePointerDown(event);
               _interruptCompanionAutoHomeIfNeeded();
               unawaited(_handleOutsideTap(event.position));
             },
+            onPointerMove: _handlePagePointerMove,
+            onPointerUp: _handlePagePointerUp,
+            onPointerCancel: _handlePagePointerCancel,
             child: LayoutBuilder(
               builder: (context, constraints) {
                 return Stack(

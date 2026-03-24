@@ -8,6 +8,56 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
   static const double _kBrowserOverlayHorizontalMargin = 16;
   static const double _kBrowserOverlayTopMargin = 64;
   static const double _kBrowserOverlayBottomMargin = 16;
+  static const double _kPageSwipeThreshold = 18;
+
+  void _applyPageVerticalIntent(double delta) {
+    if (_activeSurfaceMode != ChatSurfaceMode.normal ||
+        delta.abs() < _kPageSwipeThreshold) {
+      return;
+    }
+    _handleChatIslandDisplayLayerChanged(
+      delta > 0 ? ChatIslandDisplayLayer.tools : ChatIslandDisplayLayer.model,
+    );
+  }
+
+  @override
+  void _handlePagePointerDown(PointerDownEvent event) {
+    if (_activeSurfaceMode != ChatSurfaceMode.normal) {
+      _pageGesturePointerId = null;
+      _pageVerticalDragDelta = 0;
+      return;
+    }
+    _pageGesturePointerId = event.pointer;
+    _pageVerticalDragDelta = 0;
+  }
+
+  @override
+  void _handlePagePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _pageGesturePointerId ||
+        _activeSurfaceMode != ChatSurfaceMode.normal) {
+      return;
+    }
+    _pageVerticalDragDelta += event.delta.dy;
+  }
+
+  @override
+  void _handlePagePointerUp(PointerUpEvent event) {
+    if (event.pointer != _pageGesturePointerId) {
+      return;
+    }
+    _applyPageVerticalIntent(_pageVerticalDragDelta);
+    _pageGesturePointerId = null;
+    _pageVerticalDragDelta = 0;
+  }
+
+  @override
+  void _handlePagePointerCancel(PointerCancelEvent event) {
+    if (event.pointer != _pageGesturePointerId) {
+      return;
+    }
+    _pageGesturePointerId = null;
+    _pageVerticalDragDelta = 0;
+  }
 
   @override
   String _browserSnapshotSignature(ChatBrowserSessionSnapshot? snapshot) {
@@ -248,7 +298,38 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
   }
 
   @override
-  void _resizeBrowserOverlay(Offset delta, BoxConstraints constraints) {
+  void _resizeBrowserOverlayFromLeft(Offset delta, BoxConstraints constraints) {
+    setState(() {
+      _ensureBrowserOverlayGeometry(constraints);
+      final currentRight = _browserOverlayOffset.dx + _browserOverlaySize.width;
+      final maxSize = _overlayMaxSize(constraints);
+      final nextHeight = _clampBrowserOverlaySize(
+        Size(_browserOverlaySize.width, _browserOverlaySize.height + delta.dy),
+        constraints,
+      ).height;
+      var nextLeft = (_browserOverlayOffset.dx + delta.dx).clamp(
+        _kBrowserOverlayHorizontalMargin,
+        currentRight - _kBrowserOverlayMinWidth,
+      );
+      var nextWidth = currentRight - nextLeft;
+      if (nextWidth > maxSize.width) {
+        nextWidth = maxSize.width;
+        nextLeft = currentRight - nextWidth;
+      }
+      _browserOverlaySize = Size(nextWidth.toDouble(), nextHeight);
+      _browserOverlayOffset = _clampBrowserOverlayOffset(
+        Offset(nextLeft.toDouble(), _browserOverlayOffset.dy),
+        _browserOverlaySize,
+        constraints,
+      );
+    });
+  }
+
+  @override
+  void _resizeBrowserOverlayFromRight(
+    Offset delta,
+    BoxConstraints constraints,
+  ) {
     setState(() {
       _ensureBrowserOverlayGeometry(constraints);
       final resized = _clampBrowserOverlaySize(
@@ -315,7 +396,10 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
         currentUrl: snapshot.currentUrl,
         onClose: _hideBrowserOverlay,
         onDragDelta: (delta) => _moveBrowserOverlay(delta, constraints),
-        onResizeDelta: (delta) => _resizeBrowserOverlay(delta, constraints),
+        onResizeLeftDelta: (delta) =>
+            _resizeBrowserOverlayFromLeft(delta, constraints),
+        onResizeRightDelta: (delta) =>
+            _resizeBrowserOverlayFromRight(delta, constraints),
       ),
     );
   }

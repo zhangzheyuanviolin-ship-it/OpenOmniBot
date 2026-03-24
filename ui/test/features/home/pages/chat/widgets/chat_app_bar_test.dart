@@ -37,7 +37,7 @@ class _ChatAppBarHarness extends StatefulWidget {
 }
 
 class _ChatAppBarHarnessState extends State<_ChatAppBarHarness> {
-  ChatIslandDisplayLayer _displayLayer = ChatIslandDisplayLayer.mode;
+  ChatIslandDisplayLayer _displayLayer = ChatIslandDisplayLayer.model;
   ChatSurfaceMode _activeMode = ChatSurfaceMode.normal;
   int _browserTapCount = 0;
 
@@ -85,25 +85,21 @@ class _ChatAppBarHarnessState extends State<_ChatAppBarHarness> {
 }
 
 void main() {
-  testWidgets('reveals model layer after idle delay in normal chat', (
+  testWidgets('keeps model layer visible by default in normal chat', (
     tester,
   ) async {
     await tester.pumpWidget(const _ChatAppBarHarness());
-
-    expect(find.text('layer:mode'), findsOneWidget);
-
-    await tester.pump(const Duration(milliseconds: 1800));
 
     expect(find.text('layer:model'), findsOneWidget);
     expect(find.text('gpt-5.4'), findsOneWidget);
   });
 
-  testWidgets('supports vertical switching between model and tools layers', (
+  testWidgets('supports direct island swipe between model and tools layers', (
     tester,
   ) async {
     await tester.pumpWidget(const _ChatAppBarHarness());
 
-    await tester.drag(find.byType(ChatModeSlider), const Offset(0, -42));
+    await tester.drag(find.text('gpt-5.4'), const Offset(0, -42));
     await tester.pumpAndSettle();
 
     expect(find.text('layer:model'), findsOneWidget);
@@ -113,12 +109,26 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('layer:tools'), findsOneWidget);
-    expect(find.text('终端'), findsOneWidget);
-    expect(find.text('浏览器'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('chat-island-terminal-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('chat-island-browser-button')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('chat-island-browser-button')));
     await tester.pumpAndSettle();
 
     expect(find.text('browserTaps:0'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey('chat-island-terminal-button')),
+      const Offset(0, -42),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('layer:model'), findsOneWidget);
   });
 }

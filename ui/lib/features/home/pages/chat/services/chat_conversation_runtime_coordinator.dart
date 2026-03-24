@@ -19,7 +19,9 @@ class ChatConversationRuntimeState {
   ChatConversationRuntimeState({
     required this.conversationId,
     required this.mode,
-  });
+  }) : chatIslandDisplayLayer = mode == kChatRuntimeModeNormal
+           ? ChatIslandDisplayLayer.model
+           : ChatIslandDisplayLayer.mode;
 
   final int conversationId;
   final String mode;
@@ -45,7 +47,7 @@ class ChatConversationRuntimeState {
   bool pendingThinkingRoundSplit = false;
   int toolCardSequence = 0;
   int thinkingRound = 0;
-  ChatIslandDisplayLayer chatIslandDisplayLayer = ChatIslandDisplayLayer.mode;
+  ChatIslandDisplayLayer chatIslandDisplayLayer;
   String? lastAgentToolType;
   ChatBrowserSessionSnapshot? browserSessionSnapshot;
 

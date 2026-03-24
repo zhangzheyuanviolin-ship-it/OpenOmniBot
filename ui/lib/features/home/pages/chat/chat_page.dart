@@ -143,7 +143,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   };
   final Map<ChatPageMode, ChatIslandDisplayLayer>
   _chatIslandDisplayLayerByMode = {
-    ChatPageMode.normal: ChatIslandDisplayLayer.mode,
+    ChatPageMode.normal: ChatIslandDisplayLayer.model,
     ChatPageMode.openclaw: ChatIslandDisplayLayer.mode,
   };
   final Map<ChatPageMode, String?> _lastAgentToolTypeByMode = {
@@ -247,6 +247,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   Size _browserOverlaySize = const Size(360, 420);
   int _browserOverlayViewSeed = 0;
   String? _lastObservedBrowserSnapshotSignature;
+  int? _pageGesturePointerId;
+  double _pageVerticalDragDelta = 0;
 
   ChatPageMode get _activeMode => _activeConversationMode;
   String _modeKey(ChatPageMode mode) => switch (mode) {
@@ -411,7 +413,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   ChatIslandDisplayLayer get _chatIslandDisplayLayer =>
       _activeRuntime?.chatIslandDisplayLayer ??
       (_chatIslandDisplayLayerByMode[_activeMode] ??
-          ChatIslandDisplayLayer.mode);
+          (_activeMode == ChatPageMode.normal
+              ? ChatIslandDisplayLayer.model
+              : ChatIslandDisplayLayer.mode));
   set _chatIslandDisplayLayer(ChatIslandDisplayLayer value) {
     final runtime = _activeRuntime;
     if (runtime != null) {
@@ -798,7 +802,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _currentConversationByMode[mode] = null;
     _isInputAreaVisibleByMode[mode] = true;
     _isExecutingTaskByMode[mode] = false;
-    _chatIslandDisplayLayerByMode[mode] = ChatIslandDisplayLayer.mode;
+    _chatIslandDisplayLayerByMode[mode] = mode == ChatPageMode.normal
+        ? ChatIslandDisplayLayer.model
+        : ChatIslandDisplayLayer.mode;
     _lastAgentToolTypeByMode[mode] = null;
     _browserSessionSnapshotByMode[mode] = null;
     _pendingAttachmentsByMode[mode]!.clear();
@@ -988,6 +994,14 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   void _scheduleBrowserSessionRefreshIfNeeded();
 
+  void _handlePagePointerDown(PointerDownEvent event);
+
+  void _handlePagePointerMove(PointerMoveEvent event);
+
+  void _handlePagePointerUp(PointerUpEvent event);
+
+  void _handlePagePointerCancel(PointerCancelEvent event);
+
   Future<void> _refreshLiveBrowserSessionSnapshot({bool syncRuntime = false});
 
   void _setChatIslandDisplayLayerForMode(
@@ -1007,7 +1021,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   void _moveBrowserOverlay(Offset delta, BoxConstraints constraints);
 
-  void _resizeBrowserOverlay(Offset delta, BoxConstraints constraints);
+  void _resizeBrowserOverlayFromLeft(Offset delta, BoxConstraints constraints);
+
+  void _resizeBrowserOverlayFromRight(Offset delta, BoxConstraints constraints);
 
   Rect _browserOverlayBounds(BoxConstraints constraints);
 

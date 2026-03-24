@@ -12,7 +12,8 @@ class ChatBrowserOverlay extends StatelessWidget {
     required this.currentUrl,
     required this.onClose,
     required this.onDragDelta,
-    required this.onResizeDelta,
+    required this.onResizeLeftDelta,
+    required this.onResizeRightDelta,
   });
 
   final String workspaceId;
@@ -20,12 +21,16 @@ class ChatBrowserOverlay extends StatelessWidget {
   final String currentUrl;
   final VoidCallback onClose;
   final ValueChanged<Offset> onDragDelta;
-  final ValueChanged<Offset> onResizeDelta;
+  final ValueChanged<Offset> onResizeLeftDelta;
+  final ValueChanged<Offset> onResizeRightDelta;
 
   @override
   Widget build(BuildContext context) {
     final resolvedTitle = title.trim().isEmpty ? 'Agent Browser' : title.trim();
     final resolvedUrl = currentUrl.trim();
+    final dragText = resolvedUrl.isNotEmpty
+        ? '${resolvedTitle == 'Agent Browser' ? '' : '$resolvedTitle · '}$resolvedUrl'
+        : resolvedTitle;
     return Material(
       elevation: 18,
       color: Colors.transparent,
@@ -52,7 +57,7 @@ class ChatBrowserOverlay extends StatelessWidget {
                   behavior: HitTestBehavior.opaque,
                   onPanUpdate: (details) => onDragDelta(details.delta),
                   child: Container(
-                    height: 52,
+                    height: 38,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: const BoxDecoration(
                       color: Color(0xFFF6F9FF),
@@ -62,47 +67,16 @@ class ChatBrowserOverlay extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8F1FF),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(
-                            Icons.language_rounded,
-                            size: 18,
-                            color: Color(0xFF1930D9),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
                         Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                resolvedTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1F2937),
-                                ),
-                              ),
-                              if (resolvedUrl.isNotEmpty)
-                                Text(
-                                  resolvedUrl,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFF617390),
-                                  ),
-                                ),
-                            ],
+                          child: Text(
+                            dragText,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF42526B),
+                            ),
                           ),
                         ),
                         IconButton(
@@ -146,21 +120,21 @@ class ChatBrowserOverlay extends StatelessWidget {
               ],
             ),
             Positioned(
-              right: 6,
+              left: 0,
               bottom: 6,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPanUpdate: (details) => onResizeDelta(details.delta),
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  alignment: Alignment.bottomRight,
-                  child: const Icon(
-                    Icons.open_in_full_rounded,
-                    size: 16,
-                    color: Color(0xFF90A2BC),
-                  ),
-                ),
+                onPanUpdate: (details) => onResizeLeftDelta(details.delta),
+                child: Container(width: 32, height: 28),
+              ),
+            ),
+            Positioned(
+              right: 0,
+              bottom: 6,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanUpdate: (details) => onResizeRightDelta(details.delta),
+                child: Container(width: 32, height: 28),
               ),
             ),
           ],
