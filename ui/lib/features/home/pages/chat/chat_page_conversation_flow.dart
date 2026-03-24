@@ -57,6 +57,14 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       pendingThinkingRoundSplit: runtime?.pendingThinkingRoundSplit ?? false,
       toolCardSequence: runtime?.toolCardSequence ?? 0,
       thinkingRound: runtime?.thinkingRound ?? 0,
+      chatIslandDisplayLayer:
+          runtime?.chatIslandDisplayLayer ??
+          (_chatIslandDisplayLayerByMode[mode] ?? ChatIslandDisplayLayer.mode),
+      lastAgentToolType:
+          runtime?.lastAgentToolType ?? _lastAgentToolTypeByMode[mode],
+      browserSessionSnapshot:
+          runtime?.browserSessionSnapshot ??
+          _browserSessionSnapshotByMode[mode],
     );
   }
 

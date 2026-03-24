@@ -1,11 +1,14 @@
 package cn.com.omnimind.bot.agent
 
 import android.content.Context
+import android.content.MutableContextWrapper
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Build
+import android.os.Looper
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -20,6 +23,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -270,9 +274,9 @@ object BrowserUseSupport {
 class BrowserUseEngine(
     private val context: Context,
     private val workspaceManager: AgentWorkspaceManager,
-    private val agentRunId: String,
-    private val workspace: AgentWorkspaceDescriptor
-) {
+    agentRunId: String,
+    workspace: AgentWorkspaceDescriptor
+) : AgentBrowserLiveSessionHandle {
     private data class LoadSnapshot(
         val url: String?,
         val title: String?,
@@ -281,6 +285,7 @@ class BrowserUseEngine(
 
     private data class BrowserTab(
         val tabId: Int,
+        val contextWrapper: MutableContextWrapper,
         val webView: WebView,
         var userAgentProfile: BrowserUserAgentProfile,
         var currentUrl: String? = null,
@@ -296,6 +301,18 @@ class BrowserUseEngine(
         encodeDefaults = true
         prettyPrint = true
     }
+    companion object {
+        fun unavailableSnapshot(workspaceId: String = ""): Map<String, Any?> {
+            return linkedMapOf(
+                "available" to false,
+                "workspaceId" to workspaceId,
+                "activeTabId" to null,
+                "currentUrl" to "",
+                "title" to "",
+                "userAgentProfile" to null
+            )
+        }
+    }
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tabs = linkedMapOf<Int, BrowserTab>()
     private var nextTabId = 0
@@ -303,6 +320,11 @@ class BrowserUseEngine(
     private val appContext = context.applicationContext
     private val viewportWidth = appContext.resources.displayMetrics.widthPixels.coerceAtLeast(1080)
     private val viewportHeight = appContext.resources.displayMetrics.heightPixels.coerceAtLeast(1920)
+    private var currentAgentRunId: String = agentRunId
+    private var currentWorkspace: AgentWorkspaceDescriptor = workspace
+
+    override val workspaceId: String
+        get() = currentWorkspace.id
 
     suspend fun execute(request: BrowserUseRequest): BrowserUseOutcome {
         return when (request.action) {
@@ -328,18 +350,83 @@ class BrowserUseEngine(
         }
     }
 
-    suspend fun close() {
-        withContext(Dispatchers.Main.immediate) {
-            tabs.values.forEach { tab ->
-                runCatching {
-                    tab.webView.stopLoading()
-                    tab.webView.destroy()
-                }
-            }
-            tabs.clear()
-            activeTabId = null
-            mainScope.cancel()
+    fun bindRunContext(
+        agentRunId: String,
+        workspace: AgentWorkspaceDescriptor
+    ) {
+        currentAgentRunId = agentRunId
+        currentWorkspace = workspace
+    }
+
+    fun liveSessionSnapshot(): Map<String, Any?> {
+        val tab = activeTabId?.let { tabs[it] } ?: tabs.values.lastOrNull()
+        if (tab == null) {
+            return unavailableSnapshot(workspaceId = workspaceId)
         }
+        activeTabId = tab.tabId
+        return linkedMapOf(
+            "available" to true,
+            "workspaceId" to workspaceId,
+            "activeTabId" to tab.tabId,
+            "currentUrl" to (tab.currentUrl ?: ""),
+            "title" to (tab.title ?: ""),
+            "userAgentProfile" to tab.userAgentProfile.wireName
+        )
+    }
+
+    fun attachActiveTabTo(
+        container: ViewGroup,
+        hostContext: Context
+    ): Boolean {
+        val tab = activeTabId?.let { tabs[it] } ?: tabs.values.lastOrNull() ?: return false
+        activeTabId = tab.tabId
+        tab.contextWrapper.baseContext = hostContext
+        val currentParent = tab.webView.parent as? ViewGroup
+        if (currentParent !== container) {
+            currentParent?.removeView(tab.webView)
+            container.removeAllViews()
+            container.addView(
+                tab.webView,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        tab.webView.post { layoutWebView(tab.webView) }
+        return true
+    }
+
+    fun detachActiveTabFrom(container: ViewGroup? = null) {
+        val tab = activeTabId?.let { tabs[it] } ?: tabs.values.lastOrNull() ?: return
+        val parent = tab.webView.parent as? ViewGroup ?: return
+        if (container == null || parent === container) {
+            parent.removeView(tab.webView)
+        }
+        tab.contextWrapper.baseContext = appContext
+    }
+
+    override fun closeSession() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            destroyOnMain()
+            return
+        }
+        runBlocking(Dispatchers.Main.immediate) {
+            destroyOnMain()
+        }
+    }
+
+    private fun destroyOnMain() {
+        tabs.values.forEach { tab ->
+            runCatching {
+                (tab.webView.parent as? ViewGroup)?.removeView(tab.webView)
+                tab.webView.stopLoading()
+                tab.webView.destroy()
+            }
+        }
+        tabs.clear()
+        activeTabId = null
+        mainScope.cancel()
     }
 
     private suspend fun executeNewTab(request: BrowserUseRequest): BrowserUseOutcome {
@@ -367,6 +454,7 @@ class BrowserUseEngine(
                 activeTabId = tabs.keys.lastOrNull()
             }
             runCatching {
+                (tab.webView.parent as? ViewGroup)?.removeView(tab.webView)
                 tab.webView.stopLoading()
                 tab.webView.destroy()
             }
@@ -402,7 +490,7 @@ class BrowserUseEngine(
     private suspend fun executeScreenshot(request: BrowserUseRequest): BrowserUseOutcome {
         val tab = requirePageTab(request)
         val screenshotFile = workspaceManager.newBrowserFile(
-            agentRunId = agentRunId,
+            agentRunId = currentAgentRunId,
             prefix = "screenshot_tab_${tab.tabId}",
             extension = "png"
         )
@@ -789,7 +877,7 @@ class BrowserUseEngine(
             extensionFromContentType(connection.contentType)
         }
         val targetFile = workspaceManager.newBrowserFile(
-            agentRunId = agentRunId,
+            agentRunId = currentAgentRunId,
             prefix = fileName.substringBeforeLast('.').ifBlank { "fetch" },
             extension = extension.ifBlank { "bin" }
         )
@@ -839,7 +927,7 @@ class BrowserUseEngine(
         )
         val filteredPairs = cookiePairs.filter { (name, _) -> matchedNames.contains(name) }
         val envFile = workspaceManager.newOffloadFile(
-            agentRunId = agentRunId,
+            agentRunId = currentAgentRunId,
             prefix = "env_cookies",
             extension = "sh"
         )
@@ -894,7 +982,7 @@ class BrowserUseEngine(
         val payloadExtra = extra.toMutableMap()
         if (text.length > LARGE_TEXT_THRESHOLD) {
             val file = workspaceManager.newBrowserFile(
-                agentRunId = agentRunId,
+                agentRunId = currentAgentRunId,
                 prefix = request.action.wireName,
                 extension = "txt"
             )
@@ -932,7 +1020,7 @@ class BrowserUseEngine(
         val artifacts = mutableListOf<ArtifactRef>()
         if (items.size > 20) {
             val file = workspaceManager.newBrowserFile(
-                agentRunId = agentRunId,
+                agentRunId = currentAgentRunId,
                 prefix = "scroll_collect",
                 extension = "json"
             )
@@ -970,7 +1058,7 @@ class BrowserUseEngine(
         val extra = linkedMapOf<String, Any?>()
         if (content.length > LARGE_TEXT_THRESHOLD) {
             val file = workspaceManager.newBrowserFile(
-                agentRunId = agentRunId,
+                agentRunId = currentAgentRunId,
                 prefix = request.action.wireName,
                 extension = extension
             )
@@ -1003,6 +1091,7 @@ class BrowserUseEngine(
         extra: Map<String, Any?> = emptyMap()
     ): Map<String, Any?> {
         return linkedMapOf<String, Any?>(
+            "workspaceId" to workspaceId,
             "action" to action.wireName,
             "tabId" to tab.tabId,
             "currentUrl" to tab.currentUrl,
@@ -1036,7 +1125,8 @@ class BrowserUseEngine(
         require(tabs.size < MAX_BROWSER_TABS) { "浏览器标签页上限为 $MAX_BROWSER_TABS" }
         return withContext(Dispatchers.Main.immediate) {
             val tabId = ++nextTabId
-            val webView = WebView(appContext).apply {
+            val contextWrapper = MutableContextWrapper(appContext)
+            val webView = WebView(contextWrapper).apply {
                 setBackgroundColor(Color.WHITE)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
@@ -1053,6 +1143,7 @@ class BrowserUseEngine(
             }
             val tab = BrowserTab(
                 tabId = tabId,
+                contextWrapper = contextWrapper,
                 webView = webView,
                 userAgentProfile = profile,
                 currentUrl = "about:blank",
@@ -1126,7 +1217,7 @@ class BrowserUseEngine(
             trimmed.startsWith("omnibot://browser/") -> {
                 val file = workspaceManager.resolvePath(
                     inputPath = trimmed,
-                    workspace = workspace,
+                    workspace = currentWorkspace,
                     allowRootDirectories = true
                 )
                 require(file.exists()) { "本地浏览器资源不存在：$trimmed" }
@@ -1337,10 +1428,15 @@ class BrowserUseEngine(
     }
 
     private fun layoutWebView(webView: WebView) {
-        val widthSpec = View.MeasureSpec.makeMeasureSpec(viewportWidth, View.MeasureSpec.EXACTLY)
-        val heightSpec = View.MeasureSpec.makeMeasureSpec(viewportHeight, View.MeasureSpec.EXACTLY)
+        val parent = webView.parent as? View
+        val measuredWidth = listOf(webView.width, parent?.width ?: 0, viewportWidth)
+            .firstOrNull { it > 0 } ?: viewportWidth
+        val measuredHeight = listOf(webView.height, parent?.height ?: 0, viewportHeight)
+            .firstOrNull { it > 0 } ?: viewportHeight
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(measuredWidth, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(measuredHeight, View.MeasureSpec.EXACTLY)
         webView.measure(widthSpec, heightSpec)
-        webView.layout(0, 0, viewportWidth, viewportHeight)
+        webView.layout(0, 0, measuredWidth, measuredHeight)
     }
 
     private fun decodeJavascriptString(raw: String?): String {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../../models/chat_message_model.dart';
+import '../chat_page_models.dart';
 import '../../command_overlay/widgets/message_bubble.dart';
 import '../../command_overlay/widgets/chat_input_area.dart';
 
@@ -16,6 +17,12 @@ class ChatAppBar extends StatelessWidget {
   final ValueChanged<ChatSurfaceMode> onModeChanged;
   final String? activeModelId;
   final ValueChanged<BuildContext>? onModelTap;
+  final ChatIslandDisplayLayer displayLayer;
+  final ValueChanged<ChatIslandDisplayLayer> onDisplayLayerChanged;
+  final VoidCallback onTerminalTap;
+  final VoidCallback onBrowserTap;
+  final bool isBrowserEnabled;
+  final String? activeToolType;
   final bool isCompanionModeEnabled;
   final bool isCompanionToggleLoading;
 
@@ -27,6 +34,12 @@ class ChatAppBar extends StatelessWidget {
     required this.onModeChanged,
     this.activeModelId,
     this.onModelTap,
+    this.displayLayer = ChatIslandDisplayLayer.mode,
+    required this.onDisplayLayerChanged,
+    required this.onTerminalTap,
+    required this.onBrowserTap,
+    this.isBrowserEnabled = false,
+    this.activeToolType,
     this.isCompanionModeEnabled = false,
     this.isCompanionToggleLoading = false,
   });
@@ -62,6 +75,12 @@ class ChatAppBar extends StatelessWidget {
                   onModeChanged: onModeChanged,
                   activeModelId: activeModelId,
                   onModelTap: onModelTap,
+                  displayLayer: displayLayer,
+                  onDisplayLayerChanged: onDisplayLayerChanged,
+                  onTerminalTap: onTerminalTap,
+                  onBrowserTap: onBrowserTap,
+                  isBrowserEnabled: isBrowserEnabled,
+                  activeToolType: activeToolType,
                 ),
               ),
             ),
@@ -110,12 +129,24 @@ class _ChatModeModelSwitcher extends StatefulWidget {
     required this.onModeChanged,
     this.activeModelId,
     this.onModelTap,
+    required this.displayLayer,
+    required this.onDisplayLayerChanged,
+    required this.onTerminalTap,
+    required this.onBrowserTap,
+    required this.isBrowserEnabled,
+    this.activeToolType,
   });
 
   final ChatSurfaceMode activeMode;
   final ValueChanged<ChatSurfaceMode> onModeChanged;
   final String? activeModelId;
   final ValueChanged<BuildContext>? onModelTap;
+  final ChatIslandDisplayLayer displayLayer;
+  final ValueChanged<ChatIslandDisplayLayer> onDisplayLayerChanged;
+  final VoidCallback onTerminalTap;
+  final VoidCallback onBrowserTap;
+  final bool isBrowserEnabled;
+  final String? activeToolType;
 
   @override
   State<_ChatModeModelSwitcher> createState() => _ChatModeModelSwitcherState();
@@ -126,9 +157,9 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
   static const Duration _switchDuration = Duration(milliseconds: 460);
   static const double _verticalSwitchThreshold = 10;
   static const double _verticalVelocityThreshold = 240;
+  static const double _switcherHeight = 32;
 
   Timer? _idleTimer;
-  bool _showModelLabel = false;
   double _verticalDragDelta = 0;
 
   String get _modelLabel {
@@ -143,6 +174,16 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       widget.activeMode == ChatSurfaceMode.normal &&
       (widget.activeModelId ?? '').trim().isNotEmpty;
 
+  bool get _shouldAutoRevealModel =>
+      _canRevealModelLabel &&
+      widget.displayLayer == ChatIslandDisplayLayer.mode;
+
+  int _layerOrder(ChatIslandDisplayLayer layer) => switch (layer) {
+    ChatIslandDisplayLayer.model => 0,
+    ChatIslandDisplayLayer.mode => 1,
+    ChatIslandDisplayLayer.tools => 2,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -152,13 +193,14 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
   @override
   void didUpdateWidget(covariant _ChatModeModelSwitcher oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.activeMode != widget.activeMode) {
-      _markInteraction();
+    if (oldWidget.activeMode != widget.activeMode ||
+        oldWidget.displayLayer != widget.displayLayer) {
+      _armIdleTimer();
       return;
     }
     final previousModelId = (oldWidget.activeModelId ?? '').trim();
     final currentModelId = (widget.activeModelId ?? '').trim();
-    if (previousModelId != currentModelId && !_showModelLabel) {
+    if (previousModelId != currentModelId) {
       _armIdleTimer();
     }
   }
@@ -171,30 +213,22 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
 
   void _armIdleTimer() {
     _idleTimer?.cancel();
-    if (!_canRevealModelLabel) {
-      if (_showModelLabel && mounted) {
-        setState(() => _showModelLabel = false);
-      }
+    if (!_shouldAutoRevealModel) {
       return;
     }
     _idleTimer = Timer(_idleDelay, () {
-      if (!mounted || !_canRevealModelLabel) {
+      if (!mounted || !_shouldAutoRevealModel) {
         return;
       }
-      setState(() => _showModelLabel = true);
+      widget.onDisplayLayerChanged(ChatIslandDisplayLayer.model);
     });
   }
 
-  void _markInteraction() {
+  void _handleSliderInteraction() {
     _idleTimer?.cancel();
-    if (!_canRevealModelLabel) {
-      if (_showModelLabel && mounted) {
-        setState(() => _showModelLabel = false);
-      }
-      return;
-    }
-    if (_showModelLabel && mounted) {
-      setState(() => _showModelLabel = false);
+    if (widget.activeMode == ChatSurfaceMode.normal &&
+        widget.displayLayer != ChatIslandDisplayLayer.mode) {
+      widget.onDisplayLayerChanged(ChatIslandDisplayLayer.mode);
     }
     _armIdleTimer();
   }
@@ -205,7 +239,8 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
 
   void _handleVerticalDragEnd(DragEndDetails details) {
     final velocity = details.primaryVelocity ?? 0;
-    final shouldToggle = _verticalDragDelta.abs() > _verticalSwitchThreshold ||
+    final shouldToggle =
+        _verticalDragDelta.abs() > _verticalSwitchThreshold ||
         velocity.abs() > _verticalVelocityThreshold;
     if (!shouldToggle) {
       _verticalDragDelta = 0;
@@ -214,15 +249,19 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
     final intent = _verticalDragDelta + velocity * 0.015;
     _verticalDragDelta = 0;
 
+    if (widget.activeMode != ChatSurfaceMode.normal) {
+      return;
+    }
+    _idleTimer?.cancel();
     if (intent > 0) {
-      if (_canRevealModelLabel && !_showModelLabel) {
-        _idleTimer?.cancel();
-        setState(() => _showModelLabel = true);
+      if (widget.displayLayer != ChatIslandDisplayLayer.tools) {
+        widget.onDisplayLayerChanged(ChatIslandDisplayLayer.tools);
       }
       return;
     }
-    if (_showModelLabel) {
-      _markInteraction();
+    if (_canRevealModelLabel &&
+        widget.displayLayer != ChatIslandDisplayLayer.model) {
+      widget.onDisplayLayerChanged(ChatIslandDisplayLayer.model);
     }
   }
 
@@ -246,6 +285,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
         }
         return InkWell(
           onTap: () {
+            _idleTimer?.cancel();
             widget.onModelTap?.call(anchorContext);
           },
           borderRadius: BorderRadius.circular(999),
@@ -253,6 +293,48 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
         );
       },
     );
+    final toolLayerWidget = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ChatIslandToolButton(
+              key: const ValueKey('chat-island-terminal-button'),
+              icon: Icons.code_rounded,
+              label: '终端',
+              isActive: widget.activeToolType?.trim() == 'terminal',
+              tooltip: '打开终端',
+              onTap: () {
+                _idleTimer?.cancel();
+                widget.onTerminalTap();
+              },
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: _ChatIslandToolButton(
+              key: const ValueKey('chat-island-browser-button'),
+              icon: Icons.language_rounded,
+              label: '浏览器',
+              isActive: widget.activeToolType?.trim() == 'browser',
+              isEnabled: widget.isBrowserEnabled,
+              tooltip: widget.isBrowserEnabled
+                  ? '打开当前会话浏览器'
+                  : '当前会话还没有可用的浏览器会话',
+              onTap: () {
+                _idleTimer?.cancel();
+                widget.onBrowserTap();
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+    final currentOrder = _layerOrder(widget.displayLayer);
+
+    double topFor(ChatIslandDisplayLayer layer) {
+      return (_layerOrder(layer) - currentOrder) * _switcherHeight;
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -263,7 +345,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
         child: SizedBox(
-          height: 32,
+          height: _switcherHeight,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onVerticalDragUpdate: _handleVerticalDragUpdate,
@@ -280,12 +362,12 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
                   curve: Curves.easeInOutCubicEmphasized,
                   left: 0,
                   right: 0,
-                  height: 32,
-                  top: _showModelLabel ? 32 : 0,
+                  height: _switcherHeight,
+                  top: topFor(ChatIslandDisplayLayer.mode),
                   child: ChatModeSlider(
                     activeMode: widget.activeMode,
                     onChanged: widget.onModeChanged,
-                    onInteracted: _markInteraction,
+                    onInteracted: _handleSliderInteraction,
                   ),
                 ),
                 AnimatedPositioned(
@@ -293,9 +375,18 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
                   curve: Curves.easeInOutCubicEmphasized,
                   left: 0,
                   right: 0,
-                  height: 32,
-                  top: _showModelLabel ? 0 : -32,
+                  height: _switcherHeight,
+                  top: topFor(ChatIslandDisplayLayer.model),
                   child: modelLabelWidget,
+                ),
+                AnimatedPositioned(
+                  duration: _switchDuration,
+                  curve: Curves.easeInOutCubicEmphasized,
+                  left: 0,
+                  right: 0,
+                  height: _switcherHeight,
+                  top: topFor(ChatIslandDisplayLayer.tools),
+                  child: toolLayerWidget,
                 ),
               ],
             ),
@@ -303,6 +394,67 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
         ),
       ),
     );
+  }
+}
+
+class _ChatIslandToolButton extends StatelessWidget {
+  const _ChatIslandToolButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.isEnabled = true,
+    this.isActive = false,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool isEnabled;
+  final bool isActive;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = !isEnabled
+        ? const Color(0xFFB8C4D8)
+        : isActive
+        ? const Color(0xFF1930D9)
+        : const Color(0xFF617390);
+    final background = isActive ? const Color(0xFFE9EEFF) : Colors.transparent;
+    final child = InkWell(
+      onTap: isEnabled ? onTap : null,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 14, color: foreground),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: foreground,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (tooltip == null || tooltip!.trim().isEmpty) {
+      return child;
+    }
+    return Tooltip(message: tooltip, child: child);
   }
 }
 
@@ -673,10 +825,7 @@ class ChatInputWrapper extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (topBanner != null) ...[
-            topBanner!,
-            const SizedBox(height: 8),
-          ],
+          if (topBanner != null) ...[topBanner!, const SizedBox(height: 8)],
           ChatInputArea(
             key: inputAreaKey,
             controller: controller,

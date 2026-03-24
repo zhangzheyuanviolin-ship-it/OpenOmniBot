@@ -21,6 +21,7 @@ import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/widgets/permission_bottom_sheet.dart';
 import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/app_update_service.dart';
+import 'package:ui/services/agent_browser_session_service.dart';
 import 'package:ui/services/conversation_model_override_service.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
@@ -41,10 +42,13 @@ import 'mixins/task_execution_handler.dart';
 import 'mixins/conversation_manager.dart';
 
 // 导入 Widgets
+import 'chat_page_models.dart';
 import 'widgets/chat_widgets.dart';
+import 'widgets/chat_browser_overlay.dart';
 import 'package:ui/widgets/app_update_banner.dart';
 import 'package:ui/widgets/app_update_dialog.dart';
 
+part 'chat_page_browser.dart';
 part 'chat_page_lifecycle.dart';
 part 'chat_page_model_context.dart';
 part 'chat_page_openclaw.dart';
@@ -137,6 +141,20 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     ChatPageMode.normal: '',
     ChatPageMode.openclaw: '',
   };
+  final Map<ChatPageMode, ChatIslandDisplayLayer>
+  _chatIslandDisplayLayerByMode = {
+    ChatPageMode.normal: ChatIslandDisplayLayer.mode,
+    ChatPageMode.openclaw: ChatIslandDisplayLayer.mode,
+  };
+  final Map<ChatPageMode, String?> _lastAgentToolTypeByMode = {
+    ChatPageMode.normal: null,
+    ChatPageMode.openclaw: null,
+  };
+  final Map<ChatPageMode, ChatBrowserSessionSnapshot?>
+  _browserSessionSnapshotByMode = {
+    ChatPageMode.normal: null,
+    ChatPageMode.openclaw: null,
+  };
 
   // 输入框/任务执行状态
   final Map<ChatPageMode, bool> _isInputAreaVisibleByMode = {
@@ -222,6 +240,13 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   Timer? _companionCountdownTimer;
   AppUpdateStatus? _appUpdateStatus;
   ModalRoute<dynamic>? _subscribedRoute;
+  ChatBrowserSessionSnapshot? _liveBrowserSessionSnapshot;
+  bool _isBrowserOverlayVisible = false;
+  bool _isBrowserOverlayInitialized = false;
+  Offset _browserOverlayOffset = Offset.zero;
+  Size _browserOverlaySize = const Size(360, 420);
+  int _browserOverlayViewSeed = 0;
+  String? _lastObservedBrowserSnapshotSignature;
 
   ChatPageMode get _activeMode => _activeConversationMode;
   String _modeKey(ChatPageMode mode) => switch (mode) {
@@ -242,6 +267,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
+  String get _expectedBrowserWorkspaceId => chatConversationWorkspaceId(
+    _currentConversationIdByMode[ChatPageMode.normal],
+  );
 
   List<ChatMessageModel> get _messages =>
       _activeRuntime?.messages ?? _messagesByMode[_activeMode]!;
@@ -379,6 +407,59 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       runtime.conversation = value;
     }
   }
+
+  ChatIslandDisplayLayer get _chatIslandDisplayLayer =>
+      _activeRuntime?.chatIslandDisplayLayer ??
+      (_chatIslandDisplayLayerByMode[_activeMode] ??
+          ChatIslandDisplayLayer.mode);
+  set _chatIslandDisplayLayer(ChatIslandDisplayLayer value) {
+    final runtime = _activeRuntime;
+    if (runtime != null) {
+      runtime.chatIslandDisplayLayer = value;
+      return;
+    }
+    _chatIslandDisplayLayerByMode[_activeMode] = value;
+  }
+
+  String? get _lastAgentToolType =>
+      _activeRuntime?.lastAgentToolType ??
+      _lastAgentToolTypeByMode[_activeMode];
+  set _lastAgentToolType(String? value) {
+    final runtime = _activeRuntime;
+    if (runtime != null) {
+      runtime.lastAgentToolType = value;
+      return;
+    }
+    _lastAgentToolTypeByMode[_activeMode] = value;
+  }
+
+  ChatBrowserSessionSnapshot? get _browserSessionSnapshot =>
+      _activeRuntime?.browserSessionSnapshot ??
+      _browserSessionSnapshotByMode[_activeMode];
+  set _browserSessionSnapshot(ChatBrowserSessionSnapshot? value) {
+    final runtime = _activeRuntime;
+    if (runtime != null) {
+      runtime.browserSessionSnapshot = value;
+      return;
+    }
+    _browserSessionSnapshotByMode[_activeMode] = value;
+  }
+
+  ChatBrowserSessionSnapshot? get _resolvedBrowserSessionSnapshot {
+    final live = _liveBrowserSessionSnapshot;
+    if (live != null && live.matchesWorkspace(_expectedBrowserWorkspaceId)) {
+      return live;
+    }
+    final runtime = _browserSessionSnapshot;
+    if (runtime != null &&
+        runtime.matchesWorkspace(_expectedBrowserWorkspaceId)) {
+      return runtime;
+    }
+    return null;
+  }
+
+  bool get _isBrowserSessionAvailable =>
+      _resolvedBrowserSessionSnapshot?.available == true;
 
   List<ChatInputAttachment> get _pendingAttachments =>
       _pendingAttachmentsByMode[_activeMode]!;
@@ -558,6 +639,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
         _loadConversationModelOverrideForNormalConversation(conversationId),
       );
       unawaited(_loadNormalChatModelContext());
+      unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
     }
     if (mounted) {
       setState(() {});
@@ -581,6 +663,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       unawaited(
         _persistPendingConversationModelOverrideIfNeeded(conversationId),
       );
+      unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
     }
   }
 
@@ -696,6 +779,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   void _handleRuntimeCoordinatorChanged() {
     if (!mounted || _activeRuntime == null) return;
+    _scheduleBrowserSessionRefreshIfNeeded();
     setState(() {});
   }
 
@@ -714,6 +798,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _currentConversationByMode[mode] = null;
     _isInputAreaVisibleByMode[mode] = true;
     _isExecutingTaskByMode[mode] = false;
+    _chatIslandDisplayLayerByMode[mode] = ChatIslandDisplayLayer.mode;
+    _lastAgentToolTypeByMode[mode] = null;
+    _browserSessionSnapshotByMode[mode] = null;
     _pendingAttachmentsByMode[mode]!.clear();
     _draftMessageByMode[mode] = '';
     if (mode == ChatPageMode.normal) {
@@ -722,6 +809,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       _showConversationModelMentionChip = false;
       _showModelMentionPanel = false;
       _activeModelMentionToken = null;
+      _liveBrowserSessionSnapshot = null;
+      _isBrowserOverlayVisible = false;
+      _isBrowserOverlayInitialized = false;
+      _lastObservedBrowserSnapshotSignature = null;
     }
   }
 
@@ -893,6 +984,35 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Widget _buildModelMentionPanel();
 
+  String _browserSnapshotSignature(ChatBrowserSessionSnapshot? snapshot);
+
+  void _scheduleBrowserSessionRefreshIfNeeded();
+
+  Future<void> _refreshLiveBrowserSessionSnapshot({bool syncRuntime = false});
+
+  void _setChatIslandDisplayLayerForMode(
+    ChatPageMode mode,
+    ChatIslandDisplayLayer layer,
+  );
+
+  void _handleChatIslandDisplayLayerChanged(ChatIslandDisplayLayer layer);
+
+  Future<void> _handleTerminalToolTap();
+
+  Future<void> _handleBrowserToolTap();
+
+  void _hideBrowserOverlay();
+
+  void _ensureBrowserOverlayGeometry(BoxConstraints constraints);
+
+  void _moveBrowserOverlay(Offset delta, BoxConstraints constraints);
+
+  void _resizeBrowserOverlay(Offset delta, BoxConstraints constraints);
+
+  Rect _browserOverlayBounds(BoxConstraints constraints);
+
+  Widget _buildBrowserOverlay(BoxConstraints constraints);
+
   void _handleSlashCommandInput();
 
   void _showOpenClawCommandPanel({bool expand = false});
@@ -1045,6 +1165,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
 class _ChatPageState extends _ChatPageStateBase
     with
+        _ChatPageBrowserMixin,
         _ChatPageLifecycleMixin,
         _ChatPageModelContextMixin,
         _ChatPageOpenClawMixin,

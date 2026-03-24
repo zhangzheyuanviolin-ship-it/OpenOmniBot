@@ -33,6 +33,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     _messageController.addListener(_handleSlashCommandInput);
     _loadOpenClawConfig();
     unawaited(_loadNormalChatModelContext());
+    unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
     initializeConversation();
     _notifySummarySheetReadyIfNeeded();
   }
@@ -356,6 +357,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   @override
   void didPopNext() {
     unawaited(_loadNormalChatModelContext());
+    unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
     if (_openClawDeployPanelExpanded) {
       unawaited(_refreshOpenClawDeployPanelState());
     }
@@ -494,6 +496,11 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         _activeSurfaceMode = ChatSurfaceMode.workspace;
         _workspaceSurfaceSeed += 1;
         _messageController.clear();
+        _setChatIslandDisplayLayerForMode(
+          ChatPageMode.normal,
+          ChatIslandDisplayLayer.mode,
+        );
+        _isBrowserOverlayVisible = false;
       });
       _hideSlashCommandPanel();
       if (syncPage) _jumpToCurrentModePage();
@@ -508,6 +515,11 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         _openClawEnabled = hasConfig;
         _showModelMentionPanel = false;
         _activeModelMentionToken = null;
+        _setChatIslandDisplayLayerForMode(
+          ChatPageMode.normal,
+          ChatIslandDisplayLayer.mode,
+        );
+        _isBrowserOverlayVisible = false;
       });
       _applyDraftForConversationMode(ChatPageMode.openclaw);
       await StorageService.setBool(kOpenClawEnabledKey, hasConfig);
@@ -566,6 +578,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       unawaited(_checkCompanionTaskState());
       unawaited(AppUpdateService.refreshIfNeeded());
       unawaited(_loadNormalChatModelContext());
+      unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
       if (_openClawDeployPanelExpanded) {
         unawaited(_refreshOpenClawDeployPanelState());
       }

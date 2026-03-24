@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
 import 'package:ui/features/home/pages/command_overlay/constants/messages.dart';
 import 'package:ui/features/home/pages/chat/mixins/agent_stream_handler.dart';
@@ -44,6 +45,9 @@ class ChatConversationRuntimeState {
   bool pendingThinkingRoundSplit = false;
   int toolCardSequence = 0;
   int thinkingRound = 0;
+  ChatIslandDisplayLayer chatIslandDisplayLayer = ChatIslandDisplayLayer.mode;
+  String? lastAgentToolType;
+  ChatBrowserSessionSnapshot? browserSessionSnapshot;
 
   bool get hasInFlightTask =>
       isAiResponding ||
@@ -175,6 +179,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     bool pendingThinkingRoundSplit = false,
     int toolCardSequence = 0,
     int thinkingRound = 0,
+    ChatIslandDisplayLayer chatIslandDisplayLayer = ChatIslandDisplayLayer.mode,
+    String? lastAgentToolType,
+    ChatBrowserSessionSnapshot? browserSessionSnapshot,
   }) {
     final runtime = ensureRuntime(
       conversationId: conversationId,
@@ -205,6 +212,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.pendingThinkingRoundSplit = pendingThinkingRoundSplit;
     runtime.toolCardSequence = toolCardSequence;
     runtime.thinkingRound = thinkingRound;
+    runtime.chatIslandDisplayLayer = chatIslandDisplayLayer;
+    runtime.lastAgentToolType = lastAgentToolType;
+    runtime.browserSessionSnapshot = browserSessionSnapshot;
     notifyListeners();
   }
 
@@ -551,6 +561,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final taskId = runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (taskId == null || taskId != event.taskId) return;
 
+    _updateToolLayerState(runtime, event);
+
     _clearPendingAgentTextIfNeeded(runtime, taskId);
     runtime.currentThinkingStage = ThinkingStage.toolCall.value;
     runtime.toolCardSequence += 1;
@@ -585,6 +597,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final taskId = runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (taskId == null || taskId != event.taskId) return;
 
+    _updateToolLayerState(runtime, event);
+
     final cardId = runtime.activeToolCardId;
     if (cardId == null) return;
     _upsertToolCard(
@@ -608,6 +622,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final cardId = runtime.activeToolCardId;
     if (taskId == null || taskId != event.taskId || cardId == null) return;
 
+    _updateToolLayerState(runtime, event);
+
     _upsertToolCard(
       runtime: runtime,
       taskId: taskId,
@@ -620,6 +636,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       rawResultJson: event.rawResultJson,
     );
     runtime.activeToolCardId = null;
+    _updateBrowserSessionSnapshot(runtime, event);
     notifyListeners();
   }
 
@@ -1301,6 +1318,57 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       return normalized;
     }
     return event.success ? 'success' : 'error';
+  }
+
+  void updateChatIslandDisplayLayer({
+    required int conversationId,
+    required String mode,
+    required ChatIslandDisplayLayer layer,
+  }) {
+    final runtime = runtimeFor(conversationId: conversationId, mode: mode);
+    if (runtime == null || runtime.chatIslandDisplayLayer == layer) {
+      return;
+    }
+    runtime.chatIslandDisplayLayer = layer;
+    notifyListeners();
+  }
+
+  void _updateToolLayerState(
+    ChatConversationRuntimeState runtime,
+    AgentToolEventData event,
+  ) {
+    final toolType = event.toolType.trim();
+    if (toolType != 'terminal' && toolType != 'browser') {
+      return;
+    }
+    runtime.lastAgentToolType = toolType;
+    runtime.chatIslandDisplayLayer = ChatIslandDisplayLayer.tools;
+  }
+
+  void _updateBrowserSessionSnapshot(
+    ChatConversationRuntimeState runtime,
+    AgentToolEventData event,
+  ) {
+    if (event.toolType.trim() != 'browser') {
+      return;
+    }
+    final workspaceId = (event.workspaceId ?? '').trim();
+    if (!event.success || workspaceId.isEmpty) {
+      return;
+    }
+    final snapshot =
+        ChatBrowserSessionSnapshot.tryParseBrowserToolJson(
+          rawJson: event.rawResultJson,
+          workspaceId: workspaceId,
+        ) ??
+        ChatBrowserSessionSnapshot.tryParseBrowserToolJson(
+          rawJson: event.resultPreviewJson,
+          workspaceId: workspaceId,
+        );
+    if (snapshot == null) {
+      return;
+    }
+    runtime.browserSessionSnapshot = snapshot;
   }
 
   String _trimTerminalOutput(String value) {

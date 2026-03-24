@@ -12,7 +12,6 @@ import 'package:ui/utils/ui.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/features/memory/services/mem0_memory_service.dart';
-import 'package:ui/services/special_permission.dart';
 
 /// 首页侧边栏
 class HomeDrawer extends ConsumerStatefulWidget {
@@ -270,16 +269,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                       onTap: () =>
                           GoRouterManager.push('/task/scheduled_tasks'),
                     ),
-
-                    _buildMenuItem(
-                      icon: 'assets/home/termux.svg',
-                      title: '终端',
-                      onTap: () {
-                        Navigator.pop(context);
-                        unawaited(openNativeTerminal());
-                      },
-                    ),
-
                     const SizedBox(height: 16),
 
                     _buildConversationSection(),

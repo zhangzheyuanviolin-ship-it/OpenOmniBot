@@ -205,116 +205,138 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               _interruptCompanionAutoHomeIfNeeded();
               unawaited(_handleOutsideTap(event.position));
             },
-            child: Stack(
-              children: [
-                Column(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Stack(
                   children: [
-                    ChatAppBar(
-                      onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
-                      onCompanionTap: () {
-                        unawaited(_toggleCompanionMode());
-                      },
-                      activeMode: _activeSurfaceMode,
-                      onModeChanged: (value) {
-                        unawaited(_switchChatMode(value, syncPage: true));
-                      },
-                      activeModelId:
-                          _activeSurfaceMode == ChatSurfaceMode.normal
-                          ? _activeNormalChatModelId
-                          : null,
-                      onModelTap: _activeSurfaceMode == ChatSurfaceMode.normal
-                          ? (anchorContext) {
-                              unawaited(
-                                _openConversationModelSelector(anchorContext),
-                              );
-                            }
-                          : null,
-                      isCompanionModeEnabled: _isCompanionModeEnabled,
-                      isCompanionToggleLoading: _isCompanionToggleLoading,
-                    ),
-                    if (_isCompanionModeEnabled && _showCompanionCountdown)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          '$_companionCountdown秒后自动回到桌面',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF617390),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    Expanded(
-                      child: PageView(
-                        controller: _modePageController,
-                        onPageChanged: _handleModePageChanged,
-                        children: [
-                          _buildWorkspaceSurfacePage(),
-                          _buildModeMessagePage(ChatPageMode.normal),
-                          _buildModeMessagePage(ChatPageMode.openclaw),
-                        ],
-                      ),
-                    ),
-                    if (!_isWorkspaceSurface && _vlmInfoQuestion != null)
-                      VlmInfoPrompt(
-                        question: _vlmInfoQuestion!,
-                        controller: _vlmAnswerController,
-                        isSubmitting: _isSubmittingVlmReply,
-                        onSubmit: onSubmitVlmInfo,
-                        onDismiss: dismissVlmInfo,
-                      ),
-                    if (_isInputAreaVisible && !_isWorkspaceSurface)
-                      Container(
-                        key: _inputAreaKey,
-                        child: ChatInputWrapper(
-                          inputAreaKey: _chatInputAreaKey,
-                          controller: _messageController,
-                          focusNode: _inputFocusNode,
-                          isProcessing: _isAiResponding,
-                          onSendMessage: _sendMessage,
-                          onCancelTask: _onCancelTask,
-                          onPopupVisibilityChanged: _onPopupVisibilityChanged,
-                          useLargeComposerStyle: true,
-                          useAttachmentPickerForPlus: true,
-                          onPickAttachment: _pickAttachments,
-                          attachments: _pendingAttachments,
-                          onRemoveAttachment: _removePendingAttachment,
-                          selectedModelOverrideId:
-                              _activeMode == ChatPageMode.normal &&
-                                  _showConversationModelMentionChip
-                              ? _activeConversationModelOverrideSelection
-                                    ?.modelId
+                    Column(
+                      children: [
+                        ChatAppBar(
+                          onMenuTap: () =>
+                              _scaffoldKey.currentState?.openDrawer(),
+                          onCompanionTap: () {
+                            unawaited(_toggleCompanionMode());
+                          },
+                          activeMode: _activeSurfaceMode,
+                          onModeChanged: (value) {
+                            unawaited(_switchChatMode(value, syncPage: true));
+                          },
+                          activeModelId:
+                              _activeSurfaceMode == ChatSurfaceMode.normal
+                              ? _activeNormalChatModelId
                               : null,
-                          onClearSelectedModelOverride:
-                              _activeMode == ChatPageMode.normal &&
-                                  _activeConversationModelOverrideSelection !=
-                                      null
-                              ? () {
-                                  unawaited(_clearConversationModelOverride());
+                          onModelTap:
+                              _activeSurfaceMode == ChatSurfaceMode.normal
+                              ? (anchorContext) {
+                                  unawaited(
+                                    _openConversationModelSelector(
+                                      anchorContext,
+                                    ),
+                                  );
                                 }
                               : null,
-                          topBanner: _buildAppUpdateBanner(),
+                          displayLayer:
+                              _activeSurfaceMode == ChatSurfaceMode.normal
+                              ? _chatIslandDisplayLayer
+                              : ChatIslandDisplayLayer.mode,
+                          onDisplayLayerChanged:
+                              _handleChatIslandDisplayLayerChanged,
+                          onTerminalTap: _handleTerminalToolTap,
+                          onBrowserTap: _handleBrowserToolTap,
+                          isBrowserEnabled: _isBrowserSessionAvailable,
+                          activeToolType: _lastAgentToolType,
+                          isCompanionModeEnabled: _isCompanionModeEnabled,
+                          isCompanionToggleLoading: _isCompanionToggleLoading,
                         ),
+                        if (_isCompanionModeEnabled && _showCompanionCountdown)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              '$_companionCountdown秒后自动回到桌面',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF617390),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        Expanded(
+                          child: PageView(
+                            controller: _modePageController,
+                            onPageChanged: _handleModePageChanged,
+                            children: [
+                              _buildWorkspaceSurfacePage(),
+                              _buildModeMessagePage(ChatPageMode.normal),
+                              _buildModeMessagePage(ChatPageMode.openclaw),
+                            ],
+                          ),
+                        ),
+                        if (!_isWorkspaceSurface && _vlmInfoQuestion != null)
+                          VlmInfoPrompt(
+                            question: _vlmInfoQuestion!,
+                            controller: _vlmAnswerController,
+                            isSubmitting: _isSubmittingVlmReply,
+                            onSubmit: onSubmitVlmInfo,
+                            onDismiss: dismissVlmInfo,
+                          ),
+                        if (_isInputAreaVisible && !_isWorkspaceSurface)
+                          Container(
+                            key: _inputAreaKey,
+                            child: ChatInputWrapper(
+                              inputAreaKey: _chatInputAreaKey,
+                              controller: _messageController,
+                              focusNode: _inputFocusNode,
+                              isProcessing: _isAiResponding,
+                              onSendMessage: _sendMessage,
+                              onCancelTask: _onCancelTask,
+                              onPopupVisibilityChanged:
+                                  _onPopupVisibilityChanged,
+                              useLargeComposerStyle: true,
+                              useAttachmentPickerForPlus: true,
+                              onPickAttachment: _pickAttachments,
+                              attachments: _pendingAttachments,
+                              onRemoveAttachment: _removePendingAttachment,
+                              selectedModelOverrideId:
+                                  _activeMode == ChatPageMode.normal &&
+                                      _showConversationModelMentionChip
+                                  ? _activeConversationModelOverrideSelection
+                                        ?.modelId
+                                  : null,
+                              onClearSelectedModelOverride:
+                                  _activeMode == ChatPageMode.normal &&
+                                      _activeConversationModelOverrideSelection !=
+                                          null
+                                  ? () {
+                                      unawaited(
+                                        _clearConversationModelOverride(),
+                                      );
+                                    }
+                                  : null,
+                              topBanner: _buildAppUpdateBanner(),
+                            ),
+                          ),
+                        SizedBox(height: inputBottomPadding + keyboardSpacer),
+                      ],
+                    ),
+                    if (!_isWorkspaceSurface)
+                      Positioned(
+                        left: 24,
+                        right: 24,
+                        bottom: commandPanelBottomOffset,
+                        child: _buildSlashCommandPanel(),
                       ),
-                    SizedBox(height: inputBottomPadding + keyboardSpacer),
+                    if (_isPopupVisible && !_isWorkspaceSurface)
+                      Positioned(
+                        right: 24,
+                        bottom: _popupMenuBottomOffset(),
+                        child:
+                            _chatInputAreaKey.currentState?.buildPopupMenu() ??
+                            const SizedBox.shrink(),
+                      ),
+                    _buildBrowserOverlay(constraints),
                   ],
-                ),
-                if (!_isWorkspaceSurface)
-                  Positioned(
-                    left: 24,
-                    right: 24,
-                    bottom: commandPanelBottomOffset,
-                    child: _buildSlashCommandPanel(),
-                  ),
-                if (_isPopupVisible && !_isWorkspaceSurface)
-                  Positioned(
-                    right: 24,
-                    bottom: _popupMenuBottomOffset(),
-                    child:
-                        _chatInputAreaKey.currentState?.buildPopupMenu() ??
-                        const SizedBox.shrink(),
-                  ),
-              ],
+                );
+              },
             ),
           ),
         ),
