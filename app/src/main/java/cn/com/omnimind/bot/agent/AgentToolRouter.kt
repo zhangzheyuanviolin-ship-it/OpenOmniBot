@@ -77,9 +77,6 @@ class AgentToolRouter(
     private val calendarToolService = AgentCalendarToolService(context)
     private val skillIndexService = SkillIndexService(context, workspaceManager)
     private val skillLoader = SkillLoader(workspaceManager)
-    @Volatile
-    private var browserUseEngine: BrowserUseEngine? = null
-
     companion object {
         private const val DEFAULT_CONTEXT_QUERY_LIMIT = 20
         private const val MAX_TERMINAL_AUTO_RETRIES = 3
@@ -257,10 +254,7 @@ class AgentToolRouter(
     }
 
     suspend fun dispose() {
-        browserUseEngine?.let { engine ->
-            runCatching { engine.close() }
-        }
-        browserUseEngine = null
+        LiveAgentBrowserSessionManager.releaseRunOwnership()
     }
 
     private suspend fun executeContextAppsQuery(
@@ -320,12 +314,12 @@ class AgentToolRouter(
                 request.toolTitle,
                 mapOf("summary" to request.toolTitle)
             )
-            val engine = browserUseEngine ?: BrowserUseEngine(
+            val engine = LiveAgentBrowserSessionManager.acquireEngine(
                 context = context,
                 workspaceManager = workspaceManager,
                 agentRunId = env.agentRunId,
                 workspace = env.workspaceDescriptor
-            ).also { browserUseEngine = it }
+            )
             val outcome = engine.execute(request)
             val payload = linkedMapOf<String, Any?>(
                 "toolTitle" to request.toolTitle

@@ -29,7 +29,7 @@ class TaskManager(
     private val TAG = "[Assists] TaskManager"
     private var companionTask: CompanionTask? = null;//陪伴任务
     private var runningTask: Task? = null;//执行中的任务,包括,学习,执行,视觉执行
-    private var chatTask: ChatTask? = null;//聊天任务
+    private val chatTasks: LinkedHashMap<String, ChatTask> = linkedMapOf()//聊天任务
     private var scheduledTask: ScheduledTask? = null;//预约任务
 
     init {
@@ -135,14 +135,16 @@ class TaskManager(
     }
 
     private fun createChatTaskAndStart(params: TaskParams.ChatTaskParams) {
-        if (chatTask?.isRunning == true) {
+        cleanupFinishedChatTasks()
+        if (chatTasks[params.taskId]?.isRunning == true) {
             OmniLog.w(
-                TAG, "ChatTask is not worked! There has a running task! Please finish it first!"
+                TAG, "ChatTask is not worked! taskId=${params.taskId} already running"
             )
             return
         }
-        chatTask = ChatTask(taskChangeListener,this)
-        chatTask!!.start(
+        val chatTask = ChatTask(taskChangeListener,this)
+        chatTasks[params.taskId] = chatTask
+        chatTask.start(
             params.taskId,
             params.content,
             params.onMessagePush,
@@ -197,30 +199,50 @@ class TaskManager(
         companionTask?.finishTask() {}
     }
 
-    fun cancelChatTask() {
-        if (chatTask?.isRunning != true) {
-            when (val task = runningTask) {
-                is VLMOperationTask -> task.finishTask()
-                else -> task?.finishTask {}
-            }
+    fun cancelChatTask(taskId: String? = null) {
+        cleanupFinishedChatTasks()
+        val targetChatTask = if (taskId.isNullOrBlank()) {
+            chatTasks.values.lastOrNull { it.isRunning }
+        } else {
+            chatTasks[taskId]
+        }
+        if (targetChatTask?.isRunning == true) {
+            targetChatTask.finishTask()
             return
         }
-        chatTask?.finishTask()
+        when (val task = runningTask) {
+            is VLMOperationTask -> {
+                if (taskId.isNullOrBlank() || task.id == taskId) {
+                    task.finishTask()
+                }
+            }
+            else -> {
+                if (taskId.isNullOrBlank() || task?.id == taskId) {
+                    task?.finishTask {}
+                }
+            }
+        }
     }
 
     /**
      * 取消等待中或运行中的任务，不检查 isRunning 状态
      * 用于在预执行 delay 期间取消任务
      */
-    fun cancelPendingTask() {
+    fun cancelPendingTask(taskId: String? = null) {
         OmniLog.d(TAG, "cancelPendingTask called, runningTask=$runningTask")
         when (runningTask) {
             is VLMOperationTask -> {
+                if (!taskId.isNullOrBlank() && runningTask?.id != taskId) {
+                    return
+                }
                 OmniLog.d(TAG, "Cancelling pending VLM task")
                 // Use finishTask to trigger onTaskStop and close ready UI (onReadyStartVLMTask)
                 (runningTask as VLMOperationTask).finishTask()
             }
             else -> {
+                if (!taskId.isNullOrBlank() && runningTask?.id != taskId) {
+                    return
+                }
                 // 兜底：尝试调用 finishDoingTask
                 finishDoingTask()
             }
@@ -379,5 +401,19 @@ class TaskManager(
 
     fun hasRunningTask(): Boolean {
         return runningTask?.isRunning == true
+    }
+
+    fun unregisterChatTask(taskId: String) {
+        chatTasks.remove(taskId)
+    }
+
+    private fun cleanupFinishedChatTasks() {
+        val iterator = chatTasks.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (!entry.value.isRunning) {
+                iterator.remove()
+            }
+        }
     }
 }

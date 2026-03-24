@@ -73,7 +73,11 @@ class _StreamingTextState extends State<StreamingText> {
     // 如果是思考中文案，直接显示，不做动画
     if (widget.fullText == kThinkingText) {
       Widget child = widget.enableMarkdown
-          ? OmnibotMarkdownBody(data: widget.fullText, baseStyle: widget.style)
+          ? OmnibotMarkdownBody(
+              data: widget.fullText,
+              baseStyle: widget.style,
+              inlineResourcePlainStyle: true,
+            )
           : Text(widget.fullText, style: widget.style);
 
       return widget.selectable
@@ -124,6 +128,7 @@ class _StreamingTextState extends State<StreamingText> {
           Widget child = OmnibotMarkdownBody(
             data: displayText,
             baseStyle: widget.style,
+            inlineResourcePlainStyle: true,
           );
 
           return widget.selectable

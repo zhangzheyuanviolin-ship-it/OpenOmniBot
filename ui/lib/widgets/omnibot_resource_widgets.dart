@@ -8,8 +8,13 @@ import 'package:video_player/video_player.dart';
 
 class OmnibotInlineResourceEmbed extends StatelessWidget {
   final OmnibotResourceMetadata metadata;
+  final bool plainStyle;
 
-  const OmnibotInlineResourceEmbed({super.key, required this.metadata});
+  const OmnibotInlineResourceEmbed({
+    super.key,
+    required this.metadata,
+    this.plainStyle = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -17,10 +22,22 @@ class OmnibotInlineResourceEmbed extends StatelessWidget {
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: switch (metadata.embedKind) {
-        'image' => _OmnibotInlineImageCard(metadata: metadata),
-        'audio' => _OmnibotInlineAudioPlayer(metadata: metadata),
-        'video' => _OmnibotInlineVideoPlayer(metadata: metadata),
-        _ => OmnibotResourceLinkCard(metadata: metadata),
+        'image' => _OmnibotInlineImageCard(
+          metadata: metadata,
+          plainStyle: plainStyle,
+        ),
+        'audio' => _OmnibotInlineAudioPlayer(
+          metadata: metadata,
+          plainStyle: plainStyle,
+        ),
+        'video' => _OmnibotInlineVideoPlayer(
+          metadata: metadata,
+          plainStyle: plainStyle,
+        ),
+        _ => OmnibotResourceLinkCard(
+          metadata: metadata,
+          plainStyle: plainStyle,
+        ),
       },
     );
   }
@@ -28,8 +45,13 @@ class OmnibotInlineResourceEmbed extends StatelessWidget {
 
 class OmnibotResourceLinkCard extends StatelessWidget {
   final OmnibotResourceMetadata metadata;
+  final bool plainStyle;
 
-  const OmnibotResourceLinkCard({super.key, required this.metadata});
+  const OmnibotResourceLinkCard({
+    super.key,
+    required this.metadata,
+    this.plainStyle = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -47,16 +69,20 @@ class OmnibotResourceLinkCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: plainStyle ? Colors.transparent : Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFD8E4F8)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x12243258),
-              blurRadius: 10,
-              offset: Offset(0, 4),
-            ),
-          ],
+          border: plainStyle
+              ? null
+              : Border.all(color: const Color(0xFFD8E4F8)),
+          boxShadow: plainStyle
+              ? null
+              : const [
+                  BoxShadow(
+                    color: Color(0x12243258),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -115,8 +141,12 @@ class OmnibotResourceLinkCard extends StatelessWidget {
 
 class _OmnibotInlineImageCard extends StatelessWidget {
   final OmnibotResourceMetadata metadata;
+  final bool plainStyle;
 
-  const _OmnibotInlineImageCard({required this.metadata});
+  const _OmnibotInlineImageCard({
+    required this.metadata,
+    this.plainStyle = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -126,8 +156,10 @@ class _OmnibotInlineImageCard extends StatelessWidget {
       child: Ink(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFD8E4F8)),
-          color: Colors.white,
+          border: plainStyle
+              ? null
+              : Border.all(color: const Color(0xFFD8E4F8)),
+          color: plainStyle ? Colors.transparent : Colors.white,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
@@ -139,12 +171,14 @@ class _OmnibotInlineImageCard extends StatelessWidget {
                     metadata: metadata,
                     icon: Icons.broken_image_outlined,
                     subtitle: '图片加载失败',
+                    plainStyle: plainStyle,
                   ),
                 )
               : _MissingResourceCard(
                   metadata: metadata,
                   icon: Icons.image_not_supported_outlined,
                   subtitle: '图片不存在或暂不可读',
+                  plainStyle: plainStyle,
                 ),
         ),
       ),
@@ -154,8 +188,12 @@ class _OmnibotInlineImageCard extends StatelessWidget {
 
 class _OmnibotInlineAudioPlayer extends StatefulWidget {
   final OmnibotResourceMetadata metadata;
+  final bool plainStyle;
 
-  const _OmnibotInlineAudioPlayer({required this.metadata});
+  const _OmnibotInlineAudioPlayer({
+    required this.metadata,
+    this.plainStyle = false,
+  });
 
   @override
   State<_OmnibotInlineAudioPlayer> createState() =>
@@ -216,6 +254,7 @@ class _OmnibotInlineAudioPlayerState extends State<_OmnibotInlineAudioPlayer> {
         metadata: widget.metadata,
         icon: Icons.audio_file_outlined,
         subtitle: _error == null ? '音频不存在或暂不可读' : '音频加载失败',
+        plainStyle: widget.plainStyle,
       );
     }
     return StreamBuilder<PlayerState>(
@@ -226,16 +265,20 @@ class _OmnibotInlineAudioPlayerState extends State<_OmnibotInlineAudioPlayer> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: widget.plainStyle ? Colors.transparent : Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFD8E4F8)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x12243258),
-                blurRadius: 10,
-                offset: Offset(0, 4),
-              ),
-            ],
+            border: widget.plainStyle
+                ? null
+                : Border.all(color: const Color(0xFFD8E4F8)),
+            boxShadow: widget.plainStyle
+                ? null
+                : const [
+                    BoxShadow(
+                      color: Color(0x12243258),
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
           ),
           child: Row(
             children: [
@@ -286,8 +329,12 @@ class _OmnibotInlineAudioPlayerState extends State<_OmnibotInlineAudioPlayer> {
 
 class _OmnibotInlineVideoPlayer extends StatefulWidget {
   final OmnibotResourceMetadata metadata;
+  final bool plainStyle;
 
-  const _OmnibotInlineVideoPlayer({required this.metadata});
+  const _OmnibotInlineVideoPlayer({
+    required this.metadata,
+    this.plainStyle = false,
+  });
 
   @override
   State<_OmnibotInlineVideoPlayer> createState() =>
@@ -359,6 +406,7 @@ class _OmnibotInlineVideoPlayerState extends State<_OmnibotInlineVideoPlayer> {
         metadata: widget.metadata,
         icon: Icons.video_file_outlined,
         subtitle: _error == null ? '视频不存在或暂不可读' : '视频加载失败',
+        plainStyle: widget.plainStyle,
       );
     }
     final controller = _controller;
@@ -367,25 +415,31 @@ class _OmnibotInlineVideoPlayerState extends State<_OmnibotInlineVideoPlayer> {
         height: 180,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: widget.plainStyle ? Colors.transparent : Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFD8E4F8)),
+          border: widget.plainStyle
+              ? null
+              : Border.all(color: const Color(0xFFD8E4F8)),
         ),
         child: const CircularProgressIndicator(),
       );
     }
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: widget.plainStyle ? Colors.transparent : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFD8E4F8)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x12243258),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
+        border: widget.plainStyle
+            ? null
+            : Border.all(color: const Color(0xFFD8E4F8)),
+        boxShadow: widget.plainStyle
+            ? null
+            : const [
+                BoxShadow(
+                  color: Color(0x12243258),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
@@ -428,11 +482,13 @@ class _MissingResourceCard extends StatelessWidget {
   final OmnibotResourceMetadata metadata;
   final IconData icon;
   final String subtitle;
+  final bool plainStyle;
 
   const _MissingResourceCard({
     required this.metadata,
     required this.icon,
     required this.subtitle,
+    this.plainStyle = false,
   });
 
   @override
@@ -443,9 +499,11 @@ class _MissingResourceCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFFBEB),
+          color: plainStyle ? Colors.transparent : const Color(0xFFFFFBEB),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFF2D4A5)),
+          border: plainStyle
+              ? null
+              : Border.all(color: const Color(0xFFF2D4A5)),
         ),
         child: Row(
           children: [

@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/models/conversation_model.dart';
+import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/features/home/pages/alarm_setting/alarm_setting_page.dart';
 import 'package:ui/features/home/pages/authorize_setting/authorize_setting_page.dart';
 import 'package:ui/features/home/pages/companion_setting/companion_setting_page.dart';
@@ -24,19 +26,99 @@ import 'pages/vlm_model_setting/vlm_model_setting_page.dart';
 
 /// Home模块路由配置
 const String kNativeRouteFlag = '__from_native__';
+
+ConversationMode _parseConversationMode(String? rawValue) {
+  return ConversationMode.fromStorageValue(rawValue);
+}
+
+ConversationThreadTarget? _parseChatThreadTarget(GoRouterState state) {
+  final queryConversationId =
+      state.uri.queryParameters['conversationId']?.trim() ?? '';
+  final queryMode = _parseConversationMode(state.uri.queryParameters['mode']);
+  if (queryConversationId.isNotEmpty) {
+    if (queryConversationId == 'new' || queryConversationId == '__new__') {
+      return ConversationThreadTarget.newConversation(
+        mode: queryMode,
+        fromNativeRoute: true,
+      );
+    }
+    final conversationId = int.tryParse(queryConversationId);
+    if (conversationId != null) {
+      return ConversationThreadTarget.existing(
+        conversationId: conversationId,
+        mode: queryMode,
+        fromNativeRoute: true,
+      );
+    }
+  }
+
+  final extra = state.extra;
+  if (extra is ConversationThreadTarget) {
+    return extra;
+  }
+
+  final argsFromExtra = extra as List<String>? ?? const <String>[];
+  if (argsFromExtra.isEmpty) {
+    return null;
+  }
+
+  final first = argsFromExtra.first.trim();
+  final requestKey = argsFromExtra
+      .skip(1)
+      .map((item) => item.trim())
+      .firstWhere(
+        (item) =>
+            item.isNotEmpty &&
+            item != kNativeRouteFlag &&
+            !item.startsWith('mode=') &&
+            ConversationMode.values.every(
+              (mode) => mode.storageValue != item.toLowerCase(),
+            ),
+        orElse: () => '',
+      );
+  final modeRaw = argsFromExtra
+      .skip(1)
+      .map((item) => item.trim())
+      .firstWhere(
+        (item) =>
+            item.startsWith('mode=') ||
+            ConversationMode.values.any(
+              (mode) => mode.storageValue == item.toLowerCase(),
+            ),
+        orElse: () => '',
+      );
+  final mode = modeRaw.startsWith('mode=')
+      ? _parseConversationMode(modeRaw.substring(5))
+      : _parseConversationMode(modeRaw);
+  final fromNativeRoute = argsFromExtra.contains(kNativeRouteFlag);
+
+  if (first == 'new' || first == '__new__') {
+    return ConversationThreadTarget.newConversation(
+      mode: mode,
+      fromNativeRoute: fromNativeRoute,
+      requestKey: requestKey.isEmpty ? null : requestKey,
+    );
+  }
+
+  final conversationId = int.tryParse(first);
+  if (conversationId == null) {
+    return null;
+  }
+  return ConversationThreadTarget.existing(
+    conversationId: conversationId,
+    mode: mode,
+    fromNativeRoute: fromNativeRoute,
+    requestKey: requestKey.isEmpty ? null : requestKey,
+  );
+}
+
 List<GoRoute> homeRoutes = [
   // 兼容旧首页路由，统一落到聊天页
   GoRoute(
     path: '/home/home',
     name: 'home/home',
     builder: (context, state) {
-      final conversationIdFromQuery =
-          state.uri.queryParameters['conversationId'];
-      final argsFromExtra = state.extra as List<String>? ?? [];
-      final args = conversationIdFromQuery != null
-          ? [conversationIdFromQuery, kNativeRouteFlag]
-          : argsFromExtra;
-      return ChatPage(args: args);
+      return ChatPage(threadTarget: _parseChatThreadTarget(state));
     },
   ),
   GoRoute(
@@ -50,18 +132,7 @@ List<GoRoute> homeRoutes = [
     path: '/home/chat',
     name: 'home/chat',
     builder: (context, state) {
-      // 支持两种参数传递方式：
-      // 1. 从原生端跳转时使用 query parameter: /home/chat?conversationId=123
-      // 2. 从 Flutter 导航时使用 extra: GoRouterManager.push('/home/chat', extra: ['123'])
-      final conversationIdFromQuery =
-          state.uri.queryParameters['conversationId'];
-      final argsFromExtra = state.extra as List<String>? ?? [];
-
-      // 优先使用 query parameter，如果没有则使用 extra
-      final args = conversationIdFromQuery != null
-          ? [conversationIdFromQuery, kNativeRouteFlag]
-          : argsFromExtra;
-      return ChatPage(args: args);
+      return ChatPage(threadTarget: _parseChatThreadTarget(state));
     },
   ),
 
@@ -164,9 +235,8 @@ List<GoRoute> homeRoutes = [
   GoRoute(
     path: '/home/permission_guide',
     name: 'home/permission_guide',
-    builder: (context, state) => PermissionGuidePage(
-      initialBrand: state.uri.queryParameters['brand'],
-    ),
+    builder: (context, state) =>
+        PermissionGuidePage(initialBrand: state.uri.queryParameters['brand']),
   ),
 
   GoRoute(

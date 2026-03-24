@@ -323,9 +323,9 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     try {
       await openWorkspaceStorageSettings();
     } on PlatformException catch (e) {
-      showToast(e.message ?? '打开公共 workspace 权限页失败', type: ToastType.error);
+      showToast(e.message ?? '打开内置 workspace 页面失败', type: ToastType.error);
     } catch (_) {
-      showToast('打开公共 workspace 权限页失败', type: ToastType.error);
+      showToast('打开内置 workspace 页面失败', type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -549,7 +549,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         ? '检测中'
         : (_isWorkspaceStorageGranted
               ? '已就绪'
-              : (_isOpeningWorkspaceStorageSettings ? '打开中...' : '去授权'));
+              : (_isOpeningWorkspaceStorageSettings ? '打开中...' : '查看'));
     final workspaceActionColor = _isLoadingStatus
         ? AppColors.text50
         : (_isWorkspaceStorageGranted
@@ -573,12 +573,12 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
           ),
           const SizedBox(height: 12),
           _StatusActionRow(
-            title: '公共 workspace 访问',
+            title: '内置 workspace',
             subtitle: _isLoadingStatus
-                ? '正在检测共享工作区访问能力'
+                ? '正在检测内置工作区状态'
                 : (_isWorkspaceStorageGranted
-                      ? '已允许访问 /storage/emulated/0/workspace'
-                      : '未授权，文件工具和工作区预览会受限'),
+                      ? '应用内的 /workspace 已就绪'
+                      : '工作区状态异常，文件工具和工作区预览可能会受限'),
             actionText: workspaceActionText,
             actionColor: workspaceActionColor,
             onTap: workspaceActionEnabled

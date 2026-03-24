@@ -57,6 +57,14 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       pendingThinkingRoundSplit: runtime?.pendingThinkingRoundSplit ?? false,
       toolCardSequence: runtime?.toolCardSequence ?? 0,
       thinkingRound: runtime?.thinkingRound ?? 0,
+      chatIslandDisplayLayer:
+          runtime?.chatIslandDisplayLayer ??
+          (_chatIslandDisplayLayerByMode[mode] ?? ChatIslandDisplayLayer.mode),
+      lastAgentToolType:
+          runtime?.lastAgentToolType ?? _lastAgentToolTypeByMode[mode],
+      browserSessionSnapshot:
+          runtime?.browserSessionSnapshot ??
+          _browserSessionSnapshotByMode[mode],
     );
   }
 
@@ -674,7 +682,11 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
           _isExecutingTask) {
         _cancelDispatchTask();
       } else {
-        AssistsMessageService.cancelChatTask();
+        AssistsMessageService.cancelChatTask(
+          taskId: _currentAiMessages.keys.isEmpty
+              ? null
+              : _currentAiMessages.keys.first,
+        );
       }
 
       setState(() {
@@ -697,7 +709,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
   void _cancelDispatchTask() {
     final taskId = _currentDispatchTaskId;
     interruptActiveToolCard();
-    AssistsMessageService.cancelRunningTask();
+    AssistsMessageService.cancelRunningTask(taskId: taskId);
     if (taskId != null) {
       _runtimeCoordinator.unregisterTask(taskId);
       removeThinkingCard(taskId);
@@ -711,9 +723,9 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     try {
       interruptActiveToolCard();
       if (_isDeepThinking) {
-        AssistsMessageService.cancelRunningTask();
+        AssistsMessageService.cancelRunningTask(taskId: taskId);
       }
-      AssistsMessageService.cancelRunningTask();
+      AssistsMessageService.cancelRunningTask(taskId: taskId);
       _runtimeCoordinator.unregisterTask(taskId);
       _updateThinkingCardToCancelled(taskId);
       clearAgentStreamSessionState();

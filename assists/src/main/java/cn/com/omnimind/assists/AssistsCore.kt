@@ -80,8 +80,8 @@ object AssistsCore {
     /**
      * 取消聊天任务
      */
-    fun cancelChatTask() {
-        stateMachine?.cancelChatTask()
+    fun cancelChatTask(taskId: String? = null) {
+        stateMachine?.cancelChatTask(taskId)
     }
 
     /**
@@ -164,7 +164,7 @@ object AssistsCore {
      * 取消等待中或运行中的任务，不检查 isRunning 状态
      * 用于在预执行 delay 期间取消任务
      */
-    fun cancelPendingTask() = stateMachine?.cancelPendingTask()
+    fun cancelPendingTask(taskId: String? = null) = stateMachine?.cancelPendingTask(taskId)
 
     /**
      * 导航到主应用指定路由

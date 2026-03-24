@@ -28,6 +28,7 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
           overrideSelection: _activeConversationModelOverrideSelection,
         );
       });
+      _scheduleNormalSurfaceModelReveal();
       await _syncInvalidNormalConversationOverrideIfNeeded();
     } catch (e) {
       debugPrint('加载聊天模型上下文失败: $e');

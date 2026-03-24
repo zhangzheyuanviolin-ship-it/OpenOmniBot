@@ -94,7 +94,7 @@ object EmbeddedTerminalRuntime {
 
     private const val PREFS_NAME = "embedded_terminal_runtime"
     private const val KEY_BASE_PACKAGE_VERSION = "base_package_version"
-    private const val BASE_PACKAGE_VERSION = 1
+    private const val BASE_PACKAGE_VERSION = 2
     private const val SESSION_DONE_PREFIX = "__OMNIBOT_SESSION_DONE__"
     private const val DEFAULT_CURRENT_DIRECTORY = "/root"
     private const val BASE_PACKAGE_READY_MARKER = "__OMNIBOT_BASE_PACKAGES_READY__"
@@ -108,12 +108,14 @@ object EmbeddedTerminalRuntime {
         "git",
         "node",
         "npm",
+        "pipx",
         "pkill",
         "python",
         "python3",
         "pip3",
         "rg",
         "tmux",
+        "uv",
         "xz"
     )
 
@@ -132,6 +134,7 @@ object EmbeddedTerminalRuntime {
           git \
           nodejs \
           npm \
+          pipx \
           procps \
           psmisc \
           python-is-python3 \
@@ -140,7 +143,11 @@ object EmbeddedTerminalRuntime {
           python3-venv \
           ripgrep \
           tmux \
-          xz-utils
+          xz-utils && \
+        export PATH="${'$'}HOME/.local/bin:${'$'}PATH" && \
+        pipx install uv --force && \
+        if [ -x "${'$'}HOME/.local/bin/uv" ]; then ln -sf "${'$'}HOME/.local/bin/uv" /usr/local/bin/uv; fi && \
+        if [ -x "${'$'}HOME/.local/bin/uvx" ]; then ln -sf "${'$'}HOME/.local/bin/uvx" /usr/local/bin/uvx; fi
     """.trimIndent()
 
     fun isSupportedDevice(): Boolean {
@@ -249,8 +256,7 @@ object EmbeddedTerminalRuntime {
             )
         )
         withContext(Dispatchers.IO) {
-            File(AgentWorkspaceManager.ROOT_PATH).mkdirs()
-            File(AgentWorkspaceManager.ROOT_PATH, ".omnibot").mkdirs()
+            AgentWorkspaceManager(context).ensureRuntimeDirectories()
         }
 
         val manager = terminalManager(context)
@@ -439,7 +445,20 @@ object EmbeddedTerminalRuntime {
         timeoutSeconds: Int,
         onLiveUpdate: suspend (TermuxLiveUpdate) -> Unit = {}
     ): CommandResult {
-        val status = prepareEnvironment(context, installBasePackages = false)
+        val status = ensureCommandEnvironmentReady(context) { progress ->
+            if (progress.message.isBlank()) return@ensureCommandEnvironmentReady
+            onLiveUpdate(
+                TermuxLiveUpdate(
+                    sessionId = "env-bootstrap",
+                    summary = progress.message,
+                    outputDelta = if (progress.kind == EnvironmentProgress.Kind.OUTPUT) progress.message else "",
+                    streamState = when (progress.kind) {
+                        EnvironmentProgress.Kind.ERROR -> "error"
+                        else -> "running"
+                    }
+                )
+            )
+        }
         val liveSessionId = UUID.randomUUID().toString()
         if (!status.success) {
             return CommandResult(
@@ -510,7 +529,7 @@ object EmbeddedTerminalRuntime {
         requestedSessionId: String,
         workingDirectory: String?
     ): SessionStartResult {
-        val status = prepareEnvironment(context, installBasePackages = false)
+        val status = ensureCommandEnvironmentReady(context)
         require(status.success) { status.message }
 
         val manager = terminalManager(context)
@@ -575,7 +594,7 @@ object EmbeddedTerminalRuntime {
                 errorMessage = "终端会话不存在：$sessionId"
             )
 
-        val status = prepareEnvironment(context, installBasePackages = false)
+        val status = ensureCommandEnvironmentReady(context)
         if (!status.success) {
             return SessionCommandResult(
                 sessionId = sessionId,
@@ -718,10 +737,15 @@ object EmbeddedTerminalRuntime {
     private fun wrapOneShotCommand(command: String, workingDirectory: String?): String {
         val trimmedCommand = command.trim()
         val normalizedWorkingDirectory = workingDirectory?.trim().orEmpty()
-        return if (normalizedWorkingDirectory.isBlank()) {
-            trimmedCommand
-        } else {
-            "cd ${TermuxCommandBuilder.quoteForShell(normalizedWorkingDirectory)} && $trimmedCommand"
+        return buildString {
+            appendLine(buildPythonEnvironmentPrelude())
+            if (normalizedWorkingDirectory.isNotBlank()) {
+                append("cd ")
+                append(TermuxCommandBuilder.quoteForShell(normalizedWorkingDirectory))
+                appendLine(" || exit $?")
+            }
+            appendLine("__omni_prepare_python_env 0 || exit $?")
+            append(trimmedCommand)
         }
     }
 
@@ -736,6 +760,9 @@ object EmbeddedTerminalRuntime {
             append("cat >\"\$__omnibot_session_script\" <<'")
             append(heredocMarker)
             append("'\n")
+            append(buildPythonEnvironmentPrelude())
+            append("\n")
+            append("__omni_prepare_python_env 0 || return $?\n")
             append(normalizedCommand)
             if (!normalizedCommand.endsWith("\n")) {
                 append('\n')
@@ -752,6 +779,98 @@ object EmbeddedTerminalRuntime {
             append(":%s\\n' \"\$__omnibot_session_rc\"\n")
         }
     }
+
+    internal fun buildPythonEnvironmentPrelude(): String = """
+        export PATH="${'$'}HOME/.local/bin:${'$'}PATH"
+        export UV_LINK_MODE=copy
+
+        __omni_find_python_project_root() {
+          __omni_current_dir="${'$'}PWD"
+          __omni_workspace_root=${TermuxCommandBuilder.quoteForShell(AgentWorkspaceManager.SHELL_ROOT_PATH)}
+          case "${'$'}__omni_current_dir" in
+            "${'$'}__omni_workspace_root"|${'$'}__omni_workspace_root/*) ;;
+            *) return 1 ;;
+          esac
+          while true; do
+            if [ -f "${'$'}__omni_current_dir/.venv/bin/activate" ] || \
+               [ -f "${'$'}__omni_current_dir/pyproject.toml" ] || \
+               [ -f "${'$'}__omni_current_dir/requirements.txt" ] || \
+               [ -f "${'$'}__omni_current_dir/requirements-dev.txt" ] || \
+               [ -f "${'$'}__omni_current_dir/setup.py" ] || \
+               [ -f "${'$'}__omni_current_dir/setup.cfg" ] || \
+               [ -f "${'$'}__omni_current_dir/Pipfile" ] || \
+               [ -f "${'$'}__omni_current_dir/poetry.lock" ] || \
+               [ -f "${'$'}__omni_current_dir/pytest.ini" ] || \
+               [ -f "${'$'}__omni_current_dir/tox.ini" ] || \
+               [ -f "${'$'}__omni_current_dir/manage.py" ]; then
+              printf '%s\n' "${'$'}__omni_current_dir"
+              return 0
+            fi
+            if [ "${'$'}__omni_current_dir" = "${'$'}__omni_workspace_root" ]; then
+              break
+            fi
+            __omni_parent_dir=$(dirname "${'$'}__omni_current_dir")
+            if [ "${'$'}__omni_parent_dir" = "${'$'}__omni_current_dir" ]; then
+              break
+            fi
+            __omni_current_dir="${'$'}__omni_parent_dir"
+          done
+          printf '%s\n' "${'$'}PWD"
+        }
+
+        __omni_prepare_python_env() {
+          __omni_create_if_missing="${'$'}1"
+          __omni_project_root=$(__omni_find_python_project_root) || return 0
+          __omni_venv_dir="${'$'}__omni_project_root/.venv"
+          if [ ! -f "${'$'}__omni_venv_dir/bin/activate" ] && [ "${'$'}__omni_create_if_missing" = "1" ]; then
+            if [ -d "${'$'}__omni_venv_dir" ]; then
+              rm -rf "${'$'}__omni_venv_dir" || return ${'$'}?
+            fi
+            printf '[omnibot] Creating Python virtual environment at %s\n' "${'$'}__omni_venv_dir" >&2
+            command python3 -m venv --copies "${'$'}__omni_venv_dir" || return ${'$'}?
+          fi
+          if [ -f "${'$'}__omni_venv_dir/bin/activate" ] && [ "${'$'}VIRTUAL_ENV" != "${'$'}__omni_venv_dir" ]; then
+            if [ -n "${'$'}VIRTUAL_ENV" ] && command -v deactivate >/dev/null 2>&1; then
+              deactivate >/dev/null 2>&1 || true
+            fi
+            . "${'$'}__omni_venv_dir/bin/activate" || return ${'$'}?
+          fi
+          return 0
+        }
+
+        python() {
+          if [ "${'$'}1" = "-m" ] && [ "${'$'}2" = "venv" ]; then
+            command python "${'$'}@"
+            return ${'$'}?
+          fi
+          __omni_prepare_python_env 1 || return ${'$'}?
+          command python "${'$'}@"
+        }
+
+        python3() {
+          if [ "${'$'}1" = "-m" ] && [ "${'$'}2" = "venv" ]; then
+            command python3 "${'$'}@"
+            return ${'$'}?
+          fi
+          __omni_prepare_python_env 1 || return ${'$'}?
+          command python3 "${'$'}@"
+        }
+
+        pip() {
+          __omni_prepare_python_env 1 || return ${'$'}?
+          command python -m pip "${'$'}@"
+        }
+
+        pip3() {
+          __omni_prepare_python_env 1 || return ${'$'}?
+          command python -m pip "${'$'}@"
+        }
+
+        pytest() {
+          __omni_prepare_python_env 1 || return ${'$'}?
+          command python -m pytest "${'$'}@"
+        }
+    """.trimIndent()
 
     private fun parsePersistentCommandOutput(
         rawOutput: String,
@@ -832,6 +951,25 @@ object EmbeddedTerminalRuntime {
             .apply()
     }
 
+    private suspend fun ensureCommandEnvironmentReady(
+        context: Context,
+        onProgress: suspend (EnvironmentProgress) -> Unit = {}
+    ): EnvironmentStatus {
+        val status = prepareEnvironment(
+            context = context,
+            installBasePackages = false,
+            onProgress = onProgress
+        )
+        if (!status.success || status.basePackagesReady) {
+            return status
+        }
+        return prepareEnvironment(
+            context = context,
+            installBasePackages = true,
+            onProgress = onProgress
+        )
+    }
+
     private suspend fun probeBasePackageCommands(context: Context): BasePackageProbeResult {
         val result = terminalManager(context).executeHiddenCommand(
             command = buildBasePackageProbeCommand(),
@@ -881,6 +1019,7 @@ object EmbeddedTerminalRuntime {
     private fun buildBasePackageProbeCommand(): String {
         val commands = requiredCliCommands.joinToString(" ")
         return """
+            export PATH="${'$'}HOME/.local/bin:${'$'}PATH"
             missing=""
             for cmd in $commands; do
               if ! command -v "${'$'}cmd" >/dev/null 2>&1; then

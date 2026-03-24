@@ -88,38 +88,42 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private var workJob: CoroutineScope = CoroutineScope(Dispatchers.Default)
     private val activeAgentLock = Any()
 
-    @Volatile
-    private var activeAgentJob: Job? = null
+    private val activeAgentJobs: MutableMap<String, Job> = mutableMapOf()
 
     // 当前活跃的对话ID
     private var currentConversationId: Long? = null
+    private var currentConversationMode: String = "normal"
 
-    private fun registerActiveAgentJob(job: Job) {
-        val previousJob = synchronized(activeAgentLock) {
-            val previous = activeAgentJob
-            activeAgentJob = job
-            previous
+    private fun registerActiveAgentJob(taskId: String, job: Job) {
+        synchronized(activeAgentLock) {
+            activeAgentJobs[taskId] = job
         }
-        previousJob?.cancel(CancellationException("Agent run replaced by a new request"))
     }
 
-    private fun clearActiveAgentJob(job: Job) {
+    private fun clearActiveAgentJob(taskId: String, job: Job) {
         synchronized(activeAgentLock) {
-            if (activeAgentJob == job) {
-                activeAgentJob = null
+            if (activeAgentJobs[taskId] == job) {
+                activeAgentJobs.remove(taskId)
             }
         }
     }
 
-    private fun cancelActiveAgentRun(reason: String) {
-        val jobToCancel = synchronized(activeAgentLock) {
-            val current = activeAgentJob
-            activeAgentJob = null
-            current
+    private fun cancelActiveAgentRun(taskId: String?, reason: String) {
+        val jobsToCancel = synchronized(activeAgentLock) {
+            if (taskId.isNullOrBlank()) {
+                val snapshot = activeAgentJobs.values.toList()
+                activeAgentJobs.clear()
+                snapshot
+            } else {
+                val current = activeAgentJobs.remove(taskId)
+                if (current == null) emptyList() else listOf(current)
+            }
         }
-        if (jobToCancel != null) {
-            OmniLog.i(TAG, "Cancelling active agent run: $reason")
-            jobToCancel.cancel(CancellationException(reason))
+        if (jobsToCancel.isNotEmpty()) {
+            OmniLog.i(TAG, "Cancelling active agent run(s): $reason taskId=$taskId")
+            jobsToCancel.forEach { job ->
+                job.cancel(CancellationException(reason))
+            }
         }
     }
 
@@ -563,8 +567,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     ) {
         mainJob.launch {
             try {
-                cancelActiveAgentRun("cancelRunningTask")
-                AssistsUtil.Core.cancelRunningTask()
+                val taskId = call.argument<String>("taskId")
+                cancelActiveAgentRun(taskId, "cancelRunningTask")
+                AssistsUtil.Core.cancelRunningTask(taskId)
                 withContext(Dispatchers.Main) {
                     result.success("SUCCESS")
                 }
@@ -624,8 +629,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     ) {
         mainJob.launch {
             try {
-                cancelActiveAgentRun("cancelChatTask")
-                AssistsUtil.Core.cancelChatTask()
+                val taskId = call.argument<String>("taskId")
+                cancelActiveAgentRun(taskId, "cancelChatTask")
+                AssistsUtil.Core.cancelChatTask(taskId)
                 withContext(Dispatchers.Main) {
                     result.success("SUCCESS")
                 }
@@ -1820,7 +1826,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
         val agentRunJob = SupervisorJob()
         val agentRunScope = CoroutineScope(agentRunJob + Dispatchers.Default)
-        registerActiveAgentJob(agentRunJob)
+        registerActiveAgentJob(taskId, agentRunJob)
 
         agentRunScope.launch {
             try {
@@ -2002,7 +2008,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     result.error("CREATE_AGENT_TASK_ERROR", e.message, null)
                 }
             } finally {
-                clearActiveAgentJob(agentRunJob)
+                clearActiveAgentJob(taskId, agentRunJob)
             }
         }
     }
@@ -2133,6 +2139,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     mapOf(
                         "id" to conv.id,
                         "title" to conv.title,
+                        "mode" to conv.mode,
                         "summary" to conv.summary,
                         "status" to conv.status,
                         "lastMessage" to conv.lastMessage,
@@ -2168,6 +2175,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     mapOf(
                         "id" to conv.id,
                         "title" to conv.title,
+                        "mode" to conv.mode,
                         "summary" to conv.summary,
                         "status" to conv.status,
                         "lastMessage" to conv.lastMessage,
@@ -2193,6 +2201,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
      */
     fun createConversation(call: MethodCall, result: MethodChannel.Result) {
         val title = call.argument<String>("title") ?: "新对话"
+        val mode = call.argument<String>("mode") ?: "normal"
         val summary = call.argument<String>("summary")
 
         workJob.launch {
@@ -2200,6 +2209,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 val conversation = Conversation(
                     id = 0,
                     title = title,
+                    mode = mode,
                     summary = summary,
                     status = 0, // 进行中
                     lastMessage = null,
@@ -2232,6 +2242,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val conversation = Conversation(
                         id = (conversationMap["id"] as Number).toLong(),
                         title = conversationMap["title"] as String,
+                        mode = (conversationMap["mode"] as? String ?: "normal"),
                         summary = conversationMap["summary"] as String?,
                         status = (conversationMap["status"] as Number).toInt(),
                         lastMessage = conversationMap["lastMessage"] as String?,
@@ -2359,7 +2370,11 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
      */
     private fun navigateBackToChatIfNeeded() {
         if (TaskCompletionNavigator.isAutoBackToChatAfterTaskEnabled(context)) {
-            TaskCompletionNavigator.navigateBackToChat(context, currentConversationId)
+            TaskCompletionNavigator.navigateBackToChat(
+                context,
+                currentConversationId,
+                currentConversationMode
+            )
         } else {
             OmniLog.d(TAG, "任务完成后停留当前页面（已关闭自动返回聊天）")
         }
@@ -2425,7 +2440,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
      */
     fun setCurrentConversationId(call: MethodCall, result: MethodChannel.Result) {
         val conversationId = (call.argument<Int>("conversationId") ?: 0).toLong()
+        val mode = (call.argument<String>("mode") ?: "normal").trim().ifEmpty { "normal" }
         currentConversationId = if (conversationId > 0) conversationId else null
+        currentConversationMode = mode
         mainJob.launch(Dispatchers.Main) {
             result.success("SUCCESS")
         }

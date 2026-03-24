@@ -10,12 +10,14 @@ class OmnibotMarkdownBody extends StatelessWidget {
   final String data;
   final TextStyle baseStyle;
   final bool selectable;
+  final bool inlineResourcePlainStyle;
 
   const OmnibotMarkdownBody({
     super.key,
     required this.data,
     required this.baseStyle,
     this.selectable = false,
+    this.inlineResourcePlainStyle = false,
   });
 
   @override
@@ -29,14 +31,19 @@ class OmnibotMarkdownBody extends StatelessWidget {
       },
       inlineSyntaxes: <md.InlineSyntax>[OmnibotInlineLinkSyntax()],
       builders: <String, MarkdownElementBuilder>{
-        'omnibot-link': OmnibotInlineLinkBuilder(),
+        'omnibot-link': OmnibotInlineLinkBuilder(
+          inlineResourcePlainStyle: inlineResourcePlainStyle,
+        ),
       },
       sizedImageBuilder: (config) {
         final uri = config.uri;
         if (uri.scheme == 'omnibot') {
           final metadata = OmnibotResourceService.resolveUri(uri.toString());
           if (metadata != null) {
-            return OmnibotInlineResourceEmbed(metadata: metadata);
+            return OmnibotInlineResourceEmbed(
+              metadata: metadata,
+              plainStyle: inlineResourcePlainStyle,
+            );
           }
         }
         if (uri.scheme == 'file') {
@@ -99,6 +106,10 @@ class OmnibotInlineLinkSyntax extends md.InlineSyntax {
 }
 
 class OmnibotInlineLinkBuilder extends MarkdownElementBuilder {
+  OmnibotInlineLinkBuilder({this.inlineResourcePlainStyle = false});
+
+  final bool inlineResourcePlainStyle;
+
   @override
   Widget visitElementAfterWithContext(
     BuildContext context,
@@ -136,7 +147,10 @@ class OmnibotInlineLinkBuilder extends MarkdownElementBuilder {
         alignment: PlaceholderAlignment.middle,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: OmnibotInlineResourceEmbed(metadata: metadata),
+          child: OmnibotInlineResourceEmbed(
+            metadata: metadata,
+            plainStyle: inlineResourcePlainStyle,
+          ),
         ),
       ),
     );

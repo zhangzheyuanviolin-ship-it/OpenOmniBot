@@ -57,7 +57,7 @@ object AgentSystemPrompt {
             - conversationContextId: ${workspace.id}
             - shellWorkspaceRoot: ${workspace.rootPath}
             - shellCurrentCwd: ${workspace.currentCwd}
-            - androidPublicWorkspacePath: ${workspace.androidRootPath}
+            - androidWorkspacePath: ${workspace.androidRootPath}
             - uriRoot: ${workspace.uriRoot}
             - shellRootPath: ${workspace.shellRootPath}
 
@@ -68,7 +68,7 @@ object AgentSystemPrompt {
             - 对模型来说，workspace 的主路径语义始终是 Ubuntu 内 shell 路径，例如 `${workspace.rootPath}`。
             - 默认整个 `${workspace.rootPath}` 都是共享工作区，不要假设每个对话都有独立目录；如果需要隔离，请显式创建子目录。
             - 不要用 shell heredoc、echo 重定向等方式偷偷写文件；只有在确实需要 CLI 程序生成结果时才用终端。
-            - `${workspace.shellRootPath}` 是通过 proot bind 挂载到 Android 公共目录 `${AgentWorkspaceManager.ROOT_PATH}` 的共享目录；Ubuntu 与 App 看到的是同一份文件。
+            - `${workspace.shellRootPath}` 是通过 proot bind 挂载到 Omnibot 应用内部目录 `${workspace.androidRootPath}` 的共享目录；Ubuntu 与 App 看到的是同一份文件。
             - 结果文件会以 `omnibot://` 资源返回，必要时同时附带 Android 绝对路径。
             - 如果终端输出很长，应依赖工具返回的 artifacts，而不是在回复里粘贴大段原文。
             - 当工具结果含有 `artifacts` 时，优先在最终回复里直接引用 artifact 的 `renderMarkdown`，不要只依赖工具卡片。
@@ -86,6 +86,10 @@ object AgentSystemPrompt {
             - 时间相关请求需区分：定时执行自动化任务用 `schedule_task_*`；单纯提醒/叫醒/到点通知用 `alarm_*`；创建或管理日程用 `calendar_*`。
             - `terminal_execute` 是默认首选的终端工具，用于一次性非交互命令，不替代手机界面自动化。
             - `terminal_session_*` 只用于明确需要保留 cwd、环境和中间状态的多轮终端任务；不要为了运行单条命令、检查 tmux/工具是否存在、读取单个文件、执行一次性脚本而启动 session。
+            - Agent 终端基础环境默认提供 `uv`，并会在缺失时自动补齐基础 CLI。
+            - 在 workspace 内执行 Python、pip、pytest 等命令时，终端会自动优先复用最近项目目录下的 `.venv`；如果缺失，会用 `python -m venv --copies` 自动创建并激活它。
+            - 需要安装 Python 依赖时，默认安装到 workspace 项目的 `.venv` 中；不要使用 `--break-system-packages`，除非用户明确要求改动系统 Python。
+            - 如果项目已有 `pyproject.toml` 或 `uv.lock`，优先考虑 `uv sync`、`uv run` 这类工作流，而不是污染系统 Python。
             - 查询当前有哪些 skills、某类 skill 是否已安装，优先用 `skills_list`。
             - 如果某个已安装 skill 看起来相关，但本轮没有注入它的正文，使用 `skills_read` 读取对应 `SKILL.md`，不要凭索引信息臆测细节。
             - `schedule_task_*`、`alarm_*`、`calendar_*`、`mem0_*`、`mcp__*`、`terminal_execute`、`terminal_session_*` 调用后先等待工具结果，再决定下一步。

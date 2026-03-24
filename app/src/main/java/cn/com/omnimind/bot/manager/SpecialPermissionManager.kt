@@ -10,6 +10,7 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat
 import cn.com.omnimind.baselib.permission.PermissionRequest
 import cn.com.omnimind.baselib.util.OmniLog
+import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.openclaw.OpenClawDeployManager
 import cn.com.omnimind.bot.openclaw.OpenClawGatewayManager
 import cn.com.omnimind.bot.activity.TerminalActivity
@@ -338,6 +339,19 @@ class SpecialPermissionManager(private val context: Context) {
             result.error(
                 "INTENT_FAILED",
                 "无法打开公共 workspace 存储设置页，可能没有 Activity 能处理此 Intent。",
+                e.message
+            )
+        }
+    }
+
+    fun getWorkspacePathSnapshot(result: MethodChannel.Result) {
+        try {
+            result.success(AgentWorkspaceManager.workspacePathSnapshot(context))
+        } catch (e: Exception) {
+            OmniLog.e(TAG, "Error getting workspace path snapshot", e)
+            result.error(
+                "WORKSPACE_PATH_SNAPSHOT_FAILED",
+                "Failed to get workspace path snapshot.",
                 e.message
             )
         }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:ui/features/home/widgets/conversation_mode_badge.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/theme/app_colors.dart';
 
@@ -46,7 +47,7 @@ class ChatHistoryConversationItem extends StatelessWidget {
                       .toDouble();
 
               return Slidable(
-                key: ValueKey<int>(conversation.id),
+                key: ValueKey<String>(conversation.threadKey),
                 groupTag: slidableGroupTag,
                 closeOnScroll: true,
                 endActionPane: ActionPane(
@@ -108,7 +109,9 @@ class ChatHistoryConversationItem extends StatelessWidget {
                               gradient: LinearGradient(
                                 colors: [Color(0xFF1930D9), Color(0xFF2CA5F0)],
                               ),
-                              borderRadius: BorderRadius.all(Radius.circular(8)),
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(8),
+                              ),
                             ),
                             child: const Icon(
                               Icons.chat_bubble_outline,
@@ -121,17 +124,29 @@ class ChatHistoryConversationItem extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  conversation.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppColors.text,
-                                  ),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        conversation.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppColors.text,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ConversationModeBadge(
+                                      mode: conversation.mode,
+                                      compact: true,
+                                    ),
+                                  ],
                                 ),
-                                if ((conversation.summary ?? '').isNotEmpty) ...[
+                                if ((conversation.summary ?? '')
+                                    .isNotEmpty) ...[
                                   const SizedBox(height: 4),
                                   Text(
                                     conversation.summary!,

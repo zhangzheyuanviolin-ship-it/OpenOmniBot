@@ -5,8 +5,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import '../../../../models/conversation_model.dart';
+import '../../../../models/conversation_thread_target.dart';
 import '../../../../models/chat_message_model.dart';
 import '../../../../services/assists_core_service.dart';
 import '../../widgets/home_drawer.dart';
@@ -21,7 +23,10 @@ import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/widgets/permission_bottom_sheet.dart';
 import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/app_update_service.dart';
+import 'package:ui/services/agent_browser_session_service.dart';
 import 'package:ui/services/conversation_model_override_service.dart';
+import 'package:ui/services/conversation_history_service.dart';
+import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
@@ -41,10 +46,13 @@ import 'mixins/task_execution_handler.dart';
 import 'mixins/conversation_manager.dart';
 
 // 导入 Widgets
+import 'chat_page_models.dart';
 import 'widgets/chat_widgets.dart';
+import 'widgets/chat_browser_overlay.dart';
 import 'package:ui/widgets/app_update_banner.dart';
 import 'package:ui/widgets/app_update_dialog.dart';
 
+part 'chat_page_browser.dart';
 part 'chat_page_lifecycle.dart';
 part 'chat_page_model_context.dart';
 part 'chat_page_openclaw.dart';
@@ -54,9 +62,9 @@ part 'chat_page_ui.dart';
 enum ChatPageMode { normal, openclaw }
 
 class ChatPage extends StatefulWidget {
-  final List<String> args;
+  final ConversationThreadTarget? threadTarget;
 
-  const ChatPage({super.key, this.args = const []});
+  const ChatPage({super.key, this.threadTarget});
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -86,11 +94,13 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       GlobalKey<ChatInputAreaState>();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey<HomeDrawerState> _drawerKey = GlobalKey<HomeDrawerState>();
+  final GlobalKey _browserOverlayKey = GlobalKey();
 
   // ===================== State =====================
   bool _isPopupVisible = false;
   final ChatConversationRuntimeCoordinator _runtimeCoordinator =
       ChatConversationRuntimeCoordinator.instance;
+  ConversationThreadTarget? _resolvedThreadTarget;
 
   // OpenClaw 配置与开关
   bool _openClawEnabled = false;
@@ -136,6 +146,20 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final Map<ChatPageMode, String> _draftMessageByMode = {
     ChatPageMode.normal: '',
     ChatPageMode.openclaw: '',
+  };
+  final Map<ChatPageMode, ChatIslandDisplayLayer>
+  _chatIslandDisplayLayerByMode = {
+    ChatPageMode.normal: ChatIslandDisplayLayer.model,
+    ChatPageMode.openclaw: ChatIslandDisplayLayer.mode,
+  };
+  final Map<ChatPageMode, String?> _lastAgentToolTypeByMode = {
+    ChatPageMode.normal: null,
+    ChatPageMode.openclaw: null,
+  };
+  final Map<ChatPageMode, ChatBrowserSessionSnapshot?>
+  _browserSessionSnapshotByMode = {
+    ChatPageMode.normal: null,
+    ChatPageMode.openclaw: null,
   };
 
   // 输入框/任务执行状态
@@ -212,6 +236,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   static const Duration _openClawGatewayInitToastCooldown = Duration(
     seconds: 3,
   );
+  static const Duration _normalSurfaceModelRevealDelay = Duration(
+    milliseconds: 1700,
+  );
   DateTime? _lastOpenClawGatewayInitToastAt;
   int _workspaceSurfaceSeed = 0;
   bool _hasInitializedHalfScreen = false;
@@ -222,8 +249,32 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   Timer? _companionCountdownTimer;
   AppUpdateStatus? _appUpdateStatus;
   ModalRoute<dynamic>? _subscribedRoute;
+  ChatBrowserSessionSnapshot? _liveBrowserSessionSnapshot;
+  bool _isBrowserOverlayVisible = false;
+  bool _isBrowserOverlayInitialized = false;
+  Offset _browserOverlayOffset = Offset.zero;
+  Size _browserOverlaySize = const Size(360, 420);
+  int _browserOverlayViewSeed = 0;
+  String? _lastObservedBrowserSnapshotSignature;
+  int? _pageGesturePointerId;
+  double _pageVerticalDragDelta = 0;
+  Timer? _normalSurfaceModelRevealTimer;
+  int _surfaceSwitchRequestId = 0;
+  bool _isSurfacePageScrolling = false;
 
   ChatPageMode get _activeMode => _activeConversationMode;
+  ConversationMode _conversationModeForPageMode(ChatPageMode mode) =>
+      mode == ChatPageMode.openclaw
+      ? ConversationMode.openclaw
+      : ConversationMode.normal;
+  ChatPageMode _pageModeForConversationMode(ConversationMode mode) =>
+      mode == ConversationMode.openclaw
+      ? ChatPageMode.openclaw
+      : ChatPageMode.normal;
+  ChatSurfaceMode _surfaceForConversationMode(ConversationMode mode) =>
+      mode == ConversationMode.openclaw
+      ? ChatSurfaceMode.openclaw
+      : ChatSurfaceMode.normal;
   String _modeKey(ChatPageMode mode) => switch (mode) {
     ChatPageMode.normal => kChatRuntimeModeNormal,
     ChatPageMode.openclaw => kChatRuntimeModeOpenClaw,
@@ -239,9 +290,32 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   ChatConversationRuntimeState? get _activeRuntime =>
       _runtimeForMode(_activeMode);
+  ChatIslandDisplayLayer _chatIslandDisplayLayerForMode(ChatPageMode mode) =>
+      _runtimeForMode(mode)?.chatIslandDisplayLayer ??
+      (_chatIslandDisplayLayerByMode[mode] ??
+          (mode == ChatPageMode.normal
+              ? ChatIslandDisplayLayer.model
+              : ChatIslandDisplayLayer.mode));
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
+  ConversationThreadTarget get _threadTargetForMode {
+    final conversationMode = _conversationModeForPageMode(_activeMode);
+    final conversationId = _currentConversationIdByMode[_activeMode];
+    if (conversationId == null) {
+      return ConversationThreadTarget.newConversation(mode: conversationMode);
+    }
+    return ConversationThreadTarget.existing(
+      conversationId: conversationId,
+      mode: conversationMode,
+    );
+  }
+
+  ConversationThreadTarget? get _visibleThreadTarget =>
+      _isWorkspaceSurface ? null : _threadTargetForMode;
+  String get _expectedBrowserWorkspaceId => chatConversationWorkspaceId(
+    _currentConversationIdByMode[ChatPageMode.normal],
+  );
 
   List<ChatMessageModel> get _messages =>
       _activeRuntime?.messages ?? _messagesByMode[_activeMode]!;
@@ -379,6 +453,178 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       runtime.conversation = value;
     }
   }
+
+  ChatIslandDisplayLayer get _chatIslandDisplayLayer =>
+      _chatIslandDisplayLayerForMode(_activeMode);
+  set _chatIslandDisplayLayer(ChatIslandDisplayLayer value) {
+    final runtime = _activeRuntime;
+    if (runtime != null) {
+      runtime.chatIslandDisplayLayer = value;
+      return;
+    }
+    _chatIslandDisplayLayerByMode[_activeMode] = value;
+  }
+
+  void _cancelNormalSurfaceModelReveal() {
+    _normalSurfaceModelRevealTimer?.cancel();
+    _normalSurfaceModelRevealTimer = null;
+  }
+
+  bool _canAutoRevealNormalSurfaceModel() {
+    final modelId = _activeNormalChatModelId?.trim() ?? '';
+    return _activeSurfaceMode == ChatSurfaceMode.normal &&
+        !_isSurfacePageScrolling &&
+        modelId.isNotEmpty &&
+        _chatIslandDisplayLayerForMode(ChatPageMode.normal) ==
+            ChatIslandDisplayLayer.mode;
+  }
+
+  void _scheduleNormalSurfaceModelReveal() {
+    _cancelNormalSurfaceModelReveal();
+    if (!_canAutoRevealNormalSurfaceModel()) {
+      return;
+    }
+    _normalSurfaceModelRevealTimer = Timer(_normalSurfaceModelRevealDelay, () {
+      _normalSurfaceModelRevealTimer = null;
+      if (!mounted || !_canAutoRevealNormalSurfaceModel()) {
+        return;
+      }
+      setState(() {
+        _setChatIslandDisplayLayerForMode(
+          ChatPageMode.normal,
+          ChatIslandDisplayLayer.model,
+        );
+      });
+    });
+  }
+
+  void _forceNormalSurfaceModeLayer() {
+    if (_chatIslandDisplayLayerForMode(ChatPageMode.normal) ==
+        ChatIslandDisplayLayer.mode) {
+      return;
+    }
+    _setChatIslandDisplayLayerForMode(
+      ChatPageMode.normal,
+      ChatIslandDisplayLayer.mode,
+    );
+  }
+
+  void _handleSurfaceScrollStart() {
+    _cancelNormalSurfaceModelReveal();
+    if (!mounted) {
+      _isSurfacePageScrolling = true;
+      _forceNormalSurfaceModeLayer();
+      return;
+    }
+    if (_isSurfacePageScrolling &&
+        _chatIslandDisplayLayerForMode(ChatPageMode.normal) ==
+            ChatIslandDisplayLayer.mode) {
+      return;
+    }
+    setState(() {
+      _isSurfacePageScrolling = true;
+      _forceNormalSurfaceModeLayer();
+    });
+  }
+
+  void _handleSurfaceScrollSettled(ChatSurfaceMode mode) {
+    _cancelNormalSurfaceModelReveal();
+    if (!mounted) {
+      _isSurfacePageScrolling = false;
+      if (mode == ChatSurfaceMode.normal) {
+        _forceNormalSurfaceModeLayer();
+      }
+      return;
+    }
+    final shouldSettleState =
+        _isSurfacePageScrolling ||
+        (mode == ChatSurfaceMode.normal &&
+            _chatIslandDisplayLayerForMode(ChatPageMode.normal) !=
+                ChatIslandDisplayLayer.mode);
+    if (shouldSettleState) {
+      setState(() {
+        _isSurfacePageScrolling = false;
+        if (mode == ChatSurfaceMode.normal) {
+          _forceNormalSurfaceModeLayer();
+        }
+      });
+    } else {
+      _isSurfacePageScrolling = false;
+    }
+    if (mode == ChatSurfaceMode.normal) {
+      _scheduleNormalSurfaceModelReveal();
+    }
+  }
+
+  bool _handleModePageScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0 ||
+        notification.metrics.axis != Axis.horizontal) {
+      return false;
+    }
+    if (notification is ScrollStartNotification) {
+      _handleSurfaceScrollStart();
+      return false;
+    }
+    if (notification is UserScrollNotification) {
+      final direction = notification.direction;
+      if (direction == ScrollDirection.forward ||
+          direction == ScrollDirection.reverse) {
+        _handleSurfaceScrollStart();
+      }
+      return false;
+    }
+    if (notification is ScrollEndNotification) {
+      final pageMetrics = notification.metrics;
+      final rawPage = pageMetrics is PageMetrics
+          ? pageMetrics.page
+          : (_modePageController.hasClients ? _modePageController.page : null);
+      final settledPageIndex =
+          (rawPage ?? _pageIndexForSurface(_activeSurfaceMode).toDouble())
+              .round();
+      _handleSurfaceScrollSettled(_surfaceForPageIndex(settledPageIndex));
+    }
+    return false;
+  }
+
+  String? get _lastAgentToolType =>
+      _activeRuntime?.lastAgentToolType ??
+      _lastAgentToolTypeByMode[_activeMode];
+  set _lastAgentToolType(String? value) {
+    final runtime = _activeRuntime;
+    if (runtime != null) {
+      runtime.lastAgentToolType = value;
+      return;
+    }
+    _lastAgentToolTypeByMode[_activeMode] = value;
+  }
+
+  ChatBrowserSessionSnapshot? get _browserSessionSnapshot =>
+      _activeRuntime?.browserSessionSnapshot ??
+      _browserSessionSnapshotByMode[_activeMode];
+  set _browserSessionSnapshot(ChatBrowserSessionSnapshot? value) {
+    final runtime = _activeRuntime;
+    if (runtime != null) {
+      runtime.browserSessionSnapshot = value;
+      return;
+    }
+    _browserSessionSnapshotByMode[_activeMode] = value;
+  }
+
+  ChatBrowserSessionSnapshot? get _resolvedBrowserSessionSnapshot {
+    final live = _liveBrowserSessionSnapshot;
+    if (live != null && live.matchesWorkspace(_expectedBrowserWorkspaceId)) {
+      return live;
+    }
+    final runtime = _browserSessionSnapshot;
+    if (runtime != null &&
+        runtime.matchesWorkspace(_expectedBrowserWorkspaceId)) {
+      return runtime;
+    }
+    return null;
+  }
+
+  bool get _isBrowserSessionAvailable =>
+      _resolvedBrowserSessionSnapshot?.available == true;
 
   List<ChatInputAttachment> get _pendingAttachments =>
       _pendingAttachmentsByMode[_activeMode]!;
@@ -522,42 +768,76 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   set currentConversation(ConversationModel? value) =>
       _currentConversation = value;
   @override
-  List<String> get widgetArgs => widget.args;
+  ConversationThreadTarget? get routeThreadTarget => _resolvedThreadTarget;
+  @override
+  ConversationMode get activeConversationModeValue =>
+      _conversationModeForPageMode(_activeMode);
+  @override
+  List<ChatMessageModel>? getInMemoryMessagesForConversation(
+    int conversationId,
+    ConversationMode mode,
+  ) {
+    final pageMode = _pageModeForConversationMode(mode);
+    final runtime = _runtimeCoordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: _modeKey(pageMode),
+    );
+    if (runtime == null || runtime.messages.isEmpty) {
+      return null;
+    }
+    return List<ChatMessageModel>.from(runtime.messages);
+  }
+
+  @override
+  ConversationModel? getInMemoryConversationForConversation(
+    int conversationId,
+    ConversationMode mode,
+  ) {
+    final pageMode = _pageModeForConversationMode(mode);
+    final runtime = _runtimeCoordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: _modeKey(pageMode),
+    );
+    return runtime?.conversation;
+  }
 
   @override
   Future<void> persistAgentConversation() => saveConversation();
 
   @override
-  void onConversationReset() {
-    _resetLocalConversationState(_activeMode);
+  void onConversationReset(ConversationMode mode) {
+    _resetLocalConversationState(_pageModeForConversationMode(mode));
   }
 
   @override
   void onConversationLoaded(
+    ConversationMode mode,
     int conversationId,
     ConversationModel? conversation,
     List<ChatMessageModel> messages,
   ) {
-    final mode = _activeMode;
+    final pageMode = _pageModeForConversationMode(mode);
     final runtime = _runtimeCoordinator.runtimeFor(
       conversationId: conversationId,
-      mode: _modeKey(mode),
+      mode: _modeKey(pageMode),
     );
     if (runtime == null) {
       _runtimeCoordinator.ensureRuntime(
         conversationId: conversationId,
-        mode: _modeKey(mode),
+        mode: _modeKey(pageMode),
         initialMessages: messages,
         conversation: conversation,
+        initialChatIslandDisplayLayer: _chatIslandDisplayLayerForMode(pageMode),
       );
     } else if (conversation != null) {
       runtime.conversation = conversation;
     }
-    if (mode == ChatPageMode.normal) {
+    if (pageMode == ChatPageMode.normal) {
       unawaited(
         _loadConversationModelOverrideForNormalConversation(conversationId),
       );
       unawaited(_loadNormalChatModelContext());
+      unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
     }
     if (mounted) {
       setState(() {});
@@ -566,21 +846,27 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   @override
   void onConversationPersisted(
+    ConversationMode mode,
     int conversationId,
     ConversationModel conversation,
     List<ChatMessageModel> messages,
   ) {
-    _currentConversationIdByMode[_activeMode] = conversationId;
-    _currentConversationByMode[_activeMode] = conversation;
+    final pageMode = _pageModeForConversationMode(mode);
+    _currentConversationIdByMode[pageMode] = conversationId;
+    _currentConversationByMode[pageMode] = conversation;
     _syncRuntimeSnapshotForMode(
-      _activeMode,
+      pageMode,
       conversation: conversation,
       messages: messages,
     );
-    if (_activeMode == ChatPageMode.normal) {
+    if (pageMode == ChatPageMode.normal) {
       unawaited(
         _persistPendingConversationModelOverrideIfNeeded(conversationId),
       );
+      unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
+    }
+    if (!_isWorkspaceSurface && pageMode == _activeConversationMode) {
+      unawaited(_persistVisibleThreadTargetIfNeeded());
     }
   }
 
@@ -696,6 +982,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   void _handleRuntimeCoordinatorChanged() {
     if (!mounted || _activeRuntime == null) return;
+    _scheduleBrowserSessionRefreshIfNeeded();
     setState(() {});
   }
 
@@ -714,6 +1001,11 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _currentConversationByMode[mode] = null;
     _isInputAreaVisibleByMode[mode] = true;
     _isExecutingTaskByMode[mode] = false;
+    _chatIslandDisplayLayerByMode[mode] = mode == ChatPageMode.normal
+        ? ChatIslandDisplayLayer.model
+        : ChatIslandDisplayLayer.mode;
+    _lastAgentToolTypeByMode[mode] = null;
+    _browserSessionSnapshotByMode[mode] = null;
     _pendingAttachmentsByMode[mode]!.clear();
     _draftMessageByMode[mode] = '';
     if (mode == ChatPageMode.normal) {
@@ -722,6 +1014,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       _showConversationModelMentionChip = false;
       _showModelMentionPanel = false;
       _activeModelMentionToken = null;
+      _liveBrowserSessionSnapshot = null;
+      _isBrowserOverlayVisible = false;
+      _isBrowserOverlayInitialized = false;
+      _lastObservedBrowserSnapshotSignature = null;
     }
   }
 
@@ -789,13 +1085,28 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   // ===================== Part 方法声明 =====================
 
-  bool _argsChanged(List<String> oldArgs, List<String> newArgs);
+  bool _threadTargetChanged(
+    ConversationThreadTarget? oldTarget,
+    ConversationThreadTarget? newTarget,
+  );
 
-  bool _shouldOpenNormalChatForArgs(List<String> args);
+  Future<ConversationThreadTarget> _resolveConversationThreadTarget(
+    ConversationThreadTarget? incomingTarget, {
+    ConversationMode? preferredMode,
+  });
 
-  void _forceSwitchToNormalSurface();
+  Future<void> _bootstrapConversationThread();
 
-  void _resetAndReloadConversation();
+  Future<void> _reloadConversationForCurrentTarget();
+
+  Future<void> _applyConversationThreadTarget(
+    ConversationThreadTarget target, {
+    bool syncPage = true,
+  });
+
+  Future<void> _ensureConversationModeReady(ChatPageMode mode);
+
+  Future<void> _persistVisibleThreadTargetIfNeeded();
 
   void _notifySummarySheetReadyIfNeeded();
 
@@ -892,6 +1203,45 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   });
 
   Widget _buildModelMentionPanel();
+
+  String _browserSnapshotSignature(ChatBrowserSessionSnapshot? snapshot);
+
+  void _scheduleBrowserSessionRefreshIfNeeded();
+
+  void _handlePagePointerDown(PointerDownEvent event);
+
+  void _handlePagePointerMove(PointerMoveEvent event);
+
+  void _handlePagePointerUp(PointerUpEvent event);
+
+  void _handlePagePointerCancel(PointerCancelEvent event);
+
+  Future<void> _refreshLiveBrowserSessionSnapshot({bool syncRuntime = false});
+
+  void _setChatIslandDisplayLayerForMode(
+    ChatPageMode mode,
+    ChatIslandDisplayLayer layer,
+  );
+
+  void _handleChatIslandDisplayLayerChanged(ChatIslandDisplayLayer layer);
+
+  Future<void> _handleTerminalToolTap();
+
+  Future<void> _handleBrowserToolTap();
+
+  void _hideBrowserOverlay();
+
+  void _ensureBrowserOverlayGeometry(BoxConstraints constraints);
+
+  void _moveBrowserOverlay(Offset delta, BoxConstraints constraints);
+
+  void _resizeBrowserOverlayFromLeft(Offset delta, BoxConstraints constraints);
+
+  void _resizeBrowserOverlayFromRight(Offset delta, BoxConstraints constraints);
+
+  Rect _browserOverlayBounds(BoxConstraints constraints);
+
+  Widget _buildBrowserOverlay(BoxConstraints constraints);
 
   void _handleSlashCommandInput();
 
@@ -1045,6 +1395,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
 class _ChatPageState extends _ChatPageStateBase
     with
+        _ChatPageBrowserMixin,
         _ChatPageLifecycleMixin,
         _ChatPageModelContextMixin,
         _ChatPageOpenClawMixin,

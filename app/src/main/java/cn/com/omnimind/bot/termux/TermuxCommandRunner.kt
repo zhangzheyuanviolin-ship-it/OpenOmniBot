@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.termux
 
 import android.content.Context
+import cn.com.omnimind.bot.App
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 
@@ -67,7 +68,7 @@ object TermuxCommandBuilder {
     internal fun buildWorkspaceBindArguments(): List<String> {
         return listOf(
             "--bind",
-            "${AgentWorkspaceManager.ROOT_PATH}:${AgentWorkspaceManager.SHELL_ROOT_PATH}"
+            "${AgentWorkspaceManager.androidRootPath(App.instance)}:${AgentWorkspaceManager.SHELL_ROOT_PATH}"
         )
     }
 
