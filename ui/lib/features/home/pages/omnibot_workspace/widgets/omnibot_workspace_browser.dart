@@ -4,6 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/utils/ui.dart';
+
+enum _WorkspaceEntryAction { rename, delete }
+
+class _WorkspaceDragPayload {
+  const _WorkspaceDragPayload({
+    required this.sourcePath,
+    required this.isDirectory,
+  });
+
+  final String sourcePath;
+  final bool isDirectory;
+}
 
 class OmnibotWorkspaceBrowser extends StatefulWidget {
   final String workspacePath;
@@ -55,6 +68,7 @@ class _OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   final Set<String> _expandedDirectoryPaths = <String>{};
   final Map<String, List<FileSystemEntity>> _directoryChildrenCache =
       <String, List<FileSystemEntity>>{};
+  String? _dragHoverTargetPath;
 
   @override
   void initState() {
@@ -187,7 +201,7 @@ class _OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                       );
 
                       if (canGoUp && index == 0) {
-                        return _buildWorkspaceItem(
+                        final parentRow = _buildWorkspaceItem(
                           title: '..',
                           leading: Icon(
                             Icons.arrow_upward_rounded,
@@ -196,6 +210,11 @@ class _OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                           ),
                           borderRadius: borderRadius,
                           onTap: _openParentDirectory,
+                        );
+                        return _buildDirectoryDropTarget(
+                          child: parentRow,
+                          borderRadius: borderRadius,
+                          targetDirectoryPath: _directory.parent.path,
                         );
                       }
 
@@ -240,14 +259,9 @@ class _OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
           )
         : null;
 
-    final row = _buildWorkspaceItem(
+    Widget row = _buildWorkspaceItem(
       title: name,
-      leading: SvgPicture.asset(
-        _iconAssetForEntry(entry, isExpanded: isExpanded),
-        width: 20,
-        height: 20,
-        colorFilter: const ColorFilter.mode(AppColors.text, BlendMode.srcIn),
-      ),
+      leading: _buildDraggableLeadingIcon(entry: entry, isExpanded: isExpanded),
       borderRadius: borderRadius,
       trailing: trailing,
       onTap: () {
@@ -269,7 +283,16 @@ class _OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
           shellPath: shellPath,
         );
       },
+      onLongPress: () => _showEntryActionSheet(entry),
     );
+
+    if (isDirectory) {
+      row = _buildDirectoryDropTarget(
+        child: row,
+        borderRadius: borderRadius,
+        targetDirectoryPath: entry.path,
+      );
+    }
 
     if (!isDirectory || !isExpanded) {
       return row;
@@ -287,6 +310,458 @@ class _OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         ),
       ],
     );
+  }
+
+  Widget _buildDraggableLeadingIcon({
+    required FileSystemEntity entry,
+    required bool isExpanded,
+  }) {
+    Widget buildIcon({double size = 20}) {
+      return SvgPicture.asset(
+        _iconAssetForEntry(entry, isExpanded: isExpanded),
+        width: size,
+        height: size,
+        colorFilter: const ColorFilter.mode(AppColors.text, BlendMode.srcIn),
+      );
+    }
+
+    final payload = _WorkspaceDragPayload(
+      sourcePath: _normalizePath(entry.path),
+      isDirectory: entry is Directory,
+    );
+
+    return LongPressDraggable<_WorkspaceDragPayload>(
+      data: payload,
+      feedback: _buildDragFeedback(
+        name: _entryNameFromPath(entry.path),
+        icon: buildIcon(size: 18),
+      ),
+      childWhenDragging: Opacity(opacity: 0.35, child: buildIcon()),
+      onDragStarted: () => _setDragHoverTarget(null),
+      onDragEnd: (_) => _setDragHoverTarget(null),
+      onDraggableCanceled: (_, __) => _setDragHoverTarget(null),
+      child: buildIcon(),
+    );
+  }
+
+  Widget _buildDragFeedback({required String name, required Widget icon}) {
+    return Material(
+      color: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 220),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [AppColors.boxShadow],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                icon,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.text,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDirectoryDropTarget({
+    required Widget child,
+    required BorderRadius borderRadius,
+    required String targetDirectoryPath,
+  }) {
+    return DragTarget<_WorkspaceDragPayload>(
+      onWillAcceptWithDetails: (details) {
+        final canMove = _canMovePayloadToDirectory(
+          payload: details.data,
+          targetDirectoryPath: targetDirectoryPath,
+        );
+        _setDragHoverTarget(canMove ? targetDirectoryPath : null);
+        return canMove;
+      },
+      onLeave: (_) => _setDragHoverTarget(null),
+      onAcceptWithDetails: (details) {
+        _setDragHoverTarget(null);
+        _handleDropMove(
+          payload: details.data,
+          targetDirectoryPath: targetDirectoryPath,
+        );
+      },
+      builder: (context, candidateData, rejectedData) {
+        final highlighted =
+            _dragHoverTargetPath == targetDirectoryPath ||
+            candidateData.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          decoration: highlighted
+              ? BoxDecoration(
+                  color: const Color(0x142C7FEB),
+                  borderRadius: borderRadius,
+                  border: Border.all(color: const Color(0x882C7FEB), width: 1),
+                )
+              : null,
+          child: child,
+        );
+      },
+    );
+  }
+
+  void _setDragHoverTarget(String? path) {
+    if (_dragHoverTargetPath == path || !mounted) return;
+    setState(() {
+      _dragHoverTargetPath = path;
+    });
+  }
+
+  bool _canMovePayloadToDirectory({
+    required _WorkspaceDragPayload payload,
+    required String targetDirectoryPath,
+  }) {
+    final sourcePath = _normalizePath(payload.sourcePath);
+    final targetPath = _normalizePath(targetDirectoryPath);
+
+    if (!_isInsideWorkspace(sourcePath) || !_isInsideWorkspace(targetPath)) {
+      return false;
+    }
+    if (sourcePath == targetPath) return false;
+
+    final sourceParentPath = _normalizePath(File(sourcePath).parent.path);
+    if (sourceParentPath == targetPath) return false;
+
+    if (payload.isDirectory && targetPath.startsWith('$sourcePath/')) {
+      return false;
+    }
+
+    if (!Directory(targetPath).existsSync()) return false;
+
+    final destinationPath = '$targetPath/${_entryNameFromPath(sourcePath)}';
+    return FileSystemEntity.typeSync(destinationPath) ==
+        FileSystemEntityType.notFound;
+  }
+
+  Future<void> _handleDropMove({
+    required _WorkspaceDragPayload payload,
+    required String targetDirectoryPath,
+  }) async {
+    final sourcePath = _normalizePath(payload.sourcePath);
+    final targetPath = _normalizePath(targetDirectoryPath);
+    final sourceName = _entryNameFromPath(sourcePath);
+
+    if (sourceName.isEmpty) {
+      showToast('移动失败：文件名无效', type: ToastType.error);
+      return;
+    }
+    if (!_isInsideWorkspace(sourcePath) || !_isInsideWorkspace(targetPath)) {
+      showToast('仅支持在当前 workspace 内移动', type: ToastType.warning);
+      return;
+    }
+    if (sourcePath == targetPath) {
+      showToast('不能移动到自身目录', type: ToastType.warning);
+      return;
+    }
+
+    final sourceParentPath = _normalizePath(File(sourcePath).parent.path);
+    if (sourceParentPath == targetPath) {
+      showToast('文件已在目标目录中', type: ToastType.info);
+      return;
+    }
+
+    if (payload.isDirectory && targetPath.startsWith('$sourcePath/')) {
+      showToast('不能移动到自身或子目录', type: ToastType.warning);
+      return;
+    }
+
+    final destinationPath = '$targetPath/$sourceName';
+    if (FileSystemEntity.typeSync(destinationPath) !=
+        FileSystemEntityType.notFound) {
+      showToast('目标目录存在同名项，请先重命名', type: ToastType.warning);
+      return;
+    }
+
+    final sourceType = FileSystemEntity.typeSync(sourcePath);
+    if (sourceType == FileSystemEntityType.notFound) {
+      showToast('源文件不存在，请刷新重试', type: ToastType.warning);
+      _refresh();
+      return;
+    }
+
+    try {
+      final sourceEntity = sourceType == FileSystemEntityType.directory
+          ? Directory(sourcePath)
+          : File(sourcePath);
+      await sourceEntity.rename(destinationPath);
+      showToast(
+        sourceType == FileSystemEntityType.directory ? '文件夹已移动' : '文件已移动',
+        type: ToastType.success,
+      );
+      _refresh();
+    } catch (error) {
+      showToast('移动失败：$error', type: ToastType.error);
+    }
+  }
+
+  Future<void> _showEntryActionSheet(FileSystemEntity entry) async {
+    final name = _entryNameFromPath(entry.path);
+    final action = await showModalBottomSheet<_WorkspaceEntryAction>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.text.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.text,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '长按左侧图标并拖动到目标文件夹可移动位置',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.text.withValues(alpha: 0.55),
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  tileColor: const Color(0xFFF7F8FA),
+                  leading: const Icon(
+                    Icons.drive_file_rename_outline_rounded,
+                    color: AppColors.text,
+                  ),
+                  title: const Text(
+                    '重命名',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                  onTap: () => Navigator.of(
+                    sheetContext,
+                  ).pop(_WorkspaceEntryAction.rename),
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  tileColor: const Color(0xFFF7F8FA),
+                  leading: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: Color(0xFFE53935),
+                  ),
+                  title: const Text(
+                    '删除',
+                    style: TextStyle(
+                      color: Color(0xFFE53935),
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                  onTap: () => Navigator.of(
+                    sheetContext,
+                  ).pop(_WorkspaceEntryAction.delete),
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  tileColor: const Color(0xFFF7F8FA),
+                  leading: const Icon(
+                    Icons.close_rounded,
+                    color: AppColors.text,
+                  ),
+                  title: const Text(
+                    '取消',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontWeight: FontWeight.w500,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                  onTap: () => Navigator.of(sheetContext).pop(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) return;
+    if (action == _WorkspaceEntryAction.rename) {
+      await _promptRenameEntry(entry);
+      return;
+    }
+    await _confirmAndDeleteEntry(entry);
+  }
+
+  Future<void> _promptRenameEntry(FileSystemEntity entry) async {
+    final sourcePath = _normalizePath(entry.path);
+    final sourceType = FileSystemEntity.typeSync(sourcePath);
+    if (sourceType == FileSystemEntityType.notFound) {
+      showToast('目标不存在，请刷新重试', type: ToastType.warning);
+      _refresh();
+      return;
+    }
+
+    final oldName = _entryNameFromPath(sourcePath);
+    final isDirectory = sourceType == FileSystemEntityType.directory;
+    final nextName = (await AppDialog.input(
+      context,
+      title: isDirectory ? '重命名文件夹' : '重命名文件',
+      hintText: '请输入新名称',
+      initialValue: oldName,
+      confirmText: '保存',
+      cancelText: '取消',
+    ))?.trim();
+
+    if (nextName == null) return;
+
+    final validationError = _validateEntryName(nextName);
+    if (validationError != null) {
+      showToast(validationError, type: ToastType.warning);
+      return;
+    }
+    if (nextName == oldName) {
+      showToast('名称未发生变化', type: ToastType.info);
+      return;
+    }
+
+    final parentPath = _normalizePath(File(sourcePath).parent.path);
+    final destinationPath = '$parentPath/$nextName';
+
+    if (!_isInsideWorkspace(destinationPath)) {
+      showToast('重命名失败：目标路径无效', type: ToastType.error);
+      return;
+    }
+    if (FileSystemEntity.typeSync(destinationPath) !=
+        FileSystemEntityType.notFound) {
+      showToast('同名文件或文件夹已存在', type: ToastType.warning);
+      return;
+    }
+
+    try {
+      final sourceEntity = isDirectory
+          ? Directory(sourcePath)
+          : File(sourcePath);
+      await sourceEntity.rename(destinationPath);
+      showToast('重命名成功', type: ToastType.success);
+      _refresh();
+    } catch (error) {
+      showToast('重命名失败：$error', type: ToastType.error);
+    }
+  }
+
+  String? _validateEntryName(String name) {
+    if (name.trim().isEmpty) return '名称不能为空';
+    if (name == '.' || name == '..') return '名称不能为 . 或 ..';
+    if (name.contains('/')) return '名称不能包含 /';
+    if (name.contains('\\')) return '名称不能包含 "\\"';
+    if (name.contains('\u0000')) return '名称包含非法字符';
+    return null;
+  }
+
+  Future<void> _confirmAndDeleteEntry(FileSystemEntity entry) async {
+    final path = _normalizePath(entry.path);
+    final name = _entryNameFromPath(path);
+    final sourceType = FileSystemEntity.typeSync(path);
+    if (sourceType == FileSystemEntityType.notFound) {
+      showToast('目标不存在，请刷新重试', type: ToastType.warning);
+      _refresh();
+      return;
+    }
+
+    final isDirectory = sourceType == FileSystemEntityType.directory;
+    final confirmed = await AppDialog.confirm(
+      context,
+      title: isDirectory ? '删除文件夹' : '删除文件',
+      content: '确认删除“$name”？删除后不可恢复。',
+      cancelText: '取消',
+      confirmText: '删除',
+      confirmButtonColor: const Color(0xFFE53935),
+    );
+    if (confirmed != true) return;
+
+    try {
+      if (isDirectory) {
+        await Directory(path).delete(recursive: true);
+      } else {
+        await File(path).delete();
+      }
+      showToast(isDirectory ? '文件夹已删除' : '文件已删除', type: ToastType.success);
+      _refresh();
+    } catch (error) {
+      showToast('删除失败：$error', type: ToastType.error);
+    }
+  }
+
+  String _normalizePath(String path) {
+    if (path.length > 1 && path.endsWith('/')) {
+      return path.substring(0, path.length - 1);
+    }
+    return path;
+  }
+
+  bool _isInsideWorkspace(String path) {
+    final normalizedPath = _normalizePath(path);
+    final normalizedRoot = _normalizePath(_rootDirectory.path);
+    return normalizedPath == normalizedRoot ||
+        normalizedPath.startsWith('$normalizedRoot/');
+  }
+
+  String _entryNameFromPath(String path) {
+    final normalizedPath = _normalizePath(path);
+    final slashIndex = normalizedPath.lastIndexOf('/');
+    if (slashIndex < 0 || slashIndex == normalizedPath.length - 1) {
+      return normalizedPath;
+    }
+    return normalizedPath.substring(slashIndex + 1);
   }
 
   Widget _buildExpandedChildren({
@@ -387,6 +862,7 @@ class _OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     required Widget leading,
     required BorderRadius borderRadius,
     required VoidCallback onTap,
+    VoidCallback? onLongPress,
     Widget? trailing,
   }) {
     return DecoratedBox(
@@ -400,6 +876,7 @@ class _OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         borderRadius: borderRadius,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           borderRadius: borderRadius,
           child: SizedBox(
             height: _itemHeight,
