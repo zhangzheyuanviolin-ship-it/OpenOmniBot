@@ -28,7 +28,7 @@ class AgentWorkspaceManager(
         private const val DIR_MEMORY = "memory"
 
         fun rootDirectory(context: Context): File {
-            return File(context.applicationContext.filesDir, ROOT_DIR_NAME)
+            return File(context.applicationInfo.dataDir, ROOT_DIR_NAME)
         }
 
         fun internalRootDirectory(context: Context): File {
@@ -53,6 +53,7 @@ class AgentWorkspaceManager(
     }
 
     private val rootDir = rootDirectory(context)
+    private val legacyInternalRootDir = File(context.applicationContext.filesDir, ROOT_DIR_NAME)
     private val internalDir = File(rootDir, INTERNAL_DIR)
     private val attachmentsDir = File(internalDir, DIR_ATTACHMENTS)
     private val sharedDir = File(internalDir, DIR_SHARED)
@@ -85,21 +86,27 @@ class AgentWorkspaceManager(
         if (migrationMarker.exists()) {
             return
         }
-        val legacyRoot = legacyRootDir
-        if (!legacyRoot.exists()) {
-            return
-        }
-        val currentFiles = rootDir.listFiles()
-        if (rootDir.exists() && !currentFiles.isNullOrEmpty()) {
-            markMigrationCompleted()
-            return
-        }
         runCatching {
             rootDir.mkdirs()
-            legacyRoot.listFiles()?.forEach { child ->
-                val target = File(rootDir, child.name)
-                if (!target.exists()) {
-                    child.copyRecursively(target, overwrite = false)
+            val migrationSources = buildList {
+                val internalLegacy = legacyInternalRootDir
+                if (
+                    internalLegacy.exists() &&
+                    internalLegacy.canonicalPath != rootDir.canonicalPath
+                ) {
+                    add(internalLegacy)
+                }
+                val externalLegacy = legacyRootDir
+                if (externalLegacy.exists()) {
+                    add(externalLegacy)
+                }
+            }
+            migrationSources.forEach { source ->
+                source.listFiles()?.forEach { child ->
+                    val target = File(rootDir, child.name)
+                    if (!target.exists()) {
+                        child.copyRecursively(target, overwrite = false)
+                    }
                 }
             }
             markMigrationCompleted()

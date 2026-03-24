@@ -783,10 +783,11 @@ object EmbeddedTerminalRuntime {
     internal fun buildPythonEnvironmentPrelude(): String = """
         export PATH="${'$'}HOME/.local/bin:${'$'}PATH"
         export UV_LINK_MODE=copy
+        __omni_workspace_root=${TermuxCommandBuilder.quoteForShell(AgentWorkspaceManager.SHELL_ROOT_PATH)}
+        __omni_uv_env_root="${'$'}HOME/.cache/omnibot/uv-project-envs"
 
-        __omni_find_python_project_root() {
+        __omni_locate_python_project_root() {
           __omni_current_dir="${'$'}PWD"
-          __omni_workspace_root=${TermuxCommandBuilder.quoteForShell(AgentWorkspaceManager.SHELL_ROOT_PATH)}
           case "${'$'}__omni_current_dir" in
             "${'$'}__omni_workspace_root"|${'$'}__omni_workspace_root/*) ;;
             *) return 1 ;;
@@ -815,13 +816,62 @@ object EmbeddedTerminalRuntime {
             fi
             __omni_current_dir="${'$'}__omni_parent_dir"
           done
+          return 1
+        }
+
+        __omni_find_python_project_root() {
+          __omni_locate_python_project_root
+          __omni_locate_rc="${'$'}?"
+          if [ "${'$'}__omni_locate_rc" -eq 0 ]; then
+            return 0
+          fi
           printf '%s\n' "${'$'}PWD"
+        }
+
+        __omni_activate_virtualenv() {
+          __omni_target_venv="${'$'}1"
+          if [ ! -f "${'$'}__omni_target_venv/bin/activate" ]; then
+            return 1
+          fi
+          if [ "${'$'}VIRTUAL_ENV" != "${'$'}__omni_target_venv" ]; then
+            if [ -n "${'$'}VIRTUAL_ENV" ] && command -v deactivate >/dev/null 2>&1; then
+              deactivate >/dev/null 2>&1 || true
+            fi
+            . "${'$'}__omni_target_venv/bin/activate" || return ${'$'}?
+          fi
+          return 0
+        }
+
+        __omni_cleanup_invalid_virtualenv() {
+          __omni_candidate_venv="${'$'}1"
+          if [ ! -d "${'$'}__omni_candidate_venv" ]; then
+            return 0
+          fi
+          if [ -x "${'$'}__omni_candidate_venv/bin/python" ] || [ -x "${'$'}__omni_candidate_venv/bin/python3" ]; then
+            return 0
+          fi
+          if [ -f "${'$'}__omni_candidate_venv/bin/activate" ] || [ -f "${'$'}__omni_candidate_venv/pyvenv.cfg" ] || [ -d "${'$'}__omni_candidate_venv/bin" ]; then
+            printf '[omnibot] Removing invalid virtual environment at %s\n' "${'$'}__omni_candidate_venv" >&2
+            rm -rf "${'$'}__omni_candidate_venv" || return ${'$'}?
+          fi
+          return 0
         }
 
         __omni_prepare_python_env() {
           __omni_create_if_missing="${'$'}1"
-          __omni_project_root=$(__omni_find_python_project_root) || return 0
+          __omni_project_root=$(__omni_locate_python_project_root 2>/dev/null)
+          __omni_project_root_rc="${'$'}?"
+          if [ "${'$'}__omni_project_root_rc" -ne 0 ]; then
+            if [ -n "${'$'}VIRTUAL_ENV" ] && [ -f "${'$'}VIRTUAL_ENV/bin/activate" ]; then
+              return 0
+            fi
+            if [ "${'$'}__omni_create_if_missing" != "1" ]; then
+              return 0
+            fi
+            __omni_project_root="${'$'}PWD"
+          fi
           __omni_venv_dir="${'$'}__omni_project_root/.venv"
+          __omni_cleanup_invalid_virtualenv "${'$'}__omni_venv_dir" || return ${'$'}?
           if [ ! -f "${'$'}__omni_venv_dir/bin/activate" ] && [ "${'$'}__omni_create_if_missing" = "1" ]; then
             if [ -d "${'$'}__omni_venv_dir" ]; then
               rm -rf "${'$'}__omni_venv_dir" || return ${'$'}?
@@ -829,13 +879,105 @@ object EmbeddedTerminalRuntime {
             printf '[omnibot] Creating Python virtual environment at %s\n' "${'$'}__omni_venv_dir" >&2
             command python3 -m venv --copies "${'$'}__omni_venv_dir" || return ${'$'}?
           fi
-          if [ -f "${'$'}__omni_venv_dir/bin/activate" ] && [ "${'$'}VIRTUAL_ENV" != "${'$'}__omni_venv_dir" ]; then
-            if [ -n "${'$'}VIRTUAL_ENV" ] && command -v deactivate >/dev/null 2>&1; then
-              deactivate >/dev/null 2>&1 || true
-            fi
-            . "${'$'}__omni_venv_dir/bin/activate" || return ${'$'}?
+          if [ -f "${'$'}__omni_venv_dir/bin/activate" ]; then
+            __omni_activate_virtualenv "${'$'}__omni_venv_dir" || return ${'$'}?
           fi
           return 0
+        }
+
+        __omni_find_uv_workspace_root() {
+          __omni_uv_root=$(__omni_locate_python_project_root 2>/dev/null)
+          if [ "${'$'}?" -eq 0 ] && [ -n "${'$'}__omni_uv_root" ]; then
+            printf '%s\n' "${'$'}__omni_uv_root"
+            return 0
+          fi
+          case "${'$'}PWD" in
+            "${'$'}__omni_workspace_root"|${'$'}__omni_workspace_root/*)
+              printf '%s\n' "${'$'}PWD"
+              return 0
+              ;;
+            *)
+              return 1
+              ;;
+          esac
+        }
+
+        __omni_uv_env_dir_for_root() {
+          __omni_uv_root="${'$'}1"
+          mkdir -p "${'$'}__omni_uv_env_root" || return ${'$'}?
+          __omni_uv_key=$(command python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' "${'$'}__omni_uv_root") || return ${'$'}?
+          printf '%s/%s\n' "${'$'}__omni_uv_env_root" "${'$'}__omni_uv_key"
+        }
+
+        __omni_uv_resolve_target_path() {
+          __omni_uv_target="${'$'}1"
+          case "${'$'}__omni_uv_target" in
+            /*)
+              printf '%s\n' "${'$'}__omni_uv_target"
+              ;;
+            *)
+              printf '%s/%s\n' "${'$'}PWD" "${'$'}__omni_uv_target"
+              ;;
+          esac
+        }
+
+        __omni_path_is_under_workspace() {
+          __omni_candidate="${'$'}1"
+          case "${'$'}__omni_candidate" in
+            "${'$'}__omni_workspace_root"|${'$'}__omni_workspace_root/*) return 0 ;;
+            *) return 1 ;;
+          esac
+        }
+
+        uv() {
+          __omni_uv_root=$(__omni_find_uv_workspace_root 2>/dev/null)
+          if [ "${'$'}?" -ne 0 ] || [ -z "${'$'}__omni_uv_root" ]; then
+            command uv "${'$'}@"
+            return ${'$'}?
+          fi
+
+          __omni_cleanup_invalid_virtualenv "${'$'}__omni_uv_root/.venv" || return ${'$'}?
+          __omni_uv_env_dir=$(__omni_uv_env_dir_for_root "${'$'}__omni_uv_root") || return ${'$'}?
+          __omni_uv_rc=0
+
+          if [ "${'$'}1" = "venv" ]; then
+            shift
+            __omni_uv_has_target=0
+            __omni_uv_target_path=""
+            for __omni_uv_arg in "${'$'}@"; do
+              case "${'$'}__omni_uv_arg" in
+                -*) ;;
+                *)
+                  __omni_uv_has_target=1
+                  __omni_uv_target_path="${'$'}__omni_uv_arg"
+                  break
+                  ;;
+              esac
+            done
+            if [ "${'$'}__omni_uv_has_target" = "1" ]; then
+              __omni_uv_target_abs=$(__omni_uv_resolve_target_path "${'$'}__omni_uv_target_path")
+              if __omni_path_is_under_workspace "${'$'}__omni_uv_target_abs"; then
+                command uv venv --link-mode copy "${'$'}@"
+              else
+                command uv venv "${'$'}@"
+              fi
+              __omni_uv_rc="${'$'}?"
+              if [ "${'$'}__omni_uv_rc" -eq 0 ] && [ -f "${'$'}__omni_uv_target_abs/bin/activate" ]; then
+                __omni_activate_virtualenv "${'$'}__omni_uv_target_abs" || return ${'$'}?
+              fi
+            else
+              command uv venv --link-mode copy "${'$'}@" "${'$'}__omni_uv_env_dir"
+              __omni_uv_rc="${'$'}?"
+            fi
+          else
+            UV_PROJECT_ENVIRONMENT="${'$'}__omni_uv_env_dir" command uv "${'$'}@"
+            __omni_uv_rc="${'$'}?"
+          fi
+
+          if [ "${'$'}__omni_uv_rc" -eq 0 ] && [ -f "${'$'}__omni_uv_env_dir/bin/activate" ]; then
+            __omni_activate_virtualenv "${'$'}__omni_uv_env_dir" || return ${'$'}?
+          fi
+          return "${'$'}__omni_uv_rc"
         }
 
         python() {

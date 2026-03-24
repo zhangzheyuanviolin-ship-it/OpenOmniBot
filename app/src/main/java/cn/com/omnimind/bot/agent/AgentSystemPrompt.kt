@@ -88,6 +88,7 @@ object AgentSystemPrompt {
             - `terminal_session_*` 只用于明确需要保留 cwd、环境和中间状态的多轮终端任务；不要为了运行单条命令、检查 tmux/工具是否存在、读取单个文件、执行一次性脚本而启动 session。
             - Agent 终端基础环境默认提供 `uv`，并会在缺失时自动补齐基础 CLI。
             - 在 workspace 内执行 Python、pip、pytest 等命令时，终端会自动优先复用最近项目目录下的 `.venv`；如果缺失，会用 `python -m venv --copies` 自动创建并激活它。
+            - 在 workspace 内执行 `uv` 项目命令时，终端会把 uv 的项目环境放到受管的内部缓存目录，并在成功后自动激活，避免 `/workspace/.../.venv` 的符号链接问题。
             - 需要安装 Python 依赖时，默认安装到 workspace 项目的 `.venv` 中；不要使用 `--break-system-packages`，除非用户明确要求改动系统 Python。
             - 如果项目已有 `pyproject.toml` 或 `uv.lock`，优先考虑 `uv sync`、`uv run` 这类工作流，而不是污染系统 Python。
             - 查询当前有哪些 skills、某类 skill 是否已安装，优先用 `skills_list`。

@@ -46,7 +46,7 @@ class OmnibotWorkspacePaths {
   factory OmnibotWorkspacePaths.fromMap(Map<dynamic, dynamic> map) {
     final rootPath =
         (map['rootPath'] as String?)?.trim() ??
-        '/data/user/0/cn.com.omnimind.bot/files/workspace';
+        '/data/user/0/cn.com.omnimind.bot/workspace';
     final shellRootPath =
         (map['shellRootPath'] as String?)?.trim() ?? '/workspace';
     final internalRootPath =
@@ -65,10 +65,9 @@ class OmnibotResourceService {
   );
   static const OmnibotWorkspacePaths _defaultWorkspacePaths =
       OmnibotWorkspacePaths(
-        rootPath: '/data/user/0/cn.com.omnimind.bot/files/workspace',
+        rootPath: '/data/user/0/cn.com.omnimind.bot/workspace',
         shellRootPath: '/workspace',
-        internalRootPath:
-            '/data/user/0/cn.com.omnimind.bot/files/workspace/.omnibot',
+        internalRootPath: '/data/user/0/cn.com.omnimind.bot/workspace/.omnibot',
       );
 
   static OmnibotWorkspacePaths _workspacePaths = _defaultWorkspacePaths;

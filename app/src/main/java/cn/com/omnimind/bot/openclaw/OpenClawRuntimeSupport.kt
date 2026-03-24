@@ -101,6 +101,7 @@ object OpenClawRuntimeSupport {
             linuxPath = linuxPath,
             ubuntuRoot = ubuntuRoot,
             homeDir = context.filesDir.absolutePath,
+            workspaceDir = File(context.applicationInfo.dataDir, "workspace").absolutePath,
             appDataDir = context.applicationInfo.dataDir,
             packageName = context.packageName,
             chrootEnabled = false

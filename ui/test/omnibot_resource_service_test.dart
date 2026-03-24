@@ -3,10 +3,9 @@ import 'package:ui/services/omnibot_resource_service.dart';
 
 void main() {
   const workspacePaths = OmnibotWorkspacePaths(
-    rootPath: '/data/user/0/cn.com.omnimind.bot/files/workspace',
+    rootPath: '/data/user/0/cn.com.omnimind.bot/workspace',
     shellRootPath: '/workspace',
-    internalRootPath:
-        '/data/user/0/cn.com.omnimind.bot/files/workspace/.omnibot',
+    internalRootPath: '/data/user/0/cn.com.omnimind.bot/workspace/.omnibot',
   );
 
   setUpAll(() {
@@ -23,7 +22,7 @@ void main() {
       expect(metadata, isNotNull);
       expect(
         metadata!.path,
-        '/data/user/0/cn.com.omnimind.bot/files/workspace/demo/output.png',
+        '/data/user/0/cn.com.omnimind.bot/workspace/demo/output.png',
       );
       expect(metadata.shellPath, '/workspace/demo/output.png');
       expect(metadata.previewKind, 'image');
@@ -34,13 +33,13 @@ void main() {
 
   test('describePath derives inline rendering hints from file extension', () {
     final audio = OmnibotResourceService.describePath(
-      '/data/user/0/cn.com.omnimind.bot/files/workspace/audio/demo.mp3',
+      '/data/user/0/cn.com.omnimind.bot/workspace/audio/demo.mp3',
     );
     final video = OmnibotResourceService.describePath(
-      '/data/user/0/cn.com.omnimind.bot/files/workspace/video/demo.mp4',
+      '/data/user/0/cn.com.omnimind.bot/workspace/video/demo.mp4',
     );
     final document = OmnibotResourceService.describePath(
-      '/data/user/0/cn.com.omnimind.bot/files/workspace/docs/spec.pdf',
+      '/data/user/0/cn.com.omnimind.bot/workspace/docs/spec.pdf',
     );
 
     expect(audio.shellPath, '/workspace/audio/demo.mp3');
