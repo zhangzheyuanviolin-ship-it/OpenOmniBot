@@ -1,5 +1,30 @@
+enum ConversationMode {
+  normal('normal'),
+  openclaw('openclaw');
+
+  const ConversationMode(this.storageValue);
+
+  final String storageValue;
+
+  static ConversationMode fromStorageValue(String? value) {
+    final normalized = value?.trim().toLowerCase() ?? '';
+    for (final mode in ConversationMode.values) {
+      if (mode.storageValue == normalized) {
+        return mode;
+      }
+    }
+    return ConversationMode.normal;
+  }
+
+  String get displayLabel => switch (this) {
+    ConversationMode.normal => '普通',
+    ConversationMode.openclaw => 'OpenClaw',
+  };
+}
+
 class ConversationModel {
   final int id;
+  final ConversationMode mode;
   final String title;
   final String? summary;
   final int status; // 0: 进行中, 1: 已完成
@@ -10,6 +35,7 @@ class ConversationModel {
 
   ConversationModel({
     required this.id,
+    this.mode = ConversationMode.normal,
     required this.title,
     this.summary,
     required this.status,
@@ -22,6 +48,7 @@ class ConversationModel {
   factory ConversationModel.fromJson(Map<String, dynamic> json) {
     return ConversationModel(
       id: json['id'] as int,
+      mode: ConversationMode.fromStorageValue(json['mode'] as String?),
       title: json['title'] as String,
       summary: json['summary'] as String?,
       status: json['status'] as int? ?? 0,
@@ -35,6 +62,7 @@ class ConversationModel {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'mode': mode.storageValue,
       'title': title,
       'summary': summary,
       'status': status,
@@ -47,6 +75,7 @@ class ConversationModel {
 
   ConversationModel copyWith({
     int? id,
+    ConversationMode? mode,
     String? title,
     String? summary,
     int? status,
@@ -57,6 +86,7 @@ class ConversationModel {
   }) {
     return ConversationModel(
       id: id ?? this.id,
+      mode: mode ?? this.mode,
       title: title ?? this.title,
       summary: summary ?? this.summary,
       status: status ?? this.status,
@@ -72,7 +102,11 @@ class ConversationModel {
     final now = DateTime.now();
     updatedDate;
     final today = DateTime(now.year, now.month, now.day);
-    final updatedDay = DateTime(updatedDate.year, updatedDate.month, updatedDate.day);
+    final updatedDay = DateTime(
+      updatedDate.year,
+      updatedDate.month,
+      updatedDate.day,
+    );
 
     final difference = today.difference(updatedDay).inDays;
 
@@ -93,4 +127,6 @@ class ConversationModel {
   DateTime get updatedDate => DateTime.fromMillisecondsSinceEpoch(updatedAt);
 
   bool get isActive => status == 0;
+
+  String get threadKey => '${mode.storageValue}:$id';
 }

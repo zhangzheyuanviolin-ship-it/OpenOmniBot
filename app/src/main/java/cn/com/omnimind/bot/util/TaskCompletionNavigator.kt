@@ -7,6 +7,7 @@ import cn.com.omnimind.bot.App
 import cn.com.omnimind.bot.activity.MainActivity
 import cn.com.omnimind.uikit.UIKit
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONObject
 
 object TaskCompletionNavigator {
     private const val TAG = "[TaskCompletionNavigator]"
@@ -16,6 +17,14 @@ object TaskCompletionNavigator {
         "flutter.auto_back_to_chat_after_task"
     private const val KEY_AUTO_BACK_TO_CHAT_AFTER_TASK_NATIVE =
         "auto_back_to_chat_after_task"
+    private const val KEY_LAST_VISIBLE_THREAD_TARGET =
+        "flutter.last_visible_conversation_target"
+    private const val KEY_CURRENT_CONVERSATION_ID = "flutter.current_conversation_id"
+
+    private data class ResolvedChatTarget(
+        val conversationId: Long?,
+        val mode: String
+    )
 
     fun isAutoBackToChatAfterTaskEnabled(context: Context): Boolean {
         return try {
@@ -50,19 +59,20 @@ object TaskCompletionNavigator {
         }
     }
 
-    fun buildChatRoute(conversationId: Long?): String {
+    fun buildChatRoute(conversationId: Long?, mode: String?): String {
+        val normalizedMode = mode?.trim()?.ifEmpty { "normal" } ?: "normal"
         return if (conversationId != null && conversationId > 0) {
-            "/home/chat?conversationId=$conversationId"
+            "/home/chat?conversationId=$conversationId&mode=$normalizedMode"
         } else {
             "/home/chat"
         }
     }
 
-    fun navigateBackToChat(context: Context, conversationId: Long?) {
-        val resolvedConversationId = resolveConversationId(context, conversationId)
+    fun navigateBackToChat(context: Context, conversationId: Long?, mode: String?) {
+        val resolvedTarget = resolveConversationTarget(context, conversationId, mode)
         navigateToMainRoute(
             context = context,
-            route = buildChatRoute(resolvedConversationId),
+            route = buildChatRoute(resolvedTarget.conversationId, resolvedTarget.mode),
             needClear = false
         )
     }
@@ -127,28 +137,53 @@ object TaskCompletionNavigator {
         }
     }
 
-    private fun resolveConversationId(context: Context, preferredId: Long?): Long? {
+    private fun resolveConversationTarget(
+        context: Context,
+        preferredId: Long?,
+        preferredMode: String?
+    ): ResolvedChatTarget {
+        val normalizedPreferredMode = preferredMode?.trim()?.ifEmpty { "normal" } ?: "normal"
         if (preferredId != null && preferredId > 0) {
-            return preferredId
+            return ResolvedChatTarget(preferredId, normalizedPreferredMode)
         }
         return try {
             val flutterPrefs = context.getSharedPreferences(
                 FLUTTER_SHARED_PREFS_NAME,
                 Context.MODE_PRIVATE
             )
-            val raw = flutterPrefs.all["flutter.current_conversation_id"] ?: return null
-            val parsed = when (raw) {
+            val rawThreadTarget = flutterPrefs.getString(KEY_LAST_VISIBLE_THREAD_TARGET, null)
+            if (!rawThreadTarget.isNullOrBlank()) {
+                try {
+                    val json = JSONObject(rawThreadTarget)
+                    val conversationId = when (val rawId = json.opt("conversationId")) {
+                        is Int -> rawId.toLong()
+                        is Long -> rawId
+                        is String -> rawId.toLongOrNull()
+                        else -> null
+                    }?.takeIf { it > 0 }
+                    val mode = json.optString("mode", "normal").ifBlank { "normal" }
+                    if (conversationId != null) {
+                        OmniLog.d(TAG, "使用 Flutter 上次可见线程兜底回跳: id=$conversationId mode=$mode")
+                        return ResolvedChatTarget(conversationId, mode)
+                    }
+                } catch (e: Exception) {
+                    OmniLog.e(TAG, "解析上次可见线程失败: ${e.message}")
+                }
+            }
+            val raw = flutterPrefs.all[KEY_CURRENT_CONVERSATION_ID]
+            val parsedId = when (raw) {
                 is Int -> raw.toLong()
                 is Long -> raw
                 is String -> raw.toLongOrNull()
                 else -> null
+            }?.takeIf { it > 0 }
+            if (parsedId != null) {
+                OmniLog.d(TAG, "使用 Flutter 持久化会话ID兜底回跳: $parsedId")
             }
-            parsed?.takeIf { it > 0 }?.also {
-                OmniLog.d(TAG, "使用 Flutter 持久化会话ID兜底回跳: $it")
-            }
+            ResolvedChatTarget(parsedId, "normal")
         } catch (e: Exception) {
             OmniLog.e(TAG, "读取 Flutter 会话ID兜底值失败: ${e.message}")
-            null
+            ResolvedChatTarget(null, normalizedPreferredMode)
         }
     }
 }

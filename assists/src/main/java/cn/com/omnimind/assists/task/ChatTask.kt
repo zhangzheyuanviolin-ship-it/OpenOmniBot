@@ -13,6 +13,7 @@ import cn.com.omnimind.baselib.http.Http429Exception
 import cn.com.omnimind.baselib.util.OmniLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -32,6 +33,7 @@ import java.util.concurrent.TimeUnit
 /**
  * 创建聊天任务
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class ChatTask(override val taskChangeListener: TaskChangeListener,
                taskManager: TaskManager
 ) : Task(taskChangeListener, taskManager),
@@ -110,6 +112,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                                     onMessagePushListener.onChatMessageEnd(taskID)
                                     onTaskStop(TaskFinishType.FINISH, "")
                                     onTaskDestroy()
+                                    taskManager.unregisterChatTask(taskID)
                                 }
 
                             }
@@ -139,6 +142,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                                         onTaskStop(TaskFinishType.ERROR, t?.message ?: "Unknown error")
                                     }
                                     onTaskDestroy()
+                                    taskManager.unregisterChatTask(taskID)
                                 }
                             }
                         }
@@ -156,6 +160,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                     onMessagePushListener.onChatMessageEnd(taskID)
                     onTaskStop(TaskFinishType.ERROR, e.message ?: "Unknown error")
                     onTaskDestroy()
+                    taskManager.unregisterChatTask(taskID)
                 }
             } catch (e: Exception) {
                 controllerScope.launch {
@@ -168,6 +173,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                     onMessagePushListener.onChatMessageEnd(taskID)
                     onTaskStop(TaskFinishType.ERROR, e.message ?: "Unknown error")
                     onTaskDestroy()
+                    taskManager.unregisterChatTask(taskID)
                 }
             }
         }
@@ -236,6 +242,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                 eventSource.cancel()
             }
             onMessagePushListener?.onChatMessageEnd(taskID)
+            taskManager.unregisterChatTask(taskID)
         }
         taskScope.cancel()
     }

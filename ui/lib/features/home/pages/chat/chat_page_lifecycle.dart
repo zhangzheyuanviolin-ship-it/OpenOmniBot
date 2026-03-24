@@ -31,11 +31,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
     _inputFocusNode.addListener(_onFocusChange);
     _messageController.addListener(_handleSlashCommandInput);
-    _loadOpenClawConfig();
-    unawaited(_loadNormalChatModelContext());
-    unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
-    initializeConversation();
-    _notifySummarySheetReadyIfNeeded();
+    unawaited(_bootstrapConversationThread());
   }
 
   @override
@@ -54,65 +50,140 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   @override
   void didUpdateWidget(covariant ChatPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_argsChanged(oldWidget.args, widget.args)) {
+    if (_threadTargetChanged(oldWidget.threadTarget, widget.threadTarget)) {
       debugPrint(
-        '[ChatPage] args changed: ${oldWidget.args} -> ${widget.args}',
+        '[ChatPage] thread target changed: '
+        '${oldWidget.threadTarget} -> ${widget.threadTarget}',
       );
-      if (_activeSurfaceMode == ChatSurfaceMode.workspace &&
-          _shouldOpenNormalChatForArgs(widget.args)) {
-        _forceSwitchToNormalSurface();
+      unawaited(_reloadConversationForCurrentTarget());
+    }
+  }
+
+  @override
+  bool _threadTargetChanged(
+    ConversationThreadTarget? oldTarget,
+    ConversationThreadTarget? newTarget,
+  ) {
+    return oldTarget != newTarget;
+  }
+
+  @override
+  Future<ConversationThreadTarget> _resolveConversationThreadTarget(
+    ConversationThreadTarget? incomingTarget, {
+    ConversationMode? preferredMode,
+  }) async {
+    if (incomingTarget != null) {
+      return incomingTarget;
+    }
+
+    if (preferredMode == null) {
+      final lastVisible =
+          await ConversationHistoryService.getLastVisibleThreadTarget();
+      if (lastVisible != null) {
+        return lastVisible;
       }
-      _resetAndReloadConversation();
-      _notifySummarySheetReadyIfNeeded();
     }
+
+    final resolvedMode = preferredMode ?? ConversationMode.normal;
+    final savedTarget =
+        await ConversationHistoryService.getCurrentConversationTarget(
+          mode: resolvedMode,
+        );
+    if (savedTarget != null) {
+      return savedTarget;
+    }
+
+    final latestTarget = await ConversationService.getLatestConversationTarget(
+      mode: resolvedMode,
+    );
+    if (latestTarget != null) {
+      return latestTarget;
+    }
+
+    return ConversationThreadTarget.newConversation(mode: resolvedMode);
   }
 
   @override
-  bool _argsChanged(List<String> oldArgs, List<String> newArgs) {
-    if (oldArgs.length != newArgs.length) return true;
-    for (int i = 0; i < oldArgs.length; i++) {
-      if (oldArgs[i] != newArgs[i]) return true;
-    }
-    return false;
+  Future<void> _bootstrapConversationThread() async {
+    await _loadOpenClawConfig();
+    final target = await _resolveConversationThreadTarget(widget.threadTarget);
+    if (!mounted) return;
+    await _applyConversationThreadTarget(target, syncPage: false);
+    if (!mounted) return;
+    unawaited(_loadNormalChatModelContext());
+    unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
+    _notifySummarySheetReadyIfNeeded();
   }
 
   @override
-  bool _shouldOpenNormalChatForArgs(List<String> args) {
-    if (args.isEmpty) {
-      return false;
-    }
-    final first = args.first.trim();
-    if (first.isEmpty) {
-      return false;
-    }
-    if (first == 'new' || first == '__new__') {
-      return true;
-    }
-    return int.tryParse(first) != null;
+  Future<void> _reloadConversationForCurrentTarget() async {
+    final target = await _resolveConversationThreadTarget(widget.threadTarget);
+    if (!mounted) return;
+    await _applyConversationThreadTarget(target);
+    if (!mounted) return;
+    _notifySummarySheetReadyIfNeeded();
   }
 
   @override
-  void _forceSwitchToNormalSurface() {
+  Future<void> _applyConversationThreadTarget(
+    ConversationThreadTarget target, {
+    bool syncPage = true,
+  }) async {
+    final targetMode = _pageModeForConversationMode(target.mode);
     _storeDraftForActiveConversationMode();
     if (!mounted) return;
     setState(() {
-      _activeSurfaceMode = ChatSurfaceMode.normal;
-      _activeConversationMode = ChatPageMode.normal;
+      _resolvedThreadTarget = target;
+      _activeConversationMode = targetMode;
+      _activeSurfaceMode = _surfaceForConversationMode(target.mode);
       _showSlashCommandPanel = false;
       _showModelMentionPanel = false;
       _activeModelMentionToken = null;
       _openClawPanelExpanded = false;
+      _openClawDeployPanelExpanded = false;
+      _isBrowserOverlayVisible = false;
     });
-    _applyDraftForConversationMode(ChatPageMode.normal);
-    _jumpToCurrentModePage(animate: false);
+    _resetLocalConversationState(targetMode);
+    _vlmAnswerController.clear();
+    _applyDraftForConversationMode(targetMode);
+    await initializeConversation();
+    await _persistVisibleThreadTargetIfNeeded();
+    if (syncPage) {
+      _jumpToCurrentModePage(animate: false);
+    }
   }
 
   @override
-  void _resetAndReloadConversation() {
-    _resetLocalConversationState(_activeMode);
-    _vlmAnswerController.clear();
-    _messageController.clear();
-    initializeConversation();
+  Future<void> _ensureConversationModeReady(ChatPageMode mode) async {
+    final runtime = _runtimeForMode(mode);
+    if (_currentConversationIdByMode[mode] != null ||
+        _messagesByMode[mode]!.isNotEmpty ||
+        (runtime?.messages.isNotEmpty ?? false)) {
+      return;
+    }
+    final target = await _resolveConversationThreadTarget(
+      null,
+      preferredMode: _conversationModeForPageMode(mode),
+    );
+    if (!mounted) return;
+    await _applyConversationThreadTarget(target, syncPage: false);
+  }
+
+  @override
+  Future<void> _persistVisibleThreadTargetIfNeeded() async {
+    final visibleTarget = _visibleThreadTarget;
+    if (visibleTarget == null) {
+      return;
+    }
+    _resolvedThreadTarget = visibleTarget;
+    await ConversationHistoryService.saveLastVisibleThreadTarget(visibleTarget);
+    if (visibleTarget.conversationId != null) {
+      await ConversationHistoryService.saveCurrentConversationId(
+        visibleTarget.conversationId,
+        mode: visibleTarget.mode,
+      );
+    }
+    await ConversationService.setCurrentConversationTarget(visibleTarget);
   }
 
   @override
@@ -330,6 +401,8 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_runtimeCoordinator.flushAllPendingPersistence());
+    unawaited(_persistVisibleThreadTargetIfNeeded());
     if (_subscribedRoute != null) {
       GoRouterManager.routeObserver.unsubscribe(this);
       _subscribedRoute = null;
@@ -481,13 +554,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       return;
     }
 
-    if ((_isAiResponding || _isCheckingExecutableTask || _isExecutingTask) &&
-        targetMode != ChatSurfaceMode.workspace) {
-      _showSnackBar('当前会话正在处理中，请稍后再切换模式');
-      _jumpToCurrentModePage();
-      return;
-    }
-
     _storeDraftForActiveConversationMode();
 
     if (targetMode == ChatSurfaceMode.workspace) {
@@ -508,6 +574,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     }
 
     if (targetMode == ChatSurfaceMode.openclaw) {
+      await _ensureConversationModeReady(ChatPageMode.openclaw);
       final hasConfig = _openClawBaseUrl.trim().isNotEmpty;
       setState(() {
         _activeSurfaceMode = ChatSurfaceMode.openclaw;
@@ -522,7 +589,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         _isBrowserOverlayVisible = false;
       });
       _applyDraftForConversationMode(ChatPageMode.openclaw);
-      await StorageService.setBool(kOpenClawEnabledKey, hasConfig);
+      await _persistVisibleThreadTargetIfNeeded();
       if (syncPage) _jumpToCurrentModePage();
       if (!hasConfig) {
         showToast('请先输入 /deploy 或 /openclaw 完成配置');
@@ -530,17 +597,17 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       return;
     }
 
+    await _ensureConversationModeReady(ChatPageMode.normal);
     setState(() {
       _activeSurfaceMode = ChatSurfaceMode.normal;
       _activeConversationMode = ChatPageMode.normal;
-      _openClawEnabled = false;
       _setChatIslandDisplayLayerForMode(
         ChatPageMode.normal,
         ChatIslandDisplayLayer.mode,
       );
     });
     _applyDraftForConversationMode(ChatPageMode.normal);
-    await StorageService.setBool(kOpenClawEnabledKey, false);
+    await _persistVisibleThreadTargetIfNeeded();
     _hideSlashCommandPanel();
     unawaited(_loadNormalChatModelContext());
     if (syncPage) _jumpToCurrentModePage();
@@ -590,6 +657,8 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      unawaited(_runtimeCoordinator.flushAllPendingPersistence());
+      unawaited(_persistVisibleThreadTargetIfNeeded());
       _resetCompanionCountdown();
       unawaited(AssistsMessageService.cancelCompanionGoHome());
     }

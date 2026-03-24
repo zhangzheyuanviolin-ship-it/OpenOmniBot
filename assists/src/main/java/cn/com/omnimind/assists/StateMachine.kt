@@ -89,8 +89,8 @@ class StateMachine() {
     /**
      * 取消聊天任务
      */
-    fun cancelChatTask() {
-        taskManager?.cancelChatTask()
+    fun cancelChatTask(taskId: String? = null) {
+        taskManager?.cancelChatTask(taskId)
     }
 
     /**
@@ -205,8 +205,8 @@ class StateMachine() {
      * 取消等待中或运行中的任务，不检查 isRunning 状态
      * 用于在预执行 delay 期间取消任务
      */
-    fun cancelPendingTask() {
-        taskManager?.cancelPendingTask()
+    fun cancelPendingTask(taskId: String? = null) {
+        taskManager?.cancelPendingTask(taskId)
     }
 
 }

@@ -4,7 +4,9 @@ import 'package:ui/utils/popup_menu_anchor_position.dart';
 import '../features/home/pages/edit_profile/edit_profile_page.dart';
 import '../features/task/pages/task_center/task_center_page.dart';
 import '../features/memory/pages/memory_center/memory_center_page.dart';
+import '../features/home/widgets/conversation_mode_badge.dart';
 import '../models/conversation_model.dart';
+import '../models/conversation_thread_target.dart';
 import '../services/conversation_service.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 
@@ -300,7 +302,13 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
       onTap: () {
         // 点击对话，跳转到全屏聊天页面
         Navigator.pop(context); // 关闭侧栏
-        GoRouterManager.push('/home/chat', extra: [conversation.id.toString()]);
+        GoRouterManager.push(
+          '/home/chat',
+          extra: ConversationThreadTarget.existing(
+            conversationId: conversation.id,
+            mode: conversation.mode,
+          ),
+        );
       },
       onLongPressStart: (LongPressStartDetails details) {
         showMenu(
@@ -337,7 +345,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
           if (value == 'rename') {
             _renameConversation(conversation);
           } else if (value == 'delete') {
-            _deleteConversation(conversation.id);
+            _deleteConversation(conversation);
           }
         });
       },
@@ -346,14 +354,22 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
         child: Row(
           children: [
             Expanded(
-              child: Text(
-                conversation.title,
-                style: TextStyle(
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w400,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      conversation.title,
+                      style: TextStyle(
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  ConversationModeBadge(mode: conversation.mode, compact: true),
+                ],
               ),
             ),
             SizedBox(width: 30),
@@ -384,18 +400,21 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
     final success = await ConversationService.updateConversationTitle(
       conversationId: conversation.id,
       newTitle: normalizedTitle,
+      mode: conversation.mode,
     );
     if (!mounted || !success) return;
 
     setState(() {
-      final index = conversations.indexWhere((c) => c.id == conversation.id);
+      final index = conversations.indexWhere(
+        (c) => c.threadKey == conversation.threadKey,
+      );
       if (index != -1) {
         conversations[index] = conversation.copyWith(title: normalizedTitle);
       }
     });
   }
 
-  void _deleteConversation(int conversationId) async {
+  void _deleteConversation(ConversationModel conversation) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
@@ -422,11 +441,14 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
 
     if (confirmed == true) {
       final success = await ConversationService.deleteConversation(
-        conversationId,
+        conversation.id,
+        mode: conversation.mode,
       );
       if (success) {
         setState(() {
-          conversations.removeWhere((c) => c.id == conversationId);
+          conversations.removeWhere(
+            (c) => c.threadKey == conversation.threadKey,
+          );
         });
       }
     }

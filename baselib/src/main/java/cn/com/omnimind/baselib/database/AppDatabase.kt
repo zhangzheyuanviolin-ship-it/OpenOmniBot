@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
         CacheSuggestion::class,
         Conversation::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

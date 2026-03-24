@@ -66,6 +66,22 @@ class _TaskBinding {
   final String mode;
 }
 
+class _PendingPersistenceRequest {
+  _PendingPersistenceRequest({
+    required this.conversationId,
+    required this.mode,
+    required this.timer,
+    this.generateSummary = false,
+    this.markComplete = false,
+  });
+
+  final int conversationId;
+  final String mode;
+  final Timer timer;
+  final bool generateSummary;
+  final bool markComplete;
+}
+
 class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   ChatConversationRuntimeCoordinator._();
 
@@ -83,6 +99,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   final Map<String, ChatConversationRuntimeState> _runtimes =
       <String, ChatConversationRuntimeState>{};
   final Map<String, _TaskBinding> _taskBindings = <String, _TaskBinding>{};
+  final Map<String, _PendingPersistenceRequest> _pendingPersistence =
+      <String, _PendingPersistenceRequest>{};
 
   bool _initialized = false;
 
@@ -238,6 +256,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
   @visibleForTesting
   void resetForTest() {
+    for (final request in _pendingPersistence.values) {
+      request.timer.cancel();
+    }
+    _pendingPersistence.clear();
     _runtimes.clear();
     _taskBindings.clear();
   }
@@ -300,11 +322,13 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     bool generateSummary = false,
     bool markComplete = false,
   }) async {
+    _cancelPendingPersistence(conversationId: conversationId, mode: mode);
     final runtime = runtimeFor(conversationId: conversationId, mode: mode);
     if (runtime == null || runtime.messages.isEmpty) return;
 
     final snapshotMessages = List<ChatMessageModel>.from(runtime.messages);
     final snapshotConversation = runtime.conversation;
+    final conversationMode = _conversationModeFromRuntimeMode(mode);
     final now = DateTime.now().millisecondsSinceEpoch;
     final lastMessage = snapshotMessages.isNotEmpty
         ? (snapshotMessages[0].text ?? '')
@@ -332,12 +356,16 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     await ConversationHistoryService.saveConversationMessages(
       conversationId,
       snapshotMessages,
+      mode: conversationMode,
     );
 
     final baseConversation =
-        snapshotConversation ??
+        (snapshotConversation?.mode == conversationMode
+            ? snapshotConversation
+            : snapshotConversation?.copyWith(mode: conversationMode)) ??
         ConversationModel(
           id: conversationId,
+          mode: conversationMode,
           title: title,
           summary: summary,
           status: 0,
@@ -358,13 +386,78 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     await ConversationService.updateConversation(updatedConversation);
     runtime.conversation = updatedConversation;
     if (markComplete) {
-      await ConversationService.completeConversation(conversationId);
+      await ConversationService.completeConversation(
+        conversationId,
+        mode: conversationMode,
+      );
+    }
+  }
+
+  void schedulePersistRuntimeConversation({
+    required int conversationId,
+    required String mode,
+    bool generateSummary = false,
+    bool markComplete = false,
+    Duration delay = const Duration(milliseconds: 350),
+  }) {
+    final key = _runtimeKey(conversationId: conversationId, mode: mode);
+    _pendingPersistence[key]?.timer.cancel();
+    final timer = Timer(delay, () {
+      _pendingPersistence.remove(key);
+      unawaited(
+        persistRuntimeConversation(
+          conversationId: conversationId,
+          mode: mode,
+          generateSummary: generateSummary,
+          markComplete: markComplete,
+        ),
+      );
+    });
+    _pendingPersistence[key] = _PendingPersistenceRequest(
+      conversationId: conversationId,
+      mode: mode,
+      timer: timer,
+      generateSummary: generateSummary,
+      markComplete: markComplete,
+    );
+  }
+
+  Future<void> flushPendingPersistence({
+    required int conversationId,
+    required String mode,
+  }) async {
+    final key = _runtimeKey(conversationId: conversationId, mode: mode);
+    final request = _pendingPersistence.remove(key);
+    if (request == null) {
+      return;
+    }
+    request.timer.cancel();
+    await persistRuntimeConversation(
+      conversationId: request.conversationId,
+      mode: request.mode,
+      generateSummary: request.generateSummary,
+      markComplete: request.markComplete,
+    );
+  }
+
+  Future<void> flushAllPendingPersistence() async {
+    final requests = _pendingPersistence.values.toList(growable: false);
+    _pendingPersistence.clear();
+    for (final request in requests) {
+      request.timer.cancel();
+      await persistRuntimeConversation(
+        conversationId: request.conversationId,
+        mode: request.mode,
+        generateSummary: request.generateSummary,
+        markComplete: request.markComplete,
+      );
     }
   }
 
   void _handleChatTaskMessage(String taskId, String content, String? type) {
+    final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
-    if (runtime == null) return;
+    if (binding == null || runtime == null) return;
 
     final isErrorMessage = type == 'error';
     final isRateLimited = type == 'rate_limited';
@@ -427,6 +520,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     );
     runtime.isAiResponding = true;
     notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: binding.conversationId,
+      mode: binding.mode,
+    );
   }
 
   void _handleChatTaskMessageEnd(String taskId) {
@@ -458,8 +555,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   }
 
   void _handleAgentThinkingStart(String taskId) {
+    final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
-    if (runtime == null) return;
+    if (binding == null || runtime == null) return;
 
     final resolvedTaskId =
         runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
@@ -493,16 +591,25 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         );
       }
       notifyListeners();
+      schedulePersistRuntimeConversation(
+        conversationId: binding.conversationId,
+        mode: binding.mode,
+      );
       return;
     }
 
     runtime.pendingThinkingRoundSplit = true;
     notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: binding.conversationId,
+      mode: binding.mode,
+    );
   }
 
   void _handleAgentThinkingUpdate(String taskId, String thinking) {
+    final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
-    if (runtime == null) return;
+    if (binding == null || runtime == null) return;
     final resolvedTaskId =
         runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (resolvedTaskId == null || resolvedTaskId != taskId) return;
@@ -538,6 +645,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       runtime.deepThinkingContent = thinking;
       runtime.pendingThinkingRoundSplit = false;
       notifyListeners();
+      schedulePersistRuntimeConversation(
+        conversationId: binding.conversationId,
+        mode: binding.mode,
+      );
       return;
     }
 
@@ -554,11 +665,16 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       stage: runtime.currentThinkingStage,
     );
     notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: binding.conversationId,
+      mode: binding.mode,
+    );
   }
 
   void _handleAgentToolCallStart(AgentToolEventData event) {
+    final binding = _taskBindings[event.taskId];
     final runtime = _runtimeForTask(event.taskId);
-    if (runtime == null) return;
+    if (binding == null || runtime == null) return;
     final taskId = runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (taskId == null || taskId != event.taskId) return;
 
@@ -590,11 +706,16 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       );
     }
     notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: binding.conversationId,
+      mode: binding.mode,
+    );
   }
 
   void _handleAgentToolCallProgress(AgentToolEventData event) {
+    final binding = _taskBindings[event.taskId];
     final runtime = _runtimeForTask(event.taskId);
-    if (runtime == null) return;
+    if (binding == null || runtime == null) return;
     final taskId = runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (taskId == null || taskId != event.taskId) return;
 
@@ -614,11 +735,16 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       rawResultJson: event.rawResultJson,
     );
     notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: binding.conversationId,
+      mode: binding.mode,
+    );
   }
 
   void _handleAgentToolCallComplete(AgentToolEventData event) {
+    final binding = _taskBindings[event.taskId];
     final runtime = _runtimeForTask(event.taskId);
-    if (runtime == null) return;
+    if (binding == null || runtime == null) return;
     final taskId = runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     final cardId = runtime.activeToolCardId;
     if (taskId == null || taskId != event.taskId || cardId == null) return;
@@ -639,6 +765,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.activeToolCardId = null;
     _updateBrowserSessionSnapshot(runtime, event);
     notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: binding.conversationId,
+      mode: binding.mode,
+    );
   }
 
   void _handleAgentChatMessage(
@@ -646,8 +776,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     String message, {
     bool isFinal = true,
   }) {
+    final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
-    if (runtime == null) return;
+    if (binding == null || runtime == null) return;
     final resolvedTaskId =
         runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (resolvedTaskId == null || resolvedTaskId != taskId) return;
@@ -681,16 +812,18 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     }
     notifyListeners();
     if (isFinal) {
-      final binding = _taskBindings[taskId];
-      if (binding != null) {
-        unawaited(
-          persistRuntimeConversation(
-            conversationId: binding.conversationId,
-            mode: binding.mode,
-            markComplete: true,
-          ),
-        );
-      }
+      unawaited(
+        persistRuntimeConversation(
+          conversationId: binding.conversationId,
+          mode: binding.mode,
+          markComplete: true,
+        ),
+      );
+    } else {
+      schedulePersistRuntimeConversation(
+        conversationId: binding.conversationId,
+        mode: binding.mode,
+      );
     }
   }
 
@@ -1006,11 +1139,16 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
   void _handleVlmRequestUserInput(String question, String? taskId) {
     if (taskId == null || taskId.isEmpty) return;
+    final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
-    if (runtime == null) return;
+    if (binding == null || runtime == null) return;
     runtime.vlmInfoQuestion = question;
     runtime.isSubmittingVlmReply = false;
     notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: binding.conversationId,
+      mode: binding.mode,
+    );
   }
 
   ChatConversationRuntimeState? _runtimeForTask(String taskId) {
@@ -1462,6 +1600,21 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       buffer.write('用户: $text\n');
     }
     return buffer.toString().trim();
+  }
+
+  ConversationMode _conversationModeFromRuntimeMode(String mode) {
+    return mode == kChatRuntimeModeOpenClaw
+        ? ConversationMode.openclaw
+        : ConversationMode.normal;
+  }
+
+  void _cancelPendingPersistence({
+    required int conversationId,
+    required String mode,
+  }) {
+    final key = _runtimeKey(conversationId: conversationId, mode: mode);
+    final request = _pendingPersistence.remove(key);
+    request?.timer.cancel();
   }
 
   String _runtimeKey({required int conversationId, required String mode}) {

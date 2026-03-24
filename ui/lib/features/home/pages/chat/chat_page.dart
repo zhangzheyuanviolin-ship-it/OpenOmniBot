@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import '../../../../models/conversation_model.dart';
+import '../../../../models/conversation_thread_target.dart';
 import '../../../../models/chat_message_model.dart';
 import '../../../../services/assists_core_service.dart';
 import '../../widgets/home_drawer.dart';
@@ -23,6 +24,8 @@ import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/app_update_service.dart';
 import 'package:ui/services/agent_browser_session_service.dart';
 import 'package:ui/services/conversation_model_override_service.dart';
+import 'package:ui/services/conversation_history_service.dart';
+import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
@@ -58,9 +61,9 @@ part 'chat_page_ui.dart';
 enum ChatPageMode { normal, openclaw }
 
 class ChatPage extends StatefulWidget {
-  final List<String> args;
+  final ConversationThreadTarget? threadTarget;
 
-  const ChatPage({super.key, this.args = const []});
+  const ChatPage({super.key, this.threadTarget});
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -96,6 +99,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _isPopupVisible = false;
   final ChatConversationRuntimeCoordinator _runtimeCoordinator =
       ChatConversationRuntimeCoordinator.instance;
+  ConversationThreadTarget? _resolvedThreadTarget;
 
   // OpenClaw 配置与开关
   bool _openClawEnabled = false;
@@ -252,6 +256,18 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   double _pageVerticalDragDelta = 0;
 
   ChatPageMode get _activeMode => _activeConversationMode;
+  ConversationMode _conversationModeForPageMode(ChatPageMode mode) =>
+      mode == ChatPageMode.openclaw
+      ? ConversationMode.openclaw
+      : ConversationMode.normal;
+  ChatPageMode _pageModeForConversationMode(ConversationMode mode) =>
+      mode == ConversationMode.openclaw
+      ? ChatPageMode.openclaw
+      : ChatPageMode.normal;
+  ChatSurfaceMode _surfaceForConversationMode(ConversationMode mode) =>
+      mode == ConversationMode.openclaw
+      ? ChatSurfaceMode.openclaw
+      : ChatSurfaceMode.normal;
   String _modeKey(ChatPageMode mode) => switch (mode) {
     ChatPageMode.normal => kChatRuntimeModeNormal,
     ChatPageMode.openclaw => kChatRuntimeModeOpenClaw,
@@ -270,6 +286,20 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
+  ConversationThreadTarget get _threadTargetForMode {
+    final conversationMode = _conversationModeForPageMode(_activeMode);
+    final conversationId = _currentConversationIdByMode[_activeMode];
+    if (conversationId == null) {
+      return ConversationThreadTarget.newConversation(mode: conversationMode);
+    }
+    return ConversationThreadTarget.existing(
+      conversationId: conversationId,
+      mode: conversationMode,
+    );
+  }
+
+  ConversationThreadTarget? get _visibleThreadTarget =>
+      _isWorkspaceSurface ? null : _threadTargetForMode;
   String get _expectedBrowserWorkspaceId => chatConversationWorkspaceId(
     _currentConversationIdByMode[ChatPageMode.normal],
   );
@@ -608,38 +638,70 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   set currentConversation(ConversationModel? value) =>
       _currentConversation = value;
   @override
-  List<String> get widgetArgs => widget.args;
+  ConversationThreadTarget? get routeThreadTarget => _resolvedThreadTarget;
+  @override
+  ConversationMode get activeConversationModeValue =>
+      _conversationModeForPageMode(_activeMode);
+  @override
+  List<ChatMessageModel>? getInMemoryMessagesForConversation(
+    int conversationId,
+    ConversationMode mode,
+  ) {
+    final pageMode = _pageModeForConversationMode(mode);
+    final runtime = _runtimeCoordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: _modeKey(pageMode),
+    );
+    if (runtime == null || runtime.messages.isEmpty) {
+      return null;
+    }
+    return List<ChatMessageModel>.from(runtime.messages);
+  }
+
+  @override
+  ConversationModel? getInMemoryConversationForConversation(
+    int conversationId,
+    ConversationMode mode,
+  ) {
+    final pageMode = _pageModeForConversationMode(mode);
+    final runtime = _runtimeCoordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: _modeKey(pageMode),
+    );
+    return runtime?.conversation;
+  }
 
   @override
   Future<void> persistAgentConversation() => saveConversation();
 
   @override
-  void onConversationReset() {
-    _resetLocalConversationState(_activeMode);
+  void onConversationReset(ConversationMode mode) {
+    _resetLocalConversationState(_pageModeForConversationMode(mode));
   }
 
   @override
   void onConversationLoaded(
+    ConversationMode mode,
     int conversationId,
     ConversationModel? conversation,
     List<ChatMessageModel> messages,
   ) {
-    final mode = _activeMode;
+    final pageMode = _pageModeForConversationMode(mode);
     final runtime = _runtimeCoordinator.runtimeFor(
       conversationId: conversationId,
-      mode: _modeKey(mode),
+      mode: _modeKey(pageMode),
     );
     if (runtime == null) {
       _runtimeCoordinator.ensureRuntime(
         conversationId: conversationId,
-        mode: _modeKey(mode),
+        mode: _modeKey(pageMode),
         initialMessages: messages,
         conversation: conversation,
       );
     } else if (conversation != null) {
       runtime.conversation = conversation;
     }
-    if (mode == ChatPageMode.normal) {
+    if (pageMode == ChatPageMode.normal) {
       unawaited(
         _loadConversationModelOverrideForNormalConversation(conversationId),
       );
@@ -653,22 +715,27 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   @override
   void onConversationPersisted(
+    ConversationMode mode,
     int conversationId,
     ConversationModel conversation,
     List<ChatMessageModel> messages,
   ) {
-    _currentConversationIdByMode[_activeMode] = conversationId;
-    _currentConversationByMode[_activeMode] = conversation;
+    final pageMode = _pageModeForConversationMode(mode);
+    _currentConversationIdByMode[pageMode] = conversationId;
+    _currentConversationByMode[pageMode] = conversation;
     _syncRuntimeSnapshotForMode(
-      _activeMode,
+      pageMode,
       conversation: conversation,
       messages: messages,
     );
-    if (_activeMode == ChatPageMode.normal) {
+    if (pageMode == ChatPageMode.normal) {
       unawaited(
         _persistPendingConversationModelOverrideIfNeeded(conversationId),
       );
       unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
+    }
+    if (!_isWorkspaceSurface && pageMode == _activeConversationMode) {
+      unawaited(_persistVisibleThreadTargetIfNeeded());
     }
   }
 
@@ -887,13 +954,28 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   // ===================== Part 方法声明 =====================
 
-  bool _argsChanged(List<String> oldArgs, List<String> newArgs);
+  bool _threadTargetChanged(
+    ConversationThreadTarget? oldTarget,
+    ConversationThreadTarget? newTarget,
+  );
 
-  bool _shouldOpenNormalChatForArgs(List<String> args);
+  Future<ConversationThreadTarget> _resolveConversationThreadTarget(
+    ConversationThreadTarget? incomingTarget, {
+    ConversationMode? preferredMode,
+  });
 
-  void _forceSwitchToNormalSurface();
+  Future<void> _bootstrapConversationThread();
 
-  void _resetAndReloadConversation();
+  Future<void> _reloadConversationForCurrentTarget();
+
+  Future<void> _applyConversationThreadTarget(
+    ConversationThreadTarget target, {
+    bool syncPage = true,
+  });
+
+  Future<void> _ensureConversationModeReady(ChatPageMode mode);
+
+  Future<void> _persistVisibleThreadTargetIfNeeded();
 
   void _notifySummarySheetReadyIfNeeded();
 

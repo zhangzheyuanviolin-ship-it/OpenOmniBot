@@ -16,10 +16,8 @@ typedef VLMTaskFinishEndCallBack = void Function(String? taskId);
 //普通任务结束
 typedef CommonTaskFinishEndCallBack = void Function();
 //VLM请求用户输入（INFO动作）
-typedef VLMRequestUserInputCallBack = void Function(
-  String question,
-  String? taskId,
-);
+typedef VLMRequestUserInputCallBack =
+    void Function(String question, String? taskId);
 //Dispatch流式数据回调
 typedef DispatchStreamDataCallBack =
     void Function(String taskID, String data, String fullContent);
@@ -37,10 +35,8 @@ typedef DispatchStreamErrorCallBack =
 
 // Agent相关回调
 typedef AgentThinkingStartCallback = void Function(String taskId);
-typedef AgentThinkingUpdateCallback = void Function(
-  String taskId,
-  String thinking,
-);
+typedef AgentThinkingUpdateCallback =
+    void Function(String taskId, String thinking);
 typedef AgentToolCallStartCallback = void Function(AgentToolEventData event);
 typedef AgentToolCallProgressCallback = void Function(AgentToolEventData event);
 typedef AgentToolCallCompleteCallback = void Function(AgentToolEventData event);
@@ -56,10 +52,8 @@ typedef AgentCompleteCallback =
       bool hasUserVisibleOutput,
     );
 typedef AgentErrorCallback = void Function(String taskId, String error);
-typedef AgentPermissionRequiredCallback = void Function(
-  String taskId,
-  List<String> missing,
-);
+typedef AgentPermissionRequiredCallback =
+    void Function(String taskId, List<String> missing);
 typedef ScheduledTaskCancelledCallBack = void Function(String taskId);
 typedef ScheduledTaskExecuteNowCallBack = void Function(String taskId);
 
@@ -599,9 +593,12 @@ class AssistsMessageService {
   }
 
   /// 取消正在运行的任务，不影响陪伴模式
-  static Future<bool> cancelRunningTask() async {
+  static Future<bool> cancelRunningTask({String? taskId}) async {
     try {
-      var result = await assistCore.invokeMethod('cancelRunningTask');
+      var result = await assistCore.invokeMethod(
+        'cancelRunningTask',
+        taskId == null ? null : {'taskId': taskId},
+      );
       return result == "SUCCESS";
     } on PlatformException catch (e) {
       print('取消运行中任务失败: ${e.message}');
@@ -633,8 +630,11 @@ class AssistsMessageService {
   }
 
   // cancel chat task
-  static Future<bool> cancelChatTask() async {
-    var result = await assistCore.invokeMethod('cancelChatTask');
+  static Future<bool> cancelChatTask({String? taskId}) async {
+    var result = await assistCore.invokeMethod(
+      'cancelChatTask',
+      taskId == null ? null : {'taskId': taskId},
+    );
     return result == "SUCCESS";
   }
 
