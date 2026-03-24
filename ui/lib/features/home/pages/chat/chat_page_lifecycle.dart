@@ -177,12 +177,10 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     }
     _resolvedThreadTarget = visibleTarget;
     await ConversationHistoryService.saveLastVisibleThreadTarget(visibleTarget);
-    if (visibleTarget.conversationId != null) {
-      await ConversationHistoryService.saveCurrentConversationId(
-        visibleTarget.conversationId,
-        mode: visibleTarget.mode,
-      );
-    }
+    await ConversationHistoryService.saveCurrentConversationTarget(
+      visibleTarget,
+      mode: visibleTarget.mode,
+    );
     await ConversationService.setCurrentConversationTarget(visibleTarget);
   }
 
@@ -555,6 +553,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     }
 
     _storeDraftForActiveConversationMode();
+    await _persistVisibleThreadTargetIfNeeded();
 
     if (targetMode == ChatSurfaceMode.workspace) {
       _inputFocusNode.unfocus();

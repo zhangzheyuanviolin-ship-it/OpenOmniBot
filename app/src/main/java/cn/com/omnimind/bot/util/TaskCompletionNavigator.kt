@@ -162,6 +162,11 @@ object TaskCompletionNavigator {
                         else -> null
                     }?.takeIf { it > 0 }
                     val mode = json.optString("mode", "normal").ifBlank { "normal" }
+                    val isNewConversation = json.optBoolean("isNewConversation", false)
+                    if (isNewConversation) {
+                        OmniLog.d(TAG, "使用 Flutter 上次可见空白线程兜底回跳: mode=$mode")
+                        return ResolvedChatTarget(null, mode)
+                    }
                     if (conversationId != null) {
                         OmniLog.d(TAG, "使用 Flutter 上次可见线程兜底回跳: id=$conversationId mode=$mode")
                         return ResolvedChatTarget(conversationId, mode)

@@ -38,6 +38,44 @@ void main() {
     );
   });
 
+  test('stores blank current thread targets independently per mode', () async {
+    const normalTarget = ConversationThreadTarget.newConversation(
+      mode: ConversationMode.normal,
+    );
+    const openClawTarget = ConversationThreadTarget.existing(
+      conversationId: 22,
+      mode: ConversationMode.openclaw,
+    );
+
+    await ConversationHistoryService.saveCurrentConversationTarget(
+      normalTarget,
+      mode: ConversationMode.normal,
+    );
+    await ConversationHistoryService.saveCurrentConversationTarget(
+      openClawTarget,
+      mode: ConversationMode.openclaw,
+    );
+
+    expect(
+      await ConversationHistoryService.getCurrentConversationTarget(
+        mode: ConversationMode.normal,
+      ),
+      normalTarget,
+    );
+    expect(
+      await ConversationHistoryService.getCurrentConversationTarget(
+        mode: ConversationMode.openclaw,
+      ),
+      openClawTarget,
+    );
+    expect(
+      await ConversationHistoryService.getCurrentConversationId(
+        mode: ConversationMode.normal,
+      ),
+      isNull,
+    );
+  });
+
   test('round-trips last visible thread target with mode metadata', () async {
     const target = ConversationThreadTarget.existing(
       conversationId: 42,
@@ -50,6 +88,25 @@ void main() {
 
     expect(restored, target);
   });
+
+  test(
+    'falls back to current thread target when last visible is absent',
+    () async {
+      const target = ConversationThreadTarget.newConversation(
+        mode: ConversationMode.normal,
+      );
+
+      await ConversationHistoryService.saveCurrentConversationTarget(
+        target,
+        mode: ConversationMode.normal,
+      );
+
+      expect(
+        await ConversationHistoryService.getLastVisibleThreadTarget(),
+        target,
+      );
+    },
+  );
 
   test('supports legacy normal-mode storage fallback', () async {
     final legacyMessages = <Map<String, dynamic>>[

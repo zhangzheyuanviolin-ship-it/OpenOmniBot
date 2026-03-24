@@ -8,6 +8,8 @@ import 'package:ui/models/conversation_thread_target.dart';
 class ConversationHistoryService {
   static const String _legacyConversationIdKey = 'current_conversation_id';
   static const String _conversationIdKeyPrefix = 'current_conversation_id_';
+  static const String _conversationTargetKeyPrefix =
+      'current_conversation_target_';
   static const String _lastVisibleThreadTargetKey =
       'last_visible_conversation_target';
   static const String _conversationMessagesKey = 'conversation_messages_';
@@ -15,6 +17,10 @@ class ConversationHistoryService {
 
   static String _conversationIdKeyForMode(ConversationMode mode) {
     return '$_conversationIdKeyPrefix${mode.storageValue}';
+  }
+
+  static String _conversationTargetKeyForMode(ConversationMode mode) {
+    return '$_conversationTargetKeyPrefix${mode.storageValue}';
   }
 
   /// 保存当前对话ID
@@ -53,6 +59,20 @@ class ConversationHistoryService {
   static Future<ConversationThreadTarget?> getCurrentConversationTarget({
     required ConversationMode mode,
   }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_conversationTargetKeyForMode(mode));
+    if (raw != null && raw.trim().isNotEmpty) {
+      try {
+        final target = ConversationThreadTarget.fromEncodedJson(raw);
+        return target.copyWith(
+          mode: mode,
+          fromNativeRoute: false,
+          clearRequestKey: true,
+        );
+      } catch (e) {
+        print('解析当前线程目标失败: $e');
+      }
+    }
     final conversationId = await getCurrentConversationId(mode: mode);
     if (conversationId == null) {
       return null;
@@ -61,6 +81,27 @@ class ConversationHistoryService {
       conversationId: conversationId,
       mode: mode,
     );
+  }
+
+  static Future<void> saveCurrentConversationTarget(
+    ConversationThreadTarget? target, {
+    required ConversationMode mode,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _conversationTargetKeyForMode(mode);
+    if (target == null) {
+      await prefs.remove(key);
+      await saveCurrentConversationId(null, mode: mode);
+      return;
+    }
+
+    final sanitized = target.copyWith(
+      mode: mode,
+      fromNativeRoute: false,
+      clearRequestKey: true,
+    );
+    await prefs.setString(key, sanitized.toEncodedJson());
+    await saveCurrentConversationId(sanitized.conversationId, mode: mode);
   }
 
   static Future<void> saveLastVisibleThreadTarget(
@@ -89,14 +130,11 @@ class ConversationHistoryService {
         ConversationMode.normal,
         ConversationMode.openclaw,
       ]) {
-        final conversationId = await getCurrentConversationId(mode: mode);
-        if (conversationId == null) {
+        final target = await getCurrentConversationTarget(mode: mode);
+        if (target == null) {
           continue;
         }
-        return ConversationThreadTarget.existing(
-          conversationId: conversationId,
-          mode: mode,
-        );
+        return target;
       }
       return null;
     }
@@ -116,9 +154,9 @@ class ConversationHistoryService {
         ? ConversationMode.values
         : <ConversationMode>[mode];
     for (final entryMode in modes) {
-      final currentId = await getCurrentConversationId(mode: entryMode);
-      if (currentId == conversationId) {
-        await saveCurrentConversationId(null, mode: entryMode);
+      final currentTarget = await getCurrentConversationTarget(mode: entryMode);
+      if (currentTarget?.conversationId == conversationId) {
+        await saveCurrentConversationTarget(null, mode: entryMode);
       }
     }
 
