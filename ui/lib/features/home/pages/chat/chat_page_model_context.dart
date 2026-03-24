@@ -342,12 +342,439 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
   }
 
   @override
+  List<ProviderModelOption> get _filteredQuickModelPickerModels {
+    final query = _quickModelPickerSearchController.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      return _quickModelPickerModels;
+    }
+    return _quickModelPickerModels.where((item) {
+      final modelId = item.id.toLowerCase();
+      final displayName = item.displayName.toLowerCase();
+      return modelId.contains(query) || displayName.contains(query);
+    }).toList();
+  }
+
+  @override
+  String get _quickModelPickerSearchHintLabel {
+    final providerId = _quickModelPickerProviderProfileId;
+    if (providerId == null) {
+      return '搜索模型 ID';
+    }
+    final provider = _findProviderProfile(providerId);
+    final label = (provider?.name ?? providerId).trim();
+    if (label.isEmpty) {
+      return '搜索模型 ID';
+    }
+    return '搜索 $label 的模型';
+  }
+
+  List<ModelProviderProfileSummary> get _quickModelPickerAvailableProfiles {
+    return _modelProviderProfiles.where((profile) {
+      if (!profile.configured) {
+        return false;
+      }
+      final models =
+          _modelOptionsByProfileId[profile.id] ?? const <ProviderModelOption>[];
+      return models.isNotEmpty;
+    }).toList();
+  }
+
+  List<ProviderModelOption> _quickModelPickerModelsForProvider(
+    String providerProfileId,
+  ) {
+    final models =
+        _modelOptionsByProfileId[providerProfileId] ??
+        const <ProviderModelOption>[];
+    return List<ProviderModelOption>.from(models);
+  }
+
+  _QuickModelPickerSession? _resolveQuickModelPickerSession() {
+    final availableProfiles = _quickModelPickerAvailableProfiles;
+    if (availableProfiles.isEmpty) {
+      return null;
+    }
+    final activeSelection = _activeDispatchSceneSelection;
+    if (activeSelection != null) {
+      final activeModels = _quickModelPickerModelsForProvider(
+        activeSelection.providerProfileId,
+      );
+      final hasConfiguredProvider = availableProfiles.any(
+        (profile) => profile.id == activeSelection.providerProfileId,
+      );
+      if (hasConfiguredProvider && activeModels.isNotEmpty) {
+        return _QuickModelPickerSession(
+          providerProfileId: activeSelection.providerProfileId,
+          models: activeModels,
+        );
+      }
+    }
+    for (final profile in availableProfiles) {
+      final models = _quickModelPickerModelsForProvider(profile.id);
+      if (models.isNotEmpty) {
+        return _QuickModelPickerSession(
+          providerProfileId: profile.id,
+          models: models,
+        );
+      }
+    }
+    return null;
+  }
+
+  void _selectQuickModelPickerProvider(String providerProfileId) {
+    final models = _quickModelPickerModelsForProvider(providerProfileId);
+    if (models.isEmpty) {
+      return;
+    }
+    _stopQuickModelPickerAutoScroll();
+    if (!mounted) {
+      _quickModelPickerProviderProfileId = providerProfileId;
+      _quickModelPickerModels = models;
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerPointerPosition = null;
+      _quickModelPickerHasEnteredList = false;
+      return;
+    }
+    setState(() {
+      _quickModelPickerProviderProfileId = providerProfileId;
+      _quickModelPickerModels = models;
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerPointerPosition = null;
+      _quickModelPickerHasEnteredList = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !_isQuickModelPickerActive ||
+          _quickModelPickerProviderProfileId != providerProfileId) {
+        return;
+      }
+      _primeQuickModelPickerScrollPosition();
+    });
+  }
+
+  void _primeQuickModelPickerScrollPosition() {
+    if (!_quickModelPickerScrollController.hasClients ||
+        _filteredQuickModelPickerModels.isEmpty) {
+      return;
+    }
+    final activeSelection = _activeDispatchSceneSelection;
+    final visibleModels = _filteredQuickModelPickerModels;
+    final selectedIndex = activeSelection != null &&
+            activeSelection.providerProfileId == _quickModelPickerProviderProfileId
+        ? visibleModels.indexWhere(
+            (item) => item.id == activeSelection.modelId,
+          )
+        : -1;
+    final controller = _quickModelPickerScrollController;
+    final viewport = controller.position.viewportDimension;
+    final targetIndex = selectedIndex < 0 ? 0 : selectedIndex;
+    final rawOffset =
+        targetIndex * _QuickModelPickerOverlay.kItemExtent -
+        (viewport - _QuickModelPickerOverlay.kItemExtent) / 2;
+    final targetOffset = rawOffset.clamp(
+      controller.position.minScrollExtent,
+      controller.position.maxScrollExtent,
+    );
+    controller.jumpTo(targetOffset.toDouble());
+  }
+
+  double _resolveQuickModelPickerAutoScrollDelta({
+    required double localDy,
+    required double height,
+    required bool horizontalInside,
+  }) {
+    final controller = _quickModelPickerScrollController;
+    if (!horizontalInside ||
+        !controller.hasClients ||
+        controller.position.maxScrollExtent <= 0) {
+      return 0;
+    }
+    const edgeExtent = _QuickModelPickerOverlay.kEdgeActivationExtent;
+    if (localDy < edgeExtent) {
+      final intensity =
+          ((edgeExtent - localDy.clamp(0.0, edgeExtent)) / edgeExtent)
+              .clamp(0.0, 1.0);
+      return -(4 + intensity * 14);
+    }
+    if (localDy > height - edgeExtent) {
+      final distance = (height - localDy).clamp(0.0, edgeExtent);
+      final intensity = ((edgeExtent - distance) / edgeExtent).clamp(0.0, 1.0);
+      return 4 + intensity * 14;
+    }
+    return 0;
+  }
+
+  void _stopQuickModelPickerAutoScroll() {
+    _quickModelPickerAutoScrollDelta = 0;
+    _quickModelPickerAutoScrollTimer?.cancel();
+    _quickModelPickerAutoScrollTimer = null;
+  }
+
+  void _startQuickModelPickerAutoScroll(double delta) {
+    _quickModelPickerAutoScrollDelta = delta;
+    if (_quickModelPickerAutoScrollTimer != null) {
+      return;
+    }
+    _quickModelPickerAutoScrollTimer = Timer.periodic(
+      const Duration(milliseconds: 16),
+      (timer) {
+        final controller = _quickModelPickerScrollController;
+        final pointerPosition = _quickModelPickerPointerPosition;
+        if (!_isQuickModelPickerActive ||
+            pointerPosition == null ||
+            !controller.hasClients) {
+          _stopQuickModelPickerAutoScroll();
+          return;
+        }
+        final nextOffset = (controller.offset + _quickModelPickerAutoScrollDelta)
+            .clamp(
+              controller.position.minScrollExtent,
+              controller.position.maxScrollExtent,
+            )
+            .toDouble();
+        if ((nextOffset - controller.offset).abs() < 0.1) {
+          _stopQuickModelPickerAutoScroll();
+          _updateQuickModelPickerHover(
+            pointerPosition,
+            allowAutoScroll: false,
+          );
+          return;
+        }
+        controller.jumpTo(nextOffset);
+        _updateQuickModelPickerHover(pointerPosition, allowAutoScroll: false);
+      },
+    );
+  }
+
+  _ChatModelOverrideSelection? _updateQuickModelPickerHover(
+    Offset globalPosition, {
+    bool allowAutoScroll = true,
+  }) {
+    _quickModelPickerPointerPosition = globalPosition;
+    final providerProfileId = _quickModelPickerProviderProfileId;
+    final panelContext = _quickModelPickerListKey.currentContext;
+    final controller = _quickModelPickerScrollController;
+    final visibleModels = _filteredQuickModelPickerModels;
+    if (!_isQuickModelPickerActive ||
+        providerProfileId == null ||
+        visibleModels.isEmpty ||
+        panelContext == null ||
+        !controller.hasClients) {
+      if (allowAutoScroll) {
+        _stopQuickModelPickerAutoScroll();
+      }
+      return null;
+    }
+    final renderObject = panelContext.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) {
+      if (allowAutoScroll) {
+        _stopQuickModelPickerAutoScroll();
+      }
+      return null;
+    }
+    final local = renderObject.globalToLocal(globalPosition);
+    final size = renderObject.size;
+    final horizontalInside = local.dx >= -24 && local.dx <= size.width + 24;
+    final insideList =
+        local.dx >= 0 &&
+        local.dx <= size.width &&
+        local.dy >= 0 &&
+        local.dy <= size.height;
+
+    if (_isQuickModelPickerLongPressing &&
+        !_quickModelPickerHasEnteredList &&
+        insideList) {
+      if (mounted) {
+        setState(() {
+          _quickModelPickerHasEnteredList = true;
+        });
+      } else {
+        _quickModelPickerHasEnteredList = true;
+      }
+    }
+
+    final shouldTrackHover =
+        !_isQuickModelPickerLongPressing || _quickModelPickerHasEnteredList;
+    final verticalNear =
+        shouldTrackHover &&
+        local.dy >= -_QuickModelPickerOverlay.kEdgeActivationExtent &&
+        local.dy <=
+            size.height + _QuickModelPickerOverlay.kEdgeActivationExtent;
+
+    if (allowAutoScroll) {
+      final delta = shouldTrackHover
+          ? _resolveQuickModelPickerAutoScrollDelta(
+              localDy: local.dy,
+              height: size.height,
+              horizontalInside: horizontalInside,
+            )
+          : 0.0;
+      if (delta == 0 || !shouldTrackHover) {
+        _stopQuickModelPickerAutoScroll();
+      } else {
+        _startQuickModelPickerAutoScroll(delta);
+      }
+    }
+
+    _ChatModelOverrideSelection? nextHover;
+    if (shouldTrackHover && horizontalInside && verticalNear) {
+      final clampedDy = local.dy.clamp(
+        _QuickModelPickerOverlay.kVerticalPadding,
+        size.height - _QuickModelPickerOverlay.kVerticalPadding - 0.001,
+      );
+      final contentDy =
+          clampedDy -
+          _QuickModelPickerOverlay.kVerticalPadding +
+          controller.offset;
+      if (contentDy >= 0) {
+        final index =
+            (contentDy / _QuickModelPickerOverlay.kItemExtent).floor();
+        if (index >= 0 && index < visibleModels.length) {
+          nextHover = _ChatModelOverrideSelection(
+            providerProfileId: providerProfileId,
+            modelId: visibleModels[index].id,
+          );
+        }
+      }
+    }
+
+    if (!mounted) {
+      _quickModelPickerHoverSelection = nextHover;
+      return nextHover;
+    }
+    if (nextHover == _quickModelPickerHoverSelection) {
+      return nextHover;
+    }
+    setState(() {
+      _quickModelPickerHoverSelection = nextHover;
+    });
+    return nextHover;
+  }
+
+  @override
+  void _handleModelLongPressStart(
+    BuildContext anchorContext,
+    Offset globalPosition,
+  ) {
+    if (_activeMode != ChatPageMode.normal || _isOpenClawSurface) {
+      return;
+    }
+    _openQuickModelPicker(
+      longPressing: true,
+      globalPosition: globalPosition,
+      requestSearchFocus: false,
+    );
+  }
+
+  @override
+  void _openQuickModelPicker({
+    required bool longPressing,
+    Offset? globalPosition,
+    bool requestSearchFocus = false,
+  }) {
+    if (_activeMode != ChatPageMode.normal || _isOpenClawSurface) {
+      return;
+    }
+    final session = _resolveQuickModelPickerSession();
+    if (session == null) {
+      return;
+    }
+    _inputFocusNode.unfocus();
+    _closeConversationModelSelector();
+    _quickModelPickerSearchFocusNode.unfocus();
+    _quickModelPickerSearchController.clear();
+    if (!mounted) {
+      _isQuickModelPickerActive = true;
+      _isQuickModelPickerLongPressing = longPressing;
+      _quickModelPickerHasEnteredList = false;
+      _quickModelPickerProviderProfileId = session.providerProfileId;
+      _quickModelPickerModels = session.models;
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerPointerPosition = globalPosition;
+      return;
+    }
+    setState(() {
+      _showSlashCommandPanel = false;
+      _showModelMentionPanel = false;
+      _openClawPanelExpanded = false;
+      _openClawDeployPanelExpanded = false;
+      _isQuickModelPickerActive = true;
+      _isQuickModelPickerLongPressing = longPressing;
+      _quickModelPickerHasEnteredList = false;
+      _quickModelPickerProviderProfileId = session.providerProfileId;
+      _quickModelPickerModels = session.models;
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerPointerPosition = globalPosition;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isQuickModelPickerActive) {
+        return;
+      }
+      _primeQuickModelPickerScrollPosition();
+      if (globalPosition != null) {
+        _updateQuickModelPickerHover(globalPosition);
+      }
+      if (requestSearchFocus) {
+        _quickModelPickerSearchFocusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void _handleModelLongPressMove(Offset globalPosition) {
+    if (!_isQuickModelPickerActive) {
+      return;
+    }
+    _updateQuickModelPickerHover(globalPosition);
+  }
+
+  @override
+  Future<void> _handleModelLongPressEnd(Offset globalPosition) async {
+    if (!_isQuickModelPickerActive) {
+      return;
+    }
+    final selection = _updateQuickModelPickerHover(
+      globalPosition,
+      allowAutoScroll: false,
+    );
+    _stopQuickModelPickerAutoScroll();
+    if (!mounted) {
+      _isQuickModelPickerLongPressing = false;
+      _quickModelPickerHasEnteredList = false;
+      _quickModelPickerPointerPosition = null;
+      _quickModelPickerHoverSelection = null;
+    } else {
+      setState(() {
+        _isQuickModelPickerLongPressing = false;
+        _quickModelPickerHasEnteredList = false;
+        _quickModelPickerPointerPosition = null;
+        if (selection == null) {
+          _quickModelPickerHoverSelection = null;
+        }
+      });
+    }
+    if (selection == null) {
+      return;
+    }
+    _closeQuickModelPicker();
+    await _applyDispatchSceneModelSelection(
+      providerProfileId: selection.providerProfileId,
+      modelId: selection.modelId,
+    );
+  }
+
+  @override
+  void _handleModelLongPressCancel() {
+    _closeQuickModelPicker();
+  }
+
+  @override
   Future<void> _openConversationModelSelector(
     BuildContext anchorContext,
   ) async {
-    if (_activeMode != ChatPageMode.normal) {
+    if (_activeMode != ChatPageMode.normal || _isOpenClawSurface) {
       return;
     }
+    _closeQuickModelPicker();
     if (_showSlashCommandPanel ||
         _showModelMentionPanel ||
         _openClawPanelExpanded) {
@@ -369,50 +796,87 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
       return;
     }
     _inputFocusNode.unfocus();
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox?;
-    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
-    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+    if (!mounted) {
       return;
     }
-    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
-    final bottomRight = anchorBox.localToGlobal(
-      anchorBox.size.bottomRight(Offset.zero),
-      ancestor: overlay,
-    );
-    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
-    final popupWidth = anchorBox.size.width.clamp(160.0, 320.0).toDouble();
-    const popupMaxHeight = 360.0;
-    final position = PopupMenuAnchorPosition.fromAnchorRect(
-      anchorRect: anchorRect,
-      overlaySize: overlay.size,
-      estimatedMenuHeight: popupMaxHeight,
-      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
-    );
-    final selected = await showMenu<_ChatModelOverrideSelection>(
-      context: context,
-      color: Colors.white,
-      elevation: 8,
-      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      position: position,
-      items: [
-        _ConversationModelSelectorPopupEntry(
-          width: popupWidth,
-          estimatedHeight: popupMaxHeight,
-          profiles: _modelProviderProfiles,
-          providerModelsByProfileId: _modelOptionsByProfileId,
-          currentSelection: _activeDispatchSceneSelection,
-        ),
-      ],
-    );
-    if (selected == null) {
+    if (_isConversationModelSelectorActive) {
+      _conversationModelSearchFocusNode.requestFocus();
       return;
     }
-    await _applyDispatchSceneModelSelection(
-      providerProfileId: selected.providerProfileId,
-      modelId: selected.modelId,
-    );
+    _conversationModelSearchController.clear();
+    setState(() {
+      _isConversationModelSelectorActive = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isConversationModelSelectorActive) {
+        return;
+      }
+      _conversationModelSearchFocusNode.requestFocus();
+    });
+  }
+
+  @override
+  void _closeConversationModelSelector({bool clearSearch = true}) {
+    final shouldClearSearch = clearSearch;
+    if (!_isConversationModelSelectorActive) {
+      if (shouldClearSearch &&
+          _conversationModelSearchController.text.isNotEmpty) {
+        _conversationModelSearchController.clear();
+      }
+      _conversationModelSearchFocusNode.unfocus();
+      return;
+    }
+    _conversationModelSearchFocusNode.unfocus();
+    if (!mounted) {
+      _isConversationModelSelectorActive = false;
+      if (shouldClearSearch) {
+        _conversationModelSearchController.clear();
+      }
+      return;
+    }
+    setState(() {
+      _isConversationModelSelectorActive = false;
+    });
+    if (shouldClearSearch) {
+      _conversationModelSearchController.clear();
+    }
+  }
+
+  @override
+  void _closeQuickModelPicker() {
+    _stopQuickModelPickerAutoScroll();
+    _quickModelPickerSearchFocusNode.unfocus();
+    if (!_isQuickModelPickerActive) {
+      _isQuickModelPickerLongPressing = false;
+      _quickModelPickerHasEnteredList = false;
+      _quickModelPickerProviderProfileId = null;
+      _quickModelPickerModels = const [];
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerPointerPosition = null;
+      _quickModelPickerSearchController.clear();
+      return;
+    }
+    if (!mounted) {
+      _isQuickModelPickerActive = false;
+      _isQuickModelPickerLongPressing = false;
+      _quickModelPickerHasEnteredList = false;
+      _quickModelPickerProviderProfileId = null;
+      _quickModelPickerModels = const [];
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerPointerPosition = null;
+      _quickModelPickerSearchController.clear();
+      return;
+    }
+    setState(() {
+      _isQuickModelPickerActive = false;
+      _isQuickModelPickerLongPressing = false;
+      _quickModelPickerHasEnteredList = false;
+      _quickModelPickerProviderProfileId = null;
+      _quickModelPickerModels = const [];
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerPointerPosition = null;
+      _quickModelPickerSearchController.clear();
+    });
   }
 
   @override
@@ -435,11 +899,64 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
       );
       await _loadNormalChatModelContext();
       if (!mounted) return;
-      showToast('Agent 模型已切换到 $modelId', type: ToastType.success);
+      showToast('切换成功', type: ToastType.success);
     } catch (e) {
       if (!mounted) return;
       showToast('更新 Agent 模型失败：$e', type: ToastType.error);
     }
+  }
+
+  Future<void> _handleConversationModelSelectorSelection(
+    _ChatModelOverrideSelection selection,
+  ) async {
+    _closeQuickModelPicker();
+    _closeConversationModelSelector();
+    await _applyDispatchSceneModelSelection(
+      providerProfileId: selection.providerProfileId,
+      modelId: selection.modelId,
+    );
+  }
+
+  @override
+  Widget _buildConversationModelSelectorPanel() {
+    return _ConversationModelSelectorPanel(
+      profiles: _modelProviderProfiles,
+      providerModelsByProfileId: _modelOptionsByProfileId,
+      currentSelection: _activeDispatchSceneSelection,
+      query: _conversationModelSearchController.text,
+      onSelect: (selection) {
+        unawaited(_handleConversationModelSelectorSelection(selection));
+      },
+    );
+  }
+
+  @override
+  Widget? _buildQuickModelPickerOverlay() {
+    final providers = _quickModelPickerAvailableProfiles;
+    final providerProfileId = _quickModelPickerProviderProfileId;
+    final visibleModels = _filteredQuickModelPickerModels;
+    if (!_isQuickModelPickerActive ||
+        providerProfileId == null ||
+        providers.isEmpty ||
+        _quickModelPickerModels.isEmpty) {
+      return null;
+    }
+    return _QuickModelPickerOverlay(
+      panelKey: _quickModelPickerPanelKey,
+      listKey: _quickModelPickerListKey,
+      providers: providers,
+      providerProfileId: providerProfileId,
+      models: visibleModels,
+      currentSelection: _activeDispatchSceneSelection,
+      hoverSelection: _quickModelPickerHoverSelection,
+      scrollController: _quickModelPickerScrollController,
+      onProviderChanged: _selectQuickModelPickerProvider,
+      onSelect: (selection) {
+        unawaited(
+          _handleConversationModelSelectorSelection(selection),
+        );
+      },
+    );
   }
 
   @override
@@ -494,6 +1011,262 @@ class _ChatModelOverrideSelection {
     required this.providerProfileId,
     required this.modelId,
   });
+}
+
+class _QuickModelPickerSession {
+  final String providerProfileId;
+  final List<ProviderModelOption> models;
+
+  const _QuickModelPickerSession({
+    required this.providerProfileId,
+    required this.models,
+  });
+}
+
+class _QuickModelPickerOverlay extends StatelessWidget {
+  static const double kItemExtent = 44;
+  static const double kVerticalPadding = 8;
+  static const double kEdgeActivationExtent = 40;
+  static const double _kMaxListHeight = 264;
+
+  final Key? panelKey;
+  final Key? listKey;
+  final List<ModelProviderProfileSummary> providers;
+  final String providerProfileId;
+  final List<ProviderModelOption> models;
+  final _ChatModelOverrideSelection? currentSelection;
+  final _ChatModelOverrideSelection? hoverSelection;
+  final ScrollController scrollController;
+  final ValueChanged<String> onProviderChanged;
+  final ValueChanged<_ChatModelOverrideSelection> onSelect;
+
+  const _QuickModelPickerOverlay({
+    this.panelKey,
+    this.listKey,
+    required this.providers,
+    required this.providerProfileId,
+    required this.models,
+    required this.currentSelection,
+    required this.hoverSelection,
+    required this.scrollController,
+    required this.onProviderChanged,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final contentHeight = models.length * kItemExtent + kVerticalPadding * 2;
+    final maxHeight = contentHeight.clamp(96.0, _kMaxListHeight).toDouble();
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 272),
+      child: Container(
+        key: panelKey,
+        width: 272,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFDCE7F7)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1A0F172A),
+              blurRadius: 20,
+              offset: Offset(0, 12),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 2, 4, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: providers.map((profile) {
+                              final label = profile.name.trim().isEmpty
+                                  ? profile.id
+                                  : profile.name.trim();
+                              final selected = profile.id == providerProfileId;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: InkWell(
+                                  onTap: selected
+                                      ? null
+                                      : () {
+                                          onProviderChanged(profile.id);
+                                        },
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 120),
+                                    curve: Curves.easeOut,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? const Color(0xFFEAF3FF)
+                                          : const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: selected
+                                          ? Border.all(
+                                              color: const Color(0xFF7FB6FF),
+                                            )
+                                          : null,
+                                    ),
+                                    child: Text(
+                                      label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: selected
+                                            ? const Color(0xFF2C7FEB)
+                                            : const Color(0xFF64748B),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${models.length} 项',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF94A3B8),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (models.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Text(
+                      '没有匹配的模型',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxHeight),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: ListView.builder(
+                        key: listKey,
+                        controller: scrollController,
+                        physics: const ClampingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: kVerticalPadding,
+                        ),
+                        shrinkWrap: true,
+                        itemExtent: kItemExtent,
+                        itemCount: models.length,
+                        itemBuilder: (context, index) {
+                          final model = models[index];
+                          final isCurrent =
+                              currentSelection?.providerProfileId ==
+                                  providerProfileId &&
+                              currentSelection?.modelId == model.id;
+                          final isHovered =
+                              hoverSelection?.providerProfileId ==
+                                  providerProfileId &&
+                              hoverSelection?.modelId == model.id;
+                          final backgroundColor = isHovered
+                              ? const Color(0xFFDCEBFF)
+                              : isCurrent
+                              ? const Color(0xFFEAF3FF)
+                              : Colors.white;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 2,
+                              vertical: 2,
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () {
+                                onSelect(
+                                  _ChatModelOverrideSelection(
+                                    providerProfileId: providerProfileId,
+                                    modelId: model.id,
+                                  ),
+                                );
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 90),
+                                curve: Curves.easeOut,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: backgroundColor,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: isHovered
+                                      ? Border.all(
+                                          color: const Color(0xFF7FB6FF),
+                                        )
+                                      : null,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        model.id,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Color(0xFF1F2937),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                    if (isHovered)
+                                      const Icon(
+                                        Icons.keyboard_double_arrow_left_rounded,
+                                        size: 16,
+                                        color: Color(0xFF2C7FEB),
+                                      )
+                                    else if (isCurrent)
+                                      const Icon(
+                                        Icons.check_rounded,
+                                        size: 16,
+                                        color: Color(0xFF2C7FEB),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ChatModelMentionPanel extends StatefulWidget {
@@ -700,63 +1473,68 @@ class _ChatModelMentionPanelState extends State<_ChatModelMentionPanel> {
   }
 }
 
-class _ConversationModelSelectorPopupEntry
-    extends PopupMenuEntry<_ChatModelOverrideSelection> {
-  const _ConversationModelSelectorPopupEntry({
-    required this.width,
-    required this.estimatedHeight,
+class _ConversationModelSelectorPanel extends StatefulWidget {
+  const _ConversationModelSelectorPanel({
     required this.profiles,
     required this.providerModelsByProfileId,
     required this.currentSelection,
+    required this.query,
+    required this.onSelect,
   });
 
-  final double width;
-  final double estimatedHeight;
   final List<ModelProviderProfileSummary> profiles;
   final Map<String, List<ProviderModelOption>> providerModelsByProfileId;
   final _ChatModelOverrideSelection? currentSelection;
+  final String query;
+  final ValueChanged<_ChatModelOverrideSelection> onSelect;
 
   @override
-  double get height => estimatedHeight;
-
-  @override
-  bool represents(_ChatModelOverrideSelection? value) => false;
-
-  @override
-  State<_ConversationModelSelectorPopupEntry> createState() =>
-      _ConversationModelSelectorPopupEntryState();
+  State<_ConversationModelSelectorPanel> createState() =>
+      _ConversationModelSelectorPanelState();
 }
 
-class _ConversationModelSelectorPopupEntryState
-    extends State<_ConversationModelSelectorPopupEntry> {
-  final TextEditingController _searchController = TextEditingController();
+class _ConversationModelSelectorPanelState
+    extends State<_ConversationModelSelectorPanel> {
   late final Set<String> _expandedProfileIds;
 
-  bool get _hasSearchQuery => _searchController.text.trim().isNotEmpty;
+  bool get _hasSearchQuery => widget.query.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    _expandedProfileIds = <String>{
-      if (widget.currentSelection != null)
-        widget.currentSelection!.providerProfileId,
-    };
-    if (_expandedProfileIds.isEmpty && widget.profiles.isNotEmpty) {
-      _expandedProfileIds.add(widget.profiles.first.id);
-    }
-    _searchController.addListener(() {
-      setState(() {});
-    });
+    _expandedProfileIds = <String>{};
+    _seedExpandedProfiles();
   }
 
   @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant _ConversationModelSelectorPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final previousProviderId = oldWidget.currentSelection?.providerProfileId;
+    final currentProviderId = widget.currentSelection?.providerProfileId;
+    if (currentProviderId != null && currentProviderId != previousProviderId) {
+      _expandedProfileIds.add(currentProviderId);
+    }
+    if (_expandedProfileIds.isEmpty) {
+      _seedExpandedProfiles();
+    }
+  }
+
+  void _seedExpandedProfiles() {
+    final selectedProviderId = widget.currentSelection?.providerProfileId;
+    if (selectedProviderId != null && selectedProviderId.isNotEmpty) {
+      _expandedProfileIds.add(selectedProviderId);
+      return;
+    }
+    for (final profile in widget.profiles) {
+      if (profile.configured) {
+        _expandedProfileIds.add(profile.id);
+        break;
+      }
+    }
   }
 
   List<ProviderModelOption> _filteredModels(String profileId) {
-    final query = _searchController.text.trim().toLowerCase();
+    final query = widget.query.trim().toLowerCase();
     final models = widget.providerModelsByProfileId[profileId] ?? const [];
     if (query.isEmpty) {
       return models;
@@ -785,43 +1563,6 @@ class _ConversationModelSelectorPopupEntryState
       return true;
     }
     return _expandedProfileIds.contains(profileId);
-  }
-
-  Widget _buildSearchRow() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      child: Row(
-        children: [
-          const Icon(Icons.search, size: 18, color: Color(0xFF9AA4B6)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              autofocus: false,
-              scrollPadding: EdgeInsets.zero,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF1F2937),
-                fontWeight: FontWeight.w500,
-              ),
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: '搜索模型 ID',
-                hintStyle: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF9AA4B6),
-                  fontWeight: FontWeight.w500,
-                ),
-                border: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildProfileHeader(ModelProviderProfileSummary profile) {
@@ -910,7 +1651,7 @@ class _ConversationModelSelectorPopupEntryState
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
       child: InkWell(
         onTap: () {
-          Navigator.of(context).pop(
+          widget.onSelect(
             _ChatModelOverrideSelection(
               providerProfileId: profile.id,
               modelId: model.id,
@@ -955,21 +1696,33 @@ class _ConversationModelSelectorPopupEntryState
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final dynamicMaxHeight =
-        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
-            .clamp(220.0, widget.estimatedHeight)
+        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 180)
+            .clamp(220.0, 360.0)
             .toDouble();
     final configuredProfiles = widget.profiles
         .where((profile) => profile.configured)
         .toList();
     final visibleProfiles = _visibleProfiles;
-    return SizedBox(
-      width: widget.width,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+    return Container(
+      width: double.infinity,
+      constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFDCE7F7)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F172A),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildSearchRow(),
             if (configuredProfiles.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(16),
@@ -1000,7 +1753,7 @@ class _ConversationModelSelectorPopupEntryState
               Flexible(
                 child: Scrollbar(
                   child: ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.fromLTRB(0, 10, 0, 10),
                     itemCount: visibleProfiles.length,
                     itemBuilder: (context, index) {
                       final profile = visibleProfiles[index];

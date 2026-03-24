@@ -31,6 +31,17 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
     _inputFocusNode.addListener(_onFocusChange);
     _messageController.addListener(_handleSlashCommandInput);
+    _conversationModelSearchController.addListener(
+      _handleConversationModelSearchChanged,
+    );
+    _quickModelPickerSearchController.addListener(
+      _handleQuickModelPickerSearchChanged,
+    );
+    final initialSurface = _surfaceForArgs(widget.args);
+    if (initialSurface != null) {
+      _activeSurfaceMode = initialSurface;
+      _activeConversationMode = _modeFromSurface(initialSurface);
+    }
     _loadOpenClawConfig();
     unawaited(_loadNormalChatModelContext());
     initializeConversation();
@@ -57,9 +68,9 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       debugPrint(
         '[ChatPage] args changed: ${oldWidget.args} -> ${widget.args}',
       );
-      if (_activeSurfaceMode == ChatSurfaceMode.workspace &&
-          _shouldOpenNormalChatForArgs(widget.args)) {
-        _forceSwitchToNormalSurface();
+      final requestedSurface = _surfaceForArgs(widget.args);
+      if (requestedSurface != null && requestedSurface != _activeSurfaceMode) {
+        _forceSwitchToSurface(requestedSurface);
       }
       _resetAndReloadConversation();
       _notifySummarySheetReadyIfNeeded();
@@ -92,26 +103,64 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
   @override
   void _forceSwitchToNormalSurface() {
+    _forceSwitchToSurface(ChatSurfaceMode.normal);
+  }
+
+  void _forceSwitchToSurface(ChatSurfaceMode targetSurface) {
     _storeDraftForActiveConversationMode();
+    _closeQuickModelPicker();
+    _closeConversationModelSelector();
     if (!mounted) return;
     setState(() {
-      _activeSurfaceMode = ChatSurfaceMode.normal;
-      _activeConversationMode = ChatPageMode.normal;
+      _activeSurfaceMode = targetSurface;
+      _activeConversationMode = _modeFromSurface(targetSurface);
       _showSlashCommandPanel = false;
       _showModelMentionPanel = false;
       _activeModelMentionToken = null;
       _openClawPanelExpanded = false;
     });
-    _applyDraftForConversationMode(ChatPageMode.normal);
+    _applyDraftForConversationMode(_activeConversationMode);
     _jumpToCurrentModePage(animate: false);
   }
 
   @override
   void _resetAndReloadConversation() {
+    _closeQuickModelPicker();
+    _closeConversationModelSelector();
     _resetLocalConversationState(_activeMode);
     _vlmAnswerController.clear();
     _messageController.clear();
     initializeConversation();
+  }
+
+  void _handleConversationModelSearchChanged() {
+    if (!_isConversationModelSelectorActive || !mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  @override
+  void _handleQuickModelPickerSearchChanged() {
+    if (!_isQuickModelPickerActive) {
+      return;
+    }
+    if (_quickModelPickerScrollController.hasClients) {
+      _quickModelPickerScrollController.jumpTo(
+        _quickModelPickerScrollController.position.minScrollExtent,
+      );
+    }
+    final hover = _quickModelPickerHoverSelection;
+    if (hover != null &&
+        !_filteredQuickModelPickerModels.any(
+          (item) => item.id == hover.modelId,
+        )) {
+      _quickModelPickerHoverSelection = null;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
   }
 
   @override
@@ -338,6 +387,12 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       _handleAppUpdateStatusChanged,
     );
     _messageController.removeListener(_handleSlashCommandInput);
+    _conversationModelSearchController.removeListener(
+      _handleConversationModelSearchChanged,
+    );
+    _quickModelPickerSearchController.removeListener(
+      _handleQuickModelPickerSearchChanged,
+    );
     _messageController.dispose();
     _normalMessageScrollController.dispose();
     _openClawMessageScrollController.dispose();
@@ -348,7 +403,13 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     _openClawTokenController.dispose();
     _openClawUserIdController.dispose();
     _openClawDeployConfigController.dispose();
+    _conversationModelSearchController.dispose();
+    _conversationModelSearchFocusNode.dispose();
+    _quickModelPickerSearchController.dispose();
+    _quickModelPickerSearchFocusNode.dispose();
     _companionCountdownTimer?.cancel();
+    _quickModelPickerAutoScrollTimer?.cancel();
+    _quickModelPickerScrollController.dispose();
     _openClawDeploySnapshotPoller?.cancel();
     super.dispose();
   }
@@ -487,6 +548,8 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     }
 
     _storeDraftForActiveConversationMode();
+    _closeQuickModelPicker();
+    _closeConversationModelSelector();
 
     if (targetMode == ChatSurfaceMode.workspace) {
       _inputFocusNode.unfocus();

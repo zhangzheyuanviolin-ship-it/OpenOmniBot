@@ -17,6 +17,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
   set currentConversationId(int? value);
   ConversationModel? get currentConversation;
   set currentConversation(ConversationModel? value);
+  String get currentConversationMode;
   List<String> get widgetArgs;
   void onConversationReset() {}
   void onConversationLoaded(
@@ -231,6 +232,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
         id: conversationId,
         title: title,
         summary: currentConversation?.summary,
+        mode: currentConversation?.mode ?? currentConversationMode,
         status: currentConversation?.status ?? 0,
         lastMessage: lastText,
         messageCount: savedMessages.length,
@@ -350,6 +352,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
         final newConversationId = await ConversationService.createConversation(
           title: title,
           summary: summary,
+          mode: currentConversationMode,
         );
 
         if (newConversationId != null) {
@@ -362,6 +365,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
                 id: newConversationId,
                 title: title,
                 summary: summary,
+                mode: currentConversationMode,
                 status: 0,
                 lastMessage: lastMessage,
                 messageCount: messageCount,
@@ -394,6 +398,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
           id: targetId,
           title: title,
           summary: summary,
+          mode: currentConversationMode,
           status: 0,
           lastMessage: lastMessage,
           messageCount: messageCount,

@@ -14,6 +14,12 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
       final userId =
           StorageService.getString(kOpenClawUserIdKey, defaultValue: '') ?? '';
       final effectiveEnabled = enabled && baseUrl.trim().isNotEmpty;
+      final preferredSurface = _surfaceForArgs(widget.args);
+      final initialSurface =
+          preferredSurface ??
+          (effectiveEnabled
+              ? ChatSurfaceMode.openclaw
+              : ChatSurfaceMode.normal);
       if (enabled && !effectiveEnabled) {
         await StorageService.setBool(kOpenClawEnabledKey, false);
       }
@@ -23,12 +29,8 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
         _openClawBaseUrl = baseUrl;
         _openClawToken = token;
         _openClawUserId = userId;
-        _activeSurfaceMode = effectiveEnabled
-            ? ChatSurfaceMode.openclaw
-            : ChatSurfaceMode.normal;
-        _activeConversationMode = effectiveEnabled
-            ? ChatPageMode.openclaw
-            : ChatPageMode.normal;
+        _activeSurfaceMode = initialSurface;
+        _activeConversationMode = _modeFromSurface(initialSurface);
       });
       _applyDraftForConversationMode(_activeConversationMode);
       _jumpToCurrentModePage(animate: false);
@@ -102,6 +104,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
       _showSnackBar('请先顶部滑动到 OpenClaw 模式');
       return;
     }
+    _closeConversationModelSelector();
     if (!mounted) return;
     setState(() {
       _showSlashCommandPanel = true;
@@ -119,6 +122,8 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
 
   @override
   void _hideSlashCommandPanel() {
+    _closeQuickModelPicker();
+    _closeConversationModelSelector();
     if (!mounted) return;
     setState(() {
       _showSlashCommandPanel = false;
@@ -141,14 +146,27 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
 
   @override
   Future<void> _handleOutsideTap(Offset position) async {
-    if (!_showSlashCommandPanel &&
+    if (!_isQuickModelPickerActive &&
+        !_showSlashCommandPanel &&
         !_showModelMentionPanel &&
+        !_isConversationModelSelectorActive &&
         !_openClawPanelExpanded &&
         !_openClawDeployPanelExpanded) {
       return;
     }
     if (_isPointerInside(_openClawPanelKey, position) ||
+        _isPointerInside(_quickModelPickerSurfaceKey, position) ||
+        _isPointerInside(_quickModelPickerPanelKey, position) ||
+        _isPointerInside(_conversationModelSelectorKey, position) ||
         _isPointerInside(_inputAreaKey, position)) {
+      return;
+    }
+    if (_isQuickModelPickerActive) {
+      _closeQuickModelPicker();
+      return;
+    }
+    if (_isConversationModelSelectorActive) {
+      _closeConversationModelSelector();
       return;
     }
     if (_openClawDeployPanelExpanded &&
@@ -410,6 +428,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
       _showSnackBar('请先顶部滑动到 OpenClaw 模式');
       return;
     }
+    _closeConversationModelSelector();
     if (!mounted) return;
     setState(() {
       _showSlashCommandPanel = true;

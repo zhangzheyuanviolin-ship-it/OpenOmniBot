@@ -22,6 +22,7 @@ import 'package:ui/features/home/widgets/permission_bottom_sheet.dart';
 import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/app_update_service.dart';
 import 'package:ui/services/conversation_model_override_service.dart';
+import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
@@ -29,7 +30,6 @@ import 'package:ui/services/permission_registry.dart';
 import 'package:ui/services/permission_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
 import 'package:ui/services/special_permission.dart';
-import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/utils/ui.dart';
 
@@ -118,6 +118,13 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   ConversationModelOverride? _conversationModelOverride;
   _ChatModelOverrideSelection? _pendingConversationModelOverride;
   bool _showConversationModelMentionChip = false;
+  bool _isConversationModelSelectorActive = false;
+  bool _isQuickModelPickerActive = false;
+  bool _isQuickModelPickerLongPressing = false;
+  bool _quickModelPickerHasEnteredList = false;
+  String? _quickModelPickerProviderProfileId;
+  List<ProviderModelOption> _quickModelPickerModels = const [];
+  _ChatModelOverrideSelection? _quickModelPickerHoverSelection;
   final TextEditingController _openClawBaseUrlController =
       TextEditingController();
   final TextEditingController _openClawTokenController =
@@ -126,8 +133,21 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       TextEditingController();
   final TextEditingController _openClawDeployConfigController =
       TextEditingController();
+  final TextEditingController _conversationModelSearchController =
+      TextEditingController();
+  final FocusNode _conversationModelSearchFocusNode = FocusNode();
+  final TextEditingController _quickModelPickerSearchController =
+      TextEditingController();
+  final FocusNode _quickModelPickerSearchFocusNode = FocusNode();
+  final ScrollController _quickModelPickerScrollController = ScrollController();
+  final GlobalKey _chatPageStackKey = GlobalKey();
+  final GlobalKey _chatAppBarKey = GlobalKey();
   final GlobalKey _openClawPanelKey = GlobalKey();
   final GlobalKey _inputAreaKey = GlobalKey();
+  final GlobalKey _conversationModelSelectorKey = GlobalKey();
+  final GlobalKey _quickModelPickerSurfaceKey = GlobalKey();
+  final GlobalKey _quickModelPickerPanelKey = GlobalKey();
+  final GlobalKey _quickModelPickerListKey = GlobalKey();
   final Map<ChatPageMode, List<ChatInputAttachment>> _pendingAttachmentsByMode =
       {
         ChatPageMode.normal: <ChatInputAttachment>[],
@@ -205,6 +225,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   static const String _openClawGatewayTokenEnvRef =
       r'${OPENCLAW_GATEWAY_TOKEN}';
   static const String _openClawSessionKeyPrefix = 'openclaw';
+  static const String _conversationRouteModePrefix = 'mode:';
   static const Duration _openClawGatewayReadyTimeout = Duration(seconds: 70);
   static const Duration _openClawGatewayReadyPollInterval = Duration(
     milliseconds: 1200,
@@ -220,8 +241,11 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   int _companionCountdown = kCompanionCountdownDuration;
   bool _showCompanionCountdown = false;
   Timer? _companionCountdownTimer;
+  Timer? _quickModelPickerAutoScrollTimer;
   AppUpdateStatus? _appUpdateStatus;
   ModalRoute<dynamic>? _subscribedRoute;
+  Offset? _quickModelPickerPointerPosition;
+  double _quickModelPickerAutoScrollDelta = 0;
 
   ChatPageMode get _activeMode => _activeConversationMode;
   String _modeKey(ChatPageMode mode) => switch (mode) {
@@ -242,6 +266,95 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
+
+  ChatPageMode _modeFromSurface(ChatSurfaceMode surface) {
+    return surface == ChatSurfaceMode.openclaw
+        ? ChatPageMode.openclaw
+        : ChatPageMode.normal;
+  }
+
+  ChatSurfaceMode _surfaceFromMode(ChatPageMode mode) {
+    return mode == ChatPageMode.openclaw
+        ? ChatSurfaceMode.openclaw
+        : ChatSurfaceMode.normal;
+  }
+
+  ChatPageMode? _parseConversationModeToken(String value) {
+    final normalized = value.trim().toLowerCase();
+    return switch (normalized) {
+      kConversationModeOpenClaw => ChatPageMode.openclaw,
+      kConversationModeNormal => ChatPageMode.normal,
+      _ => null,
+    };
+  }
+
+  ChatPageMode? _explicitConversationModeFromArgs(List<String> args) {
+    for (final rawArg in args.skip(1)) {
+      final arg = rawArg.trim();
+      if (!arg.startsWith(_conversationRouteModePrefix)) {
+        continue;
+      }
+      final modeValue = arg.substring(_conversationRouteModePrefix.length);
+      return _parseConversationModeToken(modeValue);
+    }
+    return null;
+  }
+
+  int? _conversationIdFromArgs(List<String> args) {
+    if (args.isEmpty) return null;
+    return int.tryParse(args.first.trim());
+  }
+
+  int _runtimeSignalScore(ChatConversationRuntimeState? runtime) {
+    if (runtime == null) return 0;
+    var score = 0;
+    if (runtime.messages.isNotEmpty) score += 2;
+    if (runtime.conversation != null) score += 1;
+    if (runtime.hasInFlightTask) score += 1;
+    return score;
+  }
+
+  ChatPageMode? _runtimeConversationModeFromArgs(List<String> args) {
+    final conversationId = _conversationIdFromArgs(args);
+    if (conversationId == null) return null;
+    final normalScore = _runtimeSignalScore(
+      _runtimeCoordinator.runtimeFor(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      ),
+    );
+    final openClawScore = _runtimeSignalScore(
+      _runtimeCoordinator.runtimeFor(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeOpenClaw,
+      ),
+    );
+    if (normalScore == 0 && openClawScore == 0) {
+      return null;
+    }
+    if (normalScore == openClawScore) {
+      return null;
+    }
+    return openClawScore > normalScore
+        ? ChatPageMode.openclaw
+        : ChatPageMode.normal;
+  }
+
+  ChatPageMode? _conversationModeFromArgs(List<String> args) {
+    return _explicitConversationModeFromArgs(args) ??
+        _runtimeConversationModeFromArgs(args);
+  }
+
+  ChatSurfaceMode? _surfaceForArgs(List<String> args) {
+    final requestedMode = _conversationModeFromArgs(args);
+    if (requestedMode != null) {
+      return _surfaceFromMode(requestedMode);
+    }
+    if (_shouldOpenNormalChatForArgs(args)) {
+      return ChatSurfaceMode.normal;
+    }
+    return null;
+  }
 
   List<ChatMessageModel> get _messages =>
       _activeRuntime?.messages ?? _messagesByMode[_activeMode]!;
@@ -522,6 +635,11 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   set currentConversation(ConversationModel? value) =>
       _currentConversation = value;
   @override
+  String get currentConversationMode => switch (_activeMode) {
+    ChatPageMode.openclaw => kConversationModeOpenClaw,
+    ChatPageMode.normal => kConversationModeNormal,
+  };
+  @override
   List<String> get widgetArgs => widget.args;
 
   @override
@@ -539,6 +657,25 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     List<ChatMessageModel> messages,
   ) {
     final mode = _activeMode;
+    final requestedMode = _conversationModeFromArgs(widget.args);
+    final shouldBackfillMode =
+        conversation != null &&
+        !conversation.hasExplicitMode &&
+        requestedMode == mode;
+    final conversationWithMode =
+        shouldBackfillMode
+        ? conversation!.copyWith(
+            mode: mode == ChatPageMode.openclaw
+                ? kConversationModeOpenClaw
+                : kConversationModeNormal,
+          )
+        : conversation;
+    if (conversationWithMode != null) {
+      _currentConversationByMode[mode] = conversationWithMode;
+      if (conversation != conversationWithMode) {
+        unawaited(ConversationService.updateConversation(conversationWithMode));
+      }
+    }
     final runtime = _runtimeCoordinator.runtimeFor(
       conversationId: conversationId,
       mode: _modeKey(mode),
@@ -548,10 +685,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
         conversationId: conversationId,
         mode: _modeKey(mode),
         initialMessages: messages,
-        conversation: conversation,
+        conversation: conversationWithMode,
       );
-    } else if (conversation != null) {
-      runtime.conversation = conversation;
+    } else if (conversationWithMode != null) {
+      runtime.conversation = conversationWithMode;
     }
     if (mode == ChatPageMode.normal) {
       unawaited(
@@ -722,6 +859,19 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       _showConversationModelMentionChip = false;
       _showModelMentionPanel = false;
       _activeModelMentionToken = null;
+      _isConversationModelSelectorActive = false;
+      _isQuickModelPickerActive = false;
+      _isQuickModelPickerLongPressing = false;
+      _quickModelPickerHasEnteredList = false;
+      _quickModelPickerProviderProfileId = null;
+      _quickModelPickerModels = const [];
+      _quickModelPickerHoverSelection = null;
+      _quickModelPickerAutoScrollTimer?.cancel();
+      _quickModelPickerAutoScrollTimer = null;
+      _quickModelPickerPointerPosition = null;
+      _quickModelPickerAutoScrollDelta = 0;
+      _conversationModelSearchController.clear();
+      _quickModelPickerSearchController.clear();
     }
   }
 
@@ -787,6 +937,25 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     return result;
   }
 
+  double _quickModelPickerTopOffset() {
+    final stackContext = _chatPageStackKey.currentContext;
+    final appBarContext = _chatAppBarKey.currentContext;
+    if (stackContext == null || appBarContext == null) {
+      return 72;
+    }
+    final stackRenderBox = stackContext.findRenderObject() as RenderBox?;
+    final appBarRenderBox = appBarContext.findRenderObject() as RenderBox?;
+    if (stackRenderBox == null ||
+        appBarRenderBox == null ||
+        !stackRenderBox.hasSize ||
+        !appBarRenderBox.hasSize) {
+      return 72;
+    }
+    final stackOrigin = stackRenderBox.localToGlobal(Offset.zero);
+    final appBarOrigin = appBarRenderBox.localToGlobal(Offset.zero);
+    return appBarOrigin.dy - stackOrigin.dy + appBarRenderBox.size.height + 6;
+  }
+
   // ===================== Part 方法声明 =====================
 
   bool _argsChanged(List<String> oldArgs, List<String> newArgs);
@@ -796,6 +965,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   void _forceSwitchToNormalSurface();
 
   void _resetAndReloadConversation();
+
+  void _handleQuickModelPickerSearchChanged();
 
   void _notifySummarySheetReadyIfNeeded();
 
@@ -886,10 +1057,39 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Future<void> _openConversationModelSelector(BuildContext anchorContext);
 
+  void _closeConversationModelSelector({bool clearSearch = true});
+
+  void _openQuickModelPicker({
+    required bool longPressing,
+    Offset? globalPosition,
+    bool requestSearchFocus = false,
+  });
+
+  void _handleModelLongPressStart(
+    BuildContext anchorContext,
+    Offset globalPosition,
+  );
+
+  void _handleModelLongPressMove(Offset globalPosition);
+
+  Future<void> _handleModelLongPressEnd(Offset globalPosition);
+
+  void _handleModelLongPressCancel();
+
+  void _closeQuickModelPicker();
+
+  List<ProviderModelOption> get _filteredQuickModelPickerModels;
+
+  String get _quickModelPickerSearchHintLabel;
+
   Future<void> _applyDispatchSceneModelSelection({
     required String providerProfileId,
     required String modelId,
   });
+
+  Widget _buildConversationModelSelectorPanel();
+
+  Widget? _buildQuickModelPickerOverlay();
 
   Widget _buildModelMentionPanel();
 

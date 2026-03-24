@@ -73,6 +73,7 @@ class ConversationService {
           id: conversationId,
           title: title,
           summary: null,
+          mode: null,
           status: 0,
           lastMessage: lastText,
           messageCount: messages.length,
@@ -173,6 +174,7 @@ class ConversationService {
   static Future<int?> createConversation({
     required String title,
     String? summary,
+    String? mode,
   }) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -182,6 +184,7 @@ class ConversationService {
         id: newId,
         title: title,
         summary: summary,
+        mode: mode,
         status: 0,
         lastMessage: null,
         messageCount: 0,

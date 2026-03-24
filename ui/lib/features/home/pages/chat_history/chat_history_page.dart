@@ -119,7 +119,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     if (_deletingIds.contains(conversation.id)) {
       return;
     }
-    GoRouterManager.push('/home/chat', extra: [conversation.id.toString()]);
+    GoRouterManager.push('/home/chat', extra: conversation.buildChatPageArgs());
   }
 
   void _createConversation() {

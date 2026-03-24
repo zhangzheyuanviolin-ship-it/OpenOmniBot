@@ -300,7 +300,10 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
       onTap: () {
         // 点击对话，跳转到全屏聊天页面
         Navigator.pop(context); // 关闭侧栏
-        GoRouterManager.push('/home/chat', extra: [conversation.id.toString()]);
+        GoRouterManager.push(
+          '/home/chat',
+          extra: conversation.buildChatPageArgs(),
+        );
       },
       onLongPressStart: (LongPressStartDetails details) {
         showMenu(

@@ -329,6 +329,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           id: conversationId,
           title: title,
           summary: summary,
+          mode: mode,
           status: 0,
           lastMessage: lastMessage,
           messageCount: messageCount,

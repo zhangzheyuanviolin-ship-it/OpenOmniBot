@@ -174,11 +174,20 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final commandPanelBottomOffset =
         (_popupMenuBottomOffset() + inputBottomPadding + keyboardSpacer + 6)
             .toDouble();
+    final quickModelPickerOverlay = _buildQuickModelPickerOverlay();
 
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        if (_isQuickModelPickerActive) {
+          _closeQuickModelPicker();
+          return;
+        }
+        if (_isConversationModelSelectorActive) {
+          _closeConversationModelSelector();
+          return;
+        }
         unawaited(saveConversationWithSummary());
         if (GoRouterManager.canPop()) {
           GoRouterManager.pop();
@@ -205,11 +214,28 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               _interruptCompanionAutoHomeIfNeeded();
               unawaited(_handleOutsideTap(event.position));
             },
+            onPointerMove: (event) {
+              if (_isQuickModelPickerLongPressing) {
+                _handleModelLongPressMove(event.position);
+              }
+            },
+            onPointerUp: (event) {
+              if (_isQuickModelPickerLongPressing) {
+                unawaited(_handleModelLongPressEnd(event.position));
+              }
+            },
+            onPointerCancel: (_) {
+              if (_isQuickModelPickerLongPressing) {
+                _handleModelLongPressCancel();
+              }
+            },
             child: Stack(
+              key: _chatPageStackKey,
               children: [
                 Column(
                   children: [
                     ChatAppBar(
+                      key: _chatAppBarKey,
                       onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
                       onCompanionTap: () {
                         unawaited(_toggleCompanionMode());
@@ -222,10 +248,53 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                           _activeSurfaceMode == ChatSurfaceMode.normal
                           ? _activeNormalChatModelId
                           : null,
-                      onModelTap: _activeSurfaceMode == ChatSurfaceMode.normal
-                          ? (anchorContext) {
+                      isModelSelectorActive:
+                          _isConversationModelSelectorActive,
+                      isQuickModelPickerActive: _isQuickModelPickerActive,
+                      modelSearchController:
+                          _conversationModelSearchController,
+                      modelSearchFocusNode: _conversationModelSearchFocusNode,
+                      onCloseModelSelector: () {
+                        _closeConversationModelSelector();
+                      },
+                      modelSelectorPanel: _isConversationModelSelectorActive
+                          ? _buildConversationModelSelectorPanel()
+                          : null,
+                      modelSelectorSurfaceKey: _conversationModelSelectorKey,
+                      quickModelSearchController:
+                          _quickModelPickerSearchController,
+                      quickModelSearchFocusNode: _quickModelPickerSearchFocusNode,
+                      onCloseQuickModelPicker: _closeQuickModelPicker,
+                      quickModelPickerSurfaceKey: _quickModelPickerSurfaceKey,
+                      quickModelSearchHint:
+                          _quickModelPickerSearchHintLabel,
+                      onModelLabelTap:
+                          _activeSurfaceMode == ChatSurfaceMode.normal
+                          ? () {
+                              _openQuickModelPicker(
+                                longPressing: false,
+                                requestSearchFocus: true,
+                              );
+                            }
+                          : null,
+                      onModelLongPressStart:
+                          _activeSurfaceMode == ChatSurfaceMode.normal
+                          ? (anchorContext, globalPosition) {
+                              _handleModelLongPressStart(
+                                anchorContext,
+                                globalPosition,
+                              );
+                            }
+                          : null,
+                      onModelLongPressMove:
+                          _activeSurfaceMode == ChatSurfaceMode.normal
+                          ? _handleModelLongPressMove
+                          : null,
+                      onModelLongPressEnd:
+                          _activeSurfaceMode == ChatSurfaceMode.normal
+                          ? (globalPosition) {
                               unawaited(
-                                _openConversationModelSelector(anchorContext),
+                                _handleModelLongPressEnd(globalPosition),
                               );
                             }
                           : null,
@@ -313,6 +382,16 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                     child:
                         _chatInputAreaKey.currentState?.buildPopupMenu() ??
                         const SizedBox.shrink(),
+                  ),
+                if (quickModelPickerOverlay != null)
+                  Positioned(
+                    top: _quickModelPickerTopOffset(),
+                    left: 0,
+                    right: 0,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: quickModelPickerOverlay,
+                    ),
                   ),
               ],
             ),

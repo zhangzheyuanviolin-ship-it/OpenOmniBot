@@ -627,6 +627,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         final newId = await ConversationService.createConversation(
           title: title,
           summary: summary,
+          mode: kConversationModeNormal,
         );
         if (newId != null) {
           _currentConversationId = newId;
@@ -634,6 +635,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
             id: newId,
             title: title,
             summary: summary,
+            mode: kConversationModeNormal,
             status: 0,
             lastMessage: lastMessage,
             messageCount: messageCount,
@@ -666,6 +668,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
               id: _currentConversationId!,
               title: title,
               summary: summary,
+              mode: kConversationModeNormal,
               status: 0,
               lastMessage: lastMessage,
               messageCount: messageCount,

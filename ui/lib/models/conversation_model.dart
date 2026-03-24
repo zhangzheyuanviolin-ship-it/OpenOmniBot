@@ -1,7 +1,18 @@
+const String kConversationModeNormal = 'normal';
+const String kConversationModeOpenClaw = 'openclaw';
+
+String normalizeConversationMode(String? rawMode) {
+  final normalized = rawMode?.trim().toLowerCase() ?? '';
+  return normalized == kConversationModeOpenClaw
+      ? kConversationModeOpenClaw
+      : kConversationModeNormal;
+}
+
 class ConversationModel {
   final int id;
   final String title;
   final String? summary;
+  final String? mode;
   final int status; // 0: 进行中, 1: 已完成
   final String? lastMessage;
   final int messageCount;
@@ -12,6 +23,7 @@ class ConversationModel {
     required this.id,
     required this.title,
     this.summary,
+    this.mode,
     required this.status,
     this.lastMessage,
     required this.messageCount,
@@ -20,10 +32,12 @@ class ConversationModel {
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json) {
+    final rawMode = json['mode']?.toString().trim();
     return ConversationModel(
       id: json['id'] as int,
       title: json['title'] as String,
       summary: json['summary'] as String?,
+      mode: rawMode == null || rawMode.isEmpty ? null : rawMode,
       status: json['status'] as int? ?? 0,
       lastMessage: json['lastMessage'] as String?,
       messageCount: json['messageCount'] as int? ?? 0,
@@ -37,6 +51,7 @@ class ConversationModel {
       'id': id,
       'title': title,
       'summary': summary,
+      if (hasExplicitMode) 'mode': resolvedMode,
       'status': status,
       'lastMessage': lastMessage,
       'messageCount': messageCount,
@@ -49,6 +64,7 @@ class ConversationModel {
     int? id,
     String? title,
     String? summary,
+    String? mode,
     int? status,
     String? lastMessage,
     int? messageCount,
@@ -59,6 +75,7 @@ class ConversationModel {
       id: id ?? this.id,
       title: title ?? this.title,
       summary: summary ?? this.summary,
+      mode: mode ?? this.mode,
       status: status ?? this.status,
       lastMessage: lastMessage ?? this.lastMessage,
       messageCount: messageCount ?? this.messageCount,
@@ -93,4 +110,19 @@ class ConversationModel {
   DateTime get updatedDate => DateTime.fromMillisecondsSinceEpoch(updatedAt);
 
   bool get isActive => status == 0;
+
+  String get resolvedMode => normalizeConversationMode(mode);
+
+  bool get hasExplicitMode => (mode?.trim().isNotEmpty ?? false);
+
+  bool get isOpenClawConversation =>
+      resolvedMode == kConversationModeOpenClaw;
+
+  List<String> buildChatPageArgs() {
+    final args = <String>[id.toString()];
+    if (hasExplicitMode) {
+      args.add('mode:$resolvedMode');
+    }
+    return args;
+  }
 }

@@ -704,7 +704,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     Navigator.pop(context);
     GoRouterManager.pushReplacement(
       '/home/chat',
-      extra: [conversation.id.toString()],
+      extra: conversation.buildChatPageArgs(),
     );
   }
 
@@ -878,7 +878,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             // 使用 pushReplacement 替换当前页面，避免路由栈堆积
             GoRouterManager.pushReplacement(
               '/home/chat',
-              extra: [conversation.id.toString()],
+              extra: conversation.buildChatPageArgs(),
             );
           },
           onLongPress: () => _showDeleteDialog(conversation),

@@ -1,6 +1,5 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../command_overlay/widgets/message_bubble.dart';
@@ -15,7 +14,24 @@ class ChatAppBar extends StatelessWidget {
   final ChatSurfaceMode activeMode;
   final ValueChanged<ChatSurfaceMode> onModeChanged;
   final String? activeModelId;
-  final ValueChanged<BuildContext>? onModelTap;
+  final void Function(BuildContext context, Offset globalPosition)?
+  onModelLongPressStart;
+  final ValueChanged<Offset>? onModelLongPressMove;
+  final ValueChanged<Offset>? onModelLongPressEnd;
+  final VoidCallback? onModelLongPressCancel;
+  final VoidCallback? onModelLabelTap;
+  final bool isModelSelectorActive;
+  final bool isQuickModelPickerActive;
+  final TextEditingController? modelSearchController;
+  final FocusNode? modelSearchFocusNode;
+  final VoidCallback? onCloseModelSelector;
+  final Widget? modelSelectorPanel;
+  final Key? modelSelectorSurfaceKey;
+  final TextEditingController? quickModelSearchController;
+  final FocusNode? quickModelSearchFocusNode;
+  final VoidCallback? onCloseQuickModelPicker;
+  final Key? quickModelPickerSurfaceKey;
+  final String? quickModelSearchHint;
   final bool isCompanionModeEnabled;
   final bool isCompanionToggleLoading;
 
@@ -26,7 +42,23 @@ class ChatAppBar extends StatelessWidget {
     required this.activeMode,
     required this.onModeChanged,
     this.activeModelId,
-    this.onModelTap,
+    this.onModelLongPressStart,
+    this.onModelLongPressMove,
+    this.onModelLongPressEnd,
+    this.onModelLongPressCancel,
+    this.onModelLabelTap,
+    this.isModelSelectorActive = false,
+    this.isQuickModelPickerActive = false,
+    this.modelSearchController,
+    this.modelSearchFocusNode,
+    this.onCloseModelSelector,
+    this.modelSelectorPanel,
+    this.modelSelectorSurfaceKey,
+    this.quickModelSearchController,
+    this.quickModelSearchFocusNode,
+    this.onCloseQuickModelPicker,
+    this.quickModelPickerSurfaceKey,
+    this.quickModelSearchHint,
     this.isCompanionModeEnabled = false,
     this.isCompanionToggleLoading = false,
   });
@@ -34,273 +66,320 @@ class ChatAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconTint = Colors.grey[800]!;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      child: Row(
-        children: [
-          // 左侧菜单按钮 - 和主页一样的样式
-          GestureDetector(
-            onTap: onMenuTap,
+    final modelLabel = activeMode == ChatSurfaceMode.normal
+        ? (activeModelId ?? '').trim()
+        : '';
+
+    if (isQuickModelPickerActive) {
+      final controller = quickModelSearchController;
+      final focusNode = quickModelSearchFocusNode;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            key: quickModelPickerSurfaceKey,
+            constraints: const BoxConstraints(maxWidth: 272),
             child: Container(
-              color: Colors.transparent,
-              padding: const EdgeInsets.all(15),
-              child: SvgPicture.asset(
-                'assets/home/drawer_icon.svg',
-                width: 20,
-                height: 20,
-                colorFilter: ColorFilter.mode(iconTint, BlendMode.srcIn),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFDCE7F7)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x140F172A),
+                    blurRadius: 16,
+                    offset: Offset(0, 8),
+                  ),
+                ],
               ),
-            ),
-          ),
-          // 顶部模式滑块
-          Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 176),
-                child: _ChatModeModelSwitcher(
-                  activeMode: activeMode,
-                  onModeChanged: onModeChanged,
-                  activeModelId: activeModelId,
-                  onModelTap: onModelTap,
-                ),
-              ),
-            ),
-          ),
-          // 右侧小万陪伴按钮
-          GestureDetector(
-            onTap: isCompanionToggleLoading ? null : onCompanionTap,
-            child: Container(
-              color: Colors.transparent,
-              padding: const EdgeInsets.all(15),
-              child: isCompanionToggleLoading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          isCompanionModeEnabled
-                              ? const Color(0xFF1930D9)
-                              : iconTint,
-                        ),
-                      ),
-                    )
-                  : SvgPicture.asset(
-                      'assets/home/avatar.svg',
-                      width: 20,
-                      height: 20,
-                      colorFilter: ColorFilter.mode(
-                        isCompanionModeEnabled
-                            ? const Color(0xFF1930D9)
-                            : iconTint,
-                        BlendMode.srcIn,
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: onCloseQuickModelPicker,
+                    child: const SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        size: 16,
+                        color: Color(0xFF617390),
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(
+                    Icons.search_rounded,
+                    size: 18,
+                    color: Color(0xFF9AA4B6),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      autofocus: false,
+                      scrollPadding: EdgeInsets.zero,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF1F2937),
+                        fontWeight: FontWeight.w500,
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: quickModelSearchHint ?? '搜索模型 ID',
+                        hintStyle: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF9AA4B6),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                  if ((controller?.text ?? '').isNotEmpty)
+                    GestureDetector(
+                      onTap: controller?.clear,
+                      child: const SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChatModeModelSwitcher extends StatefulWidget {
-  const _ChatModeModelSwitcher({
-    required this.activeMode,
-    required this.onModeChanged,
-    this.activeModelId,
-    this.onModelTap,
-  });
-
-  final ChatSurfaceMode activeMode;
-  final ValueChanged<ChatSurfaceMode> onModeChanged;
-  final String? activeModelId;
-  final ValueChanged<BuildContext>? onModelTap;
-
-  @override
-  State<_ChatModeModelSwitcher> createState() => _ChatModeModelSwitcherState();
-}
-
-class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
-  static const Duration _idleDelay = Duration(milliseconds: 1700);
-  static const Duration _switchDuration = Duration(milliseconds: 460);
-  static const double _verticalSwitchThreshold = 10;
-  static const double _verticalVelocityThreshold = 240;
-
-  Timer? _idleTimer;
-  bool _showModelLabel = false;
-  double _verticalDragDelta = 0;
-
-  String get _modelLabel {
-    final text = (widget.activeModelId ?? '').trim();
-    if (text.isEmpty) {
-      return '未设置模型';
+        ),
+      );
     }
-    return text;
-  }
 
-  bool get _canRevealModelLabel =>
-      widget.activeMode == ChatSurfaceMode.normal &&
-      (widget.activeModelId ?? '').trim().isNotEmpty;
-
-  @override
-  void initState() {
-    super.initState();
-    _armIdleTimer();
-  }
-
-  @override
-  void didUpdateWidget(covariant _ChatModeModelSwitcher oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.activeMode != widget.activeMode) {
-      _markInteraction();
-      return;
-    }
-    final previousModelId = (oldWidget.activeModelId ?? '').trim();
-    final currentModelId = (widget.activeModelId ?? '').trim();
-    if (previousModelId != currentModelId && !_showModelLabel) {
-      _armIdleTimer();
-    }
-  }
-
-  @override
-  void dispose() {
-    _idleTimer?.cancel();
-    super.dispose();
-  }
-
-  void _armIdleTimer() {
-    _idleTimer?.cancel();
-    if (!_canRevealModelLabel) {
-      if (_showModelLabel && mounted) {
-        setState(() => _showModelLabel = false);
-      }
-      return;
-    }
-    _idleTimer = Timer(_idleDelay, () {
-      if (!mounted || !_canRevealModelLabel) {
-        return;
-      }
-      setState(() => _showModelLabel = true);
-    });
-  }
-
-  void _markInteraction() {
-    _idleTimer?.cancel();
-    if (!_canRevealModelLabel) {
-      if (_showModelLabel && mounted) {
-        setState(() => _showModelLabel = false);
-      }
-      return;
-    }
-    if (_showModelLabel && mounted) {
-      setState(() => _showModelLabel = false);
-    }
-    _armIdleTimer();
-  }
-
-  void _handleVerticalDragUpdate(DragUpdateDetails details) {
-    _verticalDragDelta += details.delta.dy;
-  }
-
-  void _handleVerticalDragEnd(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
-    final shouldToggle = _verticalDragDelta.abs() > _verticalSwitchThreshold ||
-        velocity.abs() > _verticalVelocityThreshold;
-    if (!shouldToggle) {
-      _verticalDragDelta = 0;
-      return;
-    }
-    final intent = _verticalDragDelta + velocity * 0.015;
-    _verticalDragDelta = 0;
-
-    if (intent > 0) {
-      if (_canRevealModelLabel && !_showModelLabel) {
-        _idleTimer?.cancel();
-        setState(() => _showModelLabel = true);
-      }
-      return;
-    }
-    if (_showModelLabel) {
-      _markInteraction();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final modelLabelWidget = Builder(
-      builder: (anchorContext) {
-        final text = Text(
-          _modelLabel,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 14,
-            color: Color(0xFF9DA9BB),
-            fontWeight: FontWeight.w500,
-          ),
-        );
-        if (widget.onModelTap == null) {
-          return Center(child: text);
-        }
-        return InkWell(
-          onTap: () {
-            widget.onModelTap?.call(anchorContext);
-          },
-          borderRadius: BorderRadius.circular(999),
-          child: Center(child: text),
-        );
-      },
-    );
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFD9E6FB), width: 1),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(999),
-        child: SizedBox(
-          height: 32,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragUpdate: _handleVerticalDragUpdate,
-            onVerticalDragEnd: _handleVerticalDragEnd,
-            onVerticalDragCancel: () {
-              _verticalDragDelta = 0;
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              clipBehavior: Clip.hardEdge,
+    if (isModelSelectorActive) {
+      final controller = modelSearchController;
+      final focusNode = modelSearchFocusNode;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            key: modelSelectorSurfaceKey,
+            constraints: const BoxConstraints(maxWidth: 240),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                AnimatedPositioned(
-                  duration: _switchDuration,
-                  curve: Curves.easeInOutCubicEmphasized,
-                  left: 0,
-                  right: 0,
-                  height: 32,
-                  top: _showModelLabel ? 32 : 0,
-                  child: ChatModeSlider(
-                    activeMode: widget.activeMode,
-                    onChanged: widget.onModeChanged,
-                    onInteracted: _markInteraction,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFDCE7F7)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x140F172A),
+                        blurRadius: 16,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: onCloseModelSelector,
+                        child: const SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            size: 16,
+                            color: Color(0xFF617390),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.search_rounded,
+                        size: 18,
+                        color: Color(0xFF9AA4B6),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          autofocus: false,
+                          scrollPadding: EdgeInsets.zero,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF1F2937),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '搜索模型 ID',
+                            hintStyle: TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF9AA4B6),
+                              fontWeight: FontWeight.w500,
+                            ),
+                            border: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
+                      if ((controller?.text ?? '').isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            controller?.clear();
+                            focusNode?.requestFocus();
+                          },
+                          child: const SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                AnimatedPositioned(
-                  duration: _switchDuration,
-                  curve: Curves.easeInOutCubicEmphasized,
-                  left: 0,
-                  right: 0,
-                  height: 32,
-                  top: _showModelLabel ? 0 : -32,
-                  child: modelLabelWidget,
-                ),
+                if (modelSelectorPanel != null) ...[
+                  const SizedBox(height: 10),
+                  modelSelectorPanel!,
+                ],
               ],
             ),
           ),
         ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              // 左侧菜单按钮 - 和主页一样的样式
+              GestureDetector(
+                onTap: onMenuTap,
+                child: Container(
+                  color: Colors.transparent,
+                  padding: const EdgeInsets.all(15),
+                  child: SvgPicture.asset(
+                    'assets/home/drawer_icon.svg',
+                    width: 20,
+                    height: 20,
+                    colorFilter: ColorFilter.mode(iconTint, BlendMode.srcIn),
+                  ),
+                ),
+              ),
+              // 顶部模式滑块
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 176),
+                    child: ChatModeSlider(
+                      activeMode: activeMode,
+                      onChanged: onModeChanged,
+                      onModelLongPressStart: onModelLongPressStart,
+                      onModelLongPressMove: onModelLongPressMove,
+                      onModelLongPressEnd: onModelLongPressEnd,
+                      onModelLongPressCancel: onModelLongPressCancel,
+                    ),
+                  ),
+                ),
+              ),
+              // 右侧小万陪伴按钮
+              GestureDetector(
+                onTap: isCompanionToggleLoading ? null : onCompanionTap,
+                child: Container(
+                  color: Colors.transparent,
+                  padding: const EdgeInsets.all(15),
+                  child: isCompanionToggleLoading
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              isCompanionModeEnabled
+                                  ? const Color(0xFF1930D9)
+                                  : iconTint,
+                            ),
+                          ),
+                        )
+                      : SvgPicture.asset(
+                          'assets/home/avatar.svg',
+                          width: 20,
+                          height: 20,
+                          colorFilter: ColorFilter.mode(
+                            isCompanionModeEnabled
+                                ? const Color(0xFF1930D9)
+                                : iconTint,
+                            BlendMode.srcIn,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+          if (modelLabel.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onModelLabelTap,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 240),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          modelLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: onModelLabelTap == null
+                                ? const Color(0xFF9DA9BB)
+                                : const Color(0xFF7C8CA5),
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                      if (onModelLabelTap != null) ...[
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.expand_more_rounded,
+                          size: 14,
+                          color: Color(0xFF9DA9BB),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -309,13 +388,20 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
 class ChatModeSlider extends StatefulWidget {
   final ChatSurfaceMode activeMode;
   final ValueChanged<ChatSurfaceMode> onChanged;
-  final VoidCallback? onInteracted;
+  final void Function(BuildContext context, Offset globalPosition)?
+  onModelLongPressStart;
+  final ValueChanged<Offset>? onModelLongPressMove;
+  final ValueChanged<Offset>? onModelLongPressEnd;
+  final VoidCallback? onModelLongPressCancel;
 
   const ChatModeSlider({
     super.key,
     required this.activeMode,
     required this.onChanged,
-    this.onInteracted,
+    this.onModelLongPressStart,
+    this.onModelLongPressMove,
+    this.onModelLongPressEnd,
+    this.onModelLongPressCancel,
   });
 
   @override
@@ -367,14 +453,31 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
       behavior: HitTestBehavior.opaque,
       onHorizontalDragUpdate: (details) {
         _dragDelta += details.delta.dx;
-        widget.onInteracted?.call();
       },
       onHorizontalDragEnd: (details) {
-        widget.onInteracted?.call();
         _handleDragEnd(velocity: details.primaryVelocity ?? 0);
       },
+      onLongPressStart: widget.onModelLongPressStart == null
+          ? null
+          : (details) {
+              HapticFeedback.mediumImpact();
+              widget.onModelLongPressStart?.call(
+                context,
+                details.globalPosition,
+              );
+            },
+      onLongPressMoveUpdate: widget.onModelLongPressMove == null
+          ? null
+          : (details) {
+              widget.onModelLongPressMove?.call(details.globalPosition);
+            },
+      onLongPressEnd: widget.onModelLongPressEnd == null
+          ? null
+          : (details) {
+              widget.onModelLongPressEnd?.call(details.globalPosition);
+            },
+      onLongPressCancel: widget.onModelLongPressCancel,
       onTapUp: (details) {
-        widget.onInteracted?.call();
         final box = context.findRenderObject() as RenderBox?;
         if (box == null || !box.hasSize) return;
         final local = box.globalToLocal(details.globalPosition);
