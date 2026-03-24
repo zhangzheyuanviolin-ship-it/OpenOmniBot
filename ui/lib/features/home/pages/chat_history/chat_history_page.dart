@@ -6,6 +6,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/pages/chat_history/widgets/chat_history_conversation_item.dart';
 import 'package:ui/models/conversation_model.dart';
+import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/cache_util.dart';
@@ -21,7 +22,7 @@ class ChatHistoryPage extends StatefulWidget {
 
 class _ChatHistoryPageState extends State<ChatHistoryPage> {
   List<ConversationModel> _conversations = const [];
-  final Set<int> _deletingIds = <int>{};
+  final Set<String> _deletingKeys = <String>{};
   bool _isLoading = true;
 
   Future<void> _triggerDeleteHaptic() async {
@@ -53,7 +54,8 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     }
 
     try {
-      final loadedConversations = await ConversationService.getAllConversations();
+      final loadedConversations =
+          await ConversationService.getAllConversations();
       if (!mounted) {
         return;
       }
@@ -73,7 +75,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   }
 
   Future<void> _deleteConversation(ConversationModel conversation) async {
-    if (_deletingIds.contains(conversation.id)) {
+    if (_deletingKeys.contains(conversation.threadKey)) {
       return;
     }
 
@@ -85,12 +87,15 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     }
 
     setState(() {
-      _deletingIds.add(conversation.id);
+      _deletingKeys.add(conversation.threadKey);
       _conversations = List<ConversationModel>.from(_conversations)
         ..removeAt(originalIndex);
     });
 
-    final deleted = await ConversationService.deleteConversation(conversation.id);
+    final deleted = await ConversationService.deleteConversation(
+      conversation.id,
+      mode: conversation.mode,
+    );
     if (!mounted) {
       return;
     }
@@ -99,7 +104,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     }
 
     setState(() {
-      _deletingIds.remove(conversation.id);
+      _deletingKeys.remove(conversation.threadKey);
       if (!deleted) {
         final restoredIndex = originalIndex <= _conversations.length
             ? originalIndex
@@ -116,14 +121,25 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   }
 
   void _openConversation(ConversationModel conversation) {
-    if (_deletingIds.contains(conversation.id)) {
+    if (_deletingKeys.contains(conversation.threadKey)) {
       return;
     }
-    GoRouterManager.push('/home/chat', extra: [conversation.id.toString()]);
+    GoRouterManager.push(
+      '/home/chat',
+      extra: ConversationThreadTarget.existing(
+        conversationId: conversation.id,
+        mode: conversation.mode,
+      ),
+    );
   }
 
   void _createConversation() {
-    GoRouterManager.push('/home/chat', extra: const ['new']);
+    GoRouterManager.push(
+      '/home/chat',
+      extra: ConversationThreadTarget.newConversation(
+        requestKey: DateTime.now().microsecondsSinceEpoch.toString(),
+      ),
+    );
   }
 
   @override
@@ -164,7 +180,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
           final conversation = _conversations[index];
           return ChatHistoryConversationItem(
             conversation: conversation,
-            isDeleting: _deletingIds.contains(conversation.id),
+            isDeleting: _deletingKeys.contains(conversation.threadKey),
             onTap: () => _openConversation(conversation),
             onDelete: () => _deleteConversation(conversation),
           );
@@ -178,18 +194,11 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 64,
-            color: Colors.grey[300],
-          ),
+          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
             '\u6682\u65e0\u804a\u5929\u8bb0\u5f55',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[500],
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey[500]),
           ),
           const SizedBox(height: 24),
           GestureDetector(

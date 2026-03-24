@@ -94,6 +94,7 @@ object DatabaseHelper {
                 CREATE TABLE IF NOT EXISTS `conversations` (
                     `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                     `title` TEXT NOT NULL,
+                    `mode` TEXT NOT NULL DEFAULT 'normal',
                     `summary` TEXT,
                     `status` INTEGER NOT NULL DEFAULT 0,
                     `lastMessage` TEXT,
@@ -108,30 +109,45 @@ object DatabaseHelper {
             val now = System.currentTimeMillis()
             database.execSQL(
                 """
-                INSERT INTO conversations (title, summary, status, lastMessage, messageCount, createdAt, updatedAt)
-                VALUES ('帮我订明天去北京的机票', '订机票', 0, '好的，请告诉我出发城市和时间。', 2, $now, $now)
+                INSERT INTO conversations (title, mode, summary, status, lastMessage, messageCount, createdAt, updatedAt)
+                VALUES ('帮我订明天去北京的机票', 'normal', '订机票', 0, '好的，请告诉我出发城市和时间。', 2, $now, $now)
                 """.trimIndent()
             )
             database.execSQL(
                 """
-                INSERT INTO conversations (title, summary, status, lastMessage, messageCount, createdAt, updatedAt)
-                VALUES ('现在打一辆车去国贸', '打车', 1, '已为您安排车辆', 2, $now, $now)
+                INSERT INTO conversations (title, mode, summary, status, lastMessage, messageCount, createdAt, updatedAt)
+                VALUES ('现在打一辆车去国贸', 'normal', '打车', 1, '已为您安排车辆', 2, $now, $now)
                 """.trimIndent()
             )
             database.execSQL(
                 """
-                INSERT INTO conversations (title, summary, status, lastMessage, messageCount, createdAt, updatedAt)
-                VALUES ('五点叫个快递', '快递', 1, '好的，已提醒', 2, $now, $now)
+                INSERT INTO conversations (title, mode, summary, status, lastMessage, messageCount, createdAt, updatedAt)
+                VALUES ('五点叫个快递', 'normal', '快递', 1, '好的，已提醒', 2, $now, $now)
                 """.trimIndent()
             )
             OmniLog.d("DatabaseHelper", "已插入3条示例对话记录")
         }
     }
 
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                "ALTER TABLE conversations ADD COLUMN mode TEXT NOT NULL DEFAULT 'normal'"
+            )
+        }
+    }
+
     fun init(context: Context) {
         database = Room.databaseBuilder(
             context.applicationContext, AppDatabase::class.java, LOCAL_DATABASE_NAME
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
+        ).addMigrations(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7
+        ).build()
 
     }
 

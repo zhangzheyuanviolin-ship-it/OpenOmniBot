@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/chat_message_model.dart';
+import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/services/conversation_history_service.dart';
 
 class ConversationService {
@@ -19,7 +20,11 @@ class ConversationService {
     try {
       final jsonList = jsonDecode(jsonStr) as List;
       return jsonList
-          .map((json) => ConversationModel.fromJson(Map<String, dynamic>.from(json as Map)))
+          .map(
+            (json) => ConversationModel.fromJson(
+              Map<String, dynamic>.from(json as Map),
+            ),
+          )
           .toList();
     } catch (e) {
       print('[ConversationService] 本地对话列表解析失败: $e');
@@ -32,25 +37,41 @@ class ConversationService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final keys = prefs.getKeys();
-    final messageKeys = keys.where(
-      (k) => k.startsWith(ConversationHistoryService.conversationMessagesKeyPrefix),
-    );
+    final messageKeys = keys
+        .where(
+          (key) => key.startsWith(
+            ConversationHistoryService.conversationMessagesKeyPrefix,
+          ),
+        )
+        .map(ConversationHistoryService.tryParseConversationMessagesKey)
+        .whereType<ConversationMessageStorageKey>()
+        .fold<Map<String, ConversationMessageStorageKey>>(
+          <String, ConversationMessageStorageKey>{},
+          (accumulator, item) {
+            accumulator[item.threadKey] = item;
+            return accumulator;
+          },
+        )
+        .values;
 
-    final baseConversations = localConversations ?? await _loadLocalConversations();
+    final baseConversations =
+        localConversations ?? await _loadLocalConversations();
     if (messageKeys.isEmpty) return _sortConversations([...baseConversations]);
 
     final List<ConversationModel> conversations = [];
-    final Set<int> existingIds = baseConversations.map((c) => c.id).toSet();
+    final Set<String> existingKeys = baseConversations
+        .map((conversation) => conversation.threadKey)
+        .toSet();
 
-    for (final key in messageKeys) {
-      final idStr = key.substring(ConversationHistoryService.conversationMessagesKeyPrefix.length);
-      final conversationId = int.tryParse(idStr);
-      if (conversationId == null) continue;
+    for (final storageKey in messageKeys) {
+      if (existingKeys.contains(storageKey.threadKey)) continue;
+      final conversationId = storageKey.conversationId;
+      final mode = storageKey.mode;
 
-      // 跳过已存在于本地列表的对话
-      if (existingIds.contains(conversationId)) continue;
-
-      final messages = await ConversationHistoryService.getConversationMessages(conversationId);
+      final messages = await ConversationHistoryService.getConversationMessages(
+        conversationId,
+        mode: mode,
+      );
       if (messages.isEmpty) continue;
 
       // 确保消息列表中有有效的用户消息
@@ -60,17 +81,22 @@ class ConversationService {
       );
 
       final titleText = userMessage.text ?? '新对话';
-      final title = titleText.length > 20 ? '${titleText.substring(0, 20)}...' : titleText;
+      final title = titleText.length > 20
+          ? '${titleText.substring(0, 20)}...'
+          : titleText;
 
       final newest = messages.isNotEmpty ? messages.first : null;
       final oldest = messages.isNotEmpty ? messages.last : null;
       final lastText = newest?.text ?? '';
-      final createdAt = oldest?.createAt.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
+      final createdAt =
+          oldest?.createAt.millisecondsSinceEpoch ??
+          DateTime.now().millisecondsSinceEpoch;
       final updatedAt = newest?.createAt.millisecondsSinceEpoch ?? createdAt;
 
       conversations.add(
         ConversationModel(
           id: conversationId,
+          mode: mode,
           title: title,
           summary: null,
           status: 0,
@@ -85,7 +111,9 @@ class ConversationService {
     return _sortConversations([...baseConversations, ...conversations]);
   }
 
-  static Future<void> _saveLocalConversations(List<ConversationModel> conversations) async {
+  static Future<void> _saveLocalConversations(
+    List<ConversationModel> conversations,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = conversations.map((c) => c.toJson()).toList();
     await prefs.setString(_localConversationListKey, jsonEncode(jsonList));
@@ -98,14 +126,18 @@ class ConversationService {
     if (merged.isEmpty) return false;
     if (local.isEmpty) return true;
     if (merged.length != local.length) return true;
-    final localIds = local.map((c) => c.id).toSet();
+    final localKeys = local
+        .map((conversation) => conversation.threadKey)
+        .toSet();
     for (final conversation in merged) {
-      if (!localIds.contains(conversation.id)) return true;
+      if (!localKeys.contains(conversation.threadKey)) return true;
     }
     return false;
   }
 
-  static List<ConversationModel> _sortConversations(List<ConversationModel> conversations) {
+  static List<ConversationModel> _sortConversations(
+    List<ConversationModel> conversations,
+  ) {
     conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return conversations;
   }
@@ -140,7 +172,11 @@ class ConversationService {
       final result = await _assistCore.invokeMethod('getConversations');
       if (result != null && result is List) {
         final conversations = result
-            .map((json) => ConversationModel.fromJson(Map<String, dynamic>.from(json as Map)))
+            .map(
+              (json) => ConversationModel.fromJson(
+                Map<String, dynamic>.from(json as Map),
+              ),
+            )
             .toList();
         if (conversations.isNotEmpty) {
           await _saveLocalConversations(conversations);
@@ -173,6 +209,7 @@ class ConversationService {
   static Future<int?> createConversation({
     required String title,
     String? summary,
+    ConversationMode mode = ConversationMode.normal,
   }) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -180,6 +217,7 @@ class ConversationService {
       final newId = _nextConversationId(conversations);
       final conversation = ConversationModel(
         id: newId,
+        mode: mode,
         title: title,
         summary: summary,
         status: 0,
@@ -201,7 +239,9 @@ class ConversationService {
   static Future<bool> updateConversation(ConversationModel conversation) async {
     try {
       final conversations = await _loadLocalConversations();
-      final index = conversations.indexWhere((c) => c.id == conversation.id);
+      final index = conversations.indexWhere(
+        (item) => item.threadKey == conversation.threadKey,
+      );
       if (index == -1) {
         conversations.add(conversation);
       } else {
@@ -216,27 +256,49 @@ class ConversationService {
   }
 
   /// 删除对话
-  static Future<bool> deleteConversation(int conversationId) async {
+  static Future<bool> deleteConversation(
+    int conversationId, {
+    ConversationMode? mode,
+  }) async {
     try {
       // 1. 先删除消息
-      await ConversationHistoryService.clearConversationMessages(conversationId);
+      if (mode == null) {
+        for (final entryMode in ConversationMode.values) {
+          await ConversationHistoryService.clearConversationMessages(
+            conversationId,
+            mode: entryMode,
+          );
+        }
+      } else {
+        await ConversationHistoryService.clearConversationMessages(
+          conversationId,
+          mode: mode,
+        );
+      }
 
       // 2. 从本地列表中删除对话
       final conversations = await _loadLocalConversations();
-      conversations.removeWhere((c) => c.id == conversationId);
+      conversations.removeWhere(
+        (conversation) =>
+            conversation.id == conversationId &&
+            (mode == null || conversation.mode == mode),
+      );
       await _saveLocalConversations(_sortConversations(conversations));
 
-      // 3. 如果删除的是当前对话，清除当前对话ID
-      final currentId = await ConversationHistoryService.getCurrentConversationId();
-      if (currentId == conversationId) {
-        await ConversationHistoryService.saveCurrentConversationId(null);
-        await setCurrentConversationId(null);
-      }
+      // 3. 清理当前/上次可见线程记录
+      await ConversationHistoryService.clearConversationThreadReferences(
+        conversationId,
+        mode: mode,
+      );
+      await setCurrentConversationTarget(
+        await ConversationHistoryService.getLastVisibleThreadTarget(),
+      );
 
       // 4. 尝试删除原生层数据（如果原生层实现了该方法）
       try {
         await _assistCore.invokeMethod('deleteConversation', {
           'conversationId': conversationId,
+          if (mode != null) 'mode': mode.storageValue,
         });
       } catch (e) {
         // 忽略原生层删除失败，可能未实现该方法
@@ -254,10 +316,14 @@ class ConversationService {
   static Future<bool> updateConversationTitle({
     required int conversationId,
     required String newTitle,
+    ConversationMode mode = ConversationMode.normal,
   }) async {
     try {
       final conversations = await _loadLocalConversations();
-      final index = conversations.indexWhere((c) => c.id == conversationId);
+      final index = conversations.indexWhere(
+        (conversation) =>
+            conversation.id == conversationId && conversation.mode == mode,
+      );
       if (index == -1) return false;
       final updated = conversations[index].copyWith(
         title: newTitle,
@@ -278,9 +344,10 @@ class ConversationService {
     required String conversationHistory,
   }) async {
     try {
-      final result = await _assistCore.invokeMethod('generateConversationSummary', {
-        'conversationHistory': conversationHistory,
-      });
+      final result = await _assistCore.invokeMethod(
+        'generateConversationSummary',
+        {'conversationHistory': conversationHistory},
+      );
       return result as String?;
     } on PlatformException catch (e) {
       print('生成对话摘要失败: ${e.message}');
@@ -292,10 +359,17 @@ class ConversationService {
   }
 
   /// 完成对话（设置状态为已完成）
-  static Future<bool> completeConversation(int conversationId) async {
+  static Future<bool> completeConversation(
+    int conversationId, {
+    ConversationMode? mode,
+  }) async {
     try {
       final conversations = await _loadLocalConversations();
-      final index = conversations.indexWhere((c) => c.id == conversationId);
+      final index = conversations.indexWhere(
+        (conversation) =>
+            conversation.id == conversationId &&
+            (mode == null || conversation.mode == mode),
+      );
       if (index == -1) return false;
       final updated = conversations[index].copyWith(
         status: 1,
@@ -311,11 +385,15 @@ class ConversationService {
   }
 
   /// 设置当前活跃的对话ID（用于任务完成后跳转）
-  static Future<bool> setCurrentConversationId(int? conversationId) async {
+  static Future<bool> setCurrentConversationId(
+    int? conversationId, {
+    ConversationMode mode = ConversationMode.normal,
+  }) async {
     try {
-      final result = await _assistCore.invokeMethod('setCurrentConversationId', {
-        'conversationId': conversationId ?? 0,
-      });
+      final result = await _assistCore.invokeMethod(
+        'setCurrentConversationId',
+        {'conversationId': conversationId ?? 0, 'mode': mode.storageValue},
+      );
       return result == "SUCCESS";
     } on PlatformException catch (e) {
       print('设置当前对话ID失败: ${e.message}');
@@ -324,5 +402,39 @@ class ConversationService {
       print('设置当前对话ID失败: $e');
       return false;
     }
+  }
+
+  static Future<bool> setCurrentConversationTarget(
+    ConversationThreadTarget? target,
+  ) async {
+    return setCurrentConversationId(
+      target?.conversationId,
+      mode: target?.mode ?? ConversationMode.normal,
+    );
+  }
+
+  static Future<ConversationModel?> getLatestConversation({
+    ConversationMode? mode,
+  }) async {
+    final conversations = await getAllConversations();
+    for (final conversation in conversations) {
+      if (mode == null || conversation.mode == mode) {
+        return conversation;
+      }
+    }
+    return null;
+  }
+
+  static Future<ConversationThreadTarget?> getLatestConversationTarget({
+    ConversationMode? mode,
+  }) async {
+    final conversation = await getLatestConversation(mode: mode);
+    if (conversation == null) {
+      return null;
+    }
+    return ConversationThreadTarget.existing(
+      conversationId: conversation.id,
+      mode: conversation.mode,
+    );
   }
 }

@@ -157,14 +157,14 @@ class AssistsUtil {
          * 取消正在运行或等待中的任务，不影响陪伴模式
          * 可在预执行 delay 期间取消任务
          */
-        fun cancelRunningTask() {
-            AssistsCore.cancelPendingTask()
+        fun cancelRunningTask(taskId: String? = null) {
+            AssistsCore.cancelPendingTask(taskId)
         }
 
         /**
          * 取消聊天任务
          */
-        fun cancelChatTask() = AssistsCore.cancelChatTask()
+        fun cancelChatTask(taskId: String? = null) = AssistsCore.cancelChatTask(taskId)
         fun createChatTask(
             taskId: String,
             content: List<Map<String, Any>>,

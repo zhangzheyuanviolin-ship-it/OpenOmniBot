@@ -28,7 +28,9 @@ void main() {
     expect(tapCount, 1);
   });
 
-  testWidgets('tap delete action triggers delete callback once', (tester) async {
+  testWidgets('tap delete action triggers delete callback once', (
+    tester,
+  ) async {
     var deleteCount = 0;
 
     await tester.pumpWidget(
@@ -41,7 +43,7 @@ void main() {
       ),
     );
 
-    await tester.drag(find.text('Conversation B'), const Offset(-220, 0));
+    await tester.drag(find.byType(Slidable), const Offset(-220, 0));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(CustomSlidableAction));
@@ -50,7 +52,9 @@ void main() {
     expect(deleteCount, 1);
   });
 
-  testWidgets('dragging past threshold dismisses directly', (tester) async {
+  testWidgets('dragging far still exposes a quick delete action', (
+    tester,
+  ) async {
     var deleteCount = 0;
 
     await tester.pumpWidget(
@@ -63,10 +67,33 @@ void main() {
       ),
     );
 
-    await tester.drag(find.text('Conversation C'), const Offset(-800, 0));
+    await tester.drag(find.byType(Slidable), const Offset(-800, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CustomSlidableAction), findsOneWidget);
+
+    await tester.tap(find.byType(CustomSlidableAction));
     await tester.pumpAndSettle();
 
     expect(deleteCount, 1);
+  });
+
+  testWidgets('renders a mode badge for OpenClaw threads', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        child: ChatHistoryConversationItem(
+          conversation: _conversation(
+            id: 4,
+            title: 'Conversation D',
+            mode: ConversationMode.openclaw,
+          ),
+          onTap: () {},
+          onDelete: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('OpenClaw'), findsOneWidget);
   });
 }
 
@@ -75,11 +102,7 @@ Widget _buildTestApp({required Widget child}) {
     bundle: _TestAssetBundle(),
     child: MaterialApp(
       home: Scaffold(
-        body: SlidableAutoCloseBehavior(
-          child: ListView(
-            children: [child],
-          ),
-        ),
+        body: SlidableAutoCloseBehavior(child: ListView(children: [child])),
       ),
     ),
   );
@@ -88,9 +111,11 @@ Widget _buildTestApp({required Widget child}) {
 ConversationModel _conversation({
   required int id,
   required String title,
+  ConversationMode mode = ConversationMode.normal,
 }) {
   return ConversationModel(
     id: id,
+    mode: mode,
     title: title,
     summary: 'Summary',
     status: 0,

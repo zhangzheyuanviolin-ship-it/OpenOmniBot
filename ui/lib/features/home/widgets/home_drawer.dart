@@ -6,10 +6,12 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/features/home/widgets/conversation_mode_badge.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/models/conversation_model.dart';
+import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/features/memory/services/mem0_memory_service.dart';
 
@@ -29,7 +31,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   int _localMemoryCount = 0;
   int _cloudMemoryCount = 0;
   List<ConversationModel> conversations = [];
-  final Set<int> _deletingConversationIds = <int>{};
+  final Set<String> _deletingConversationKeys = <String>{};
   bool isLoadingConversations = true;
   static const BorderRadius _drawerDeleteActionRadius = BorderRadius.only(
     topRight: Radius.circular(4),
@@ -211,7 +213,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     Navigator.pop(context);
     GoRouterManager.pushReplacement(
       '/home/chat',
-      extra: ['new', DateTime.now().microsecondsSinceEpoch.toString()],
+      extra: ConversationThreadTarget.newConversation(
+        requestKey: DateTime.now().microsecondsSinceEpoch.toString(),
+      ),
     );
   }
 
@@ -686,19 +690,22 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
   /// 单个聊天记录项
   void _openConversationFromDrawer(ConversationModel conversation) {
-    if (_deletingConversationIds.contains(conversation.id)) {
+    if (_deletingConversationKeys.contains(conversation.threadKey)) {
       return;
     }
 
     Navigator.pop(context);
     GoRouterManager.pushReplacement(
       '/home/chat',
-      extra: [conversation.id.toString()],
+      extra: ConversationThreadTarget.existing(
+        conversationId: conversation.id,
+        mode: conversation.mode,
+      ),
     );
   }
 
   Future<void> _deleteConversation(ConversationModel conversation) async {
-    if (_deletingConversationIds.contains(conversation.id)) {
+    if (_deletingConversationKeys.contains(conversation.threadKey)) {
       return;
     }
 
@@ -710,13 +717,14 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
 
     setState(() {
-      _deletingConversationIds.add(conversation.id);
+      _deletingConversationKeys.add(conversation.threadKey);
       conversations = List<ConversationModel>.from(conversations)
         ..removeAt(originalIndex);
     });
 
     final deleted = await ConversationService.deleteConversation(
       conversation.id,
+      mode: conversation.mode,
     );
     if (!mounted) {
       return;
@@ -726,7 +734,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
 
     setState(() {
-      _deletingConversationIds.remove(conversation.id);
+      _deletingConversationKeys.remove(conversation.threadKey);
       if (!deleted) {
         final restoredIndex = originalIndex <= conversations.length
             ? originalIndex
@@ -743,7 +751,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 
   Widget _buildSwipeConversationItem(ConversationModel conversation) {
-    final isDeleting = _deletingConversationIds.contains(conversation.id);
+    final isDeleting = _deletingConversationKeys.contains(
+      conversation.threadKey,
+    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -762,7 +772,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                       .toDouble();
 
               return Slidable(
-                key: ValueKey<int>(conversation.id),
+                key: ValueKey<String>(conversation.threadKey),
                 groupTag: 'home-drawer-conversations',
                 closeOnScroll: true,
                 endActionPane: ActionPane(
@@ -816,16 +826,28 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                conversation.summary ?? conversation.title,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.text,
-                                  fontFamily: 'PingFang SC',
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      conversation.summary ??
+                                          conversation.title,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: AppColors.text,
+                                        fontFamily: 'PingFang SC',
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ConversationModeBadge(
+                                    mode: conversation.mode,
+                                    compact: true,
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -867,7 +889,10 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             // 使用 pushReplacement 替换当前页面，避免路由栈堆积
             GoRouterManager.pushReplacement(
               '/home/chat',
-              extra: [conversation.id.toString()],
+              extra: ConversationThreadTarget.existing(
+                conversationId: conversation.id,
+                mode: conversation.mode,
+              ),
             );
           },
           onLongPress: () => _showDeleteDialog(conversation),
@@ -926,6 +951,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
               Navigator.pop(context);
               final success = await ConversationService.deleteConversation(
                 conversation.id,
+                mode: conversation.mode,
               );
               if (success) {
                 setState(() {

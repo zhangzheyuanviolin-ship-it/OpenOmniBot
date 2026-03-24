@@ -319,7 +319,11 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       handleAgentChatMessage(message, isFinal: isFinal);
     });
 
-    AssistsMessageService.setOnAgentClarifyCallback((_, question, missingFields) {
+    AssistsMessageService.setOnAgentClarifyCallback((
+      _,
+      question,
+      missingFields,
+    ) {
       if (!mounted) return;
       handleAgentClarifyRequired(question, missingFields);
     });
@@ -1503,13 +1507,17 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
           _isCheckingExecutableTask ||
           _isExecutingTask) {
         interruptActiveToolCard();
-        AssistsMessageService.cancelRunningTask();
+        AssistsMessageService.cancelRunningTask(taskId: _currentDispatchTaskId);
         if (_currentDispatchTaskId != null) {
           _removeThinkingCard(_currentDispatchTaskId!);
         }
         _resetDispatchState();
       } else {
-        AssistsMessageService.cancelChatTask();
+        AssistsMessageService.cancelChatTask(
+          taskId: _currentAiMessages.keys.isEmpty
+              ? null
+              : _currentAiMessages.keys.first,
+        );
       }
 
       setState(() {
@@ -1529,9 +1537,9 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     try {
       interruptActiveToolCard();
       if (_isDeepThinking) {
-        AssistsMessageService.cancelRunningTask();
+        AssistsMessageService.cancelRunningTask(taskId: taskId);
       }
-      AssistsMessageService.cancelRunningTask();
+      AssistsMessageService.cancelRunningTask(taskId: taskId);
       _updateThinkingCardToCancelled(taskId);
       _resetDispatchState();
       setState(() {

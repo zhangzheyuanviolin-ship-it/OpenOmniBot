@@ -23,15 +23,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
         _openClawBaseUrl = baseUrl;
         _openClawToken = token;
         _openClawUserId = userId;
-        _activeSurfaceMode = effectiveEnabled
-            ? ChatSurfaceMode.openclaw
-            : ChatSurfaceMode.normal;
-        _activeConversationMode = effectiveEnabled
-            ? ChatPageMode.openclaw
-            : ChatPageMode.normal;
       });
-      _applyDraftForConversationMode(_activeConversationMode);
-      _jumpToCurrentModePage(animate: false);
       await _ensureOpenClawUserId();
     } catch (e) {
       debugPrint('加载OpenClaw配置失败: $e');
