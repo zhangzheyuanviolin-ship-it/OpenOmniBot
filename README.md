@@ -12,16 +12,13 @@
   <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/omnimind-ai/OpenOmniBot">
   <a href="https://github.com/omnimind-ai/OpenOmniBot/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/omnimind-ai/OpenOmniBot"></a>
   <br>
-  <a href="https://omnimind.com.cn/">
-    <img src="https://img.shields.io/badge/About_us-万象智维-purple.svg?color=%234b0c77" alt="万象智维">
-  </a>
-  <a href="https://linux.do/">
-    <img src="https://img.shields.io/badge/Linux_Do-社区-yellow.svg?color=%23ac3712" alt="万象智维">
-  </a>
+  <a href="https://omnimind.com.cn"><img src="https://img.shields.io/badge/About_us-万象智维-purple.svg?color=%234b0c77" alt="万象智维"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/Linux_Do-社区-yellow.svg?color=%23ac3712" alt="LinuxDo社区"></a>
   <a href="#其他">
     <img src="https://img.shields.io/badge/WeChat-微信群-lightgreen" alt="微信群"/>
   </a>
 </div>
+
 <p align="center">
 | 
 <a href="#-demo"><b>Demo</b></a> 
@@ -189,25 +186,25 @@ cd ..
     <td width="25%" align="center">
       <div>
         <p><strong>下载抖音视频Skill演示</strong></p>
-        <video src="docs\video\抖音.mp4" controls="controls" style="max-width: 100%;"></video>
+        <video src="./docs/video/抖音.mp4" controls="controls" style="max-width: 100%;"></video>
       </div>
     </td>
     <td width="25%" align="center">
       <div>
         <p><strong>原生OpenClaw演示</strong></p>
-        <video src="docs\video\openclaw.mp4" controls="controls" style="max-width: 100%;"></video>
+        <video src="./docs/video/openclaw.mp4" controls="controls" style="max-width: 100%;"></video>
       </div>
     </td>
     <td width="25%" align="center">
       <div>
         <p><strong>手机任务执行</strong></p>
-        <video src="docs\video\大众点评.mp4" controls="controls" style="max-width: 100%;"></video>
+        <video src="./docs/video/大众点评.mp4" controls="controls" style="max-width: 100%;"></video>
       </div>
     </td>
     <td width="25%" align="center">
       <div>
         <p><strong>定时任务演示</strong></p>
-        <video src="docs\video\定时任务.mp4" controls="controls" style="max-width: 100%;"></video>
+        <video src="./docs/video/定时任务.mp4" controls="controls" style="max-width: 100%;"></video>
       </div>
     </td>
   </tr>
