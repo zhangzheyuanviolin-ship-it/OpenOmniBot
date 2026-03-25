@@ -70,6 +70,11 @@ dev_dependencies:
 dependency_overrides:
   flutter_plugin_android_lifecycle: 2.0.33
   image_picker_android: 0.8.13+14
+  path_provider_android: 2.2.22
+  shared_preferences_android: 2.4.21
+  url_launcher_android: 6.3.28
+  video_player_android: 2.9.4
+  webview_flutter_android: 4.10.13
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

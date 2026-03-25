@@ -40,7 +40,6 @@ build/
 .android/
 .ios/
 .flutter-plugins-dependencies
-pubspec.lock
 
 # Symbolication related
 app.*.symbols
