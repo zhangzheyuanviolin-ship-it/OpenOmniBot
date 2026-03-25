@@ -23,12 +23,10 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   bool _isDeviceSupported = false;
   bool _isRuntimeReady = false;
   bool _isBasePackagesReady = false;
-  bool _isWorkspaceStorageGranted = false;
   List<String> _missingCommands = const <String>[];
   String _runtimeStatusMessage = '';
 
   bool _isPreparingWrapper = false;
-  bool _isOpeningWorkspaceStorageSettings = false;
   bool _isLoadingGatewayStatus = true;
   bool _isUpdatingGatewayAutoStart = false;
   bool _isStartingGateway = false;
@@ -139,7 +137,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _isDeviceSupported = status.supported;
         _isRuntimeReady = status.runtimeReady;
         _isBasePackagesReady = status.basePackagesReady;
-        _isWorkspaceStorageGranted = status.workspaceAccessGranted;
         _missingCommands = status.missingCommands;
         _runtimeStatusMessage = status.message;
         _wrapperReady = status.allReady;
@@ -150,7 +147,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       });
     } on PlatformException {
       final supported = await isTermuxInstalled();
-      final workspaceStorageGranted = await isWorkspaceStorageAccessGranted();
       OpenClawGatewayStatus? gatewayStatus;
       try {
         gatewayStatus = await getOpenClawGatewayStatus();
@@ -164,7 +160,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _isDeviceSupported = supported;
         _isRuntimeReady = false;
         _isBasePackagesReady = false;
-        _isWorkspaceStorageGranted = workspaceStorageGranted;
         _missingCommands = const <String>[];
         _runtimeStatusMessage = '状态探测失败，请尝试初始化。';
         _wrapperReady = false;
@@ -177,7 +172,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       });
     } catch (_) {
       final supported = await isTermuxInstalled();
-      final workspaceStorageGranted = await isWorkspaceStorageAccessGranted();
       OpenClawGatewayStatus? gatewayStatus;
       try {
         gatewayStatus = await getOpenClawGatewayStatus();
@@ -191,7 +185,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _isDeviceSupported = supported;
         _isRuntimeReady = false;
         _isBasePackagesReady = false;
-        _isWorkspaceStorageGranted = workspaceStorageGranted;
         _missingCommands = const <String>[];
         _runtimeStatusMessage = '状态探测失败，请尝试初始化。';
         _wrapperReady = false;
@@ -308,28 +301,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       if (mounted) {
         setState(() {
           _isStoppingGateway = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _handleOpenWorkspaceStorageSettings() async {
-    if (_isOpeningWorkspaceStorageSettings) {
-      return;
-    }
-    setState(() {
-      _isOpeningWorkspaceStorageSettings = true;
-    });
-    try {
-      await openWorkspaceStorageSettings();
-    } on PlatformException catch (e) {
-      showToast(e.message ?? '打开内置 workspace 页面失败', type: ToastType.error);
-    } catch (_) {
-      showToast('打开内置 workspace 页面失败', type: ToastType.error);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isOpeningWorkspaceStorageSettings = false;
         });
       }
     }
@@ -545,21 +516,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         !_isPreparingWrapper &&
         !_isFullyReady;
 
-    final workspaceActionText = _isLoadingStatus
-        ? '检测中'
-        : (_isWorkspaceStorageGranted
-              ? '已就绪'
-              : (_isOpeningWorkspaceStorageSettings ? '打开中...' : '查看'));
-    final workspaceActionColor = _isLoadingStatus
-        ? AppColors.text50
-        : (_isWorkspaceStorageGranted
-              ? const Color(0xFF1E9E63)
-              : AppColors.buttonPrimary);
-    final workspaceActionEnabled =
-        !_isLoadingStatus &&
-        !_isWorkspaceStorageGranted &&
-        !_isOpeningWorkspaceStorageSettings;
-
     return _buildSectionCard(
       title: '当前状态与操作',
       child: Column(
@@ -570,20 +526,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
             actionText: runtimeActionText,
             actionColor: runtimeActionColor,
             onTap: runtimeActionEnabled ? _handlePrepareWrapper : null,
-          ),
-          const SizedBox(height: 12),
-          _StatusActionRow(
-            title: '内置 workspace',
-            subtitle: _isLoadingStatus
-                ? '正在检测内置工作区状态'
-                : (_isWorkspaceStorageGranted
-                      ? '应用内的 /workspace 已就绪'
-                      : '工作区状态异常，文件工具和工作区预览可能会受限'),
-            actionText: workspaceActionText,
-            actionColor: workspaceActionColor,
-            onTap: workspaceActionEnabled
-                ? _handleOpenWorkspaceStorageSettings
-                : null,
           ),
           const SizedBox(height: 14),
           _buildPrepareActionButton(),
