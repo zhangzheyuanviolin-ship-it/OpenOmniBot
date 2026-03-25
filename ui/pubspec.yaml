@@ -69,6 +69,7 @@ dev_dependencies:
 
 dependency_overrides:
   flutter_plugin_android_lifecycle: 2.0.33
+  image_picker_android: 0.8.13+14
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
