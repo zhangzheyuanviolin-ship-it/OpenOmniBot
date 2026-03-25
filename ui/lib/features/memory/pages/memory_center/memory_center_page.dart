@@ -486,27 +486,8 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
     });
 
     try {
-      const prompt = '''你是小万，一个温暖的AI助手。根据用户的记忆内容（包含本地记忆和长期记忆），生成一句简短、温馨的问候语。
-
-要求：
-1. 问候语要简短（不超过30个字）
-2. 结合用户记忆内容特点，体现个性化
-3. 语气温暖友好
-4. 不要使用"你好呀"开头
-5. 只输出问候语本身，不要加引号或其他说明
-
-用户的记忆内容：
-''';
-
-      final recordsJson = topRecords
-          .map(
-            (r) =>
-                '标题: ${r['title']}, 描述: ${r['description']}, 来源应用: ${r['appName']}',
-          )
-          .join('\n');
-
-      final response = await AssistsMessageService.postLLMChat(
-        text: prompt + recordsJson,
+      final response = await AssistsMessageService.generateMemoryGreeting(
+        records: topRecords,
         model: 'scene.compactor.context',
       );
 
@@ -926,11 +907,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
       backgroundColor: AppColors.background,
       appBar: _isSelectionMode
           ? _buildSelectionAppBar(filteredCards)
-          : const CommonAppBar(
-              title: '记忆中心',
-              showAiBadge: true,
-              primary: true,
-            ),
+          : const CommonAppBar(title: '记忆中心', showAiBadge: true, primary: true),
       body: Stack(
         children: [
           // 主内容区域
@@ -1095,7 +1072,9 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   // 选择模式下的 AppBar
-  PreferredSizeWidget _buildSelectionAppBar(List<MemoryCardModel> filteredCards) {
+  PreferredSizeWidget _buildSelectionAppBar(
+    List<MemoryCardModel> filteredCards,
+  ) {
     final isAllSelected =
         _selectedCardIds.length == filteredCards.length &&
         filteredCards.isNotEmpty;

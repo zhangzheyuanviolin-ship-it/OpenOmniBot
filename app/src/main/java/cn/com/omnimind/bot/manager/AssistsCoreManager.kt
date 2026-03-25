@@ -18,6 +18,11 @@ import cn.com.omnimind.assists.task.scheduled.worker.toScheduledVLMOperationTask
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.database.Conversation
 import cn.com.omnimind.baselib.http.Http429Exception
+import cn.com.omnimind.baselib.llm.AssistantToolCall
+import cn.com.omnimind.baselib.llm.ChatCompletionFunction
+import cn.com.omnimind.baselib.llm.ChatCompletionMessage
+import cn.com.omnimind.baselib.llm.ChatCompletionRequest
+import cn.com.omnimind.baselib.llm.ChatCompletionTool
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderProfile
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
@@ -74,6 +79,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.time.Instant
 import kotlin.collections.mapOf
 import kotlin.coroutines.resume
@@ -85,6 +94,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     companion object {
         private const val SUMMARY_TASK_PREFIX_VLM = "vlm-summary-"
         private const val SUMMARY_TASK_PREFIX_TASK = "task-summary-"
+        private const val MEMORY_GREETING_TOOL = "submit_memory_greeting"
+        private const val DEFAULT_MEMORY_GREETING = "愿你今天也有温暖收获"
         private const val FLUTTER_SHARED_PREFS_NAME = "FlutterSharedPreferences"
         private const val FLUTTER_PREF_PREFIX = "flutter."
         private const val KEY_LOCAL_CONVERSATION_LIST = "${FLUTTER_PREF_PREFIX}local_conversation_list"
@@ -1386,6 +1397,32 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
+    /**
+     * 生成记忆中心问候语（优先走标准 tool_calls，失败时回退纯文本）
+     */
+    fun generateMemoryGreeting(call: MethodCall, result: MethodChannel.Result) {
+        val model = call.argument<String>("model")?.trim().orEmpty()
+            .ifEmpty { "scene.compactor.context" }
+        val records = (call.argument<List<Map<String, Any?>>>("records") ?: emptyList())
+            .map { entry ->
+                entry.mapKeys { it.key.toString() }
+            }
+
+        workJob.launch {
+            try {
+                val greeting = inferMemoryGreeting(model = model, records = records)
+                withContext(Dispatchers.Main) {
+                    result.success(greeting)
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "generateMemoryGreeting error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("GENERATE_MEMORY_GREETING_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
     fun getModelProviderConfig(call: MethodCall, result: MethodChannel.Result) {
         workJob.launch {
             try {
@@ -1400,6 +1437,216 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             }
         }
+    }
+
+    private suspend fun inferMemoryGreeting(
+        model: String,
+        records: List<Map<String, Any?>>
+    ): String {
+        val recordBlock = buildMemoryGreetingRecordsBlock(records)
+        val request = buildMemoryGreetingToolRequest(model, recordBlock)
+        val toolResponse = runCatching { HttpController.postSceneChatCompletion(request) }
+            .onFailure { OmniLog.w(TAG, "memory greeting tool-call failed: ${it.message}") }
+            .getOrNull()
+
+        if (toolResponse != null && toolResponse.success) {
+            parseMemoryGreetingFromToolCalls(toolResponse.toolCalls)?.let { parsed ->
+                val normalized = sanitizeMemoryGreeting(parsed)
+                if (normalized.isNotEmpty()) {
+                    return normalized
+                }
+            }
+            val contentCandidate = sanitizeMemoryGreeting(toolResponse.content)
+            if (contentCandidate.isNotEmpty()) {
+                return contentCandidate
+            }
+        }
+
+        val fallbackPrompt = buildMemoryGreetingLegacyPrompt(recordBlock)
+        val legacyResponse = runCatching {
+            HttpController.postLLMRequest(model, fallbackPrompt).message
+        }.onFailure {
+            OmniLog.w(TAG, "memory greeting legacy request failed: ${it.message}")
+        }.getOrNull().orEmpty()
+
+        return sanitizeMemoryGreeting(legacyResponse).ifEmpty { DEFAULT_MEMORY_GREETING }
+    }
+
+    private fun buildMemoryGreetingRecordsBlock(records: List<Map<String, Any?>>): String {
+        if (records.isEmpty()) {
+            return "（暂无可用记忆）"
+        }
+        return records.joinToString(separator = "\n") { record ->
+            val title = record["title"]?.toString()?.trim().orEmpty().ifEmpty { "无标题" }
+            val description = record["description"]?.toString()?.trim().orEmpty().ifEmpty { "无描述" }
+            val appName = record["appName"]?.toString()?.trim().orEmpty().ifEmpty { "未知来源" }
+            "标题: $title, 描述: $description, 来源应用: $appName"
+        }
+    }
+
+    private fun buildMemoryGreetingToolRequest(
+        model: String,
+        recordBlock: String
+    ): ChatCompletionRequest {
+        val parameters = buildJsonObject {
+            put("type", JsonPrimitive("object"))
+            put(
+                "properties",
+                buildJsonObject {
+                    put(
+                        "greeting",
+                        buildJsonObject {
+                            put("type", JsonPrimitive("string"))
+                            put("description", JsonPrimitive("给用户的一句简短温暖问候语，不超过30字。"))
+                        }
+                    )
+                }
+            )
+            put(
+                "required",
+                buildJsonArray {
+                    add(JsonPrimitive("greeting"))
+                }
+            )
+        }
+        return ChatCompletionRequest(
+            model = model,
+            messages = listOf(
+                ChatCompletionMessage(
+                    role = "system",
+                    content = JsonPrimitive(
+                        """
+                        你是小万，一个温暖的AI助手。
+                        请根据用户记忆生成一句简短、温馨、个性化的问候语。
+                        要求：
+                        1. 问候语不超过30个字。
+                        2. 语气温暖友好。
+                        3. 禁止使用“你好呀”开头。
+                        4. 必须通过工具 $MEMORY_GREETING_TOOL 返回结果，不要输出普通文本。
+                        """.trimIndent()
+                    )
+                ),
+                ChatCompletionMessage(
+                    role = "user",
+                    content = JsonPrimitive(
+                        """
+                        用户的记忆内容：
+                        $recordBlock
+                        """.trimIndent()
+                    )
+                )
+            ),
+            maxCompletionTokens = 128,
+            temperature = 0.7,
+            tools = listOf(
+                ChatCompletionTool(
+                    function = ChatCompletionFunction(
+                        name = MEMORY_GREETING_TOOL,
+                        description = "提交记忆中心问候语。",
+                        parameters = parameters
+                    )
+                )
+            ),
+            parallelToolCalls = false
+        )
+    }
+
+    private fun buildMemoryGreetingLegacyPrompt(recordBlock: String): String {
+        return """
+            你是小万，一个温暖的AI助手。根据用户的记忆内容（包含本地记忆和长期记忆），生成一句简短、温馨的问候语。
+
+            要求：
+            1. 问候语要简短（不超过30个字）
+            2. 结合用户记忆内容特点，体现个性化
+            3. 语气温暖友好
+            4. 不要使用"你好呀"开头
+            5. 只输出问候语本身，不要加引号或其他说明
+
+            用户的记忆内容：
+            $recordBlock
+        """.trimIndent()
+    }
+
+    private fun parseMemoryGreetingFromToolCalls(toolCalls: List<AssistantToolCall>): String? {
+        if (toolCalls.isEmpty()) {
+            return null
+        }
+        val selected = toolCalls.firstOrNull {
+            it.function.name.trim().equals(MEMORY_GREETING_TOOL, ignoreCase = true)
+        } ?: toolCalls.first()
+        val argsRaw = selected.function.arguments.trim()
+        if (argsRaw.isEmpty()) {
+            return null
+        }
+        val jsonText = extractFirstJsonObject(argsRaw) ?: argsRaw
+        val payload = runCatching { JSONObject(jsonText) }
+            .onFailure { OmniLog.w(TAG, "parse memory greeting tool args failed: ${it.message}") }
+            .getOrNull() ?: return null
+        return payload.optString("greeting").trim().ifEmpty {
+            payload.optString("message").trim()
+        }.ifEmpty {
+            payload.optString("content").trim()
+        }.takeIf { it.isNotEmpty() }
+    }
+
+    private fun sanitizeMemoryGreeting(raw: String): String {
+        var value = raw.trim()
+            .replace(Regex("[\\r\\n]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim(' ', '"', '\'', '“', '”', '‘', '’')
+        if (value.startsWith("你好呀")) {
+            value = value.removePrefix("你好呀").trimStart('，', ',', '。', '！', '!', '～', '~', ' ')
+        }
+        if (value.length > 30) {
+            value = value.take(30)
+        }
+        return value.trim()
+    }
+
+    private fun extractFirstJsonObject(raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) {
+            return null
+        }
+        val fence = Regex("```(?:json)?\\s*([\\s\\S]*?)\\s*```", RegexOption.IGNORE_CASE)
+            .find(trimmed)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+        if (!fence.isNullOrBlank()) {
+            return extractFirstJsonObject(fence)
+        }
+        val start = trimmed.indexOf('{')
+        if (start < 0) {
+            return null
+        }
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (index in start until trimmed.length) {
+            val ch = trimmed[index]
+            if (inString) {
+                if (escaped) {
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == '"') {
+                    inString = false
+                }
+                continue
+            }
+            when (ch) {
+                '"' -> inString = true
+                '{' -> depth += 1
+                '}' -> {
+                    depth -= 1
+                    if (depth == 0) {
+                        return trimmed.substring(start, index + 1)
+                    }
+                }
+            }
+        }
+        return null
     }
 
     fun listModelProviderProfiles(call: MethodCall, result: MethodChannel.Result) {

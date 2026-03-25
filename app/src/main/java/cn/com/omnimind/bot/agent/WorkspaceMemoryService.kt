@@ -25,6 +25,10 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.math.sqrt
 
 data class WorkspaceMemoryEmbeddingConfig(
@@ -95,6 +99,7 @@ class WorkspaceMemoryService(
         const val SCENE_MEMORY_ROLLUP = "scene.memory.rollup"
 
         private const val TAG = "WorkspaceMemoryService"
+        private const val ROLLUP_SUBMIT_TOOL = "submit_memory_rollup_result"
         private const val KEY_EMBEDDING_ENABLED = "workspace_memory_embedding_enabled_v1"
         private const val KEY_ROLLUP_ENABLED = "workspace_memory_rollup_enabled_v1"
         private const val KEY_ROLLUP_LAST_RUN_AT = "workspace_memory_rollup_last_run_at_v1"
@@ -445,7 +450,35 @@ class WorkspaceMemoryService(
         if (dailyLines.isEmpty()) {
             return null
         }
-        val prompt = buildRollupPrompt(
+
+        val toolResponse = runCatching {
+            val request = buildRollupToolRequest(
+                date = date,
+                dailyLines = dailyLines,
+                longTermMemory = longTermMemory
+            )
+            runBlocking {
+                HttpController.postSceneChatCompletion(request)
+            }
+        }.onFailure {
+            OmniLog.w(TAG, "rollup tool-call request failed: ${it.message}")
+        }.getOrNull()
+
+        if (toolResponse != null && toolResponse.success) {
+            parseRollupInferenceFromToolCalls(toolResponse.toolCalls)?.let { return it }
+            val contentInference = parseRollupInference(toolResponse.content)
+            if (contentInference != null) {
+                return contentInference
+            }
+            OmniLog.w(TAG, "rollup tool-call parse empty; fallback to legacy prompt")
+        } else if (toolResponse != null) {
+            OmniLog.w(
+                TAG,
+                "rollup tool-call unsuccessful code=${toolResponse.code} message=${toolResponse.message}"
+            )
+        }
+
+        val prompt = buildRollupLegacyPrompt(
             date = date,
             dailyLines = dailyLines,
             longTermMemory = longTermMemory
@@ -455,19 +488,128 @@ class WorkspaceMemoryService(
                 HttpController.postLLMRequest(SCENE_MEMORY_ROLLUP, prompt).message
             }
         }.onFailure {
-            OmniLog.w(TAG, "rollup llm request failed: ${it.message}")
+            OmniLog.w(TAG, "rollup legacy llm request failed: ${it.message}")
         }.getOrNull()?.trim().orEmpty()
         if (responseText.isEmpty()) {
             return null
         }
         val parsed = parseRollupInference(responseText)
         if (parsed == null) {
-            OmniLog.w(TAG, "rollup llm parse failed, fallback heuristic")
+            OmniLog.w(TAG, "rollup legacy llm parse failed, fallback heuristic")
         }
         return parsed
     }
 
-    private fun buildRollupPrompt(
+    private fun buildRollupToolRequest(
+        date: LocalDate,
+        dailyLines: List<String>,
+        longTermMemory: String
+    ): ChatCompletionRequest {
+        val parameters = buildJsonObject {
+            put("type", JsonPrimitive("object"))
+            put(
+                "properties",
+                buildJsonObject {
+                    put(
+                        "dailySummary",
+                        buildJsonObject {
+                            put("type", JsonPrimitive("string"))
+                            put("description", JsonPrimitive("当日短期记忆的一句话总结，不超过80字。"))
+                        }
+                    )
+                    put(
+                        "longTermCandidates",
+                        buildJsonObject {
+                            put("type", JsonPrimitive("array"))
+                            put("description", JsonPrimitive("可沉淀为长期记忆的稳定信息列表。"))
+                            put(
+                                "items",
+                                buildJsonObject {
+                                    put("type", JsonPrimitive("string"))
+                                }
+                            )
+                            put("maxItems", JsonPrimitive(MAX_ROLLUP_LONG_TERM_CANDIDATES))
+                        }
+                    )
+                }
+            )
+            put(
+                "required",
+                buildJsonArray {
+                    add(JsonPrimitive("dailySummary"))
+                    add(JsonPrimitive("longTermCandidates"))
+                }
+            )
+        }
+        return ChatCompletionRequest(
+            model = SCENE_MEMORY_ROLLUP,
+            messages = listOf(
+                ChatCompletionMessage(
+                    role = "system",
+                    content = JsonPrimitive(buildRollupToolSystemPrompt())
+                ),
+                ChatCompletionMessage(
+                    role = "user",
+                    content = JsonPrimitive(
+                        buildRollupToolUserPrompt(
+                            date = date,
+                            dailyLines = dailyLines,
+                            longTermMemory = longTermMemory
+                        )
+                    )
+                )
+            ),
+            maxCompletionTokens = 768,
+            temperature = 0.2,
+            tools = listOf(
+                ChatCompletionTool(
+                    function = ChatCompletionFunction(
+                        name = ROLLUP_SUBMIT_TOOL,
+                        description = "提交 Workspace 当日记忆整理结果。",
+                        parameters = parameters
+                    )
+                )
+            ),
+            parallelToolCalls = false
+        )
+    }
+
+    private fun buildRollupToolSystemPrompt(): String {
+        return """
+            你是 Workspace 记忆整理助手。
+            目标：基于当日短期记忆，输出当日总结，并筛选可沉淀为长期记忆的信息。
+
+            规则：
+            1. 只保留长期稳定且对未来任务有帮助的信息（偏好、长期约束、稳定事实）。
+            2. 忽略一次性临时细节、随机聊天内容、瞬时状态。
+            3. 候选长期记忆每条一句话，中文为主，最多 ${MAX_ROLLUP_LONG_TERM_CANDIDATES} 条，避免重复。
+            4. 如果没有可沉淀内容，longTermCandidates 返回空数组。
+            5. 必须通过工具 $ROLLUP_SUBMIT_TOOL 提交结果，不要输出普通文本。
+        """.trimIndent()
+    }
+
+    private fun buildRollupToolUserPrompt(
+        date: LocalDate,
+        dailyLines: List<String>,
+        longTermMemory: String
+    ): String {
+        val dailyBlock = truncateText(
+            dailyLines.joinToString("\n") { "- $it" },
+            12_000
+        )
+        val longTermBlock = longTermMemory.ifBlank { "（暂无长期记忆）" }
+        return """
+            日期：$date
+
+            当日短期记忆原文：
+            $dailyBlock
+
+            现有长期记忆（用于避免重复）：
+            ${truncateText(longTermBlock, 2600)}
+        """.trimIndent()
+    }
+
+    private fun buildRollupLegacyPrompt(
         date: LocalDate,
         dailyLines: List<String>,
         longTermMemory: String
@@ -501,6 +643,32 @@ class WorkspaceMemoryService(
             现有长期记忆（用于避免重复）：
             ${truncateText(longTermBlock, 2600)}
         """.trimIndent()
+    }
+
+    private fun parseRollupInferenceFromToolCalls(toolCalls: List<AssistantToolCall>): RollupInference? {
+        if (toolCalls.isEmpty()) {
+            return null
+        }
+        val preferred = toolCalls.firstOrNull {
+            it.function.name.trim().equals(ROLLUP_SUBMIT_TOOL, ignoreCase = true)
+        } ?: toolCalls.firstOrNull() ?: return null
+        val rawArguments = preferred.function.arguments.trim()
+        if (rawArguments.isEmpty()) {
+            return null
+        }
+        val jsonText = extractFirstJsonObject(rawArguments) ?: rawArguments
+        val payload = runCatching { JSONObject(jsonText) }
+            .onFailure { OmniLog.w(TAG, "rollup tool args parse failed: ${it.message}") }
+            .getOrNull() ?: return null
+        val summary = firstNonBlank(payload, listOf("dailySummary", "summary", "todaySummary"))
+        val candidates = extractLongTermCandidates(payload)
+        if (summary.isNullOrBlank() && candidates.isEmpty()) {
+            return null
+        }
+        return RollupInference(
+            summary = summary?.take(120),
+            longTermCandidates = candidates
+        )
     }
 
     private fun parseRollupInference(raw: String): RollupInference? {

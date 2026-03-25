@@ -223,6 +223,9 @@ class AssistsCoreChannel {
                 "postLLMChat"->{
                     assistsCoreManager!!.postLLMChat( call, result)
                 }
+                "generateMemoryGreeting" -> {
+                    assistsCoreManager!!.generateMemoryGreeting(call, result)
+                }
                 "openAPPMarket"->{
                     assistsCoreManager!!.openAPPMarket( call, result)
                 }

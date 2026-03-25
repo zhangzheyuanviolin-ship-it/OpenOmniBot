@@ -1004,6 +1004,32 @@ class AssistsMessageService {
     }
   }
 
+  /// 生成记忆中心问候语（原生端优先使用标准 tool_calls）
+  static Future<String?> generateMemoryGreeting({
+    required List<Map<String, String>> records,
+    String model = 'scene.compactor.context',
+  }) async {
+    try {
+      final payloadRecords = records
+          .map(
+            (item) => {
+              'title': item['title'] ?? '',
+              'description': item['description'] ?? '',
+              'appName': item['appName'] ?? '',
+            },
+          )
+          .toList();
+      final result = await assistCore.invokeMethod<String>(
+        'generateMemoryGreeting',
+        {'model': model, 'records': payloadRecords},
+      );
+      return result;
+    } on PlatformException catch (e) {
+      print('生成记忆中心问候语失败: ${e.message}');
+      return null;
+    }
+  }
+
   /// 创建 Agent 任务
   static Future<bool> createAgentTask({
     required String taskId,
