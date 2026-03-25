@@ -67,6 +67,9 @@ dev_dependencies:
   build_runner: ^2.4.13
   riverpod_generator: ^2.3.11
 
+dependency_overrides:
+  flutter_plugin_android_lifecycle: 2.0.33
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
