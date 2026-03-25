@@ -115,7 +115,8 @@
         <activity
             android:name=".activity.TerminalActivity"
             android:exported="false"
-            android:theme="@style/Theme.OmnibotApp" />
+            android:theme="@style/Theme.OmnibotApp"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- 伪装为 Google SelectToSpeak 无障碍服务，绕过微信等应用的反无障碍检测 -->
         <service

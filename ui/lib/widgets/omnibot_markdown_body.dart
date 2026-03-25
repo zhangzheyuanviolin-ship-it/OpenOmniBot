@@ -119,6 +119,8 @@ class OmnibotInlineLinkSyntax extends md.InlineSyntax {
 }
 
 class OmnibotMathBlockSyntax extends md.BlockSyntax {
+  static const String expressionAttribute = 'data-expression';
+
   @override
   RegExp get pattern => RegExp(r'^\s*\$\$');
 
@@ -137,7 +139,7 @@ class OmnibotMathBlockSyntax extends md.BlockSyntax {
           .substring(2, firstLineTrimmed.length - 2)
           .trim();
       parser.advance();
-      return md.Element.text('math-block', inlineExpression);
+      return _buildMathElement(inlineExpression);
     }
 
     final expressionBuffer = StringBuffer();
@@ -175,7 +177,13 @@ class OmnibotMathBlockSyntax extends md.BlockSyntax {
       parser.advance();
     }
 
-    return md.Element.text('math-block', expressionBuffer.toString().trim());
+    return _buildMathElement(expressionBuffer.toString().trim());
+  }
+
+  md.Element _buildMathElement(String expression) {
+    final element = md.Element.empty('math-block');
+    element.attributes[expressionAttribute] = expression;
+    return element;
   }
 }
 
@@ -343,11 +351,28 @@ class OmnibotInlineMathBuilder extends MarkdownElementBuilder {
         alignment: PlaceholderAlignment.middle,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 1),
-          child: Math.tex(
-            expression,
-            mathStyle: MathStyle.text,
-            textStyle: style,
-            onErrorFallback: (error) => Text('\$$expression\$', style: style),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxWidth = _resolveMathMaxWidth(
+                context,
+                constraints,
+                fallbackScreenRatio: 0.72,
+              );
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Math.tex(
+                    expression,
+                    mathStyle: MathStyle.text,
+                    textStyle: style,
+                    onErrorFallback: (error) =>
+                        Text('\$$expression\$', style: style),
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -370,7 +395,10 @@ class OmnibotBlockMathBuilder extends MarkdownElementBuilder {
     TextStyle? preferredStyle,
     TextStyle? parentStyle,
   ) {
-    final expression = element.textContent.trim();
+    final expression =
+        (element.attributes[OmnibotMathBlockSyntax.expressionAttribute] ??
+                element.textContent)
+            .trim();
     if (expression.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -443,6 +471,18 @@ class OmnibotInlineLinkBuilder extends MarkdownElementBuilder {
       ),
     );
   }
+}
+
+double _resolveMathMaxWidth(
+  BuildContext context,
+  BoxConstraints constraints, {
+  double fallbackScreenRatio = 1.0,
+}) {
+  if (constraints.maxWidth.isFinite && constraints.maxWidth > 0) {
+    return constraints.maxWidth;
+  }
+  final screenWidth = MediaQuery.maybeOf(context)?.size.width ?? 360;
+  return screenWidth * fallbackScreenRatio;
 }
 
 String _linkifyBareOmnibotUris(String input) {
