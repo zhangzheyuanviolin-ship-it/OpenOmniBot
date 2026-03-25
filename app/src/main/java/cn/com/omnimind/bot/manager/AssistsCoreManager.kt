@@ -2156,6 +2156,55 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
+    private fun buildCardMessageJson(
+        messageId: String,
+        cardData: Map<String, Any?>,
+        isError: Boolean,
+        createdAtIso: String
+    ): JSONObject {
+        return JSONObject().apply {
+            put("id", messageId)
+            put("type", 2)
+            put("user", 3)
+            put(
+                "content",
+                JSONObject().apply {
+                    put("cardData", mapToJsonObject(cardData))
+                    put("id", messageId)
+                }
+            )
+            put("isLoading", false)
+            put("isFirst", false)
+            put("isError", isError)
+            put("isSummarizing", false)
+            put("createAt", createdAtIso)
+        }
+    }
+
+    private fun mapToJsonObject(source: Map<String, Any?>): JSONObject {
+        return JSONObject().apply {
+            source.forEach { (key, value) ->
+                put(key, toJsonValue(value))
+            }
+        }
+    }
+
+    private fun toJsonValue(value: Any?): Any {
+        return when (value) {
+            null -> JSONObject.NULL
+            is Map<*, *> -> {
+                val normalized = value.entries.associate { (k, v) ->
+                    k.toString() to normalizeChannelValue(v)
+                }
+                mapToJsonObject(normalized)
+            }
+            is List<*> -> JSONArray().apply {
+                value.forEach { item -> put(toJsonValue(normalizeChannelValue(item))) }
+            }
+            else -> value
+        }
+    }
+
     private fun upsertMessageAtTop(
         source: JSONArray,
         messageId: String,
@@ -2181,6 +2230,41 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             messageId = messageId,
             user = user,
             text = text,
+            isError = isError,
+            createdAtIso = existingCreateAt ?: nowIso
+        )
+        val target = JSONArray()
+        target.put(message)
+        for (index in 0 until source.length()) {
+            if (index == existingIndex) continue
+            target.put(source.opt(index))
+        }
+        return target
+    }
+
+    private fun upsertCardMessageAtTop(
+        source: JSONArray,
+        messageId: String,
+        cardData: Map<String, Any?>,
+        isError: Boolean
+    ): JSONArray {
+        val nowIso = Instant.now().toString()
+        var existingCreateAt: String? = null
+        var existingIndex = -1
+        for (index in 0 until source.length()) {
+            val item = source.optJSONObject(index) ?: continue
+            if (item.optString("id") == messageId) {
+                existingIndex = index
+                val existing = item.optString("createAt").trim()
+                if (existing.isNotEmpty()) {
+                    existingCreateAt = existing
+                }
+                break
+            }
+        }
+        val message = buildCardMessageJson(
+            messageId = messageId,
+            cardData = cardData,
             isError = isError,
             createdAtIso = existingCreateAt ?: nowIso
         )
@@ -2281,11 +2365,128 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
+    private fun persistScheduledSubagentToolCard(
+        meta: ScheduledSubagentRunMeta,
+        cardId: String,
+        cardData: Map<String, Any?>,
+        isError: Boolean
+    ) {
+        synchronized(flutterPrefsLock) {
+            val prefs = context.getSharedPreferences(FLUTTER_SHARED_PREFS_NAME, Context.MODE_PRIVATE)
+            val key = subagentMessagePrefsKey(meta.conversationId)
+            val source = readJsonArray(prefs.getString(key, null))
+            val updated = upsertCardMessageAtTop(
+                source = source,
+                messageId = cardId,
+                cardData = cardData,
+                isError = isError
+            )
+            prefs.edit().putString(key, updated.toString()).apply()
+            val summary = cardData["summary"]?.toString()?.trim().orEmpty()
+            val lastMessage = summary.ifEmpty {
+                val displayName = cardData["displayName"]?.toString()?.trim().orEmpty()
+                if (displayName.isNotEmpty()) {
+                    "执行工具：$displayName"
+                } else {
+                    "执行了工具调用"
+                }
+            }
+            updateSubagentConversationListLocked(
+                conversationId = meta.conversationId,
+                title = meta.scheduleTaskTitle,
+                lastMessage = lastMessage,
+                messageCount = updated.length()
+            )
+        }
+    }
+
+    private fun mergeScheduledToolCardData(
+        taskId: String,
+        cardId: String,
+        payload: Map<String, Any?>,
+        existingCardData: Map<String, Any?> = emptyMap(),
+        fallbackStatus: String = "running",
+        fallbackSummary: String = ""
+    ): Map<String, Any?> {
+        fun payloadText(key: String): String {
+            return payload[key]?.toString()?.trim().orEmpty()
+        }
+        fun existingText(key: String): String {
+            return existingCardData[key]?.toString()?.trim().orEmpty()
+        }
+        fun chooseText(key: String, fallback: String = ""): String {
+            return payloadText(key).ifEmpty { existingText(key).ifEmpty { fallback } }
+        }
+        fun chooseAny(key: String): Any? {
+            return payload[key] ?: existingCardData[key]
+        }
+
+        val toolType = chooseText("toolType", "builtin")
+        val existingTerminalOutput = existingText("terminalOutput")
+        val terminalOutputDelta = payloadText("terminalOutputDelta")
+        val terminalOutput = if (toolType == "terminal") {
+            payloadText("terminalOutput").ifEmpty {
+                if (terminalOutputDelta.isNotEmpty()) {
+                    existingTerminalOutput + terminalOutputDelta
+                } else {
+                    existingTerminalOutput
+                }
+            }
+        } else {
+            ""
+        }
+        val summary = chooseText("summary", fallbackSummary)
+        val progress = chooseText("progress")
+        val status = chooseText("status", fallbackStatus)
+        val artifacts = toListOfStringAnyMap(payload["artifacts"]).ifEmpty {
+            toListOfStringAnyMap(existingCardData["artifacts"])
+        }
+        val actions = toListOfStringAnyMap(payload["actions"]).ifEmpty {
+            toListOfStringAnyMap(existingCardData["actions"])
+        }
+        val success = when (val value = payload["success"] ?: existingCardData["success"]) {
+            is Boolean -> value
+            is String -> value.equals("true", ignoreCase = true)
+            else -> true
+        }
+
+        return linkedMapOf<String, Any?>(
+            "type" to "agent_tool_summary",
+            "taskId" to taskId,
+            "cardId" to cardId,
+            "toolName" to chooseText("toolName"),
+            "displayName" to chooseText("displayName"),
+            "toolType" to toolType,
+            "serverName" to chooseAny("serverName"),
+            "status" to status,
+            "summary" to summary,
+            "progress" to progress,
+            "argsJson" to chooseText("argsJson"),
+            "resultPreviewJson" to chooseText("resultPreviewJson"),
+            "rawResultJson" to chooseText("rawResultJson"),
+            "terminalOutput" to terminalOutput,
+            "terminalOutputDelta" to terminalOutputDelta,
+            "terminalSessionId" to chooseAny("terminalSessionId"),
+            "terminalStreamState" to chooseText("terminalStreamState"),
+            "workspaceId" to chooseAny("workspaceId"),
+            "artifacts" to artifacts,
+            "actions" to actions,
+            "success" to success,
+            "showScheduleAction" to (toolType == "schedule"),
+            "showAlarmAction" to (toolType == "alarm")
+        )
+    }
+
     private fun notifyScheduledSubagentCompletion(
         meta: ScheduledSubagentRunMeta,
         message: String
     ) {
         if (!meta.notificationEnabled) return
+        val notificationManagerCompat = NotificationManagerCompat.from(context)
+        if (!notificationManagerCompat.areNotificationsEnabled()) {
+            OmniLog.w(TAG, "skip scheduled subagent notification: app notifications disabled")
+            return
+        }
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
@@ -2340,7 +2541,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
-        NotificationManagerCompat.from(context).notify(meta.scheduleTaskId.hashCode(), notification)
+        val notificationId =
+            "${meta.scheduleTaskId}_${System.currentTimeMillis()}".hashCode()
+        notificationManagerCompat.notify(notificationId, notification)
     }
 
     private fun immutableFlag(): Int {
@@ -2435,6 +2638,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 val executor = OmniAgentExecutor(context, agentRunScope, scheduleBridge)
                 val activeToolArgs = mutableMapOf<String, String>()
                 val scheduledAssistantBuffer = StringBuilder()
+                var scheduledToolCardSequence = 0
+                var scheduledActiveToolCardId: String? = null
+                val scheduledToolCardCache = mutableMapOf<String, Map<String, Any?>>()
                 scheduledSubagentMeta?.let { meta ->
                     persistScheduledSubagentMessage(
                         meta = meta,
@@ -2461,9 +2667,32 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     ) {
                         val argsJson = arguments.toString()
                         activeToolArgs[toolName] = argsJson
+                        val payload = buildToolStartPayload(toolName, argsJson)
+                        scheduledSubagentMeta?.let { meta ->
+                            scheduledToolCardSequence += 1
+                            val cardId = "$taskId-tool-$scheduledToolCardSequence"
+                            scheduledActiveToolCardId = cardId
+                            val cardData = mergeScheduledToolCardData(
+                                taskId = taskId,
+                                cardId = cardId,
+                                payload = payload,
+                                existingCardData = scheduledToolCardCache[cardId] ?: emptyMap(),
+                                fallbackStatus = "running",
+                                fallbackSummary = payload["summary"]?.toString()?.ifBlank {
+                                    "正在调用工具"
+                                } ?: "正在调用工具"
+                            )
+                            scheduledToolCardCache[cardId] = cardData
+                            persistScheduledSubagentToolCard(
+                                meta = meta,
+                                cardId = cardId,
+                                cardData = cardData,
+                                isError = false
+                            )
+                        }
                         sendEvent(
                             "onAgentToolCallStart",
-                            buildToolStartPayload(toolName, argsJson)
+                            payload
                         )
                     }
 
@@ -2472,14 +2701,35 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         progress: String,
                         extras: Map<String, Any?>
                     ) {
+                        val payload = buildToolProgressPayload(
+                            toolName,
+                            progress,
+                            activeToolArgs[toolName].orEmpty(),
+                            extras
+                        )
+                        scheduledSubagentMeta?.let { meta ->
+                            val cardId = scheduledActiveToolCardId
+                            if (!cardId.isNullOrBlank()) {
+                                val cardData = mergeScheduledToolCardData(
+                                    taskId = taskId,
+                                    cardId = cardId,
+                                    payload = payload,
+                                    existingCardData = scheduledToolCardCache[cardId] ?: emptyMap(),
+                                    fallbackStatus = "running",
+                                    fallbackSummary = "正在调用工具"
+                                )
+                                scheduledToolCardCache[cardId] = cardData
+                                persistScheduledSubagentToolCard(
+                                    meta = meta,
+                                    cardId = cardId,
+                                    cardData = cardData,
+                                    isError = false
+                                )
+                            }
+                        }
                         sendEvent(
                             "onAgentToolCallProgress",
-                            buildToolProgressPayload(
-                                toolName,
-                                progress,
-                                activeToolArgs[toolName].orEmpty(),
-                                extras
-                            )
+                            payload
                         )
                     }
 
@@ -2488,9 +2738,29 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         result: ToolExecutionResult
                     ) {
                         val argsJson = activeToolArgs.remove(toolName).orEmpty()
+                        val payload = buildToolCompletePayload(toolName, result, argsJson)
+                        scheduledSubagentMeta?.let { meta ->
+                            val cardId = scheduledActiveToolCardId ?: "$taskId-tool-${++scheduledToolCardSequence}"
+                            val cardData = mergeScheduledToolCardData(
+                                taskId = taskId,
+                                cardId = cardId,
+                                payload = payload,
+                                existingCardData = scheduledToolCardCache[cardId] ?: emptyMap(),
+                                fallbackStatus = if (payload["success"] == false) "error" else "success",
+                                fallbackSummary = payload["summary"]?.toString().orEmpty()
+                            )
+                            scheduledToolCardCache[cardId] = cardData
+                            persistScheduledSubagentToolCard(
+                                meta = meta,
+                                cardId = cardId,
+                                cardData = cardData,
+                                isError = payload["success"] == false
+                            )
+                        }
+                        scheduledActiveToolCardId = null
                         sendEvent(
                             "onAgentToolCallComplete",
-                            buildToolCompletePayload(toolName, result, argsJson)
+                            payload
                         )
                     }
 
