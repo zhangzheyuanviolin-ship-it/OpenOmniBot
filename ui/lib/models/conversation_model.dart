@@ -1,6 +1,7 @@
 enum ConversationMode {
   normal('normal'),
-  openclaw('openclaw');
+  openclaw('openclaw'),
+  subagent('subagent');
 
   const ConversationMode(this.storageValue);
 
@@ -19,6 +20,7 @@ enum ConversationMode {
   String get displayLabel => switch (this) {
     ConversationMode.normal => '普通',
     ConversationMode.openclaw => 'OpenClaw',
+    ConversationMode.subagent => 'SubAgent',
   };
 }
 

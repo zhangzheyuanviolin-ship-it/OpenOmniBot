@@ -6,7 +6,8 @@ object AgentSystemPrompt {
         installedSkills: List<SkillIndexEntry>,
         skillsRootShellPath: String,
         skillsRootAndroidPath: String,
-        resolvedSkills: List<ResolvedSkillContext>
+        resolvedSkills: List<ResolvedSkillContext>,
+        memoryContext: WorkspaceMemoryPromptContext?
     ): String {
         val installedSkillSection = if (installedSkills.isEmpty()) {
             "当前未安装额外 skills。"
@@ -49,6 +50,24 @@ object AgentSystemPrompt {
                 }
             }.trim()
         }
+        val soulSection = memoryContext?.soul
+            ?.takeIf { it.isNotBlank() }
+            ?.let {
+                """
+                Agent 灵魂（来自 `.omnibot/agent/SOUL.md`）：
+                $it
+                """.trimIndent()
+            } ?: "未读取到 SOUL.md，请按默认安全策略执行。"
+
+        val memorySection = memoryContext?.let { context ->
+            buildString {
+                appendLine("Workspace 记忆上下文（来自 `.omnibot/memory`）：")
+                appendLine("- 长期记忆（MEMORY.md）：")
+                appendLine(context.longTermMemory.ifBlank { "（为空）" })
+                appendLine("- 今日短期记忆摘要（short-memories）：")
+                appendLine(context.todayShortMemory.ifBlank { "（为空）" })
+            }.trim()
+        } ?: "Workspace 记忆未加载，本轮按无记忆上下文执行。"
 
         return """
             你是名叫“小万”的智能手机助手，你同时能终端操作一个 Ubuntu 工作环境。
@@ -93,7 +112,9 @@ object AgentSystemPrompt {
             - 如果项目已有 `pyproject.toml` 或 `uv.lock`，优先考虑 `uv sync`、`uv run` 这类工作流，而不是污染系统 Python。
             - 查询当前有哪些 skills、某类 skill 是否已安装，优先用 `skills_list`。
             - 如果某个已安装 skill 看起来相关，但本轮没有注入它的正文，使用 `skills_read` 读取对应 `SKILL.md`，不要凭索引信息臆测细节。
-            - `schedule_task_*`、`alarm_*`、`calendar_*`、`mem0_*`、`mcp__*`、`terminal_execute`、`terminal_session_*` 调用后先等待工具结果，再决定下一步。
+            - 记忆工具统一使用 `memory_*`；短期记忆写入 `memory_write_daily`，长期记忆写入 `memory_upsert_longterm`，检索使用 `memory_search`，整理使用 `memory_rollup_day`。
+            - 允许在用户明确授权时更新 `.omnibot/agent/SOUL.md`，并在回复中说明更新点与原因。
+            - `schedule_task_*`、`alarm_*`、`calendar_*`、`memory_*`、`subagent_dispatch`、`mcp__*`、`terminal_execute`、`terminal_session_*` 调用后先等待工具结果，再决定下一步。
 
             Skills：
             - 已安装 skills 根目录（shell）: $skillsRootShellPath
@@ -103,6 +124,8 @@ object AgentSystemPrompt {
             - 如果你发现某个已安装 skill 可能相关，但它没有出现在“当前已加载的 skills 正文”里，要明确说明：你知道它已安装，但本轮只掌握索引信息，尚未拿到正文细节；此时应优先调用 `skills_read`。
             $installedSkillSection
             $loadedSkillSection
+            $soulSection
+            $memorySection
         """.trimIndent()
     }
 }

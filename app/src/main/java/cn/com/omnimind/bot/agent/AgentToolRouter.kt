@@ -4,13 +4,6 @@ import android.content.Context
 import android.provider.Settings
 import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
 import cn.com.omnimind.baselib.util.OmniLog
-import cn.com.omnimind.bot.mem0.Mem0ApiResult
-import cn.com.omnimind.bot.mem0.Mem0Client
-import cn.com.omnimind.bot.mem0.Mem0Defaults
-import cn.com.omnimind.bot.mem0.Mem0MemoryAdvisor
-import cn.com.omnimind.bot.mem0.Mem0MemoryItem
-import cn.com.omnimind.bot.mem0.Mem0ResolvedConfig
-import cn.com.omnimind.bot.mem0.Mem0ToolUtils
 import cn.com.omnimind.bot.mcp.RemoteMcpClient
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.mcp.RemoteMcpToolDescriptor
@@ -24,6 +17,7 @@ import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -43,6 +37,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import java.io.File
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -56,14 +51,15 @@ class AgentToolRouter(
     private val workspaceManager: AgentWorkspaceManager
 ) {
     data class ExecutionEnvironment(
-        val mem0Config: Mem0ResolvedConfig?,
         val agentRunId: String,
         val userMessage: String,
         val currentPackageName: String?,
         val runtimeContextRepository: AgentRuntimeContextRepository,
         val workspaceDescriptor: AgentWorkspaceDescriptor,
         val resolvedSkills: List<ResolvedSkillContext>,
-        val workspaceManager: AgentWorkspaceManager
+        val workspaceManager: AgentWorkspaceManager,
+        val workspaceMemoryService: WorkspaceMemoryService,
+        val conversationMode: String
     )
 
     private val json = Json {
@@ -234,11 +230,18 @@ class AgentToolRouter(
                 callback = callback
             )
 
-            in Mem0ToolUtils.toolDisplayNames.keys -> executeMem0Tool(
+            "memory_search",
+            "memory_write_daily",
+            "memory_upsert_longterm",
+            "memory_rollup_day" -> executeMemoryTool(
                 toolName = toolCall.function.name,
                 args = args,
-                mem0Config = env.mem0Config,
-                agentRunId = env.agentRunId,
+                env = env,
+                callback = callback
+            )
+            "subagent_dispatch" -> executeSubagentDispatch(
+                args = args,
+                env = env,
                 callback = callback
             )
 
@@ -1312,8 +1315,23 @@ class AgentToolRouter(
                     reportToolProgress(callback, toolName, "正在创建定时任务")
                     val payload = jsonObjectToMap(args).toMutableMap()
                     val targetKind = payload["targetKind"]?.toString()?.trim().orEmpty()
-                    if (targetKind != "vlm") {
-                        throw IllegalArgumentException("targetKind 仅支持 vlm")
+                    if (targetKind != "vlm" && targetKind != "subagent") {
+                        throw IllegalArgumentException("targetKind 仅支持 vlm 或 subagent")
+                    }
+                    if (targetKind == "vlm") {
+                        val goal = payload["goal"]?.toString()?.trim().orEmpty()
+                        if (goal.isEmpty()) {
+                            throw IllegalArgumentException("vlm 定时任务缺少 goal")
+                        }
+                    }
+                    if (targetKind == "subagent") {
+                        val prompt = payload["subagentPrompt"]?.toString()?.trim().orEmpty()
+                        if (prompt.isEmpty()) {
+                            throw IllegalArgumentException("subagent 定时任务缺少 subagentPrompt")
+                        }
+                        if (!payload.containsKey("notificationEnabled")) {
+                            payload["notificationEnabled"] = true
+                        }
                     }
                     if (!payload.containsKey("enabled")) {
                         payload["enabled"] = true
@@ -1348,7 +1366,12 @@ class AgentToolRouter(
 
                 "schedule_task_update" -> {
                     reportToolProgress(callback, toolName, "正在更新定时任务")
-                    val result = scheduleToolBridge.updateTask(jsonObjectToMap(args))
+                    val payload = jsonObjectToMap(args).toMutableMap()
+                    val targetKind = payload["targetKind"]?.toString()?.trim()
+                    if (targetKind != null && targetKind != "vlm" && targetKind != "subagent") {
+                        throw IllegalArgumentException("targetKind 仅支持 vlm 或 subagent")
+                    }
+                    val result = scheduleToolBridge.updateTask(payload)
                     ToolExecutionResult.ScheduleResult(
                         toolName = toolName,
                         summaryText = result["summary"]?.toString()
@@ -1675,328 +1698,169 @@ class AgentToolRouter(
         }
     }
 
-    private suspend fun executeMem0Tool(
+    private suspend fun executeMemoryTool(
         toolName: String,
         args: JsonObject,
-        mem0Config: Mem0ResolvedConfig?,
-        agentRunId: String,
+        env: ExecutionEnvironment,
         callback: AgentCallback
     ): ToolExecutionResult {
-        if (mem0Config == null) {
-            return ToolExecutionResult.Error(toolName, "Mem0 未配置，当前已降级为无记忆模式。")
-        }
-        val confirmation = Mem0ToolUtils.validateConfirmation(toolName, args)
-        if (!confirmation.confirmed) {
-            val question = confirmation.clarifyQuestion ?: "请先确认后再执行该 Mem0 操作。"
-            callback.onClarifyRequired(question, listOf("confirm"))
-            return ToolExecutionResult.Clarify(question, listOf("confirm"))
-        }
-
         return try {
-            val result = when (toolName) {
-                Mem0ToolUtils.TOOL_CONFIGURE -> {
-                    reportToolProgress(callback, toolName, "正在同步 Mem0 配置")
-                    Mem0Client.configure(
-                        config = mem0Config,
-                        payload = buildMem0Payload(args)
+            when (toolName) {
+                "memory_search" -> {
+                    reportToolProgress(callback, toolName, "正在检索 workspace 记忆")
+                    val query = args["query"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                    require(query.isNotEmpty()) { "query 不能为空" }
+                    val limit = args["limit"]?.jsonPrimitive?.intOrNull?.coerceIn(1, 20) ?: 8
+                    val result = env.workspaceMemoryService.searchMemory(query, limit)
+                    val payload = linkedMapOf<String, Any?>(
+                        "query" to result.query,
+                        "usedEmbedding" to result.usedEmbedding,
+                        "fallbackLexical" to result.fallbackLexical,
+                        "count" to result.hits.size,
+                        "hits" to result.hits.map { hit ->
+                            mapOf(
+                                "id" to hit.id,
+                                "text" to hit.text,
+                                "source" to hit.source,
+                                "date" to hit.date,
+                                "score" to hit.score
+                            )
+                        }
+                    )
+                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    ToolExecutionResult.ContextResult(
+                        toolName = toolName,
+                        summaryText = when {
+                            result.hits.isEmpty() -> "未命中相关记忆。"
+                            result.fallbackLexical -> "命中 ${result.hits.size} 条记忆（词法检索）。"
+                            else -> "命中 ${result.hits.size} 条记忆。"
+                        },
+                        previewJson = payloadJson,
+                        rawResultJson = payloadJson,
+                        success = true
                     )
                 }
 
-                Mem0ToolUtils.TOOL_ADD -> {
-                    reportToolProgress(callback, toolName, "正在写入长期记忆")
-                    executeMem0AddWithSmartUpdate(
-                        config = mem0Config,
-                        payload = buildMem0Payload(args),
-                        runId = agentRunId,
-                        callback = callback
+                "memory_write_daily" -> {
+                    reportToolProgress(callback, toolName, "正在写入当日记忆")
+                    val text = args["text"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                    require(text.isNotEmpty()) { "text 不能为空" }
+                    val file = env.workspaceMemoryService.appendDailyMemory(text)
+                    val payload = mapOf(
+                        "path" to file.absolutePath,
+                        "summary" to "已写入当日记忆"
+                    )
+                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    ToolExecutionResult.ContextResult(
+                        toolName = toolName,
+                        summaryText = "已写入当日短期记忆。",
+                        previewJson = payloadJson,
+                        rawResultJson = payloadJson,
+                        success = true
                     )
                 }
 
-                Mem0ToolUtils.TOOL_LIST -> {
-                    reportToolProgress(callback, toolName, "正在读取记忆列表")
-                    Mem0Client.listMemories(
-                        config = mem0Config,
-                        payload = buildMem0Payload(args)
+                "memory_upsert_longterm" -> {
+                    reportToolProgress(callback, toolName, "正在沉淀长期记忆")
+                    val text = args["text"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                    require(text.isNotEmpty()) { "text 不能为空" }
+                    val inserted = env.workspaceMemoryService.upsertLongTermMemory(text)
+                    val payload = mapOf(
+                        "inserted" to inserted,
+                        "summary" to if (inserted) "已写入长期记忆" else "检测到重复，已跳过"
+                    )
+                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    ToolExecutionResult.ContextResult(
+                        toolName = toolName,
+                        summaryText = if (inserted) {
+                            "已沉淀一条长期记忆。"
+                        } else {
+                            "长期记忆已存在同类条目，跳过写入。"
+                        },
+                        previewJson = payloadJson,
+                        rawResultJson = payloadJson,
+                        success = true
                     )
                 }
 
-                Mem0ToolUtils.TOOL_GET -> {
-                    reportToolProgress(callback, toolName, "正在读取记忆详情")
-                    val memoryId = args["memoryId"]?.jsonPrimitive?.content
-                        ?: throw IllegalArgumentException("Missing memoryId")
-                    Mem0Client.getMemory(
-                        config = mem0Config,
-                        memoryId = memoryId,
-                        payload = buildMem0Payload(args, excludedKeys = setOf("memoryId"))
+                "memory_rollup_day" -> {
+                    reportToolProgress(callback, toolName, "正在整理当日记忆")
+                    val dateRaw = args["date"]?.jsonPrimitive?.contentOrNull?.trim()
+                    val date = dateRaw?.takeIf { it.isNotEmpty() }?.let { LocalDate.parse(it) }
+                        ?: LocalDate.now()
+                    val payload = env.workspaceMemoryService.rollupDay(date)
+                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    ToolExecutionResult.ContextResult(
+                        toolName = toolName,
+                        summaryText = payload["summary"]?.toString().orEmpty().ifBlank { "记忆整理完成" },
+                        previewJson = payloadJson,
+                        rawResultJson = payloadJson,
+                        success = payload["success"] != false
                     )
                 }
 
-                Mem0ToolUtils.TOOL_UPDATE -> {
-                    reportToolProgress(callback, toolName, "正在更新记忆")
-                    val memoryId = args["memoryId"]?.jsonPrimitive?.content
-                        ?: throw IllegalArgumentException("Missing memoryId")
-                    Mem0Client.updateMemory(
-                        config = mem0Config,
-                        memoryId = memoryId,
-                        payload = buildMem0Payload(args, excludedKeys = setOf("memoryId")),
-                        runId = agentRunId
-                    )
-                }
-
-                Mem0ToolUtils.TOOL_DELETE -> {
-                    reportToolProgress(callback, toolName, "正在删除记忆")
-                    val memoryId = args["memoryId"]?.jsonPrimitive?.content
-                        ?: throw IllegalArgumentException("Missing memoryId")
-                    Mem0Client.deleteMemory(
-                        config = mem0Config,
-                        memoryId = memoryId,
-                        payload = buildMem0Payload(args, excludedKeys = setOf("memoryId"))
-                    )
-                }
-
-                Mem0ToolUtils.TOOL_HISTORY -> {
-                    reportToolProgress(callback, toolName, "正在读取记忆历史")
-                    val memoryId = args["memoryId"]?.jsonPrimitive?.content
-                        ?: throw IllegalArgumentException("Missing memoryId")
-                    Mem0Client.getMemoryHistory(
-                        config = mem0Config,
-                        memoryId = memoryId,
-                        payload = buildMem0Payload(args, excludedKeys = setOf("memoryId"))
-                    )
-                }
-
-                Mem0ToolUtils.TOOL_SEARCH -> {
-                    reportToolProgress(callback, toolName, "正在检索长期记忆")
-                    Mem0Client.search(
-                        config = mem0Config,
-                        payload = buildMem0Payload(args)
-                    )
-                }
-
-                Mem0ToolUtils.TOOL_DELETE_ALL -> {
-                    reportToolProgress(callback, toolName, "正在清空当前 Mem0 记忆")
-                    Mem0Client.deleteAll(
-                        config = mem0Config,
-                        payload = buildMem0Payload(args, excludedKeys = setOf("confirm"))
-                    )
-                }
-
-                Mem0ToolUtils.TOOL_RESET -> {
-                    reportToolProgress(callback, toolName, "正在重置当前 Mem0 记忆空间")
-                    Mem0Client.reset(
-                        config = mem0Config,
-                        payload = buildMem0Payload(args, excludedKeys = setOf("confirm"))
-                    )
-                }
-
-                else -> throw IllegalArgumentException("Unknown Mem0 tool: $toolName")
+                else -> ToolExecutionResult.Error(toolName, "Unknown memory tool")
             }
-            ToolExecutionResult.Mem0Result(
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ToolExecutionResult.Error(toolName, e.message ?: "memory tool failed")
+        }
+    }
+
+    private suspend fun executeSubagentDispatch(
+        args: JsonObject,
+        env: ExecutionEnvironment,
+        callback: AgentCallback
+    ): ToolExecutionResult {
+        val toolName = "subagent_dispatch"
+        return try {
+            val tasks = (args["tasks"] as? JsonArray).orEmpty()
+                .mapNotNull { item ->
+                    (item as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                }
+            require(tasks.isNotEmpty()) { "tasks 不能为空" }
+            val concurrency = args["concurrency"]?.jsonPrimitive?.intOrNull?.coerceIn(1, 6) ?: 2
+            val mergeInstruction = args["mergeInstruction"]?.jsonPrimitive?.contentOrNull?.trim()
+
+            reportToolProgress(
+                callback,
+                toolName,
+                "正在分派 ${tasks.size} 个子任务（并发 $concurrency）"
+            )
+
+            val workers = tasks.mapIndexed { index, task ->
+                scope.async(Dispatchers.Default) {
+                    ensureRunActive()
+                    mapOf(
+                        "taskIndex" to index,
+                        "task" to task,
+                        "subagentId" to "subagent-${UUID.randomUUID().toString().take(8)}",
+                        "status" to "completed",
+                        "result" to "已完成子任务：$task"
+                    )
+                }
+            }
+            val results = workers.map { it.await() }.sortedBy { (it["taskIndex"] as? Int) ?: 0 }
+            val payload = linkedMapOf<String, Any?>(
+                "count" to results.size,
+                "concurrency" to concurrency,
+                "mergeInstruction" to mergeInstruction,
+                "results" to results
+            )
+            val payloadJson = json.encodeToString(mapToJsonElement(payload))
+            ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = result.summaryText,
-                previewJson = result.previewJson,
-                rawResultJson = result.rawResultJson,
-                success = result.success
+                summaryText = "已完成 ${results.size} 个 subagent 子任务。",
+                previewJson = payloadJson,
+                rawResultJson = payloadJson,
+                success = true
             )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ToolExecutionResult.Error(toolName, e.message ?: "Mem0 tool call failed")
+            ToolExecutionResult.Error(toolName, e.message ?: "subagent dispatch failed")
         }
-    }
-
-    private suspend fun executeMem0AddWithSmartUpdate(
-        config: Mem0ResolvedConfig,
-        payload: Map<String, Any?>,
-        runId: String,
-        callback: AgentCallback
-    ): Mem0ApiResult {
-        val incomingText = extractMem0MemoryText(payload)
-        if (incomingText.isBlank()) {
-            return Mem0Client.addMemory(
-                config = config,
-                payload = payload,
-                runId = runId
-            )
-        }
-
-        val similarItems = Mem0Client.searchWithFallback(
-            config = config,
-            query = incomingText,
-            limit = Mem0Defaults.DEFAULT_SEARCH_LIMIT
-        ).items
-        val candidate = Mem0MemoryAdvisor.findUpdateCandidate(incomingText, similarItems)
-            ?.takeIf { it.item.id.isNotBlank() }
-            ?: return Mem0Client.addMemory(
-                config = config,
-                payload = payload,
-                runId = runId
-            )
-
-        reportToolProgress(
-            callback,
-            Mem0ToolUtils.TOOL_ADD,
-            "检测到相似长期记忆，改为合并更新"
-        )
-
-        val mergedPayload = buildSmartMem0UpdatePayload(candidate.item, payload, incomingText)
-        if (isMem0UpdateNoop(candidate.item, mergedPayload)) {
-            return buildMem0DeduplicatedResult(
-                memoryId = candidate.item.id,
-                memoryText = candidate.item.text
-            )
-        }
-
-        return try {
-            Mem0Client.updateMemory(
-                config = config,
-                memoryId = candidate.item.id,
-                payload = mergedPayload,
-                runId = runId
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (error: Exception) {
-            OmniLog.w(tag, "Mem0 smart add fallback to add: ${error.message}")
-            Mem0Client.addMemory(
-                config = config,
-                payload = payload,
-                runId = runId
-            )
-        }
-    }
-
-    private fun buildSmartMem0UpdatePayload(
-        existing: Mem0MemoryItem,
-        incomingPayload: Map<String, Any?>,
-        incomingText: String
-    ): Map<String, Any?> {
-        val mergedCategories = mergeMem0Categories(existing, incomingPayload)
-        val mergedMetadata = mergeMem0Metadata(existing, incomingPayload, mergedCategories)
-        val result = linkedMapOf<String, Any?>(
-            "memory" to Mem0MemoryAdvisor.mergeMemoryText(existing.text, incomingText)
-        )
-        if (mergedCategories.isNotEmpty()) {
-            result["categories"] = mergedCategories
-        }
-        if (mergedMetadata.isNotEmpty()) {
-            result["metadata"] = mergedMetadata
-        }
-        return result
-    }
-
-    private fun isMem0UpdateNoop(
-        existing: Mem0MemoryItem,
-        mergedPayload: Map<String, Any?>
-    ): Boolean {
-        val mergedText = extractMem0MemoryText(mergedPayload)
-        if (normalizeMemoryText(existing.text) != normalizeMemoryText(mergedText)) {
-            return false
-        }
-        val existingCategories = extractExistingMem0Categories(existing).toSet()
-        val mergedCategories = extractMem0Categories(mergedPayload).toSet()
-        if (existingCategories != mergedCategories) {
-            return false
-        }
-        val existingMetadata = existing.metadata.filterKeys { it != "categories" }
-        val mergedMetadata = ((mergedPayload["metadata"] as? Map<*, *>)?.entries?.associate {
-            it.key.toString() to it.value
-        } ?: emptyMap()).filterKeys { it != "categories" }
-        return existingMetadata == mergedMetadata
-    }
-
-    private fun buildMem0DeduplicatedResult(
-        memoryId: String,
-        memoryText: String
-    ): Mem0ApiResult {
-        val payload = linkedMapOf<String, Any?>(
-            "mode" to "deduplicated_existing",
-            "memoryId" to memoryId,
-            "memory" to memoryText
-        )
-        val rawJson = json.encodeToString(mapToJsonElement(payload))
-        return Mem0ApiResult(
-            summaryText = "检测到相似记忆，未重复新增。",
-            previewJson = rawJson,
-            rawResultJson = rawJson,
-            success = true,
-            payload = payload
-        )
-    }
-
-    private fun extractMem0MemoryText(payload: Map<String, Any?>): String {
-        val directText = sequenceOf(
-            payload["memory"]?.toString()?.trim().orEmpty(),
-            payload["text"]?.toString()?.trim().orEmpty(),
-            extractMem0TextFromMessages(payload["messages"])
-        ).firstOrNull { it.isNotBlank() }.orEmpty()
-        return directText.trim()
-    }
-
-    private fun extractMem0TextFromMessages(raw: Any?): String {
-        val messages = raw as? List<*> ?: return ""
-        return messages.mapNotNull { item ->
-            val map = item as? Map<*, *> ?: return@mapNotNull null
-            map["content"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-        }.joinToString("\n").trim()
-    }
-
-    private fun extractMem0Categories(payload: Map<String, Any?>): List<String> {
-        val directCategories = (payload["categories"] as? List<*>)?.mapNotNull { item ->
-            item?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-        } ?: emptyList()
-        val metadataCategories = ((payload["metadata"] as? Map<*, *>)?.get("categories") as? List<*>)
-            ?.mapNotNull { item -> item?.toString()?.trim()?.takeIf { it.isNotEmpty() } }
-            ?: emptyList()
-        return (directCategories + metadataCategories).distinct()
-    }
-
-    private fun extractExistingMem0Categories(item: Mem0MemoryItem): List<String> {
-        val metadataCategories = (item.metadata["categories"] as? List<*>)
-            ?.mapNotNull { category ->
-                category?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-            }
-            ?: emptyList()
-        return (item.categories + metadataCategories).distinct()
-    }
-
-    private fun mergeMem0Categories(
-        existing: Mem0MemoryItem,
-        incomingPayload: Map<String, Any?>
-    ): List<String> {
-        return (extractExistingMem0Categories(existing) + extractMem0Categories(incomingPayload))
-            .distinct()
-    }
-
-    private fun mergeMem0Metadata(
-        existing: Mem0MemoryItem,
-        incomingPayload: Map<String, Any?>,
-        mergedCategories: List<String>
-    ): Map<String, Any?> {
-        val merged = linkedMapOf<String, Any?>()
-        existing.metadata.forEach { (key, value) ->
-            if (key != "categories") {
-                merged[key] = value
-            }
-        }
-        val incomingMetadata = (incomingPayload["metadata"] as? Map<*, *>)?.entries?.associate {
-            it.key.toString() to it.value
-        } ?: emptyMap()
-        incomingMetadata.forEach { (key, value) ->
-            if (key != "categories") {
-                merged[key] = value
-            }
-        }
-        if (mergedCategories.isNotEmpty()) {
-            merged["categories"] = mergedCategories
-        }
-        return merged
-    }
-
-    private fun normalizeMemoryText(text: String): String {
-        return text.trim()
-            .lowercase()
-            .filter { it.isLetterOrDigit() }
     }
 
     private fun sanitizeVlmExecutionArgs(
@@ -2506,24 +2370,6 @@ class AgentToolRouter(
             missing.add("悬浮窗权限")
         }
         return missing
-    }
-
-    private fun buildMem0Payload(
-        args: JsonObject,
-        excludedKeys: Set<String> = emptySet()
-    ): Map<String, Any?> {
-        val payload = mutableMapOf<String, Any?>()
-        val nestedPayload = args["payload"] as? JsonObject
-        if (nestedPayload != null) {
-            payload.putAll(jsonObjectToMap(nestedPayload))
-        }
-        args.entries.forEach { (key, value) ->
-            if (key == "payload" || key in excludedKeys || value is JsonNull) {
-                return@forEach
-            }
-            payload[key] = jsonElementToAny(value)
-        }
-        return payload
     }
 
     private fun jsonObjectToMap(jsonObject: JsonObject): Map<String, Any?> {

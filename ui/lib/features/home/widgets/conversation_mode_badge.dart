@@ -13,13 +13,16 @@ class ConversationModeBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isOpenClaw = mode == ConversationMode.openclaw;
-    final backgroundColor = isOpenClaw
-        ? const Color(0xFFFBE7D3)
-        : const Color(0xFFE6EEF9);
-    final textColor = isOpenClaw
-        ? const Color(0xFF9A540D)
-        : const Color(0xFF2552A6);
+    final backgroundColor = switch (mode) {
+      ConversationMode.openclaw => const Color(0xFFFBE7D3),
+      ConversationMode.subagent => const Color(0xFFE8F6EF),
+      ConversationMode.normal => const Color(0xFFE6EEF9),
+    };
+    final textColor = switch (mode) {
+      ConversationMode.openclaw => const Color(0xFF9A540D),
+      ConversationMode.subagent => const Color(0xFF167A49),
+      ConversationMode.normal => const Color(0xFF2552A6),
+    };
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 6 : 8,

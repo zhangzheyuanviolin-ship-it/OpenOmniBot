@@ -1,7 +1,6 @@
 package cn.com.omnimind.bot.agent
 
 import android.content.Context
-import cn.com.omnimind.bot.mem0.Mem0ConfigStore
 import cn.com.omnimind.bot.mcp.RemoteMcpDiscoveryRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,16 +37,20 @@ class OmniAgentExecutor(
         currentPackageName: String?,
         attachments: List<Map<String, Any?>>,
         conversationId: Long?,
+        conversationMode: String,
         modelOverride: AgentModelOverride?,
         callback: AgentCallback
     ): AgentResult {
-        val mem0Config = Mem0ConfigStore.getEffectiveConfig()
         val agentRunId = UUID.randomUUID().toString()
         val workspaceManager = AgentWorkspaceManager(context)
+        val memoryService = WorkspaceMemoryService(context, workspaceManager)
         val workspaceDescriptor = workspaceManager.buildWorkspaceDescriptor(
             conversationId = conversationId,
             agentRunId = agentRunId
         )
+        val promptMemoryContext = runCatching {
+            memoryService.buildPromptContext()
+        }.getOrNull()
         val skillIndexService = SkillIndexService(context, workspaceManager)
         val skillLoader = SkillLoader(workspaceManager)
         val installedSkills = skillIndexService.listInstalledSkills()
@@ -64,8 +67,7 @@ class OmniAgentExecutor(
         }
         val discoveredServers = RemoteMcpDiscoveryRegistry.discoverEnabledServers()
         val toolRegistry = AgentToolRegistry(
-            discoveredServers = discoveredServers,
-            includeMem0Tools = mem0Config != null
+            discoveredServers = discoveredServers
         )
         val initialMessages = buildInitialMessages(
             conversationHistory = conversationHistory,
@@ -76,7 +78,8 @@ class OmniAgentExecutor(
             skillsRootShellPath = workspaceManager.shellPathForAndroid(workspaceManager.skillsRoot())
                 ?: workspaceManager.skillsRoot().absolutePath,
             skillsRootAndroidPath = workspaceManager.skillsRoot().absolutePath,
-            resolvedSkills = resolvedSkills
+            resolvedSkills = resolvedSkills,
+            memoryContext = promptMemoryContext
         )
 
         val llmClient = HttpAgentLlmClient(
@@ -105,14 +108,15 @@ class OmniAgentExecutor(
                     callback = callback,
                     initialMessages = initialMessages,
                     executionEnv = AgentToolRouter.ExecutionEnvironment(
-                        mem0Config = mem0Config,
                         agentRunId = agentRunId,
                         userMessage = userMessage,
                         currentPackageName = currentPackageName,
                         runtimeContextRepository = runtimeContextRepository,
                         workspaceDescriptor = workspaceDescriptor,
                         resolvedSkills = resolvedSkills,
-                        workspaceManager = workspaceManager
+                        workspaceManager = workspaceManager,
+                        workspaceMemoryService = memoryService,
+                        conversationMode = conversationMode
                     )
                 )
             )
@@ -134,7 +138,8 @@ class OmniAgentExecutor(
         installedSkills: List<SkillIndexEntry>,
         skillsRootShellPath: String,
         skillsRootAndroidPath: String,
-        resolvedSkills: List<ResolvedSkillContext>
+        resolvedSkills: List<ResolvedSkillContext>,
+        memoryContext: WorkspaceMemoryPromptContext?
     ): List<cn.com.omnimind.baselib.llm.ChatCompletionMessage> {
         val historyMessages = normalizeConversationHistory(conversationHistory).toMutableList()
         if (historyMessages.lastOrNull()?.role == "user") {
@@ -150,7 +155,8 @@ class OmniAgentExecutor(
                         installedSkills = installedSkills,
                         skillsRootShellPath = skillsRootShellPath,
                         skillsRootAndroidPath = skillsRootAndroidPath,
-                        resolvedSkills = resolvedSkills
+                        resolvedSkills = resolvedSkills,
+                        memoryContext = memoryContext
                     )
                 )
             )

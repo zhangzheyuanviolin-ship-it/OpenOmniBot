@@ -14,7 +14,7 @@ import 'pages/authorize/authorize_page_args.dart';
 import 'pages/chat/chat_page.dart';
 import 'pages/command_overlay/command_overlay.dart';
 import 'pages/edit_profile/edit_profile_page.dart';
-import 'pages/mem0/mem0_setting_page.dart';
+import 'pages/settings/workspace_memory_setting_page.dart';
 import 'pages/omnibot_workspace/omnibot_artifact_preview_page.dart';
 import 'pages/omnibot_workspace/omnibot_workspace_page.dart';
 import 'pages/webview/webview_page.dart';
@@ -270,12 +270,12 @@ List<GoRoute> homeRoutes = [
   ),
 
   GoRoute(
-    path: '/home/mem0_setting',
-    name: 'home/mem0_setting',
+    path: '/home/workspace_memory_setting',
+    name: 'home/workspace_memory_setting',
     pageBuilder: (context, state) => GoRouterManager.buildActivitySlidePage(
       key: state.pageKey,
-      name: 'home/mem0_setting',
-      child: const Mem0SettingPage(),
+      name: 'home/workspace_memory_setting',
+      child: const WorkspaceMemorySettingPage(),
     ),
   ),
 

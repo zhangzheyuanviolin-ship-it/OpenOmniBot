@@ -3,13 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:flutter_switch/flutter_switch.dart';
 import 'package:ui/core/router/go_router_manager.dart';
-import 'package:ui/models/mem0_config.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/hide_from_recents_service.dart';
 import 'package:ui/services/mcp_server_service.dart';
-import 'package:ui/services/mem0_config_service.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/services/storage_service.dart';
+import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
@@ -30,8 +29,9 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _mcpLoaded = false;
   bool _mcpBusy = false;
   McpServerInfo? _mcpInfo;
-  bool _mem0Loaded = false;
-  Mem0Config? _mem0Config;
+  bool _workspaceMemoryLoaded = false;
+  WorkspaceMemoryEmbeddingConfig? _embeddingConfig;
+  WorkspaceMemoryRollupStatus? _rollupStatus;
 
   @override
   void initState() {
@@ -46,7 +46,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadHideFromRecentsState();
     _loadAutoBackToChatAfterTaskState();
     _loadMcpServerState();
-    _loadMem0Config();
+    _loadWorkspaceMemoryState();
   }
 
   Future<void> _loadVibrationState() async {
@@ -142,19 +142,23 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _loadMem0Config() async {
+  Future<void> _loadWorkspaceMemoryState() async {
     try {
-      final config = await Mem0ConfigService.getConfig();
+      final results = await Future.wait([
+        WorkspaceMemoryService.getEmbeddingConfig(),
+        WorkspaceMemoryService.getRollupStatus(),
+      ]);
       if (!mounted) return;
       setState(() {
-        _mem0Config = config;
-        _mem0Loaded = true;
+        _embeddingConfig = results[0] as WorkspaceMemoryEmbeddingConfig;
+        _rollupStatus = results[1] as WorkspaceMemoryRollupStatus;
+        _workspaceMemoryLoaded = true;
       });
     } catch (e) {
-      debugPrint('Load Mem0 config failed: $e');
+      debugPrint('Load workspace memory state failed: $e');
       if (!mounted) return;
       setState(() {
-        _mem0Loaded = true;
+        _workspaceMemoryLoaded = true;
       });
     }
   }
@@ -276,13 +280,13 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final mem0Configured = _mem0Config?.configured == true;
-    final mem0Subtitle = !_mem0Loaded
+    final workspaceMemoryConfigured = _embeddingConfig?.configured == true;
+    final workspaceMemorySubtitle = !_workspaceMemoryLoaded
         ? '加载中...'
-        : mem0Configured
-        ? '已配置完成，统一 Agent 会自动检索云记忆'
-        : '配置 Mem0 服务（可选）';
-    final sections = _buildSections(mem0Subtitle);
+        : workspaceMemoryConfigured
+        ? '已启用 workspace 记忆（嵌入检索可用）'
+        : '使用 workspace 记忆（当前为词法检索）';
+    final sections = _buildSections(workspaceMemorySubtitle);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -304,7 +308,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  List<_SettingSection> _buildSections(String mem0Subtitle) {
+  List<_SettingSection> _buildSections(String workspaceMemorySubtitle) {
     return [
       _SettingSection(
         items: [
@@ -330,11 +334,13 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.cloud_sync_outlined,
             iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',
-            title: 'Mem0 云记忆配置',
-            subtitle: mem0Subtitle,
+            title: 'Workspace 记忆配置',
+            subtitle: workspaceMemorySubtitle,
             onTap: () async {
-              await GoRouterManager.pushForResult('/home/mem0_setting');
-              _loadMem0Config();
+              await GoRouterManager.pushForResult(
+                '/home/workspace_memory_setting',
+              );
+              _loadWorkspaceMemoryState();
             },
           ),
         ],

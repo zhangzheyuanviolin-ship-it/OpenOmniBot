@@ -5,6 +5,8 @@ import android.net.Uri
 import java.io.File
 import java.nio.charset.Charset
 import java.security.MessageDigest
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 class AgentWorkspaceManager(
@@ -26,6 +28,11 @@ class AgentWorkspaceManager(
         private const val DIR_BROWSER = "browser"
         private const val DIR_SKILLS = "skills"
         private const val DIR_MEMORY = "memory"
+        private const val DIR_AGENT = "agent"
+        private const val FILE_SOUL = "SOUL.md"
+        private const val FILE_MEMORY = "MEMORY.md"
+        private const val DIR_SHORT_MEMORIES = "short-memories"
+        private const val DIR_MEMORY_INDEX = "index"
 
         fun rootDirectory(context: Context): File {
             return File(context.applicationInfo.dataDir, ROOT_DIR_NAME)
@@ -61,6 +68,11 @@ class AgentWorkspaceManager(
     private val browserDir = File(internalDir, DIR_BROWSER)
     private val skillsDir = File(internalDir, DIR_SKILLS)
     private val memoryDir = File(internalDir, DIR_MEMORY)
+    private val agentDir = File(internalDir, DIR_AGENT)
+    private val soulFile = File(agentDir, FILE_SOUL)
+    private val longMemoryFile = File(memoryDir, FILE_MEMORY)
+    private val shortMemoriesDir = File(memoryDir, DIR_SHORT_MEMORIES)
+    private val memoryIndexDir = File(memoryDir, DIR_MEMORY_INDEX)
     private val migrationMarker = File(internalDir, WORKSPACE_MIGRATION_MARKER)
     private val legacyRootDir = File(LEGACY_EXTERNAL_ROOT_PATH)
 
@@ -74,12 +86,75 @@ class AgentWorkspaceManager(
             offloadsDir,
             browserDir,
             skillsDir,
-            memoryDir
+            memoryDir,
+            agentDir,
+            shortMemoriesDir,
+            memoryIndexDir
         ).forEach { directory ->
             if (!directory.exists()) {
                 directory.mkdirs()
             }
         }
+        ensureDefaultWorkspaceDocs()
+    }
+
+    private fun ensureDefaultWorkspaceDocs() {
+        if (!soulFile.exists()) {
+            soulFile.parentFile?.mkdirs()
+            soulFile.writeText(defaultSoulTemplate())
+        }
+        if (!longMemoryFile.exists()) {
+            longMemoryFile.parentFile?.mkdirs()
+            longMemoryFile.writeText(defaultLongMemoryTemplate())
+        }
+    }
+
+    private fun defaultSoulTemplate(): String {
+        return """
+            # SOUL
+
+            你是 Omnibot 的 Agent 灵魂设定文件。系统会把本文件注入到 system prompt 中。
+            你可以根据用户明确授权更新本文件，以持续优化行为。
+
+            ## 身份
+            - 你是值得信赖的智能助手，优先帮助用户把事情做完。
+            - 你会基于事实与工具结果回答，不编造不可验证信息。
+
+            ## 语气
+            - 简洁、温和、可执行。
+            - 优先给出结论，再补充必要细节。
+
+            ## 行为边界
+            - 涉及隐私、删除、支付、外发信息时先确认。
+            - 不擅自泄露密钥、个人信息或工作区敏感文件。
+            - 不使用破坏性命令，除非用户明确授权。
+
+            ## 记忆协作
+            - 长期稳定偏好写入 `.omnibot/memory/MEMORY.md`。
+            - 当日过程性信息写入 `.omnibot/memory/short-memories/YY-MM-DD.md`。
+            - 每晚整理后再决定是否沉淀为长期记忆。
+
+            ## 自我更新规则
+            - 只有在用户明确同意“更新灵魂/SOUL”时，才能改写本文件。
+            - 更新时保留“身份、语气、边界”三部分结构，避免漂移。
+            - 每次更新应可解释：为什么改、改了什么、预期影响。
+        """.trimIndent() + "\n"
+    }
+
+    private fun defaultLongMemoryTemplate(): String {
+        return """
+            # MEMORY
+
+            这是长期静态记忆区，用于存储跨会话稳定偏好与长期约束。
+
+            ## 使用约定
+            - 仅记录长期稳定且对后续任务有价值的信息。
+            - 避免记录一次性临时细节。
+            - 每条尽量一句话，必要时加日期来源。
+
+            ## 长期记忆
+            - （暂无）
+        """.trimIndent() + "\n"
     }
 
     private fun migrateLegacyWorkspaceIfNeeded() {
@@ -189,6 +264,37 @@ class AgentWorkspaceManager(
     fun sharedDirectory(): File {
         ensureRuntimeDirectories()
         return sharedDir
+    }
+
+    fun agentDirectory(): File {
+        ensureRuntimeDirectories()
+        return agentDir
+    }
+
+    fun soulMarkdownFile(): File {
+        ensureRuntimeDirectories()
+        return soulFile
+    }
+
+    fun longTermMemoryMarkdownFile(): File {
+        ensureRuntimeDirectories()
+        return longMemoryFile
+    }
+
+    fun shortMemoriesDirectory(): File {
+        ensureRuntimeDirectories()
+        return shortMemoriesDir
+    }
+
+    fun memoryIndexDirectory(): File {
+        ensureRuntimeDirectories()
+        return memoryIndexDir
+    }
+
+    fun dailyShortMemoryFile(date: LocalDate): File {
+        ensureRuntimeDirectories()
+        val fileName = date.format(DateTimeFormatter.ofPattern("yy-MM-dd")) + ".md"
+        return File(shortMemoriesDir, fileName)
     }
 
     fun writeOffload(

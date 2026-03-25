@@ -21,6 +21,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     'scene.vlm.operation.primary',
     'scene.compactor.context',
     'scene.loading.sprite',
+    'scene.memory.embedding',
+    'scene.memory.rollup',
   ];
 
   static const Map<String, String> _sceneDisplayNameMap = {
@@ -28,6 +30,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     'scene.vlm.operation.primary': 'Operation',
     'scene.compactor.context': 'Compactor',
     'scene.loading.sprite': 'Loading',
+    'scene.memory.embedding': 'Memory Embed',
+    'scene.memory.rollup': 'Memory Rollup',
   };
 
   static const Map<String, String> _sceneTooltipMap = {
@@ -35,6 +39,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     'scene.vlm.operation.primary': '负责执行 UI 操作主链路',
     'scene.compactor.context': '负责压缩上下文并纠错',
     'scene.loading.sprite': '负责生成加载状态文案',
+    'scene.memory.embedding': '负责 workspace 记忆向量检索的嵌入模型',
+    'scene.memory.rollup': '负责夜间记忆整理策略模型',
   };
 
   bool _isLoading = true;

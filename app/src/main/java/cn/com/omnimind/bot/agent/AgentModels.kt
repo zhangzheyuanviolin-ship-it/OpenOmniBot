@@ -108,7 +108,7 @@ sealed class ToolExecutionResult {
         override val actions: List<ArtifactAction> = emptyList()
     ) : ToolExecutionResult()
 
-    data class Mem0Result(
+    data class MemoryResult(
         val toolName: String,
         val summaryText: String,
         val previewJson: String,

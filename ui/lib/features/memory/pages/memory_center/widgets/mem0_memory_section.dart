@@ -96,21 +96,21 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
           else if (!widget.snapshot.configured)
             _buildPlaceholder(
               icon: Icons.cloud_off_outlined,
-              title: '还没有连接云端长期记忆',
-              subtitle: '配置 Mem0 后，这里会自动展示跨会话沉淀的偏好与事实。',
+              title: 'workspace 长期记忆未就绪',
+              subtitle: '完成 workspace 记忆初始化后，这里会展示跨会话沉淀的偏好与事实。',
             )
           else if (widget.snapshot.errorMessage != null &&
               !widget.snapshot.hasData)
             _buildPlaceholder(
               icon: Icons.error_outline_rounded,
-              title: '云端记忆暂时不可用',
+              title: '长期记忆暂时不可用',
               subtitle: widget.snapshot.errorMessage!,
             )
           else if (filteredItems.isEmpty)
             _buildPlaceholder(
               icon: Icons.auto_awesome_outlined,
-              title: '云端记忆还是空的',
-              subtitle: '当统一 Agent 主动写入长期偏好后，这里会逐渐丰富起来。',
+              title: '长期记忆还是空的',
+              subtitle: '当 Agent 主动写入长期偏好后，这里会逐渐丰富起来。',
             )
           else
             Column(
@@ -136,7 +136,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
                         minimumSize: const Size(0, 32),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      child: Text(_showAll ? '收起部分云记忆' : '查看更多云记忆'),
+                      child: Text(_showAll ? '收起部分长期记忆' : '查看更多长期记忆'),
                     ),
                   ),
               ],
@@ -151,7 +151,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
     return Row(
       children: [
         const Text(
-          '云端长期记忆',
+          'Workspace 长期记忆',
           style: TextStyle(
             color: AppColors.text,
             fontSize: AppTextStyles.fontSizeMain,
@@ -182,7 +182,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
             splashRadius: 18,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            tooltip: '新增云记忆',
+            tooltip: '新增长期记忆',
           ),
         if (widget.snapshot.configured || widget.snapshot.hasData)
           IconButton(
@@ -199,7 +199,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
             splashRadius: 18,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            tooltip: '刷新云记忆',
+            tooltip: '刷新长期记忆',
           ),
       ],
     );
@@ -411,13 +411,13 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
 
   String _buildStatusText() {
     if (widget.isMutating) {
-      return '正在同步云端记忆变更...';
+      return '正在同步长期记忆变更...';
     }
     if (widget.isLoading && !widget.snapshot.hasData) {
-      return '正在同步云端长期记忆...';
+      return '正在同步 workspace 长期记忆...';
     }
     if (!widget.snapshot.configured) {
-      return '未连接 Mem0 服务';
+      return 'workspace 长期记忆未启用';
     }
     if (widget.snapshot.errorMessage != null && !widget.snapshot.hasData) {
       return widget.snapshot.errorMessage!;
@@ -432,7 +432,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
     if (widget.snapshot.fetchedAt != null) {
       return '最近同步 ${_formatSyncTime(widget.snapshot.fetchedAt!)}';
     }
-    return '已接入 Mem0 云记忆';
+    return '已接入 workspace 记忆';
   }
 
   List<(String, int, String)> _buildCategories() {

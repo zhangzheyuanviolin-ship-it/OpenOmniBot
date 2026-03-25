@@ -305,7 +305,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
       _safeSetState(() {
         _mem0Snapshot = Mem0MemorySnapshot(
           configured: true,
-          errorMessage: '云端记忆加载失败: $e',
+          errorMessage: '长期记忆加载失败: $e',
         );
       });
     } finally {
@@ -380,7 +380,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
         'sortTs': item.displayTime?.millisecondsSinceEpoch ?? 0,
         'title': _clipSuggestionText(memory, maxLength: 24),
         'description': memory,
-        'appName': '云端长期记忆',
+        'appName': 'Workspace 长期记忆',
       });
     }
 
@@ -486,7 +486,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
     });
 
     try {
-      const prompt = '''你是小万，一个温暖的AI助手。根据用户的记忆内容（包含本地记忆和云端记忆），生成一句简短、温馨的问候语。
+      const prompt = '''你是小万，一个温暖的AI助手。根据用户的记忆内容（包含本地记忆和长期记忆），生成一句简短、温馨的问候语。
 
 要求：
 1. 问候语要简短（不超过30个字）
@@ -1197,7 +1197,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
             Row(
               children: [
                 _buildMemoryTabButton(label: '本地记忆', tabIndex: _localMemoryTab),
-                _buildMemoryTabButton(label: '云端记忆', tabIndex: _cloudMemoryTab),
+                _buildMemoryTabButton(label: '长期记忆', tabIndex: _cloudMemoryTab),
               ],
             ),
           ],
@@ -1397,7 +1397,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: const [
           Text(
-            '还没有连接云端长期记忆',
+            '长期记忆还未初始化',
             style: TextStyle(
               color: AppColors.text,
               fontSize: AppTextStyles.fontSizeMain,
@@ -1406,7 +1406,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
           ),
           SizedBox(height: 6),
           Text(
-            '连接 Mem0 后，你的跨会话长期记忆会在这里持续沉淀。',
+            'workspace 记忆启用后，你的跨会话长期记忆会在这里持续沉淀。',
             style: TextStyle(
               color: AppColors.text70,
               fontSize: AppTextStyles.fontSizeSmall,
@@ -1523,7 +1523,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '云端长期记忆',
+                        'Workspace 长期记忆',
                         style: TextStyle(
                           color: AppColors.buttonPrimary,
                           fontSize: AppTextStyles.fontSizeSmall,
@@ -1676,8 +1676,8 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
       backgroundColor: Colors.transparent,
       builder: (context) {
         return Mem0MemoryEditorSheet(
-          title: initialItem == null ? '新增云端记忆' : '编辑云端记忆',
-          submitLabel: initialItem == null ? '保存到云端' : '保存修改',
+          title: initialItem == null ? '新增长期记忆' : '编辑长期记忆',
+          submitLabel: initialItem == null ? '保存到长期记忆' : '保存修改',
           initialMemory: initialItem?.memory,
           initialCategories: initialItem?.categories ?? const [],
         );
@@ -1700,7 +1700,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
           categories: result.categories,
         );
       },
-      successMessage: '云端记忆已新增',
+      successMessage: '长期记忆已新增',
     );
   }
 
@@ -1720,7 +1720,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
           categories: result.categories,
         );
       },
-      successMessage: '云端记忆已更新',
+      successMessage: '长期记忆已更新',
     );
   }
 
@@ -1730,7 +1730,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
     }
     final confirmed = await AppDialog.confirm(
       context,
-      title: '删除这条云端记忆？',
+      title: '删除这条长期记忆？',
       content: '删除后将无法恢复：\n${_clipMem0Memory(item.memory)}',
       confirmText: '删除',
       confirmButtonColor: AppColors.alertRed,
@@ -1742,7 +1742,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
       action: () async {
         await Mem0MemoryService.deleteMemory(memoryId: item.id);
       },
-      successMessage: '云端记忆已删除',
+      successMessage: '长期记忆已删除',
     );
   }
 
@@ -1759,7 +1759,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
       showToast(successMessage, type: ToastType.success);
     } catch (e) {
       showToast(
-        '云端记忆操作失败：${e.toString().replaceFirst('Exception: ', '')}',
+        '长期记忆操作失败：${e.toString().replaceFirst('Exception: ', '')}',
         type: ToastType.error,
       );
     } finally {

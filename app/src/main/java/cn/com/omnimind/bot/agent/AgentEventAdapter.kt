@@ -19,7 +19,7 @@ class AgentEventAdapter(
             is ToolExecutionResult.PermissionRequired -> AgentOutputKind.PERMISSION_REQUIRED
             is ToolExecutionResult.ScheduleResult,
             is ToolExecutionResult.McpResult,
-            is ToolExecutionResult.Mem0Result,
+            is ToolExecutionResult.MemoryResult,
             is ToolExecutionResult.TerminalResult,
             is ToolExecutionResult.ContextResult -> AgentOutputKind.TOOL_RESULT
             is ToolExecutionResult.Error -> AgentOutputKind.NONE
@@ -33,7 +33,7 @@ class AgentEventAdapter(
             result is ToolExecutionResult.PermissionRequired ||
             result is ToolExecutionResult.ScheduleResult ||
             result is ToolExecutionResult.McpResult ||
-            result is ToolExecutionResult.Mem0Result ||
+            result is ToolExecutionResult.MemoryResult ||
             result is ToolExecutionResult.TerminalResult ||
             result is ToolExecutionResult.ContextResult
     }
@@ -109,7 +109,7 @@ class AgentEventAdapter(
                 "rawResultJson" to result.rawResultJson
             )
 
-            is ToolExecutionResult.Mem0Result -> mapOf(
+            is ToolExecutionResult.MemoryResult -> mapOf(
                 "toolName" to descriptor.name,
                 "displayName" to descriptor.displayName,
                 "toolType" to descriptor.toolType,

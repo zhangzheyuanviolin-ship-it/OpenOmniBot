@@ -263,10 +263,21 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _isSurfacePageScrolling = false;
 
   ChatPageMode get _activeMode => _activeConversationMode;
-  ConversationMode _conversationModeForPageMode(ChatPageMode mode) =>
-      mode == ChatPageMode.openclaw
-      ? ConversationMode.openclaw
-      : ConversationMode.normal;
+  ConversationMode _conversationModeForPageMode(ChatPageMode mode) {
+    if (mode == ChatPageMode.openclaw) {
+      return ConversationMode.openclaw;
+    }
+    final runtimeConversation = _currentConversationByMode[mode];
+    if (runtimeConversation?.mode == ConversationMode.subagent) {
+      return ConversationMode.subagent;
+    }
+    if (
+        mode == _activeConversationMode &&
+        _resolvedThreadTarget?.mode == ConversationMode.subagent) {
+      return ConversationMode.subagent;
+    }
+    return ConversationMode.normal;
+  }
   ChatPageMode _pageModeForConversationMode(ConversationMode mode) =>
       mode == ConversationMode.openclaw
       ? ChatPageMode.openclaw

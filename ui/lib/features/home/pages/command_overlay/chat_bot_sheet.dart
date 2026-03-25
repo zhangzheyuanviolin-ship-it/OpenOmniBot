@@ -1389,6 +1389,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         userMessage: userMessage,
         conversationHistory: history,
         conversationId: _currentConversationId,
+        conversationMode: ConversationMode.normal.storageValue,
       );
 
       return success;

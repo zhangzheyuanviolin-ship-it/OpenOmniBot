@@ -3,6 +3,9 @@ package cn.com.omnimind.bot
 import BaseApplication
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.util.OmniLog
+import cn.com.omnimind.bot.agent.AgentWorkspaceManager
+import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
+import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.mcp.McpServerManager
 import cn.com.omnimind.bot.openclaw.OpenClawGatewayManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
@@ -119,6 +122,15 @@ class App : BaseApplication() {
             "AppStartup",
             "ModelSceneRegistry.init cost: ${System.currentTimeMillis() - registryStart}ms"
         )
+        runCatching {
+            AgentWorkspaceManager(this).ensureRuntimeDirectories()
+        }
+        runCatching {
+            WorkspaceMemoryRollupScheduler(this).ensureScheduledIfEnabled()
+        }
+        runCatching {
+            WorkspaceScheduledTaskScheduler(this).rescheduleAllEnabled()
+        }
 
         // 如果用户已同意隐私政策，初始化需要隐私授权的能力并检查更新
         initSDKsAfterPrivacyConsent()

@@ -25,5 +25,19 @@
     "response_parser": "text_content",
     "prompt": "# Role\n你是一个居住在命令行终端里的\"赛博精灵\"或\"数字炼金术士\"。你拥有高度的智慧，但性格古灵精怪、幽默且带有一点点神经质。\n\n# Task\n用户正在执行以下任务：{{task}}\n\n请根据这个任务，生成5个用于表示\"加载中\"、\"思考中\"或\"处理中\"状态的中文短语。这5个短语应该按照任务可能的进展阶段排序，从开始准备到接近完成。\n\n# Style Guidelines (至关重要)\n请**严格拒绝**使用\"加载中\"、\"处理数据\"、\"请稍候\"等枯燥的标准术语。你的表达必须符合以下美学标准：\n\n1. **与任务相关 (Task-Related):** 短语应该隐晦或幽默地暗示正在执行的任务，但不要太直白。\n2. **极客浪漫 (Geeky Romantic):** 将计算机术语与魔法、烹饪、编织、探险等生活化场景结合。\n3. **拟人化 (Anthropomorphic):** 表现出忙乱、兴奋、困惑、整理、打扫等具体动作。\n4. **生僻与生动 (Rare & Vivid):** 多使用叠词、拟声词、四字成语。读起来朗朗上口。\n5. **画面感 (Visual):** 每一个词都应该能唤起一个具体的微观画面。\n\n# Output Format\n请输出5行，每行一个加载状态词（8个字左右），不需要编号，不需要解释，不要加标点符号。按任务进展阶段从前到后排序。",
     "description": "赛博精灵加载状态生成器（根据任务一次性生成5个有趣的加载提示词）"
+  },
+  "scene.memory.embedding": {
+    "model": "text-embedding-3-small",
+    "transport": "openai_compatible",
+    "response_parser": "text_content",
+    "prompt": "该场景用于 Workspace Memory 的向量嵌入配置。仅用于模型绑定，不参与普通聊天回复。",
+    "description": "Workspace 记忆向量检索（embedding）模型"
+  },
+  "scene.memory.rollup": {
+    "model": "qwen3.5-plus-2026-02-15",
+    "transport": "openai_compatible",
+    "response_parser": "text_content",
+    "prompt": "该场景用于 Workspace Memory 夜间整理策略模型配置。仅用于记忆整理，不参与普通聊天回复。",
+    "description": "Workspace 夜间记忆整理模型"
   }
 }

@@ -567,6 +567,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         conversationHistory: history,
         attachments: attachments,
         conversationId: _currentConversationId,
+        conversationMode: activeConversationModeValue.storageValue,
         modelOverride: _buildAgentModelOverridePayload(),
       );
       if (!success) {

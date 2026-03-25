@@ -23,7 +23,6 @@ class ChannelManager {
 
     private var mcpServerChannel: McpServerChannel = McpServerChannel()
     private var remoteMcpConfigChannel: RemoteMcpConfigChannel = RemoteMcpConfigChannel()
-    private var mem0ConfigChannel: Mem0ConfigChannel = Mem0ConfigChannel()
     private var overlayChannel: OverlayChannel = OverlayChannel()
     private var browserSessionChannel: BrowserSessionChannel = BrowserSessionChannel()
     fun getUIRouterChannel(): UIRouterChannel {
@@ -48,7 +47,6 @@ class ChannelManager {
         uiRouterChannel.setChannel(flutterEngine)
         mcpServerChannel.setChannel(flutterEngine)
         remoteMcpConfigChannel.setChannel(flutterEngine)
-        mem0ConfigChannel.setChannel(flutterEngine)
         overlayChannel.setChannel(flutterEngine)
         browserSessionChannel.setChannel(flutterEngine)
     }
@@ -64,7 +62,6 @@ class ChannelManager {
         appUpdateChannel.onCreate(context)
         mcpServerChannel.onCreate(context)
         remoteMcpConfigChannel.onCreate()
-        mem0ConfigChannel.onCreate()
     }
 
     fun clearChannel() {
@@ -81,7 +78,6 @@ class ChannelManager {
         httpChannel.clear()
         mcpServerChannel.clear()
         remoteMcpConfigChannel.clear()
-        mem0ConfigChannel.clear()
         overlayChannel.clear()
         browserSessionChannel.clear()
     }

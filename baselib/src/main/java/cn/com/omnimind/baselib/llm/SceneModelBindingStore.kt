@@ -16,7 +16,9 @@ object SceneModelBindingStore {
         "scene.dispatch.model",
         "scene.vlm.operation.primary",
         "scene.compactor.context",
-        "scene.loading.sprite"
+        "scene.loading.sprite",
+        "scene.memory.embedding",
+        "scene.memory.rollup"
     )
 
     fun getBindingEntries(): List<SceneModelBindingEntry> {

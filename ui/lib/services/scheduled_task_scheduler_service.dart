@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ui/models/scheduled_task.dart';
+import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/scheduled_task_storage_service.dart';
 import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/services/conversation_history_service.dart';
+import 'package:ui/services/conversation_service.dart';
 
 /// 定时任务调度服务
 /// 负责管理定时任务的执行调度和倒计时提醒
 class ScheduledTaskSchedulerService {
+  static const bool _useNativeAlarmScheduler = true;
   static final Map<String, Timer> _scheduledTimers = {};
   static final Map<String, Timer> _reminderTimers = {};
 
@@ -36,6 +40,15 @@ class ScheduledTaskSchedulerService {
 
       final tasks =
           await ScheduledTaskStorageService.getEnabledScheduledTasks();
+      if (_useNativeAlarmScheduler) {
+        await AssistsMessageService.syncWorkspaceScheduledTasks(
+          tasks.map((task) => task.toJson()).toList(),
+        );
+        print(
+          'ScheduledTaskSchedulerService: Native scheduler synced ${tasks.length} tasks',
+        );
+        return;
+      }
       for (final task in tasks) {
         scheduleTask(task);
       }
@@ -105,6 +118,21 @@ class ScheduledTaskSchedulerService {
 
   /// 调度一个定时任务
   static void scheduleTask(ScheduledTask task) {
+    if (_useNativeAlarmScheduler) {
+      _scheduledTimers[task.id]?.cancel();
+      _scheduledTimers.remove(task.id);
+      _reminderTimers[task.id]?.cancel();
+      _reminderTimers.remove(task.id);
+      if (!task.isEnabled) {
+        unawaited(AssistsMessageService.deleteWorkspaceScheduledTask(task.id));
+        return;
+      }
+      unawaited(
+        AssistsMessageService.upsertWorkspaceScheduledTask(task.toJson()),
+      );
+      return;
+    }
+
     // 先取消已有的定时器
     cancelTask(task.id);
 
@@ -179,9 +207,7 @@ class ScheduledTaskSchedulerService {
     try {
       // 执行任务
       if (task.suggestionData != null) {
-        final targetKind = task.targetKind.isNotEmpty
-            ? task.targetKind
-            : 'vlm';
+        final targetKind = task.targetKind.isNotEmpty ? task.targetKind : 'vlm';
         if (targetKind == 'vlm') {
           final goal = task.suggestionData!['goal'] as String;
           print(
@@ -190,6 +216,57 @@ class ScheduledTaskSchedulerService {
           await AssistsMessageService.createVLMOperationTask(
             goal,
             packageName: task.packageName,
+          );
+        } else if (targetKind == 'subagent') {
+          final prompt =
+              task.subagentPrompt ??
+              task.suggestionData?['subagentPrompt']?.toString() ??
+              '';
+          if (prompt.isEmpty) {
+            throw Exception('SubAgent task missing prompt');
+          }
+          var conversationId = int.tryParse(task.subagentConversationId ?? '');
+          if (conversationId == null) {
+            conversationId = await ConversationService.createConversation(
+              title: task.title,
+              mode: ConversationMode.subagent,
+            );
+            if (conversationId != null) {
+              final patchedTask = task.copyWith(
+                subagentConversationId: '$conversationId',
+              );
+              await ScheduledTaskStorageService.updateScheduledTask(
+                patchedTask,
+              );
+            }
+          }
+          final normalizedConversationId = conversationId;
+          if (normalizedConversationId == null) {
+            throw Exception('SubAgent conversation create failed');
+          }
+          final historyMessages =
+              await ConversationHistoryService.getConversationMessages(
+                normalizedConversationId,
+                mode: ConversationMode.subagent,
+              );
+          final historyPayload = historyMessages.map((message) {
+            final role = switch (message.user) {
+              1 => 'user',
+              2 => 'assistant',
+              _ => 'system',
+            };
+            return {'role': role, 'content': message.text ?? ''};
+          }).toList();
+          await AssistsMessageService.createAgentTask(
+            taskId:
+                'subagent_schedule_${DateTime.now().millisecondsSinceEpoch}_${task.id}',
+            userMessage: prompt,
+            conversationHistory: historyPayload,
+            conversationId: normalizedConversationId,
+            conversationMode: ConversationMode.subagent.storageValue,
+            scheduledTaskId: task.id,
+            scheduledTaskTitle: task.title,
+            scheduleNotificationEnabled: task.notificationEnabled,
           );
         }
       }
@@ -212,6 +289,9 @@ class ScheduledTaskSchedulerService {
 
   /// 取消定时任务
   static void cancelTask(String taskId) {
+    if (_useNativeAlarmScheduler) {
+      unawaited(AssistsMessageService.deleteWorkspaceScheduledTask(taskId));
+    }
     _scheduledTimers[taskId]?.cancel();
     _scheduledTimers.remove(taskId);
 
@@ -223,6 +303,9 @@ class ScheduledTaskSchedulerService {
 
   /// 取消所有定时任务
   static void cancelAllTasks() {
+    if (_useNativeAlarmScheduler) {
+      unawaited(AssistsMessageService.syncWorkspaceScheduledTasks(const []));
+    }
     for (final timer in _scheduledTimers.values) {
       timer.cancel();
     }

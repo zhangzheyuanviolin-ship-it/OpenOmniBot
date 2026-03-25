@@ -51,7 +51,7 @@ class AgentOrchestrator(
                 is ToolExecutionResult.TerminalResult -> result.summaryText.takeIf { !result.success }
                 is ToolExecutionResult.ScheduleResult -> result.summaryText.takeIf { !result.success }
                 is ToolExecutionResult.McpResult -> result.summaryText.takeIf { !result.success }
-                is ToolExecutionResult.Mem0Result -> result.summaryText.takeIf { !result.success }
+                is ToolExecutionResult.MemoryResult -> result.summaryText.takeIf { !result.success }
                 is ToolExecutionResult.ContextResult -> result.summaryText.takeIf { !result.success }
                 else -> null
             }?.trim()?.takeIf { it.isNotEmpty() }

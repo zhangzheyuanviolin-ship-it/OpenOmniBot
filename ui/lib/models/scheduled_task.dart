@@ -27,6 +27,15 @@ class ScheduledTask {
   /// 目标类型：vlm
   final String targetKind;
 
+  /// subagent 固定线程 conversationId
+  final String? subagentConversationId;
+
+  /// subagent 任务提示词
+  final String? subagentPrompt;
+
+  /// 执行完成是否通知
+  final bool notificationEnabled;
+
   /// 定时任务类型
   final ScheduledTaskType type;
 
@@ -65,6 +74,9 @@ class ScheduledTask {
     required this.nodeId,
     required this.suggestionId,
     this.targetKind = 'vlm',
+    this.subagentConversationId,
+    this.subagentPrompt,
+    this.notificationEnabled = true,
     required this.type,
     this.fixedTime,
     this.countdownMinutes,
@@ -92,6 +104,9 @@ class ScheduledTask {
       nodeId: json['nodeId'] as String? ?? '',
       suggestionId: json['suggestionId'] as String? ?? '',
       targetKind: targetKindFromJson,
+      subagentConversationId: json['subagentConversationId'] as String?,
+      subagentPrompt: json['subagentPrompt'] as String?,
+      notificationEnabled: json['notificationEnabled'] as bool? ?? true,
       type: ScheduledTaskType.values.firstWhere(
         (e) => e.name == json['type'],
         orElse: () => ScheduledTaskType.fixedTime,
@@ -117,6 +132,9 @@ class ScheduledTask {
       'nodeId': nodeId,
       'suggestionId': suggestionId,
       'targetKind': targetKind,
+      'subagentConversationId': subagentConversationId,
+      'subagentPrompt': subagentPrompt,
+      'notificationEnabled': notificationEnabled,
       'type': type.name,
       'fixedTime': fixedTime,
       'countdownMinutes': countdownMinutes,
@@ -138,6 +156,9 @@ class ScheduledTask {
     String? nodeId,
     String? suggestionId,
     String? targetKind,
+    String? subagentConversationId,
+    String? subagentPrompt,
+    bool? notificationEnabled,
     ScheduledTaskType? type,
     String? fixedTime,
     int? countdownMinutes,
@@ -156,6 +177,10 @@ class ScheduledTask {
       nodeId: nodeId ?? this.nodeId,
       suggestionId: suggestionId ?? this.suggestionId,
       targetKind: targetKind ?? this.targetKind,
+      subagentConversationId:
+          subagentConversationId ?? this.subagentConversationId,
+      subagentPrompt: subagentPrompt ?? this.subagentPrompt,
+      notificationEnabled: notificationEnabled ?? this.notificationEnabled,
       type: type ?? this.type,
       fixedTime: fixedTime ?? this.fixedTime,
       countdownMinutes: countdownMinutes ?? this.countdownMinutes,

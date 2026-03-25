@@ -725,6 +725,45 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
                         height: 1.57,
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: (task.targetKind == 'subagent'
+                                    ? Colors.teal
+                                    : AppColors.primaryBlue)
+                                .withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            task.targetKind == 'subagent' ? 'SubAgent' : 'VLM',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: task.targetKind == 'subagent'
+                                  ? Colors.teal
+                                  : AppColors.primaryBlue,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (task.targetKind == 'subagent' &&
+                            !task.notificationEnabled) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '通知关闭',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: secondaryTextColor,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     Row(
                       children: [

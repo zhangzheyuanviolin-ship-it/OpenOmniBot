@@ -9,7 +9,8 @@ object AgentExecutionIntentPolicy {
     private val strongExecutionKeywords = listOf(
         "vlm",
         "mcp",
-        "mem0",
+        "memory",
+        "subagent",
         "terminal",
         "schedule",
         "alarm",

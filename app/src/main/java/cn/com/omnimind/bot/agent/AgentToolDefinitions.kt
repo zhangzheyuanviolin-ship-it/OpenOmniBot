@@ -1,6 +1,5 @@
 package cn.com.omnimind.bot.agent
 
-import cn.com.omnimind.bot.mem0.Mem0ToolUtils
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -662,10 +661,14 @@ object AgentToolDefinitions {
                         put("type", "string")
                         putJsonArray("enum") {
                             add("vlm")
+                            add("subagent")
                         }
                     }
                     putJsonObject("goal") { put("type", "string") }
                     putJsonObject("packageName") { put("type", "string") }
+                    putJsonObject("subagentConversationId") { put("type", "string") }
+                    putJsonObject("subagentPrompt") { put("type", "string") }
+                    putJsonObject("notificationEnabled") { put("type", "boolean") }
                     putJsonObject("scheduleType") {
                         put("type", "string")
                         putJsonArray("enum") {
@@ -681,7 +684,6 @@ object AgentToolDefinitions {
                 putJsonArray("required") {
                     add("title")
                     add("targetKind")
-                    add("packageName")
                     add("scheduleType")
                     add("repeatDaily")
                 }
@@ -717,10 +719,20 @@ object AgentToolDefinitions {
                 putJsonObject("properties") {
                     putJsonObject("taskId") { put("type", "string") }
                     putJsonObject("title") { put("type", "string") }
+                    putJsonObject("targetKind") {
+                        put("type", "string")
+                        putJsonArray("enum") {
+                            add("vlm")
+                            add("subagent")
+                        }
+                    }
                     putJsonObject("fixedTime") { put("type", "string") }
                     putJsonObject("countdownMinutes") { put("type", "integer") }
                     putJsonObject("repeatDaily") { put("type", "boolean") }
                     putJsonObject("enabled") { put("type", "boolean") }
+                    putJsonObject("subagentConversationId") { put("type", "string") }
+                    putJsonObject("subagentPrompt") { put("type", "string") }
+                    putJsonObject("notificationEnabled") { put("type", "boolean") }
                 }
                 putJsonArray("required") {
                     add("taskId")
@@ -1004,204 +1016,14 @@ object AgentToolDefinitions {
         }
     }
 
-    val mem0ConfigureTool: JsonObject = buildJsonObject {
+    val memorySearchTool: JsonObject = buildJsonObject {
         put("type", "function")
         putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_CONFIGURE)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_CONFIGURE))
-            put("toolType", "mem0")
-            put("description", "调用 Mem0 /configure 接口调整服务端配置。谨慎使用，仅在用户明确要求调整记忆服务配置时使用。")
-            put("postToolRule", "配置完成后等待工具结果，再决定是否继续。")
-            putJsonObject("parameters") {
-                put("type", "object")
-                putJsonObject("properties") {
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "原样透传到 /configure 的配置对象。")
-                    }
-                }
-                putJsonArray("required") {
-                    add("payload")
-                }
-            }
-        }
-    }
-
-    val mem0AddTool: JsonObject = buildJsonObject {
-        put("type", "function")
-        putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_ADD)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_ADD))
-            put("toolType", "mem0")
-            put("description", "将长期偏好、稳定身份信息或长期约束写入 Mem0。对明显有长期价值的用户事实要更积极使用；不要写入一次性临时信息。若已存在同主题记忆，优先改用 mem0_update 合并，而不是新增近重复记忆。")
-            put("postToolRule", "写入后等待工具结果，再向用户确认已记住。若已存在同主题记忆，优先改用 mem0_update 合并。")
-            putJsonObject("parameters") {
-                put("type", "object")
-                putJsonObject("properties") {
-                    putJsonObject("memory") {
-                        put("type", "string")
-                        put("description", "要写入的记忆文本。")
-                    }
-                    putJsonObject("metadata") {
-                        put("type", "object")
-                        put("description", "附加元数据。系统会自动补充 run_id。")
-                    }
-                    putJsonObject("categories") {
-                        put("type", "array")
-                        putJsonObject("items") {
-                            put("type", "string")
-                        }
-                    }
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "需要透传给 /memories 的其他字段。")
-                    }
-                }
-                putJsonArray("required") {
-                    add("memory")
-                }
-            }
-        }
-    }
-
-    val mem0ListTool: JsonObject = buildJsonObject {
-        put("type", "function")
-        putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_LIST)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_LIST))
-            put("toolType", "mem0")
-            put("description", "读取当前 Mem0 记忆空间下的记忆列表。")
-            put("postToolRule", "读取后等待工具结果，再决定是否总结、删除或继续检索。")
-            putJsonObject("parameters") {
-                put("type", "object")
-                putJsonObject("properties") {
-                    putJsonObject("limit") { put("type", "integer") }
-                    putJsonObject("filters") {
-                        put("type", "object")
-                        put("description", "附加筛选条件。")
-                    }
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "透传给 /memories 的其他查询参数。")
-                    }
-                }
-            }
-        }
-    }
-
-    val mem0GetTool: JsonObject = buildJsonObject {
-        put("type", "function")
-        putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_GET)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_GET))
-            put("toolType", "mem0")
-            put("description", "按 ID 读取单条记忆详情。")
-            put("postToolRule", "读取后等待工具结果，再继续。")
-            putJsonObject("parameters") {
-                put("type", "object")
-                putJsonObject("properties") {
-                    putJsonObject("memoryId") {
-                        put("type", "string")
-                        put("description", "记忆 ID。")
-                    }
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "透传给 /memories/{id} 的附加参数。")
-                    }
-                }
-                putJsonArray("required") {
-                    add("memoryId")
-                }
-            }
-        }
-    }
-
-    val mem0UpdateTool: JsonObject = buildJsonObject {
-        put("type", "function")
-        putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_UPDATE)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_UPDATE))
-            put("toolType", "mem0")
-            put("description", "按 ID 修改已有记忆。若本轮事实与已有记忆属于同一主题或同一偏好簇，应优先用它来合并信息，避免新增重复记忆。")
-            put("postToolRule", "更新后等待工具结果，再向用户同步。更新时应尽量保留原有稳定信息，并把本轮新增事实合并到同一条记忆。")
-            putJsonObject("parameters") {
-                put("type", "object")
-                putJsonObject("properties") {
-                    putJsonObject("memoryId") { put("type", "string") }
-                    putJsonObject("memory") { put("type", "string") }
-                    putJsonObject("metadata") { put("type", "object") }
-                    putJsonObject("categories") {
-                        put("type", "array")
-                        putJsonObject("items") { put("type", "string") }
-                    }
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "透传给 /memories/{id} 的其他字段。")
-                    }
-                }
-                putJsonArray("required") {
-                    add("memoryId")
-                }
-            }
-        }
-    }
-
-    val mem0DeleteTool: JsonObject = buildJsonObject {
-        put("type", "function")
-        putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_DELETE)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_DELETE))
-            put("toolType", "mem0")
-            put("description", "按 ID 删除单条记忆。")
-            put("postToolRule", "删除后等待工具结果，再告知用户。")
-            putJsonObject("parameters") {
-                put("type", "object")
-                putJsonObject("properties") {
-                    putJsonObject("memoryId") { put("type", "string") }
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "透传给 /memories/{id} 的附加参数。")
-                    }
-                }
-                putJsonArray("required") {
-                    add("memoryId")
-                }
-            }
-        }
-    }
-
-    val mem0HistoryTool: JsonObject = buildJsonObject {
-        put("type", "function")
-        putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_HISTORY)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_HISTORY))
-            put("toolType", "mem0")
-            put("description", "读取某条记忆的历史版本。")
-            put("postToolRule", "读取后等待工具结果，再继续。")
-            putJsonObject("parameters") {
-                put("type", "object")
-                putJsonObject("properties") {
-                    putJsonObject("memoryId") { put("type", "string") }
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "透传给 /memories/{id}/history 的附加参数。")
-                    }
-                }
-                putJsonArray("required") {
-                    add("memoryId")
-                }
-            }
-        }
-    }
-
-    val mem0SearchTool: JsonObject = buildJsonObject {
-        put("type", "function")
-        putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_SEARCH)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_SEARCH))
-            put("toolType", "mem0")
-            put("description", "按查询语句检索与当前 Mem0 记忆空间相关的长期记忆。若不确定该新增还是更新，可先搜索相似记忆，再决定是否调用 mem0_update。")
-            put("postToolRule", "读取后等待工具结果，再判断是否继续。")
+            put("name", "memory_search")
+            put("displayName", "检索记忆")
+            put("toolType", "memory")
+            put("description", "在 workspace 记忆中检索与当前问题相关的长期/短期记忆。优先使用向量召回，配置缺失时自动降级词法检索。")
+            put("postToolRule", "读取结果后再决定是否写入新的短期或长期记忆。")
             putJsonObject("parameters") {
                 put("type", "object")
                 putJsonObject("properties") {
@@ -1209,11 +1031,9 @@ object AgentToolDefinitions {
                         put("type", "string")
                         put("description", "检索语句。")
                     }
-                    putJsonObject("limit") { put("type", "integer") }
-                    putJsonObject("filters") { put("type", "object") }
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "透传给 /search 的其他字段。")
+                    putJsonObject("limit") {
+                        put("type", "integer")
+                        put("description", "返回条数上限，默认 8，范围 1-20。")
                     }
                 }
                 putJsonArray("required") {
@@ -1223,50 +1043,101 @@ object AgentToolDefinitions {
         }
     }
 
-    val mem0DeleteAllTool: JsonObject = buildJsonObject {
+    val memoryWriteDailyTool: JsonObject = buildJsonObject {
         put("type", "function")
         putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_DELETE_ALL)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_DELETE_ALL))
-            put("toolType", "mem0")
-            put("description", "清空当前 Mem0 记忆空间下的全部记忆。必须在用户明确二次确认后再调用。")
-            put("postToolRule", "只有用户明确确认且 confirm=true 时才允许执行。")
+            put("name", "memory_write_daily")
+            put("displayName", "写入当日记忆")
+            put("toolType", "memory")
+            put("description", "将当轮过程性信息写入 `.omnibot/memory/short-memories/YY-MM-DD.md`。")
+            put("postToolRule", "写入成功后再继续执行其他步骤。")
             putJsonObject("parameters") {
                 put("type", "object")
                 putJsonObject("properties") {
-                    putJsonObject("confirm") {
-                        put("type", "boolean")
-                        put("description", "用户已明确二次确认时设为 true。")
+                    putJsonObject("text") {
+                        put("type", "string")
+                        put("description", "要写入的短期记忆文本。")
                     }
-                    putJsonObject("filters") { put("type", "object") }
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "透传给 DELETE /memories 的其他字段。")
+                }
+                putJsonArray("required") {
+                    add("text")
+                }
+            }
+        }
+    }
+
+    val memoryUpsertLongTermTool: JsonObject = buildJsonObject {
+        put("type", "function")
+        putJsonObject("function") {
+            put("name", "memory_upsert_longterm")
+            put("displayName", "沉淀长期记忆")
+            put("toolType", "memory")
+            put("description", "将稳定偏好、长期约束、身份事实写入 `.omnibot/memory/MEMORY.md`。自动去重相同条目。")
+            put("postToolRule", "写入后等待工具结果，再向用户确认。")
+            putJsonObject("parameters") {
+                put("type", "object")
+                putJsonObject("properties") {
+                    putJsonObject("text") {
+                        put("type", "string")
+                        put("description", "要沉淀的长期记忆内容。")
+                    }
+                }
+                putJsonArray("required") {
+                    add("text")
+                }
+            }
+        }
+    }
+
+    val memoryRollupDayTool: JsonObject = buildJsonObject {
+        put("type", "function")
+        putJsonObject("function") {
+            put("name", "memory_rollup_day")
+            put("displayName", "整理当日记忆")
+            put("toolType", "memory")
+            put("description", "整理某一天短期记忆并按策略沉淀到长期记忆。默认整理今天。")
+            put("postToolRule", "整理后等待工具结果，再决定是否补充长期记忆。")
+            putJsonObject("parameters") {
+                put("type", "object")
+                putJsonObject("properties") {
+                    putJsonObject("date") {
+                        put("type", "string")
+                        put("description", "可选日期，格式 YYYY-MM-DD。")
                     }
                 }
             }
         }
     }
 
-    val mem0ResetTool: JsonObject = buildJsonObject {
+    val subagentDispatchTool: JsonObject = buildJsonObject {
         put("type", "function")
         putJsonObject("function") {
-            put("name", Mem0ToolUtils.TOOL_RESET)
-            put("displayName", Mem0ToolUtils.displayName(Mem0ToolUtils.TOOL_RESET))
-            put("toolType", "mem0")
-            put("description", "重置当前 Mem0 记忆空间。必须在用户明确二次确认后再调用。")
-            put("postToolRule", "只有用户明确确认且 confirm=true 时才允许执行。")
+            put("name", "subagent_dispatch")
+            put("displayName", "分派子任务")
+            put("toolType", "subagent")
+            put("description", "把多个可并行的小任务分派给 subagent 集群执行，并返回聚合结果。")
+            put("postToolRule", "分派后等待工具结果，再汇总给用户。")
             putJsonObject("parameters") {
                 put("type", "object")
                 putJsonObject("properties") {
-                    putJsonObject("confirm") {
-                        put("type", "boolean")
-                        put("description", "用户已明确二次确认时设为 true。")
+                    putJsonObject("tasks") {
+                        put("type", "array")
+                        putJsonObject("items") {
+                            put("type", "string")
+                        }
+                        put("description", "需要并行执行的子任务列表。")
                     }
-                    putJsonObject("payload") {
-                        put("type", "object")
-                        put("description", "透传给 /reset 的附加字段。")
+                    putJsonObject("concurrency") {
+                        put("type", "integer")
+                        put("description", "并发度，默认 2，范围 1-6。")
                     }
+                    putJsonObject("mergeInstruction") {
+                        put("type", "string")
+                        put("description", "结果聚合要求，可选。")
+                    }
+                }
+                putJsonArray("required") {
+                    add("tasks")
                 }
             }
         }
@@ -1314,17 +1185,15 @@ object AgentToolDefinitions {
         calendarEventDeleteTool
     )
 
-    val mem0Tools: List<JsonObject> = listOf(
-        mem0ConfigureTool,
-        mem0AddTool,
-        mem0ListTool,
-        mem0GetTool,
-        mem0UpdateTool,
-        mem0DeleteTool,
-        mem0HistoryTool,
-        mem0SearchTool,
-        mem0DeleteAllTool,
-        mem0ResetTool
+    val memoryTools: List<JsonObject> = listOf(
+        memorySearchTool,
+        memoryWriteDailyTool,
+        memoryUpsertLongTermTool,
+        memoryRollupDayTool
+    )
+
+    val subagentTools: List<JsonObject> = listOf(
+        subagentDispatchTool
     )
 
     fun staticTools(): List<JsonObject> = builtinTools + scheduleTools + alarmTools + calendarTools

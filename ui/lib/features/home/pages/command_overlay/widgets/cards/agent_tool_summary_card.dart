@@ -340,7 +340,7 @@ class _AgentToolSummaryCardState extends State<AgentToolSummaryCard> {
         return '失败';
       default:
         if (toolType == 'mcp') return '响应中';
-        if (toolType == 'mem0') return '处理中';
+        if (toolType == 'memory') return '处理中';
         if (toolType == 'terminal') return '运行中';
         if (toolType == 'browser') return '浏览中';
         return '执行中';
@@ -778,7 +778,8 @@ class _StatusIcon extends StatelessWidget {
     if (toolType == 'schedule') return Icons.alarm_on_outlined;
     if (toolType == 'alarm') return Icons.alarm_outlined;
     if (toolType == 'calendar') return Icons.calendar_month_outlined;
-    if (toolType == 'mem0') return Icons.psychology_alt_outlined;
+    if (toolType == 'memory') return Icons.psychology_alt_outlined;
+    if (toolType == 'subagent') return Icons.hub_outlined;
     if (toolType == 'mcp') return Icons.extension_outlined;
     if (toolType == 'terminal') return Icons.terminal_outlined;
     if (toolType == 'browser') return Icons.language_outlined;

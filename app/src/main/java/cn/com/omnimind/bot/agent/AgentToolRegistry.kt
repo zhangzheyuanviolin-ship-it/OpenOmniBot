@@ -16,8 +16,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 class AgentToolRegistry(
-    discoveredServers: List<RemoteMcpDiscoveredServer>,
-    includeMem0Tools: Boolean
+    discoveredServers: List<RemoteMcpDiscoveredServer>
 ) {
     data class RuntimeToolDescriptor(
         val name: String,
@@ -35,9 +34,8 @@ class AgentToolRegistry(
     init {
         val runtimeDefinitions = mutableListOf<JsonObject>()
         runtimeDefinitions.addAll(AgentToolDefinitions.staticTools())
-        if (includeMem0Tools) {
-            runtimeDefinitions.addAll(AgentToolDefinitions.mem0Tools)
-        }
+        runtimeDefinitions.addAll(AgentToolDefinitions.memoryTools)
+        runtimeDefinitions.addAll(AgentToolDefinitions.subagentTools)
         discoveredServers.flatMap { it.tools }.forEach { tool ->
             runtimeDefinitions.add(toDynamicMcpToolDefinition(tool))
         }

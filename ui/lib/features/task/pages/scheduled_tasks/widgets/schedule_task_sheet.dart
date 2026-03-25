@@ -541,6 +541,10 @@ class _ScheduleTaskSheetState extends State<ScheduleTaskSheet> {
       packageName: widget.packageName,
       nodeId: widget.nodeId,
       suggestionId: widget.suggestionId,
+      targetKind: widget.existingTask?.targetKind ?? 'vlm',
+      subagentConversationId: widget.existingTask?.subagentConversationId,
+      subagentPrompt: widget.existingTask?.subagentPrompt,
+      notificationEnabled: widget.existingTask?.notificationEnabled ?? true,
       type: _selectedTabIndex == 0
           ? ScheduledTaskType.fixedTime
           : ScheduledTaskType.countdown,

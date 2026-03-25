@@ -129,6 +129,7 @@ class ConversationHistoryService {
       for (final mode in const <ConversationMode>[
         ConversationMode.normal,
         ConversationMode.openclaw,
+        ConversationMode.subagent,
       ]) {
         final target = await getCurrentConversationTarget(mode: mode);
         if (target == null) {
