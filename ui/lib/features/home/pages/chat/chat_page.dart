@@ -26,6 +26,7 @@ import 'package:ui/features/home/widgets/permission_bottom_sheet.dart';
 import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/app_update_service.dart';
 import 'package:ui/services/agent_browser_session_service.dart';
+import 'package:ui/services/chat_terminal_environment_service.dart';
 import 'package:ui/services/conversation_model_override_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
@@ -59,6 +60,7 @@ part 'chat_page_browser.dart';
 part 'chat_page_lifecycle.dart';
 part 'chat_page_model_context.dart';
 part 'chat_page_openclaw.dart';
+part 'chat_page_terminal_env.dart';
 part 'chat_page_conversation_flow.dart';
 part 'chat_page_ui.dart';
 
@@ -131,6 +133,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   ConversationModelOverride? _conversationModelOverride;
   _ChatModelOverrideSelection? _pendingConversationModelOverride;
   bool _showConversationModelMentionChip = false;
+  List<ChatTerminalEnvironmentVariable> _terminalEnvironmentVariables =
+      const [];
   final TextEditingController _openClawBaseUrlController =
       TextEditingController();
   final TextEditingController _openClawTokenController =
@@ -271,6 +275,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _newConversationPullHapticTriggered = false;
   bool _isCreatingConversationFromPull = false;
   Timer? _normalSurfaceModelRevealTimer;
+  bool _normalSurfaceModelRevealInterrupted = false;
   int _surfaceSwitchRequestId = 0;
   bool _isSurfacePageScrolling = false;
 
@@ -493,10 +498,20 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _normalSurfaceModelRevealTimer = null;
   }
 
+  void _interruptNormalSurfaceModelReveal() {
+    _cancelNormalSurfaceModelReveal();
+    _normalSurfaceModelRevealInterrupted = true;
+  }
+
+  void _resetNormalSurfaceModelRevealInterruption() {
+    _normalSurfaceModelRevealInterrupted = false;
+  }
+
   bool _canAutoRevealNormalSurfaceModel() {
     final modelId = _activeNormalChatModelId?.trim() ?? '';
     return _activeSurfaceMode == ChatSurfaceMode.normal &&
         !_isSurfacePageScrolling &&
+        !_normalSurfaceModelRevealInterrupted &&
         modelId.isNotEmpty &&
         _chatIslandDisplayLayerForMode(ChatPageMode.normal) ==
             ChatIslandDisplayLayer.mode;
@@ -555,6 +570,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     if (!mounted) {
       _isSurfacePageScrolling = false;
       if (mode == ChatSurfaceMode.normal) {
+        _resetNormalSurfaceModelRevealInterruption();
         _forceNormalSurfaceModeLayer();
       }
       return;
@@ -568,11 +584,15 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       setState(() {
         _isSurfacePageScrolling = false;
         if (mode == ChatSurfaceMode.normal) {
+          _resetNormalSurfaceModelRevealInterruption();
           _forceNormalSurfaceModeLayer();
         }
       });
     } else {
       _isSurfacePageScrolling = false;
+      if (mode == ChatSurfaceMode.normal) {
+        _resetNormalSurfaceModelRevealInterruption();
+      }
     }
     if (mode == ChatSurfaceMode.normal) {
       _scheduleNormalSurfaceModelReveal();
@@ -1227,6 +1247,16 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Widget _buildModelMentionPanel();
 
+  Future<void> _loadTerminalEnvironmentVariables();
+
+  Future<void> _updateTerminalEnvironmentVariables(
+    List<ChatTerminalEnvironmentVariable> variables,
+  );
+
+  Future<void> _openTerminalEnvironmentEditor(BuildContext anchorContext);
+
+  Map<String, String>? _buildAgentTerminalEnvironmentPayload();
+
   String _browserSnapshotSignature(ChatBrowserSessionSnapshot? snapshot);
 
   void _scheduleBrowserSessionRefreshIfNeeded();
@@ -1422,5 +1452,6 @@ class _ChatPageState extends _ChatPageStateBase
         _ChatPageLifecycleMixin,
         _ChatPageModelContextMixin,
         _ChatPageOpenClawMixin,
+        _ChatPageTerminalEnvMixin,
         _ChatPageConversationFlowMixin,
         _ChatPageUiMixin {}

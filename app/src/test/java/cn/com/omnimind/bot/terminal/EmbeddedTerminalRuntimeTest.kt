@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.terminal
 
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,5 +24,20 @@ class EmbeddedTerminalRuntimeTest {
         assertTrue(prelude.contains("command python -m pip"))
         assertTrue(prelude.contains("command python -m pytest"))
         assertTrue(prelude.contains(".venv/bin/activate"))
+    }
+
+    @Test
+    fun buildCommandEnvironmentExportsQuotesValuesAndSkipsInvalidKeys() {
+        val exports = EmbeddedTerminalRuntime.buildCommandEnvironmentExports(
+            linkedMapOf(
+                "OPENAI_API_KEY" to "sk-test'value",
+                "1INVALID" to "ignored",
+                "PATH" to "/tmp/bin"
+            )
+        )
+
+        assertTrue(exports.contains("export OPENAI_API_KEY='sk-test'\"'\"'value'"))
+        assertTrue(exports.contains("export PATH='/tmp/bin'"))
+        assertFalse(exports.contains("1INVALID"))
     }
 }

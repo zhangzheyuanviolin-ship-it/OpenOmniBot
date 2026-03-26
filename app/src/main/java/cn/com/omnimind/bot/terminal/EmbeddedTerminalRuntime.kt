@@ -113,6 +113,7 @@ object EmbeddedTerminalRuntime {
     private const val BASE_PACKAGE_NODE_VERSION_MARKER = "__OMNIBOT_NODE_VERSION__"
     private const val BASE_PACKAGE_PNPM_VERSION_MARKER = "__OMNIBOT_PNPM_VERSION__"
     private const val NODE_MIN_MAJOR = 22
+    private val terminalEnvKeyPattern = Regex("^[A-Za-z_][A-Za-z0-9_]*$")
 
     private val sessionHandles = ConcurrentHashMap<String, SessionHandle>()
     private val packageInstallMutex = Mutex()
@@ -493,6 +494,7 @@ object EmbeddedTerminalRuntime {
         command: String,
         workingDirectory: String?,
         timeoutSeconds: Int,
+        environment: Map<String, String> = emptyMap(),
         onLiveUpdate: suspend (TermuxLiveUpdate) -> Unit = {}
     ): CommandResult {
         val status = ensureCommandEnvironmentReady(context) { progress ->
@@ -529,7 +531,11 @@ object EmbeddedTerminalRuntime {
             )
         )
 
-        val wrappedCommand = wrapOneShotCommand(command, workingDirectory)
+        val wrappedCommand = wrapOneShotCommand(
+            command = command,
+            workingDirectory = workingDirectory,
+            environment = environment
+        )
         val hiddenResult = terminalManager(context).executeHiddenCommand(
             command = wrappedCommand,
             executorKey = buildExecutorKey(workingDirectory),
@@ -577,7 +583,8 @@ object EmbeddedTerminalRuntime {
     suspend fun startSession(
         context: Context,
         requestedSessionId: String,
-        workingDirectory: String?
+        workingDirectory: String?,
+        environment: Map<String, String> = emptyMap()
     ): SessionStartResult {
         val status = ensureCommandEnvironmentReady(context)
         require(status.success) { status.message }
@@ -610,7 +617,8 @@ object EmbeddedTerminalRuntime {
                 sessionId = requestedSessionId,
                 command = "cd ${TermuxCommandBuilder.quoteForShell(workingDirectory)}",
                 workingDirectory = null,
-                timeoutSeconds = 30
+                timeoutSeconds = 30,
+                environment = environment
             )
             require(cwdResult.completed && cwdResult.success) {
                 cwdResult.errorMessage ?: "无法切换到工作目录：$workingDirectory"
@@ -630,7 +638,8 @@ object EmbeddedTerminalRuntime {
         sessionId: String,
         command: String,
         workingDirectory: String?,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        environment: Map<String, String> = emptyMap()
     ): SessionCommandResult {
         val handle = sessionHandles[sessionId]
             ?: return SessionCommandResult(
@@ -678,7 +687,8 @@ object EmbeddedTerminalRuntime {
                     context = context,
                     handle = handle,
                     command = "cd ${TermuxCommandBuilder.quoteForShell(workingDirectory)}",
-                    timeoutSeconds = 30
+                    timeoutSeconds = 30,
+                    environment = environment
                 )
                 if (!cwdResult.completed || !cwdResult.success) {
                     return@withLock cwdResult.copy(sessionId = sessionId)
@@ -689,7 +699,8 @@ object EmbeddedTerminalRuntime {
                 context = context,
                 handle = handle,
                 command = command,
-                timeoutSeconds = timeoutSeconds
+                timeoutSeconds = timeoutSeconds,
+                environment = environment
             ).copy(sessionId = sessionId)
         }
     }
@@ -734,7 +745,8 @@ object EmbeddedTerminalRuntime {
         context: Context,
         handle: SessionHandle,
         command: String,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        environment: Map<String, String> = emptyMap()
     ): SessionCommandResult = coroutineScope {
         val manager = terminalManager(context)
         val commandId = UUID.randomUUID().toString()
@@ -751,7 +763,7 @@ object EmbeddedTerminalRuntime {
 
         manager.sendCommandToSession(
             sessionId = handle.terminalSessionId,
-            command = wrapPersistentSessionCommand(command, token),
+            command = wrapPersistentSessionCommand(command, token, environment),
             commandId = commandId
         )
 
@@ -784,9 +796,14 @@ object EmbeddedTerminalRuntime {
         )
     }
 
-    private fun wrapOneShotCommand(command: String, workingDirectory: String?): String {
+    private fun wrapOneShotCommand(
+        command: String,
+        workingDirectory: String?,
+        environment: Map<String, String>
+    ): String {
         val trimmedCommand = command.trim()
         val normalizedWorkingDirectory = workingDirectory?.trim().orEmpty()
+        val environmentExports = buildCommandEnvironmentExports(environment)
         return buildString {
             appendLine(buildPythonEnvironmentPrelude())
             if (normalizedWorkingDirectory.isNotBlank()) {
@@ -795,14 +812,22 @@ object EmbeddedTerminalRuntime {
                 appendLine(" || exit $?")
             }
             appendLine("__omni_prepare_python_env 0 || exit $?")
+            if (environmentExports.isNotBlank()) {
+                appendLine(environmentExports)
+            }
             append(trimmedCommand)
         }
     }
 
-    private fun wrapPersistentSessionCommand(command: String, token: String): String {
+    private fun wrapPersistentSessionCommand(
+        command: String,
+        token: String,
+        environment: Map<String, String>
+    ): String {
         val normalizedCommand = command.replace("\r\n", "\n").replace("\r", "\n")
         val tokenSuffix = token.replace("-", "")
         val heredocMarker = "__OMNIBOT_SESSION_${tokenSuffix}__"
+        val environmentExports = buildCommandEnvironmentExports(environment)
         return buildString {
             append("__omnibot_session_script=\"\${TMPDIR:-/tmp}/omni_session_")
             append(tokenSuffix)
@@ -813,6 +838,10 @@ object EmbeddedTerminalRuntime {
             append(buildPythonEnvironmentPrelude())
             append("\n")
             append("__omni_prepare_python_env 0 || return $?\n")
+            if (environmentExports.isNotBlank()) {
+                append(environmentExports)
+                append('\n')
+            }
             append(normalizedCommand)
             if (!normalizedCommand.endsWith("\n")) {
                 append('\n')
@@ -828,6 +857,25 @@ object EmbeddedTerminalRuntime {
             append(token)
             append(":%s\\n' \"\$__omnibot_session_rc\"\n")
         }
+    }
+
+    internal fun buildCommandEnvironmentExports(environment: Map<String, String>): String {
+        if (environment.isEmpty()) {
+            return ""
+        }
+        return buildString {
+            environment.forEach { (rawKey, rawValue) ->
+                val key = rawKey.trim()
+                if (key.isEmpty() || !terminalEnvKeyPattern.matches(key)) {
+                    return@forEach
+                }
+                append("export ")
+                append(key)
+                append("=")
+                append(TermuxCommandBuilder.quoteForShell(rawValue))
+                append('\n')
+            }
+        }.trimEnd()
     }
 
     internal fun buildPythonEnvironmentPrelude(): String = """

@@ -569,6 +569,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         conversationId: _currentConversationId,
         conversationMode: activeConversationModeValue.storageValue,
         modelOverride: _buildAgentModelOverridePayload(),
+        terminalEnvironment: _buildAgentTerminalEnvironmentPayload(),
       );
       if (!success) {
         _runtimeCoordinator.unregisterTask(aiMessageId);

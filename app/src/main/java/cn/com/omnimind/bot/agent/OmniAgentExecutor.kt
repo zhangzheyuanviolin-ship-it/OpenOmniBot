@@ -39,6 +39,7 @@ class OmniAgentExecutor(
         conversationId: Long?,
         conversationMode: String,
         modelOverride: AgentModelOverride?,
+        terminalEnvironment: Map<String, String>,
         callback: AgentCallback
     ): AgentResult {
         val agentRunId = UUID.randomUUID().toString()
@@ -116,7 +117,8 @@ class OmniAgentExecutor(
                         resolvedSkills = resolvedSkills,
                         workspaceManager = workspaceManager,
                         workspaceMemoryService = memoryService,
-                        conversationMode = conversationMode
+                        conversationMode = conversationMode,
+                        terminalEnvironment = terminalEnvironment
                     )
                 )
             )

@@ -39,6 +39,7 @@ class _ChatAppBarHarnessState extends State<_ChatAppBarHarness> {
   ChatIslandDisplayLayer _displayLayer = ChatIslandDisplayLayer.model;
   ChatSurfaceMode _activeMode = ChatSurfaceMode.normal;
   int _browserTapCount = 0;
+  int _envTapCount = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -64,17 +65,24 @@ class _ChatAppBarHarnessState extends State<_ChatAppBarHarness> {
                     _displayLayer = value;
                   });
                 },
+                onTerminalEnvironmentTap: (_) {
+                  setState(() {
+                    _envTapCount += 1;
+                  });
+                },
                 onTerminalTap: () {},
                 onBrowserTap: () {
                   setState(() {
                     _browserTapCount += 1;
                   });
                 },
+                hasTerminalEnvironment: true,
                 isBrowserEnabled: false,
                 activeToolType: null,
               ),
               Text('layer:${_displayLayer.wireName}'),
               Text('browserTaps:$_browserTapCount'),
+              Text('envTaps:$_envTapCount'),
             ],
           ),
         ),
@@ -104,8 +112,11 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
   ChatSurfaceMode _activeMode = ChatSurfaceMode.openclaw;
   ChatIslandDisplayLayer _normalDisplayLayer = ChatIslandDisplayLayer.model;
   Timer? _revealTimer;
+  bool _revealInterrupted = false;
   bool _isSurfacePageScrolling = false;
   int _surfaceSwitchRequestId = 0;
+  int? _pageGesturePointerId;
+  double _pageVerticalDragDelta = 0;
 
   int _pageIndexForSurface(ChatSurfaceMode mode) => switch (mode) {
     ChatSurfaceMode.workspace => 0,
@@ -124,6 +135,11 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
     _revealTimer = null;
   }
 
+  void _interruptReveal() {
+    _cancelReveal();
+    _revealInterrupted = true;
+  }
+
   void _forceNormalModeLayer() {
     _normalDisplayLayer = ChatIslandDisplayLayer.mode;
   }
@@ -131,6 +147,7 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
   bool _canRevealModel() {
     return _activeMode == ChatSurfaceMode.normal &&
         !_isSurfacePageScrolling &&
+        !_revealInterrupted &&
         _normalDisplayLayer == ChatIslandDisplayLayer.mode;
   }
 
@@ -172,6 +189,7 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
     if (!mounted) {
       _isSurfacePageScrolling = false;
       if (mode == ChatSurfaceMode.normal) {
+        _revealInterrupted = false;
         _forceNormalModeLayer();
       }
       return;
@@ -184,11 +202,15 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
       setState(() {
         _isSurfacePageScrolling = false;
         if (mode == ChatSurfaceMode.normal) {
+          _revealInterrupted = false;
           _forceNormalModeLayer();
         }
       });
     } else {
       _isSurfacePageScrolling = false;
+      if (mode == ChatSurfaceMode.normal) {
+        _revealInterrupted = false;
+      }
     }
     if (mode == ChatSurfaceMode.normal) {
       _scheduleReveal();
@@ -249,6 +271,7 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
     setState(() {
       _activeMode = targetMode;
       if (targetMode == ChatSurfaceMode.normal) {
+        _revealInterrupted = false;
         _forceNormalModeLayer();
       }
     });
@@ -270,6 +293,48 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
     _cancelReveal();
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _handlePagePointerDown(PointerDownEvent event) {
+    _pageGesturePointerId = event.pointer;
+    _pageVerticalDragDelta = 0;
+  }
+
+  void _handlePagePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _pageGesturePointerId ||
+        _activeMode != ChatSurfaceMode.normal) {
+      return;
+    }
+    _pageVerticalDragDelta += event.delta.dy;
+    if (_revealTimer != null &&
+        !_revealInterrupted &&
+        _pageVerticalDragDelta.abs() >= 6) {
+      _interruptReveal();
+    }
+  }
+
+  void _handlePagePointerUp(PointerUpEvent event) {
+    if (event.pointer != _pageGesturePointerId) {
+      return;
+    }
+    if (_activeMode == ChatSurfaceMode.normal &&
+        _pageVerticalDragDelta.abs() >= 18) {
+      setState(() {
+        _normalDisplayLayer = _pageVerticalDragDelta > 0
+            ? ChatIslandDisplayLayer.tools
+            : ChatIslandDisplayLayer.model;
+      });
+    }
+    _pageGesturePointerId = null;
+    _pageVerticalDragDelta = 0;
+  }
+
+  void _handlePagePointerCancel(PointerCancelEvent event) {
+    if (event.pointer != _pageGesturePointerId) {
+      return;
+    }
+    _pageGesturePointerId = null;
+    _pageVerticalDragDelta = 0;
   }
 
   @override
@@ -298,8 +363,10 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
                     _normalDisplayLayer = value;
                   });
                 },
+                onTerminalEnvironmentTap: (_) {},
                 onTerminalTap: () {},
                 onBrowserTap: () {},
+                hasTerminalEnvironment: false,
                 isBrowserEnabled: true,
                 activeToolType: null,
               ),
@@ -319,22 +386,36 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
                 },
                 child: const Text('request-openclaw'),
               ),
+              TextButton(
+                key: const ValueKey('simulate-page-scroll'),
+                onPressed: () {
+                  _interruptReveal();
+                },
+                child: const Text('simulate-page-scroll'),
+              ),
               Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: _handleScrollNotification,
-                  child: PageView(
-                    controller: _pageController,
-                    onPageChanged: (pageIndex) {
-                      _switchMode(
-                        _surfaceForPageIndex(pageIndex),
-                        syncPage: false,
-                      );
-                    },
-                    children: const [
-                      ColoredBox(color: Colors.white),
-                      ColoredBox(color: Colors.white),
-                      ColoredBox(color: Colors.white),
-                    ],
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: _handlePagePointerDown,
+                  onPointerMove: _handlePagePointerMove,
+                  onPointerUp: _handlePagePointerUp,
+                  onPointerCancel: _handlePagePointerCancel,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _handleScrollNotification,
+                    child: PageView(
+                      controller: _pageController,
+                      onPageChanged: (pageIndex) {
+                        _switchMode(
+                          _surfaceForPageIndex(pageIndex),
+                          syncPage: false,
+                        );
+                      },
+                      children: const [
+                        ColoredBox(color: Colors.white),
+                        ColoredBox(color: Colors.white),
+                        ColoredBox(color: Colors.white),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -391,9 +472,20 @@ void main() {
       findsOneWidget,
     );
     expect(
+      find.byKey(const ValueKey('chat-island-terminal-env-button')),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey('chat-island-browser-button')),
       findsOneWidget,
     );
+
+    await tester.tap(
+      find.byKey(const ValueKey('chat-island-terminal-env-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('envTaps:1'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('chat-island-browser-button')));
     await tester.pumpAndSettle();
@@ -456,6 +548,26 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 1));
     expect(find.text('layer:model'), findsOneWidget);
+  });
+
+  testWidgets('interrupts delayed reveal when page scroll happens in time', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const _SurfaceTransitionHarness());
+
+    await _tapModeSegment(tester, 1);
+    await _pumpSurfaceSwitch(tester);
+    expect(find.text('active:normal'), findsOneWidget);
+    expect(find.text('layer:mode'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.tap(find.byKey(const ValueKey('simulate-page-scroll')));
+    await tester.pump();
+
+    expect(find.text('layer:mode'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 2000));
+    expect(find.text('layer:mode'), findsOneWidget);
   });
 
   testWidgets('ignores stale async surface switch requests', (tester) async {

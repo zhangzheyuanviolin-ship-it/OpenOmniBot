@@ -349,8 +349,15 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                             onInteracted: _cancelNormalSurfaceModelReveal,
                             onDisplayLayerChanged:
                                 _handleChatIslandDisplayLayerChanged,
+                            onTerminalEnvironmentTap: (anchorContext) {
+                              unawaited(
+                                _openTerminalEnvironmentEditor(anchorContext),
+                              );
+                            },
                             onTerminalTap: _handleTerminalToolTap,
                             onBrowserTap: _handleBrowserToolTap,
+                            hasTerminalEnvironment:
+                                _terminalEnvironmentVariables.isNotEmpty,
                             isBrowserEnabled: _isBrowserSessionAvailable,
                             activeToolType: _lastAgentToolType,
                             isCompanionModeEnabled: _isCompanionModeEnabled,

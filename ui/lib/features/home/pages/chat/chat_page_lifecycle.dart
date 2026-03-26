@@ -106,6 +106,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   @override
   Future<void> _bootstrapConversationThread() async {
     await _loadOpenClawConfig();
+    await _loadTerminalEnvironmentVariables();
     final target = await _resolveConversationThreadTarget(widget.threadTarget);
     if (!mounted) return;
     await _applyConversationThreadTarget(target, syncPage: false);
@@ -686,6 +687,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     setState(() {
       _activeSurfaceMode = ChatSurfaceMode.normal;
       _activeConversationMode = ChatPageMode.normal;
+      _resetNormalSurfaceModelRevealInterruption();
       _setChatIslandDisplayLayerForMode(
         ChatPageMode.normal,
         ChatIslandDisplayLayer.mode,

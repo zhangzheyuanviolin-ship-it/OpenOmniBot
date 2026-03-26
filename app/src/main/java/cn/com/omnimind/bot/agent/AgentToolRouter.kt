@@ -59,7 +59,8 @@ class AgentToolRouter(
         val resolvedSkills: List<ResolvedSkillContext>,
         val workspaceManager: AgentWorkspaceManager,
         val workspaceMemoryService: WorkspaceMemoryService,
-        val conversationMode: String
+        val conversationMode: String,
+        val terminalEnvironment: Map<String, String> = emptyMap()
     )
 
     private val json = Json {
@@ -166,16 +167,19 @@ class AgentToolRouter(
             "terminal_execute" -> executeTerminalTool(
                 args = args,
                 workspace = env.workspaceDescriptor,
+                terminalEnvironment = env.terminalEnvironment,
                 callback = callback
             )
             "terminal_session_start" -> executeTerminalSessionStart(
                 args = args,
                 workspace = env.workspaceDescriptor,
+                terminalEnvironment = env.terminalEnvironment,
                 callback = callback
             )
             "terminal_session_exec" -> executeTerminalSessionExec(
                 args = args,
                 workspace = env.workspaceDescriptor,
+                terminalEnvironment = env.terminalEnvironment,
                 callback = callback
             )
             "terminal_session_read" -> executeTerminalSessionRead(
@@ -486,6 +490,7 @@ class AgentToolRouter(
     private suspend fun executeTerminalTool(
         args: JsonObject,
         workspace: AgentWorkspaceDescriptor,
+        terminalEnvironment: Map<String, String>,
         callback: AgentCallback
     ): ToolExecutionResult {
         val toolName = "terminal_execute"
@@ -512,7 +517,8 @@ class AgentToolRouter(
                     executionMode = parsedArgs.executionMode,
                     prootDistro = parsedArgs.prootDistro,
                     workingDirectory = parsedArgs.workingDirectory,
-                    timeoutSeconds = parsedArgs.timeoutSeconds
+                    timeoutSeconds = parsedArgs.timeoutSeconds,
+                    environment = terminalEnvironment
                 ),
                 onLiveUpdate = { update ->
                     reportToolProgress(
@@ -562,6 +568,7 @@ class AgentToolRouter(
     private suspend fun executeTerminalSessionStart(
         args: JsonObject,
         workspace: AgentWorkspaceDescriptor,
+        terminalEnvironment: Map<String, String>,
         callback: AgentCallback
     ): ToolExecutionResult {
         val toolName = "terminal_session_start"
@@ -575,7 +582,8 @@ class AgentToolRouter(
             val result = EmbeddedTerminalRuntime.startSession(
                 context = context,
                 requestedSessionId = sessionId,
-                workingDirectory = workingDirectory
+                workingDirectory = workingDirectory,
+                environment = terminalEnvironment
             )
             val logArtifact = persistTerminalSessionTranscript(workspace, sessionId, result.transcript, toolName)
             val payload = linkedMapOf<String, Any?>(
@@ -622,6 +630,7 @@ class AgentToolRouter(
     private suspend fun executeTerminalSessionExec(
         args: JsonObject,
         workspace: AgentWorkspaceDescriptor,
+        terminalEnvironment: Map<String, String>,
         callback: AgentCallback
     ): ToolExecutionResult {
         val toolName = "terminal_session_exec"
@@ -638,7 +647,8 @@ class AgentToolRouter(
                 sessionId = sessionId,
                 command = parsedArgs.command,
                 workingDirectory = shellWorkingDirectory,
-                timeoutSeconds = parsedArgs.timeoutSeconds
+                timeoutSeconds = parsedArgs.timeoutSeconds,
+                environment = terminalEnvironment
             )
             val terminalStreamState = if (result.completed) {
                 "completed"
