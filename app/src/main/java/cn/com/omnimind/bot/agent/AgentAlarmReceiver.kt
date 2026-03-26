@@ -7,6 +7,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import cn.com.omnimind.bot.R
 import cn.com.omnimind.bot.activity.MainActivity
@@ -48,12 +51,25 @@ class AgentAlarmReceiver : BroadcastReceiver() {
 
             ACTION_AGENT_ALARM_CLOSE -> {
                 AgentAlarmRingingService.stop(context)
-                toolService.closeExactReminder(alarmId)
+                val closed = toolService.closeExactReminder(alarmId)
+                showToast(
+                    context,
+                    if (closed) "闹钟已关闭" else "关闭闹钟失败"
+                )
             }
 
             ACTION_AGENT_ALARM_SNOOZE -> {
                 AgentAlarmRingingService.stop(context)
-                toolService.snoozeExactReminder(alarmId)
+                runCatching {
+                    val payload = toolService.snoozeExactReminder(alarmId)
+                    val summary = payload["summary"]?.toString().orEmpty()
+                    showToast(
+                        context,
+                        summary.ifBlank { "已延后 5 分钟提醒" }
+                    )
+                }.onFailure {
+                    showToast(context, "稍后提醒失败")
+                }
             }
         }
     }
@@ -187,6 +203,12 @@ class AgentAlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_IMMUTABLE
         } else {
             0
+        }
+    }
+
+    private fun showToast(context: Context, message: String) {
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(context.applicationContext, message, Toast.LENGTH_SHORT).show()
         }
     }
 }
