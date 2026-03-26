@@ -96,6 +96,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         '悬浮窗权限': kOverlayPermissionId,
       };
 
+  String _agentTextBaseId(String taskId) => '$taskId-text';
+
   final Map<String, ChatConversationRuntimeState> _runtimes =
       <String, ChatConversationRuntimeState>{};
   final Map<String, _TaskBinding> _taskBindings = <String, _TaskBinding>{};
@@ -687,7 +689,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     _updateToolLayerState(runtime, event);
 
-    _clearPendingAgentTextIfNeeded(runtime, taskId);
+    _finalizePendingAgentTextIfNeeded(runtime, taskId);
     runtime.currentThinkingStage = ThinkingStage.toolCall.value;
     runtime.toolCardSequence += 1;
     runtime.activeToolCardId = '$taskId-tool-${runtime.toolCardSequence}';
@@ -790,7 +792,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (resolvedTaskId == null || resolvedTaskId != taskId) return;
 
-    final aiTextMessageId = '$taskId-text';
+    final aiTextMessageId =
+        _resolvePendingAgentTextMessageId(runtime, taskId) ??
+        _nextAgentTextMessageId(runtime, taskId);
     final index = runtime.messages.indexWhere(
       (msg) => msg.id == aiTextMessageId,
     );
@@ -860,7 +864,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       );
     }
 
-    final textId = '$taskId-text';
+    final textId =
+        _resolvePendingAgentTextMessageId(runtime, taskId) ??
+        _nextAgentTextMessageId(runtime, taskId);
     final index = runtime.messages.indexWhere((msg) => msg.id == textId);
     if (index == -1) {
       runtime.messages.insert(
@@ -930,7 +936,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           !hasUserVisibleOutput &&
           !hasVisibleOutput;
       if (shouldInjectFallback) {
-        final fallbackId = '$taskId-text';
+        final fallbackId = _nextAgentTextMessageId(runtime, taskId);
         final index = runtime.messages.indexWhere(
           (msg) => msg.id == fallbackId,
         );
@@ -999,7 +1005,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       );
     }
 
-    final textId = '$taskId-text';
+    final textId =
+        _resolvePendingAgentTextMessageId(runtime, taskId) ??
+        _nextAgentTextMessageId(runtime, taskId);
     final message = error.trim().isEmpty
         ? '暂时无法生成回复，请重试。'
         : '暂时无法生成回复，请重试。${error.trim()}';
@@ -1021,6 +1029,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         isError: true,
       );
     }
+    runtime.pendingAgentTextTaskId = null;
     runtime.isAiResponding = false;
     runtime.currentDispatchTaskId = null;
     clearConversationRuntimeSession(
@@ -1077,7 +1086,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       mode: binding.mode,
     );
 
-    final textMessageId = '$taskId-text';
+    final textMessageId = _nextAgentTextMessageId(runtime, taskId);
     final cardMessageId = '$taskId-permission';
     runtime.messages.insert(
       0,
@@ -1355,13 +1364,71 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     return exists ? baseId : null;
   }
 
-  void _clearPendingAgentTextIfNeeded(
+  String? _resolvePendingAgentTextMessageId(
     ChatConversationRuntimeState runtime,
     String taskId,
   ) {
-    if (runtime.pendingAgentTextTaskId != taskId) return;
-    final pendingTextMessageId = '$taskId-text';
-    runtime.messages.removeWhere((msg) => msg.id == pendingTextMessageId);
+    if (runtime.pendingAgentTextTaskId != taskId) return null;
+    for (final message in runtime.messages) {
+      if (_isAgentTextMessageForTask(message, taskId)) {
+        return message.id;
+      }
+    }
+    return null;
+  }
+
+  String _nextAgentTextMessageId(
+    ChatConversationRuntimeState runtime,
+    String taskId,
+  ) {
+    final baseId = _agentTextBaseId(taskId);
+    var maxSequence = 0;
+    for (final message in runtime.messages) {
+      final sequence = _agentTextMessageSequence(message.id, taskId);
+      if (sequence > maxSequence) {
+        maxSequence = sequence;
+      }
+    }
+    if (maxSequence == 0) {
+      return baseId;
+    }
+    return '$baseId-${maxSequence + 1}';
+  }
+
+  bool _isAgentTextMessageForTask(ChatMessageModel message, String taskId) {
+    if (message.type != 1 || message.user != 2) {
+      return false;
+    }
+    return _agentTextMessageSequence(message.id, taskId) > 0;
+  }
+
+  int _agentTextMessageSequence(String messageId, String taskId) {
+    final baseId = _agentTextBaseId(taskId);
+    if (messageId == baseId) {
+      return 1;
+    }
+    if (!messageId.startsWith('$baseId-')) {
+      return 0;
+    }
+    return int.tryParse(messageId.substring(baseId.length + 1)) ?? 0;
+  }
+
+  void _finalizePendingAgentTextIfNeeded(
+    ChatConversationRuntimeState runtime,
+    String taskId,
+  ) {
+    final pendingTextMessageId = _resolvePendingAgentTextMessageId(
+      runtime,
+      taskId,
+    );
+    if (pendingTextMessageId == null) {
+      runtime.pendingAgentTextTaskId = null;
+      return;
+    }
+    runtime.messages.removeWhere(
+      (msg) =>
+          msg.id == pendingTextMessageId && (msg.text?.trim().isEmpty ?? true),
+    );
     runtime.pendingAgentTextTaskId = null;
   }
 

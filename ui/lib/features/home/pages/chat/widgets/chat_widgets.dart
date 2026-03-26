@@ -446,102 +446,87 @@ class _ChatToolSlider extends StatelessWidget {
   bool get _isTerminalActive => !_isBrowserActive;
 
   Alignment get _activeAlignment =>
-      _isBrowserActive ? Alignment.centerRight : Alignment.centerLeft;
+      _isBrowserActive ? Alignment.centerRight : Alignment.center;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 32,
-      child: Row(
-        children: [
-          _buildEnvironmentButton(),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Container(
-              height: 32,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Stack(
-                children: [
-                  AnimatedAlign(
-                    duration: const Duration(milliseconds: 280),
-                    curve: Curves.easeOutCubic,
-                    alignment: _activeAlignment,
-                    child: FractionallySizedBox(
-                      widthFactor: 0.5,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 1),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
-                          ),
-                          borderRadius: BorderRadius.circular(999),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x291930D9),
-                              blurRadius: 10,
-                              offset: Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                      ),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Stack(
+          children: [
+            AnimatedAlign(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              alignment: _activeAlignment,
+              child: FractionallySizedBox(
+                widthFactor: 1 / 3,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
                     ),
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildToolSegment(
-                          key: const ValueKey('chat-island-terminal-button'),
-                          isSelected: _isTerminalActive,
-                          isEnabled: true,
-                          tooltip: '打开终端',
-                          onTap: onTerminalTap,
-                          child: SvgPicture.string(
-                            terminalIconSvg,
-                            width: 16,
-                            height: 16,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildToolSegment(
-                          key: const ValueKey('chat-island-browser-button'),
-                          isSelected: _isBrowserActive,
-                          isEnabled: isBrowserEnabled,
-                          tooltip: isBrowserEnabled
-                              ? '打开当前会话浏览器'
-                              : '当前会话还没有可用的浏览器会话',
-                          onTap: onBrowserTap,
-                          child: SvgPicture.string(
-                            browserIconSvg,
-                            width: 16,
-                            height: 16,
-                          ),
-                        ),
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x291930D9),
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+            Row(
+              children: [
+                Expanded(child: _buildEnvironmentButton()),
+                Expanded(
+                  child: _buildToolSegment(
+                    key: const ValueKey('chat-island-terminal-button'),
+                    isSelected: _isTerminalActive,
+                    isEnabled: true,
+                    tooltip: '打开终端',
+                    onTap: onTerminalTap,
+                    child: SvgPicture.string(
+                      terminalIconSvg,
+                      width: 16,
+                      height: 16,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: _buildToolSegment(
+                    key: const ValueKey('chat-island-browser-button'),
+                    isSelected: _isBrowserActive,
+                    isEnabled: isBrowserEnabled,
+                    tooltip: isBrowserEnabled ? '打开当前会话浏览器' : '当前会话还没有可用的浏览器会话',
+                    onTap: onBrowserTap,
+                    child: SvgPicture.string(
+                      browserIconSvg,
+                      width: 16,
+                      height: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildEnvironmentButton() {
-    final backgroundColor = hasTerminalEnvironment
-        ? const Color(0xFFEAF3FF)
-        : Colors.transparent;
-    final iconColor = hasTerminalEnvironment
-        ? const Color(0xFF1930D9)
-        : const Color(0xFF617390);
     return Builder(
       builder: (anchorContext) {
         return Tooltip(
@@ -553,18 +538,21 @@ class _ChatToolSlider extends StatelessWidget {
               onTerminalEnvironmentTap(anchorContext);
             },
             borderRadius: BorderRadius.circular(999),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              width: 30,
-              height: 28,
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Center(
+            child: SizedBox.expand(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                alignment: Alignment.center,
                 child: ColorFiltered(
-                  colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+                  colorFilter: const ColorFilter.mode(
+                    Color(0xFF617390),
+                    BlendMode.srcIn,
+                  ),
                   child: SvgPicture.string(
                     environmentIconSvg,
                     width: 15,

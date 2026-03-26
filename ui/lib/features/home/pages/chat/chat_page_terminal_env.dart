@@ -255,15 +255,7 @@ class _TerminalEnvironmentEditorPopupEntryState
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            '新增环境变量',
-            style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF64748B),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 2),
           TextField(
             controller: _keyController,
             autofocus: false,
@@ -387,17 +379,6 @@ class _TerminalEnvironmentEditorPopupEntryState
                     ),
                   ),
                 ],
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(14, 0, 14, 8),
-              child: Text(
-                '会注入终端工具的执行环境，适用于 terminal_execute 和 terminal_session_*。',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Color(0xFF8FA1BC),
-                  fontWeight: FontWeight.w500,
-                ),
               ),
             ),
             if (_variables.isEmpty)

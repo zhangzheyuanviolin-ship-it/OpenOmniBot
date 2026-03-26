@@ -480,6 +480,28 @@ void main() {
       findsOneWidget,
     );
 
+    final envWidth = tester
+        .renderObject<RenderBox>(
+          find.byKey(const ValueKey('chat-island-terminal-env-button')),
+        )
+        .size
+        .width;
+    final terminalWidth = tester
+        .renderObject<RenderBox>(
+          find.byKey(const ValueKey('chat-island-terminal-button')),
+        )
+        .size
+        .width;
+    final browserWidth = tester
+        .renderObject<RenderBox>(
+          find.byKey(const ValueKey('chat-island-browser-button')),
+        )
+        .size
+        .width;
+
+    expect(envWidth, moreOrLessEquals(terminalWidth, epsilon: 0.1));
+    expect(envWidth, moreOrLessEquals(browserWidth, epsilon: 0.1));
+
     await tester.tap(
       find.byKey(const ValueKey('chat-island-terminal-env-button')),
     );
