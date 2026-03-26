@@ -9,6 +9,7 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/scheduled_task_scheduler_service.dart';
 import 'package:ui/services/scheduled_task_storage_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/utils/ui.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/widgets/image/cached_image.dart';
@@ -242,30 +243,11 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
 
     if (deleted) {
       await _reloadExactAlarmsOnly();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('闹钟已删除'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.text.withOpacity(0.8),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          margin: const EdgeInsets.all(16),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      showToast('闹钟已删除', type: ToastType.success);
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('删除闹钟失败，请稍后重试'),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.alertRed,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    showToast('删除闹钟失败，请稍后重试', type: ToastType.error);
   }
 
   void _showSuccessOverlay(ScheduledTask task) {
