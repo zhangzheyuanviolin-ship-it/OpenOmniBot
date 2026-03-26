@@ -172,65 +172,15 @@ class OmniAgentExecutor(
         if (conversationHistory.isEmpty()) return emptyList()
         return conversationHistory.mapNotNull { raw ->
             val role = raw["role"]?.toString()?.trim()?.lowercase().orEmpty()
-            if (role !in setOf("system", "user", "assistant", "tool")) return@mapNotNull null
-            val toolCalls = if (role == "assistant") {
-                parseHistoryToolCalls(raw["tool_calls"])
-            } else {
-                null
-            }
-            val toolCallId = raw["tool_call_id"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-            val content = raw["content"]?.let(::mapToJsonElement)
-
-            if (role == "tool") {
-                if (toolCallId == null) return@mapNotNull null
-                if (content == null) return@mapNotNull null
-                if (content is JsonPrimitive && content.content.isBlank()) return@mapNotNull null
-            } else if (toolCalls.isNullOrEmpty()) {
-                if (content == null) return@mapNotNull null
-                if (content is JsonPrimitive && content.content.isBlank()) return@mapNotNull null
-            }
-
+            if (role !in setOf("system", "user", "assistant")) return@mapNotNull null
+            val rawContent = raw["content"] ?: return@mapNotNull null
+            val content = mapToJsonElement(rawContent)
+            if (content is JsonPrimitive && content.content.isBlank()) return@mapNotNull null
             cn.com.omnimind.baselib.llm.ChatCompletionMessage(
                 role = role,
-                content = when {
-                    !toolCalls.isNullOrEmpty() && content == null -> JsonPrimitive("")
-                    !toolCalls.isNullOrEmpty() && content is JsonPrimitive && content.content.isBlank() -> {
-                        JsonPrimitive("")
-                    }
-                    else -> content
-                },
-                toolCalls = toolCalls,
-                toolCallId = toolCallId
+                content = content
             )
         }
-    }
-
-    private fun parseHistoryToolCalls(rawToolCalls: Any?): List<AssistantToolCall>? {
-        val items = rawToolCalls as? List<*> ?: return null
-        val parsed = items.mapNotNull { item ->
-            val map = item as? Map<*, *> ?: return@mapNotNull null
-            val id = map["id"]?.toString()?.trim().orEmpty()
-            if (id.isEmpty()) return@mapNotNull null
-
-            val type = map["type"]?.toString()?.trim().takeUnless { it.isNullOrEmpty() }
-                ?: "function"
-            val functionMap = map["function"] as? Map<*, *> ?: return@mapNotNull null
-            val functionName = functionMap["name"]?.toString()?.trim().orEmpty()
-            if (functionName.isEmpty()) return@mapNotNull null
-            val arguments = functionMap["arguments"]?.toString()?.trim()
-                ?.takeIf { it.isNotEmpty() }
-                ?: "{}"
-
-            AssistantToolCall(
-                id = id,
-                type = type,
-                function = AssistantToolCallFunction(
-                    name = functionName,
-                    arguments = arguments
-                )
-            )
-        }
-        return parsed.ifEmpty { null }
     }
 
     private fun buildCurrentUserMessage(

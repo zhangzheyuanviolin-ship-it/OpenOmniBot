@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ui/utils/ui.dart';
 import '../../../../../models/chat_message_model.dart';
-import '../../../../../services/agent_conversation_history_builder.dart';
 import '../../../../../services/assists_core_service.dart';
 import '../../../../../services/storage_service.dart';
 import '../../command_overlay/services/executable_task_service.dart';
+import '../../command_overlay/services/chat_service.dart';
 
 /// 聊天上下文存储的key
 const String kChatContextStorageKey = 'chat_context_for_summary';
@@ -74,11 +74,28 @@ mixin TaskExecutionHandler<T extends StatefulWidget> on State<T> {
 
   /// 构建对话历史
   List<Map<String, dynamic>> buildConversationHistory() {
-    return AgentConversationHistoryBuilder.build(
+    final List<Map<String, dynamic>> history = [];
+    final recentMessages = ChatService.getRecentMessages(
       messages,
       maxCount: 10,
-      userContentBuilder: _buildMessageContentForModel,
     );
+
+    for (final message in recentMessages) {
+      if (message.user == 1) {
+        final content = _buildMessageContentForModel(message);
+        if (content is String && content.isNotEmpty) {
+          history.insert(0, {'role': 'user', 'content': content});
+        } else if (content is List && content.isNotEmpty) {
+          history.insert(0, {'role': 'user', 'content': content});
+        }
+      } else if (message.user == 2) {
+        final text = message.content?['text'] as String? ?? '';
+        if (text.isNotEmpty) {
+          history.insert(0, {'role': 'assistant', 'content': text});
+        }
+      }
+    }
+    return history;
   }
 
   /// 获取最新的用户输入

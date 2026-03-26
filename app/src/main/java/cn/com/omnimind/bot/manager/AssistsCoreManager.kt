@@ -349,7 +349,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         return when (toolName) {
             "context_apps_query" -> AgentToolMeta("builtin", "查询已安装应用")
             "context_time_now" -> AgentToolMeta("builtin", "查询当前时间")
-            "vlm_task" -> AgentToolMeta("builtin", "调用视觉模型执行")
+            "vlm_task" -> AgentToolMeta("builtin", "视觉执行")
             "browser_use" -> AgentToolMeta("browser", "浏览器操作")
             "terminal_execute" -> AgentToolMeta("terminal", "终端执行")
             "terminal_session_start" -> AgentToolMeta("terminal", "启动终端会话")

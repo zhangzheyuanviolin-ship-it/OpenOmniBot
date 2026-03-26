@@ -55,7 +55,7 @@ object AgentToolDefinitions {
         put("type", "function")
         putJsonObject("function") {
             put("name", "vlm_task")
-            put("displayName", "调用视觉模型执行")
+            put("displayName", "视觉执行")
             put("toolType", "builtin")
             put("description", "使用视觉语言模型执行手机屏幕操作任务。")
             putJsonObject("parameters") {

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ui/models/scheduled_task.dart';
 import 'package:ui/models/conversation_model.dart';
-import 'package:ui/services/agent_conversation_history_builder.dart';
 import 'package:ui/services/scheduled_task_storage_service.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
@@ -250,10 +249,14 @@ class ScheduledTaskSchedulerService {
                 normalizedConversationId,
                 mode: ConversationMode.subagent,
               );
-          final historyPayload = AgentConversationHistoryBuilder.build(
-            historyMessages,
-            maxCount: 10,
-          );
+          final historyPayload = historyMessages.map((message) {
+            final role = switch (message.user) {
+              1 => 'user',
+              2 => 'assistant',
+              _ => 'system',
+            };
+            return {'role': role, 'content': message.text ?? ''};
+          }).toList();
           await AssistsMessageService.createAgentTask(
             taskId:
                 'subagent_schedule_${DateTime.now().millisecondsSinceEpoch}_${task.id}',

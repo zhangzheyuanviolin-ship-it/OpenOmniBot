@@ -7,9 +7,9 @@ import 'widgets/message_bubble.dart';
 import 'widgets/chat_input_area.dart';
 import 'package:ui/utils/data_parser.dart';
 import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/features/home/pages/command_overlay/services/chat_service.dart';
 import 'package:ui/features/home/pages/command_overlay/constants/messages.dart';
 import 'package:ui/features/home/pages/command_overlay/utils/deep_thinking_parser.dart';
-import 'package:ui/services/agent_conversation_history_builder.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/services/screen_dialog_service.dart';
 import 'package:ui/services/conversation_service.dart';
@@ -1262,10 +1262,26 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
   }
 
   List<Map<String, dynamic>> _buildConversationHistory() {
-    return AgentConversationHistoryBuilder.build(
+    final List<Map<String, dynamic>> history = [];
+    final recentMessages = ChatService.getRecentMessages(
       _messages,
       maxCount: 10,
     );
+
+    for (final message in recentMessages) {
+      if (message.user == 1) {
+        final text = message.content?['text'] as String? ?? '';
+        if (text.isNotEmpty) {
+          history.insert(0, {'role': 'user', 'content': text});
+        }
+      } else if (message.user == 2) {
+        final text = message.content?['text'] as String? ?? '';
+        if (text.isNotEmpty) {
+          history.insert(0, {'role': 'assistant', 'content': text});
+        }
+      }
+    }
+    return history;
   }
 
   List<Map<String, dynamic>> _buildOpenClawHistory() {
