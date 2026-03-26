@@ -46,6 +46,7 @@ import cn.com.omnimind.bot.agent.AgentCallback
 import cn.com.omnimind.bot.agent.AgentAlarmToolService
 import cn.com.omnimind.bot.agent.AgentModelOverride
 import cn.com.omnimind.bot.agent.AgentResult
+import cn.com.omnimind.bot.agent.AgentConversationHistoryRepository
 import cn.com.omnimind.bot.agent.AgentRuntimeContextRepository
 import cn.com.omnimind.bot.agent.AgentScheduleToolBridge
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
@@ -66,7 +67,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -83,12 +83,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.ArrayDeque
 import kotlin.collections.mapOf
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -101,9 +101,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         private const val SUMMARY_TASK_PREFIX_TASK = "task-summary-"
         private const val MEMORY_GREETING_TOOL = "submit_memory_greeting"
         private const val DEFAULT_MEMORY_GREETING = "愿你今天也有温暖收获"
-        private const val FLUTTER_SHARED_PREFS_NAME = "FlutterSharedPreferences"
-        private const val FLUTTER_PREF_PREFIX = "flutter."
-        private const val KEY_LOCAL_CONVERSATION_LIST = "${FLUTTER_PREF_PREFIX}local_conversation_list"
         private const val SUBAGENT_MODE = "subagent"
         private const val SCHEDULED_SUBAGENT_NOTIFICATION_CHANNEL =
             "scheduled_subagent_tasks_v1"
@@ -128,14 +125,24 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val conversationId: Long
     )
 
+    private data class ChatTaskPersistenceState(
+        val conversationId: Long,
+        val conversationMode: String,
+        val userEntryId: String,
+        val assistantEntryId: String,
+        val assistantBuffer: StringBuilder = StringBuilder(),
+        var isError: Boolean = false
+    )
+
     // 用于存储需要等待用户操作的回调结果
     private lateinit var channel: MethodChannel
     private var mainJob: CoroutineScope = CoroutineScope(Dispatchers.Main)
     private var workJob: CoroutineScope = CoroutineScope(Dispatchers.Default)
     private val activeAgentLock = Any()
-    private val flutterPrefsLock = Any()
 
     private val activeAgentJobs: MutableMap<String, Job> = mutableMapOf()
+    private val chatTaskPersistenceStates: MutableMap<String, ChatTaskPersistenceState> =
+        mutableMapOf()
 
     // 当前活跃的对话ID
     private var currentConversationId: Long? = null
@@ -144,6 +151,24 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private fun registerActiveAgentJob(taskId: String, job: Job) {
         synchronized(activeAgentLock) {
             activeAgentJobs[taskId] = job
+        }
+    }
+
+    private fun registerChatTaskPersistenceState(taskId: String, state: ChatTaskPersistenceState) {
+        synchronized(activeAgentLock) {
+            chatTaskPersistenceStates[taskId] = state
+        }
+    }
+
+    private fun getChatTaskPersistenceState(taskId: String): ChatTaskPersistenceState? {
+        return synchronized(activeAgentLock) {
+            chatTaskPersistenceStates[taskId]
+        }
+    }
+
+    private fun removeChatTaskPersistenceState(taskId: String): ChatTaskPersistenceState? {
+        return synchronized(activeAgentLock) {
+            chatTaskPersistenceStates.remove(taskId)
         }
     }
 
@@ -558,6 +583,44 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         return payload
     }
 
+    private fun conversationHistoryRepository(): AgentConversationHistoryRepository {
+        return AgentConversationHistoryRepository(context)
+    }
+
+    private fun normalizeConversationMode(mode: String?): String {
+        return mode?.trim()?.ifEmpty { null } ?: "normal"
+    }
+
+    private fun resolveRequiredPermissionIds(missing: List<String>): List<String> {
+        val nameToId = linkedMapOf(
+            "无障碍权限" to "accessibility",
+            "悬浮窗权限" to "overlay",
+            "应用列表读取权限" to "installed_apps",
+            WorkspaceStorageAccess.REQUIRED_PERMISSION_NAME to "workspace_storage"
+        )
+        return missing.mapNotNull { raw ->
+            nameToId[raw.trim()]
+        }.distinct()
+    }
+
+    private fun buildPermissionCardData(requiredPermissionIds: List<String>): Map<String, Any?> {
+        return linkedMapOf(
+            "type" to "permission_section",
+            "requiredPermissionIds" to requiredPermissionIds
+        )
+    }
+
+    private fun extractChatTaskText(content: String): String {
+        val normalized = content.trim()
+        if (normalized.isEmpty()) return ""
+        if (!normalized.startsWith("{")) {
+            return normalized
+        }
+        return runCatching {
+            JSONObject(normalized).optString("text").trim()
+        }.getOrElse { normalized }
+    }
+
 
     /**
      * 执行陪伴模式
@@ -763,38 +826,68 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     fun createChatTask(
         call: MethodCall, result: MethodChannel.Result,
     ) {
+        val taskID = call.argument<String>("taskID") ?: ""
+        val content = call.argument<List<Map<String, Any>>>("content") ?: emptyList()
+        val provider = call.argument<String>("provider")
+        val conversationId = call.argument<Number>("conversationId")?.toLong()
+        val conversationMode = normalizeConversationMode(call.argument<String>("conversationMode"))
+        val userMessage = call.argument<String>("userMessage")?.trim().orEmpty()
+        val userAttachments = call.argument<List<Map<String, Any?>>>("userAttachments") ?: emptyList()
+        val openClawConfigMap = call.argument<Map<String, Any>>("openClawConfig")
+        val openClawConfig = openClawConfigMap?.let { map ->
+            val baseUrl = map["baseUrl"] as? String ?: ""
+            if (baseUrl.isBlank()) {
+                null
+            } else {
+                cn.com.omnimind.assists.api.bean.TaskParams.OpenClawConfig(
+                    baseUrl = baseUrl,
+                    token = map["token"] as? String,
+                    userId = map["userId"] as? String,
+                    sessionKey = map["sessionKey"] as? String
+                )
+            }
+        }
 
-        try {
-            val taskID = call.argument<String>("taskID")!!
-            val content = call.argument<List<Map<String, Any>>>("content")!!
-            val provider = call.argument<String>("provider")
-            val openClawConfigMap = call.argument<Map<String, Any>>("openClawConfig")
-            val openClawConfig = openClawConfigMap?.let { map ->
-                val baseUrl = map["baseUrl"] as? String ?: ""
-                if (baseUrl.isBlank()) {
-                    null
-                } else {
-                    cn.com.omnimind.assists.api.bean.TaskParams.OpenClawConfig(
-                        baseUrl = baseUrl,
-                        token = map["token"] as? String,
-                        userId = map["userId"] as? String,
-                        sessionKey = map["sessionKey"] as? String
+        mainJob.launch {
+            try {
+                val normalizedConversationId = conversationId?.takeIf { it > 0L }
+                if (normalizedConversationId != null) {
+                    val repository = conversationHistoryRepository()
+                    if (userMessage.isNotBlank() || userAttachments.isNotEmpty()) {
+                        repository.upsertUserMessage(
+                            conversationId = normalizedConversationId,
+                            conversationMode = conversationMode,
+                            entryId = "$taskID-user",
+                            text = userMessage,
+                            attachments = userAttachments
+                        )
+                    }
+                    registerChatTaskPersistenceState(
+                        taskID,
+                        ChatTaskPersistenceState(
+                            conversationId = normalizedConversationId,
+                            conversationMode = conversationMode,
+                            userEntryId = "$taskID-user",
+                            assistantEntryId = "$taskID-assistant"
+                        )
                     )
                 }
-            }
-            AssistsUtil.Core.createChatTask(
-                taskID, content, this@AssistsCoreManager, provider, openClawConfig
-            )
-            mainJob.launch(Dispatchers.Main) {
-                result.success("SUCCESS")
-            }
-        } catch (e: PermissionException) {
-            mainJob.launch(Dispatchers.Main) {
-                result.error("PERMISSION_ERROR", e.message, null);
-            }
-        } catch (e: Exception) {
-            mainJob.launch(Dispatchers.Main) {
-                result.error("DO_TASK_ERROR", e.message, null)
+                AssistsUtil.Core.createChatTask(
+                    taskID, content, this@AssistsCoreManager, provider, openClawConfig
+                )
+                withContext(Dispatchers.Main) {
+                    result.success("SUCCESS")
+                }
+            } catch (e: PermissionException) {
+                removeChatTaskPersistenceState(taskID)
+                withContext(Dispatchers.Main) {
+                    result.error("PERMISSION_ERROR", e.message, null)
+                }
+            } catch (e: Exception) {
+                removeChatTaskPersistenceState(taskID)
+                withContext(Dispatchers.Main) {
+                    result.error("DO_TASK_ERROR", e.message, null)
+                }
             }
         }
 
@@ -802,6 +895,46 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
 
     override suspend fun onChatMessage(taskID: String, content: String, type: String?) {
+        getChatTaskPersistenceState(taskID)?.let { state ->
+            val repository = conversationHistoryRepository()
+            val normalizedType = type?.trim()?.lowercase().orEmpty()
+            when (normalizedType) {
+                "summary_start",
+                "openclaw_attachment" -> Unit
+                "error",
+                "rate_limited" -> {
+                    val message = extractChatTaskText(content).ifBlank {
+                        content.trim().ifBlank {
+                            if (normalizedType == "rate_limited") {
+                                "请求过于频繁，请稍后重试。"
+                            } else {
+                                "网络异常，请稍后重试。"
+                            }
+                        }
+                    }
+                    state.assistantBuffer.setLength(0)
+                    state.assistantBuffer.append(message)
+                    state.isError = true
+                }
+                else -> {
+                    val message = extractChatTaskText(content)
+                    if (message.isNotEmpty()) {
+                        state.assistantBuffer.append(message)
+                    }
+                    state.isError = false
+                }
+            }
+            val snapshot = state.assistantBuffer.toString().trim()
+            if (snapshot.isNotEmpty()) {
+                repository.upsertAssistantMessage(
+                    conversationId = state.conversationId,
+                    conversationMode = state.conversationMode,
+                    entryId = state.assistantEntryId,
+                    text = snapshot,
+                    isError = state.isError
+                )
+            }
+        }
         withContext(Dispatchers.Main) {
             try {
                 val isSummary = isSummaryTask(taskID)
@@ -830,6 +963,18 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     }
 
     override suspend fun onChatMessageEnd(taskID: String) {
+        removeChatTaskPersistenceState(taskID)?.let { state ->
+            val snapshot = state.assistantBuffer.toString().trim()
+            if (snapshot.isNotEmpty()) {
+                conversationHistoryRepository().upsertAssistantMessage(
+                    conversationId = state.conversationId,
+                    conversationMode = state.conversationMode,
+                    entryId = state.assistantEntryId,
+                    text = snapshot,
+                    isError = state.isError
+                )
+            }
+        }
         withContext(Dispatchers.Main) {
             try {
                 val isSummary = isSummaryTask(taskID)
@@ -2456,362 +2601,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
-    private fun subagentMessagePrefsKey(conversationId: Long): String {
-        return "${FLUTTER_PREF_PREFIX}conversation_messages_${SUBAGENT_MODE}_$conversationId"
-    }
-
-    private fun readJsonArray(raw: String?): JSONArray {
-        if (raw.isNullOrBlank()) return JSONArray()
-        return runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
-    }
-
-    private fun buildChatMessageJson(
-        messageId: String,
-        user: Int,
-        text: String,
-        isError: Boolean,
-        createdAtIso: String
-    ): JSONObject {
-        return JSONObject().apply {
-            put("id", messageId)
-            put("type", 1)
-            put("user", user)
-            put(
-                "content",
-                JSONObject().apply {
-                    put("text", text)
-                    put("id", messageId)
-                }
-            )
-            put("isLoading", false)
-            put("isFirst", false)
-            put("isError", isError)
-            put("isSummarizing", false)
-            put("createAt", createdAtIso)
-        }
-    }
-
-    private fun buildCardMessageJson(
-        messageId: String,
-        cardData: Map<String, Any?>,
-        isError: Boolean,
-        createdAtIso: String
-    ): JSONObject {
-        return JSONObject().apply {
-            put("id", messageId)
-            put("type", 2)
-            put("user", 3)
-            put(
-                "content",
-                JSONObject().apply {
-                    put("cardData", mapToJsonObject(cardData))
-                    put("id", messageId)
-                }
-            )
-            put("isLoading", false)
-            put("isFirst", false)
-            put("isError", isError)
-            put("isSummarizing", false)
-            put("createAt", createdAtIso)
-        }
-    }
-
-    private fun mapToJsonObject(source: Map<String, Any?>): JSONObject {
-        return JSONObject().apply {
-            source.forEach { (key, value) ->
-                put(key, toJsonValue(value))
-            }
-        }
-    }
-
-    private fun toJsonValue(value: Any?): Any {
-        return when (value) {
-            null -> JSONObject.NULL
-            is Map<*, *> -> {
-                val normalized = value.entries.associate { (k, v) ->
-                    k.toString() to normalizeChannelValue(v)
-                }
-                mapToJsonObject(normalized)
-            }
-            is List<*> -> JSONArray().apply {
-                value.forEach { item -> put(toJsonValue(normalizeChannelValue(item))) }
-            }
-            else -> value
-        }
-    }
-
-    private fun upsertMessageAtTop(
-        source: JSONArray,
-        messageId: String,
-        user: Int,
-        text: String,
-        isError: Boolean
-    ): JSONArray {
-        val nowIso = Instant.now().toString()
-        var existingCreateAt: String? = null
-        var existingIndex = -1
-        for (index in 0 until source.length()) {
-            val item = source.optJSONObject(index) ?: continue
-            if (item.optString("id") == messageId) {
-                existingIndex = index
-                val existing = item.optString("createAt").trim()
-                if (existing.isNotEmpty()) {
-                    existingCreateAt = existing
-                }
-                break
-            }
-        }
-        val message = buildChatMessageJson(
-            messageId = messageId,
-            user = user,
-            text = text,
-            isError = isError,
-            createdAtIso = existingCreateAt ?: nowIso
-        )
-        val target = JSONArray()
-        target.put(message)
-        for (index in 0 until source.length()) {
-            if (index == existingIndex) continue
-            target.put(source.opt(index))
-        }
-        return target
-    }
-
-    private fun upsertCardMessageAtTop(
-        source: JSONArray,
-        messageId: String,
-        cardData: Map<String, Any?>,
-        isError: Boolean
-    ): JSONArray {
-        val nowIso = Instant.now().toString()
-        var existingCreateAt: String? = null
-        var existingIndex = -1
-        for (index in 0 until source.length()) {
-            val item = source.optJSONObject(index) ?: continue
-            if (item.optString("id") == messageId) {
-                existingIndex = index
-                val existing = item.optString("createAt").trim()
-                if (existing.isNotEmpty()) {
-                    existingCreateAt = existing
-                }
-                break
-            }
-        }
-        val message = buildCardMessageJson(
-            messageId = messageId,
-            cardData = cardData,
-            isError = isError,
-            createdAtIso = existingCreateAt ?: nowIso
-        )
-        val target = JSONArray()
-        target.put(message)
-        for (index in 0 until source.length()) {
-            if (index == existingIndex) continue
-            target.put(source.opt(index))
-        }
-        return target
-    }
-
-    private fun sortedConversationListByUpdatedAt(source: JSONArray): JSONArray {
-        val conversations = mutableListOf<JSONObject>()
-        for (index in 0 until source.length()) {
-            val item = source.optJSONObject(index) ?: continue
-            conversations.add(item)
-        }
-        conversations.sortByDescending { it.optLong("updatedAt", 0L) }
-        return JSONArray().apply {
-            conversations.forEach { put(it) }
-        }
-    }
-
-    private fun updateSubagentConversationListLocked(
-        conversationId: Long,
-        title: String,
-        lastMessage: String,
-        messageCount: Int
-    ) {
-        val prefs = context.getSharedPreferences(FLUTTER_SHARED_PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_LOCAL_CONVERSATION_LIST, null)
-        val list = readJsonArray(raw)
-        val now = System.currentTimeMillis()
-        var hit = false
-        for (index in 0 until list.length()) {
-            val item = list.optJSONObject(index) ?: continue
-            val mode = item.optString("mode").trim()
-            val id = item.optLong("id", -1L)
-            if (id == conversationId && mode.equals(SUBAGENT_MODE, ignoreCase = true)) {
-                if (item.optString("title").isBlank() && title.isNotBlank()) {
-                    item.put("title", title)
-                }
-                item.put("lastMessage", lastMessage)
-                item.put("messageCount", messageCount)
-                item.put("updatedAt", now)
-                hit = true
-                break
-            }
-        }
-        if (!hit) {
-            list.put(
-                JSONObject().apply {
-                    put("id", conversationId)
-                    put("mode", SUBAGENT_MODE)
-                    put("title", title.ifBlank { "SubAgent 定时任务" })
-                    put("summary", JSONObject.NULL)
-                    put("status", 0)
-                    put("lastMessage", lastMessage)
-                    put("messageCount", messageCount)
-                    put("createdAt", now)
-                    put("updatedAt", now)
-                }
-            )
-        }
-        prefs.edit()
-            .putString(KEY_LOCAL_CONVERSATION_LIST, sortedConversationListByUpdatedAt(list).toString())
-            .apply()
-    }
-
-    private fun persistScheduledSubagentMessage(
-        meta: ScheduledSubagentRunMeta,
-        messageId: String,
-        user: Int,
-        text: String,
-        isError: Boolean
-    ) {
-        val normalized = text.trim()
-        if (normalized.isEmpty()) return
-        synchronized(flutterPrefsLock) {
-            val prefs = context.getSharedPreferences(FLUTTER_SHARED_PREFS_NAME, Context.MODE_PRIVATE)
-            val key = subagentMessagePrefsKey(meta.conversationId)
-            val source = readJsonArray(prefs.getString(key, null))
-            val updated = upsertMessageAtTop(
-                source = source,
-                messageId = messageId,
-                user = user,
-                text = normalized,
-                isError = isError
-            )
-            prefs.edit().putString(key, updated.toString()).apply()
-            updateSubagentConversationListLocked(
-                conversationId = meta.conversationId,
-                title = meta.scheduleTaskTitle,
-                lastMessage = normalized,
-                messageCount = updated.length()
-            )
-        }
-    }
-
-    private fun persistScheduledSubagentToolCard(
-        meta: ScheduledSubagentRunMeta,
-        cardId: String,
-        cardData: Map<String, Any?>,
-        isError: Boolean
-    ) {
-        synchronized(flutterPrefsLock) {
-            val prefs = context.getSharedPreferences(FLUTTER_SHARED_PREFS_NAME, Context.MODE_PRIVATE)
-            val key = subagentMessagePrefsKey(meta.conversationId)
-            val source = readJsonArray(prefs.getString(key, null))
-            val updated = upsertCardMessageAtTop(
-                source = source,
-                messageId = cardId,
-                cardData = cardData,
-                isError = isError
-            )
-            prefs.edit().putString(key, updated.toString()).apply()
-            val summary = cardData["summary"]?.toString()?.trim().orEmpty()
-            val lastMessage = summary.ifEmpty {
-                val displayName = cardData["displayName"]?.toString()?.trim().orEmpty()
-                if (displayName.isNotEmpty()) {
-                    "执行工具：$displayName"
-                } else {
-                    "执行了工具调用"
-                }
-            }
-            updateSubagentConversationListLocked(
-                conversationId = meta.conversationId,
-                title = meta.scheduleTaskTitle,
-                lastMessage = lastMessage,
-                messageCount = updated.length()
-            )
-        }
-    }
-
-    private fun mergeScheduledToolCardData(
-        taskId: String,
-        cardId: String,
-        payload: Map<String, Any?>,
-        existingCardData: Map<String, Any?> = emptyMap(),
-        fallbackStatus: String = "running",
-        fallbackSummary: String = ""
-    ): Map<String, Any?> {
-        fun payloadText(key: String): String {
-            return payload[key]?.toString()?.trim().orEmpty()
-        }
-        fun existingText(key: String): String {
-            return existingCardData[key]?.toString()?.trim().orEmpty()
-        }
-        fun chooseText(key: String, fallback: String = ""): String {
-            return payloadText(key).ifEmpty { existingText(key).ifEmpty { fallback } }
-        }
-        fun chooseAny(key: String): Any? {
-            return payload[key] ?: existingCardData[key]
-        }
-
-        val toolType = chooseText("toolType", "builtin")
-        val existingTerminalOutput = existingText("terminalOutput")
-        val terminalOutputDelta = payloadText("terminalOutputDelta")
-        val terminalOutput = if (toolType == "terminal") {
-            payloadText("terminalOutput").ifEmpty {
-                if (terminalOutputDelta.isNotEmpty()) {
-                    existingTerminalOutput + terminalOutputDelta
-                } else {
-                    existingTerminalOutput
-                }
-            }
-        } else {
-            ""
-        }
-        val summary = chooseText("summary", fallbackSummary)
-        val progress = chooseText("progress")
-        val status = chooseText("status", fallbackStatus)
-        val artifacts = toListOfStringAnyMap(payload["artifacts"]).ifEmpty {
-            toListOfStringAnyMap(existingCardData["artifacts"])
-        }
-        val actions = toListOfStringAnyMap(payload["actions"]).ifEmpty {
-            toListOfStringAnyMap(existingCardData["actions"])
-        }
-        val success = when (val value = payload["success"] ?: existingCardData["success"]) {
-            is Boolean -> value
-            is String -> value.equals("true", ignoreCase = true)
-            else -> true
-        }
-
-        return linkedMapOf<String, Any?>(
-            "type" to "agent_tool_summary",
-            "taskId" to taskId,
-            "cardId" to cardId,
-            "toolName" to chooseText("toolName"),
-            "displayName" to chooseText("displayName"),
-            "toolType" to toolType,
-            "serverName" to chooseAny("serverName"),
-            "status" to status,
-            "summary" to summary,
-            "progress" to progress,
-            "argsJson" to chooseText("argsJson"),
-            "resultPreviewJson" to chooseText("resultPreviewJson"),
-            "rawResultJson" to chooseText("rawResultJson"),
-            "terminalOutput" to terminalOutput,
-            "terminalOutputDelta" to terminalOutputDelta,
-            "terminalSessionId" to chooseAny("terminalSessionId"),
-            "terminalStreamState" to chooseText("terminalStreamState"),
-            "workspaceId" to chooseAny("workspaceId"),
-            "artifacts" to artifacts,
-            "actions" to actions,
-            "success" to success,
-            "showScheduleAction" to (toolType == "schedule"),
-            "showAlarmAction" to (toolType == "alarm")
-        )
-    }
-
     private fun notifyScheduledSubagentCompletion(
         meta: ScheduledSubagentRunMeta,
         message: String
@@ -2895,13 +2684,15 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     fun createAgentTask(call: MethodCall, result: MethodChannel.Result) {
         val taskId = (call.argument<String>("taskId") ?: "").trim()
         val userMessage = (call.argument<String>("userMessage") ?: "").toString()
-        val conversationHistory =
+        val legacyConversationHistory =
             call.argument<List<Map<String, Any?>>>("conversationHistory") ?: emptyList()
         val attachments = call.argument<List<Map<String, Any?>>>("attachments") ?: emptyList()
-        val conversationId = call.argument<Number>("conversationId")?.toLong()
+        val conversationId = call.argument<Number>("conversationId")?.toLong()?.takeIf { it > 0L }
         val requestedConversationMode =
             call.argument<String>("conversationMode")?.trim()?.ifEmpty { null }
-        val resolvedConversationMode = requestedConversationMode ?: currentConversationMode
+        val resolvedConversationMode = normalizeConversationMode(
+            requestedConversationMode ?: currentConversationMode
+        )
         val scheduledSubagentMeta = parseScheduledSubagentRunMeta(
             conversationMode = resolvedConversationMode,
             conversationId = conversationId,
@@ -2933,6 +2724,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             result.error("INVALID_ARGUMENTS", "taskId is empty", null)
             return
         }
+        if (legacyConversationHistory.isNotEmpty()) {
+            OmniLog.d(
+                TAG,
+                "Ignoring legacy conversationHistory for createAgentTask taskId=$taskId size=${legacyConversationHistory.size}"
+            )
+        }
         val agentRunJob = SupervisorJob()
         val agentRunScope = CoroutineScope(agentRunJob + Dispatchers.Default)
         registerActiveAgentJob(taskId, agentRunJob)
@@ -2942,6 +2739,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 // 1. 获取当前包名
                 val currentPackageName = AssistsCore.getCurrentPackageName()
                 val runtimeContextRepository = AgentRuntimeContextRepository(context)
+                val historyRepository = conversationHistoryRepository()
 
                 val scheduleBridge = object : AgentScheduleToolBridge {
                     override suspend fun createTask(arguments: Map<String, Any?>): Map<String, Any?> {
@@ -2971,19 +2769,120 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                 // 2. 初始化 Executor
                 val executor = OmniAgentExecutor(context, agentRunScope, scheduleBridge)
-                val activeToolArgs = mutableMapOf<String, String>()
+                val activeToolArgs = mutableMapOf<String, ArrayDeque<String>>()
+                val activeToolEntryIds = mutableMapOf<String, ArrayDeque<String>>()
                 val scheduledAssistantBuffer = StringBuilder()
-                var scheduledToolCardSequence = 0
-                var scheduledActiveToolCardId: String? = null
-                val scheduledToolCardCache = mutableMapOf<String, Map<String, Any?>>()
-                scheduledSubagentMeta?.let { meta ->
-                    persistScheduledSubagentMessage(
-                        meta = meta,
-                        messageId = "$taskId-user",
-                        user = 1,
-                        text = userMessage,
+                var toolSequence = 0
+
+                fun pushToolValue(
+                    store: MutableMap<String, ArrayDeque<String>>,
+                    toolName: String,
+                    value: String
+                ) {
+                    store.getOrPut(toolName) { ArrayDeque() }.addLast(value)
+                }
+
+                fun peekToolValue(
+                    store: MutableMap<String, ArrayDeque<String>>,
+                    toolName: String
+                ): String {
+                    return store[toolName]?.lastOrNull().orEmpty()
+                }
+
+                fun popToolValue(
+                    store: MutableMap<String, ArrayDeque<String>>,
+                    toolName: String
+                ): String {
+                    val queue = store[toolName] ?: return ""
+                    val value = if (queue.isEmpty()) "" else queue.removeLast()
+                    if (queue.isEmpty()) {
+                        store.remove(toolName)
+                    }
+                    return value
+                }
+
+                suspend fun upsertAssistantSnapshot(text: String, isError: Boolean) {
+                    val normalizedConversationId = conversationId ?: return
+                    val normalizedText = text.trim()
+                    if (normalizedText.isEmpty()) return
+                    historyRepository.upsertAssistantMessage(
+                        conversationId = normalizedConversationId,
+                        conversationMode = resolvedConversationMode,
+                        entryId = "$taskId-assistant",
+                        text = normalizedText,
+                        isError = isError
+                    )
+                }
+
+                suspend fun upsertClarifyMessage(question: String) {
+                    val normalizedConversationId = conversationId ?: return
+                    val normalizedQuestion = question.trim()
+                    if (normalizedQuestion.isEmpty()) return
+                    historyRepository.upsertAssistantMessage(
+                        conversationId = normalizedConversationId,
+                        conversationMode = resolvedConversationMode,
+                        entryId = "$taskId-clarify",
+                        text = normalizedQuestion,
                         isError = false
                     )
+                }
+
+                suspend fun upsertPermissionState(missing: List<String>) {
+                    val normalizedConversationId = conversationId ?: return
+                    val names = missing.map { it.trim() }.filter { it.isNotEmpty() }
+                    val message = if (names.isEmpty()) {
+                        "执行任务前需要先开启权限"
+                    } else {
+                        "执行任务前，请先开启：${names.joinToString("、")}"
+                    }
+                    historyRepository.upsertAssistantMessage(
+                        conversationId = normalizedConversationId,
+                        conversationMode = resolvedConversationMode,
+                        entryId = "$taskId-text",
+                        text = message,
+                        isError = false
+                    )
+                    val permissionIds = resolveRequiredPermissionIds(names)
+                    if (permissionIds.isNotEmpty()) {
+                        historyRepository.upsertUiCard(
+                            conversationId = normalizedConversationId,
+                            conversationMode = resolvedConversationMode,
+                            entryId = "$taskId-permission",
+                            cardData = buildPermissionCardData(permissionIds)
+                        )
+                    }
+                }
+
+                suspend fun upsertToolEvent(
+                    entryId: String,
+                    payload: Map<String, Any?>,
+                    fallbackStatus: String,
+                    fallbackSummary: String
+                ) {
+                    val normalizedConversationId = conversationId ?: return
+                    if (entryId.isBlank()) return
+                    historyRepository.upsertToolEvent(
+                        conversationId = normalizedConversationId,
+                        conversationMode = resolvedConversationMode,
+                        entryId = entryId,
+                        payload = linkedMapOf<String, Any?>("taskId" to taskId).apply {
+                            putAll(payload)
+                        },
+                        fallbackStatus = fallbackStatus,
+                        fallbackSummary = fallbackSummary
+                    )
+                }
+
+                conversationId?.let { normalizedConversationId ->
+                    if (userMessage.isNotBlank() || attachments.isNotEmpty()) {
+                        historyRepository.upsertUserMessage(
+                            conversationId = normalizedConversationId,
+                            conversationMode = resolvedConversationMode,
+                            entryId = "$taskId-user",
+                            text = userMessage,
+                            attachments = attachments
+                        )
+                    }
                 }
 
                 // 3. 创建回调
@@ -3001,30 +2900,18 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         arguments: JsonObject
                     ) {
                         val argsJson = arguments.toString()
-                        activeToolArgs[toolName] = argsJson
+                        pushToolValue(activeToolArgs, toolName, argsJson)
+                        val entryId = "$taskId-tool-${++toolSequence}"
+                        pushToolValue(activeToolEntryIds, toolName, entryId)
                         val payload = buildToolStartPayload(toolName, argsJson)
-                        scheduledSubagentMeta?.let { meta ->
-                            scheduledToolCardSequence += 1
-                            val cardId = "$taskId-tool-$scheduledToolCardSequence"
-                            scheduledActiveToolCardId = cardId
-                            val cardData = mergeScheduledToolCardData(
-                                taskId = taskId,
-                                cardId = cardId,
-                                payload = payload,
-                                existingCardData = scheduledToolCardCache[cardId] ?: emptyMap(),
-                                fallbackStatus = "running",
-                                fallbackSummary = payload["summary"]?.toString()?.ifBlank {
-                                    "正在调用工具"
-                                } ?: "正在调用工具"
-                            )
-                            scheduledToolCardCache[cardId] = cardData
-                            persistScheduledSubagentToolCard(
-                                meta = meta,
-                                cardId = cardId,
-                                cardData = cardData,
-                                isError = false
-                            )
-                        }
+                        upsertToolEvent(
+                            entryId = entryId,
+                            payload = payload,
+                            fallbackStatus = AgentConversationHistoryRepository.STATUS_RUNNING,
+                            fallbackSummary = payload["summary"]?.toString()?.ifBlank {
+                                "正在调用工具"
+                            } ?: "正在调用工具"
+                        )
                         sendEvent(
                             "onAgentToolCallStart",
                             payload
@@ -3036,32 +2923,21 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         progress: String,
                         extras: Map<String, Any?>
                     ) {
+                        val entryId = peekToolValue(activeToolEntryIds, toolName)
                         val payload = buildToolProgressPayload(
                             toolName,
                             progress,
-                            activeToolArgs[toolName].orEmpty(),
+                            peekToolValue(activeToolArgs, toolName),
                             extras
                         )
-                        scheduledSubagentMeta?.let { meta ->
-                            val cardId = scheduledActiveToolCardId
-                            if (!cardId.isNullOrBlank()) {
-                                val cardData = mergeScheduledToolCardData(
-                                    taskId = taskId,
-                                    cardId = cardId,
-                                    payload = payload,
-                                    existingCardData = scheduledToolCardCache[cardId] ?: emptyMap(),
-                                    fallbackStatus = "running",
-                                    fallbackSummary = "正在调用工具"
-                                )
-                                scheduledToolCardCache[cardId] = cardData
-                                persistScheduledSubagentToolCard(
-                                    meta = meta,
-                                    cardId = cardId,
-                                    cardData = cardData,
-                                    isError = false
-                                )
-                            }
-                        }
+                        upsertToolEvent(
+                            entryId = entryId,
+                            payload = payload,
+                            fallbackStatus = AgentConversationHistoryRepository.STATUS_RUNNING,
+                            fallbackSummary = payload["summary"]?.toString()?.ifBlank {
+                                "正在调用工具"
+                            } ?: "正在调用工具"
+                        )
                         sendEvent(
                             "onAgentToolCallProgress",
                             payload
@@ -3072,27 +2948,22 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         toolName: String,
                         result: ToolExecutionResult
                     ) {
-                        val argsJson = activeToolArgs.remove(toolName).orEmpty()
+                        val argsJson = popToolValue(activeToolArgs, toolName)
                         val payload = buildToolCompletePayload(toolName, result, argsJson)
-                        scheduledSubagentMeta?.let { meta ->
-                            val cardId = scheduledActiveToolCardId ?: "$taskId-tool-${++scheduledToolCardSequence}"
-                            val cardData = mergeScheduledToolCardData(
-                                taskId = taskId,
-                                cardId = cardId,
-                                payload = payload,
-                                existingCardData = scheduledToolCardCache[cardId] ?: emptyMap(),
-                                fallbackStatus = if (payload["success"] == false) "error" else "success",
-                                fallbackSummary = payload["summary"]?.toString().orEmpty()
-                            )
-                            scheduledToolCardCache[cardId] = cardData
-                            persistScheduledSubagentToolCard(
-                                meta = meta,
-                                cardId = cardId,
-                                cardData = cardData,
-                                isError = payload["success"] == false
-                            )
+                        val entryId = popToolValue(activeToolEntryIds, toolName).ifBlank {
+                            "$taskId-tool-${++toolSequence}"
                         }
-                        scheduledActiveToolCardId = null
+                        val success = payload["success"] != false
+                        upsertToolEvent(
+                            entryId = entryId,
+                            payload = payload,
+                            fallbackStatus = if (success) {
+                                AgentConversationHistoryRepository.STATUS_SUCCESS
+                            } else {
+                                AgentConversationHistoryRepository.STATUS_ERROR
+                            },
+                            fallbackSummary = payload["summary"]?.toString().orEmpty()
+                        )
                         sendEvent(
                             "onAgentToolCallComplete",
                             payload
@@ -3111,6 +2982,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         question: String,
                         missingFields: List<String>?
                     ) {
+                        upsertClarifyMessage(question)
                         sendEvent(
                             "onAgentClarifyRequired",
                             mapOf("question" to question, "missingFields" to missingFields)
@@ -3122,28 +2994,31 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         val outputKind = (result as? AgentResult.Success)?.outputKind ?: "none"
                         val hasUserVisibleOutput =
                             (result as? AgentResult.Success)?.hasUserVisibleOutput == true
+                        val streamed = scheduledAssistantBuffer.toString().trim()
+                        val fallback = (result as? AgentResult.Success)
+                            ?.response
+                            ?.content
+                            ?.trim()
+                            .orEmpty()
+                        val finalText = streamed.ifEmpty { fallback }.ifEmpty {
+                            if (isSuccess && outputKind == "none" && !hasUserVisibleOutput) {
+                                "暂时无法生成回复，请重试。"
+                            } else {
+                                ""
+                            }
+                        }
+                        if (finalText.isNotBlank()) {
+                            upsertAssistantSnapshot(finalText, isError = !isSuccess)
+                        }
                         scheduledSubagentMeta?.let { meta ->
-                            val streamed = scheduledAssistantBuffer.toString().trim()
-                            val fallback = (result as? AgentResult.Success)
-                                ?.response
-                                ?.content
-                                ?.trim()
-                                .orEmpty()
-                            val finalText = streamed.ifEmpty { fallback }.ifEmpty {
+                            val notificationText = finalText.ifEmpty {
                                 if (isSuccess) {
                                     "任务已完成，点击查看详情。"
                                 } else {
                                     "任务已结束，请点击查看详情。"
                                 }
                             }
-                            persistScheduledSubagentMessage(
-                                meta = meta,
-                                messageId = "$taskId-assistant",
-                                user = 2,
-                                text = finalText,
-                                isError = !isSuccess
-                            )
-                            notifyScheduledSubagentCompletion(meta, finalText)
+                            notifyScheduledSubagentCompletion(meta, notificationText)
                         }
                         sendEvent(
                             "onAgentComplete",
@@ -3156,22 +3031,21 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     }
 
                     override suspend fun onError(error: String) {
+                        val streamed = scheduledAssistantBuffer.toString().trim()
+                        val finalText = streamed.ifEmpty {
+                            error.trim().ifEmpty { "暂时无法生成回复，请重试。" }
+                        }
+                        if (finalText.isNotBlank()) {
+                            upsertAssistantSnapshot(finalText, isError = true)
+                        }
                         scheduledSubagentMeta?.let { meta ->
-                            val streamed = scheduledAssistantBuffer.toString().trim()
-                            val finalText = streamed.ifEmpty { error }
-                            persistScheduledSubagentMessage(
-                                meta = meta,
-                                messageId = "$taskId-assistant",
-                                user = 2,
-                                text = finalText,
-                                isError = true
-                            )
                             notifyScheduledSubagentCompletion(meta, finalText)
                         }
                         sendEvent("onAgentError", mapOf("error" to error))
                     }
 
                     override suspend fun onPermissionRequired(missing: List<String>) {
+                        upsertPermissionState(missing)
                         sendEvent("onAgentPermissionRequired", mapOf("missing" to missing))
                     }
 
@@ -3189,17 +3063,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             // 否则会把同一段内容在流式阶段重复拼接。
                             scheduledAssistantBuffer.setLength(0)
                             scheduledAssistantBuffer.append(normalizedMessage)
-                            scheduledSubagentMeta?.let { meta ->
-                                val streamingText = scheduledAssistantBuffer.toString().trim()
-                                if (streamingText.isNotEmpty()) {
-                                    persistScheduledSubagentMessage(
-                                        meta = meta,
-                                        messageId = "$taskId-assistant",
-                                        user = 2,
-                                        text = streamingText,
-                                        isError = false
-                                    )
-                                }
+                            val streamingText = scheduledAssistantBuffer.toString().trim()
+                            if (streamingText.isNotEmpty()) {
+                                upsertAssistantSnapshot(streamingText, isError = false)
                             }
                         }
                         sendEvent(
@@ -3225,7 +3091,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 // 4. 执行任务
                 executor.processUserMessage(
                     userMessage,
-                    conversationHistory,
+                    legacyConversationHistory,
                     runtimeContextRepository,
                     currentPackageName,
                     attachments,
@@ -3402,6 +3268,89 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
+    fun getConversationMessages(call: MethodCall, result: MethodChannel.Result) {
+        val conversationId = call.argument<Number>("conversationId")?.toLong() ?: 0L
+        val mode = normalizeConversationMode(
+            call.argument<String>("mode") ?: call.argument<String>("conversationMode")
+        )
+        if (conversationId <= 0L) {
+            result.error("INVALID_ARGUMENTS", "conversationId is invalid", null)
+            return
+        }
+        workJob.launch {
+            try {
+                val messages = conversationHistoryRepository().listConversationMessages(
+                    conversationId = conversationId,
+                    conversationMode = mode
+                )
+                withContext(Dispatchers.Main) {
+                    result.success(messages)
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "获取对话消息失败: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("GET_CONVERSATION_MESSAGES_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun replaceConversationMessages(call: MethodCall, result: MethodChannel.Result) {
+        val conversationId = call.argument<Number>("conversationId")?.toLong() ?: 0L
+        val mode = normalizeConversationMode(
+            call.argument<String>("mode") ?: call.argument<String>("conversationMode")
+        )
+        val messages = call.argument<List<Map<String, Any?>>>("messages") ?: emptyList()
+        if (conversationId <= 0L) {
+            result.error("INVALID_ARGUMENTS", "conversationId is invalid", null)
+            return
+        }
+        workJob.launch {
+            try {
+                conversationHistoryRepository().replaceThreadMessagesFromUiSnapshot(
+                    conversationId = conversationId,
+                    conversationMode = mode,
+                    messages = messages
+                )
+                withContext(Dispatchers.Main) {
+                    result.success("SUCCESS")
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "替换对话消息失败: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("REPLACE_CONVERSATION_MESSAGES_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun clearConversationMessages(call: MethodCall, result: MethodChannel.Result) {
+        val conversationId = call.argument<Number>("conversationId")?.toLong() ?: 0L
+        val mode = normalizeConversationMode(
+            call.argument<String>("mode") ?: call.argument<String>("conversationMode")
+        )
+        if (conversationId <= 0L) {
+            result.error("INVALID_ARGUMENTS", "conversationId is invalid", null)
+            return
+        }
+        workJob.launch {
+            try {
+                conversationHistoryRepository().clearConversationMessages(
+                    conversationId = conversationId,
+                    conversationMode = mode
+                )
+                withContext(Dispatchers.Main) {
+                    result.success("SUCCESS")
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "清理对话消息失败: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("CLEAR_CONVERSATION_MESSAGES_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
     /**
      * 分页获取对话列表
      */
@@ -3442,7 +3391,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
      */
     fun createConversation(call: MethodCall, result: MethodChannel.Result) {
         val title = call.argument<String>("title") ?: "新对话"
-        val mode = call.argument<String>("mode") ?: "normal"
+        val mode = normalizeConversationMode(call.argument<String>("mode"))
         val summary = call.argument<String>("summary")
 
         workJob.launch {
@@ -3480,18 +3429,24 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 if (conversationMap != null) {
-                    val conversation = Conversation(
-                        id = (conversationMap["id"] as Number).toLong(),
-                        title = conversationMap["title"] as String,
-                        mode = (conversationMap["mode"] as? String ?: "normal"),
+                    val conversationId = (conversationMap["id"] as Number).toLong()
+                    val existing = DatabaseHelper.getConversationById(conversationId)
+                    if (existing == null) {
+                        withContext(Dispatchers.Main) {
+                            result.error("CONVERSATION_NOT_FOUND", "Conversation not found", null)
+                        }
+                        return@launch
+                    }
+                    val updatedConversation = existing.copy(
+                        title = (conversationMap["title"] as? String)?.trim()?.ifEmpty {
+                            existing.title
+                        } ?: existing.title,
+                        mode = normalizeConversationMode(conversationMap["mode"] as? String ?: existing.mode),
                         summary = conversationMap["summary"] as String?,
-                        status = (conversationMap["status"] as Number).toInt(),
-                        lastMessage = conversationMap["lastMessage"] as String?,
-                        messageCount = (conversationMap["messageCount"] as Number).toInt(),
-                        createdAt = (conversationMap["createdAt"] as Number).toLong(),
-                        updatedAt = (conversationMap["updatedAt"] as Number).toLong()
+                        status = (conversationMap["status"] as? Number)?.toInt() ?: existing.status,
+                        updatedAt = System.currentTimeMillis()
                     )
-                    DatabaseHelper.updateConversation(conversation)
+                    DatabaseHelper.updateConversation(updatedConversation)
                     withContext(Dispatchers.Main) {
                         result.success("SUCCESS")
                     }
@@ -3517,6 +3472,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
         workJob.launch {
             try {
+                conversationHistoryRepository().deleteConversation(conversationId)
                 DatabaseHelper.deleteConversationById(conversationId)
                 withContext(Dispatchers.Main) {
                     result.success("SUCCESS")

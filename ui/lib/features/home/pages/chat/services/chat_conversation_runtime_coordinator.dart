@@ -361,12 +361,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
             );
     }
 
-    await ConversationHistoryService.saveConversationMessages(
-      conversationId,
-      snapshotMessages,
-      mode: conversationMode,
-    );
-
     final baseConversation =
         (snapshotConversation?.mode == conversationMode
             ? snapshotConversation

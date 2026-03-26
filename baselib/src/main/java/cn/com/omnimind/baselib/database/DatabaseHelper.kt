@@ -137,6 +137,41 @@ object DatabaseHelper {
         }
     }
 
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `agent_conversation_entries` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `conversationId` INTEGER NOT NULL,
+                    `conversationMode` TEXT NOT NULL,
+                    `entryId` TEXT NOT NULL,
+                    `entryType` TEXT NOT NULL,
+                    `status` TEXT NOT NULL,
+                    `summary` TEXT NOT NULL,
+                    `payloadJson` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                `index_agent_conversation_entries_conversationId_conversationMode_entryId`
+                ON `agent_conversation_entries` (`conversationId`, `conversationMode`, `entryId`)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS
+                `index_agent_conversation_entries_conversationId_conversationMode_updatedAt`
+                ON `agent_conversation_entries` (`conversationId`, `conversationMode`, `updatedAt`)
+                """.trimIndent()
+            )
+        }
+    }
+
     fun init(context: Context) {
         database = Room.databaseBuilder(
             context.applicationContext, AppDatabase::class.java, LOCAL_DATABASE_NAME
@@ -146,7 +181,8 @@ object DatabaseHelper {
             MIGRATION_3_4,
             MIGRATION_4_5,
             MIGRATION_5_6,
-            MIGRATION_6_7
+            MIGRATION_6_7,
+            MIGRATION_7_8
         ).build()
 
     }
@@ -651,6 +687,72 @@ object DatabaseHelper {
 
     suspend fun getConversationCount(): Int {
         return getDatabase().conversationDao().getConversationCount()
+    }
+
+    suspend fun upsertAgentConversationEntry(entry: AgentConversationEntry): Long {
+        return getDatabase().agentConversationEntryDao().upsert(entry)
+    }
+
+    suspend fun getAgentConversationEntriesAsc(
+        conversationId: Long,
+        conversationMode: String
+    ): List<AgentConversationEntry> {
+        return getDatabase().agentConversationEntryDao().getThreadEntriesAsc(
+            conversationId = conversationId,
+            conversationMode = conversationMode
+        )
+    }
+
+    suspend fun getAgentConversationEntriesDesc(
+        conversationId: Long,
+        conversationMode: String
+    ): List<AgentConversationEntry> {
+        return getDatabase().agentConversationEntryDao().getThreadEntriesDesc(
+            conversationId = conversationId,
+            conversationMode = conversationMode
+        )
+    }
+
+    suspend fun getAgentConversationEntryByThreadAndId(
+        conversationId: Long,
+        conversationMode: String,
+        entryId: String
+    ): AgentConversationEntry? {
+        return getDatabase().agentConversationEntryDao().getByThreadAndEntryId(
+            conversationId = conversationId,
+            conversationMode = conversationMode,
+            entryId = entryId
+        )
+    }
+
+    suspend fun deleteAgentConversationThread(
+        conversationId: Long,
+        conversationMode: String
+    ): Int {
+        return getDatabase().agentConversationEntryDao().deleteThreadEntries(
+            conversationId = conversationId,
+            conversationMode = conversationMode
+        )
+    }
+
+    suspend fun deleteAgentConversationEntries(conversationId: Long): Int {
+        return getDatabase().agentConversationEntryDao().deleteConversationEntries(conversationId)
+    }
+
+    suspend fun getLatestAgentConversationEntry(conversationId: Long): AgentConversationEntry? {
+        return getDatabase().agentConversationEntryDao().getLatestConversationEntry(conversationId)
+    }
+
+    suspend fun getLatestAgentConversationUpdate(conversationId: Long): AgentConversationEntry? {
+        return getDatabase().agentConversationEntryDao().getLatestConversationUpdate(conversationId)
+    }
+
+    suspend fun getEarliestAgentConversationEntry(conversationId: Long): AgentConversationEntry? {
+        return getDatabase().agentConversationEntryDao().getEarliestConversationEntry(conversationId)
+    }
+
+    suspend fun countAgentConversationEntries(conversationId: Long): Int {
+        return getDatabase().agentConversationEntryDao().countConversationEntries(conversationId)
     }
 
     suspend fun incrementConversationMessageCount(id: Long) {

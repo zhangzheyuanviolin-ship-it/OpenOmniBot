@@ -658,12 +658,6 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         await ConversationHistoryService.saveCurrentConversationId(
           _currentConversationId,
         );
-        await ConversationHistoryService.saveConversationMessages(
-          _currentConversationId!,
-          _messages,
-        );
-        debugPrint('[ChatBotSheet] 保存对话消息成功，对话ID: $_currentConversationId');
-
         final baseConversation =
             _currentConversation ??
             ConversationModel(
@@ -1382,12 +1376,9 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       _createThinkingCard(aiMessageId);
 
       final userMessage = _latestUserUtterance();
-      final history = _historyBeforeLatestUser(_buildConversationHistory());
-
       final success = await AssistsMessageService.createAgentTask(
         taskId: aiMessageId,
         userMessage: userMessage,
-        conversationHistory: history,
         conversationId: _currentConversationId,
         conversationMode: ConversationMode.normal.storageValue,
       );

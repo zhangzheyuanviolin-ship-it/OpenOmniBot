@@ -363,6 +363,8 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       return;
     }
     final history = buildConversationHistory();
+    final userMessage = latestUserUtterance();
+    final userAttachments = await _latestUserAttachments();
     final openClawConfig = {
       'baseUrl': _openClawBaseUrl,
       if (_openClawToken.isNotEmpty) 'token': _openClawToken,
@@ -382,6 +384,10 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       history,
       provider: 'openclaw',
       openClawConfig: openClawConfig,
+      conversationId: conversationId,
+      conversationMode: activeConversationModeValue.storageValue,
+      userMessage: userMessage,
+      userAttachments: userAttachments,
     );
     if (success) return;
     _runtimeCoordinator.unregisterTask(aiMessageId);
@@ -558,13 +564,11 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       _registerActiveTaskBinding(aiMessageId);
 
       final userMessage = latestUserUtterance();
-      final history = _historyBeforeLatestUser(buildConversationHistory());
       final attachments = await _latestUserAttachments();
 
       final success = await AssistsMessageService.createAgentTask(
         taskId: aiMessageId,
         userMessage: userMessage,
-        conversationHistory: history,
         attachments: attachments,
         conversationId: _currentConversationId,
         conversationMode: activeConversationModeValue.storageValue,

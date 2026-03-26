@@ -513,12 +513,6 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
           );
         }
 
-        await ConversationHistoryService.saveConversationMessages(
-          targetId,
-          snapshotMessages,
-          mode: snapshotMode,
-        );
-
         final baseConversation =
             snapshotConversation ??
             ConversationModel(

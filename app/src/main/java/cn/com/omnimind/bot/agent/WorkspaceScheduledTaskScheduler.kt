@@ -6,12 +6,15 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Base64
+import cn.com.omnimind.baselib.database.Conversation
+import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.manager.AssistsCoreManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -33,10 +36,6 @@ class WorkspaceScheduledTaskScheduler(
         private const val FLUTTER_PREFS_NAME = "FlutterSharedPreferences"
         private const val FLUTTER_PREF_PREFIX = "flutter."
         private const val FLUTTER_SCHEDULED_TASKS_KEY = "${FLUTTER_PREF_PREFIX}scheduled_tasks"
-        private const val FLUTTER_LOCAL_CONVERSATION_LIST_KEY =
-            "${FLUTTER_PREF_PREFIX}local_conversation_list"
-        private const val FLUTTER_CONVERSATION_MESSAGES_KEY_PREFIX =
-            "${FLUTTER_PREF_PREFIX}conversation_messages_"
         private const val LIST_PREFIX = "VGhpcyBpcyB0aGUgcHJlZml4IGZvciBhIGxpc3Qu"
         private const val JSON_LIST_PREFIX = "$LIST_PREFIX!"
         private const val SUBAGENT_MODE = "subagent"
@@ -237,11 +236,9 @@ class WorkspaceScheduledTaskScheduler(
         val prompt = task.subagentPrompt?.trim().orEmpty()
         require(prompt.isNotEmpty()) { "subagentPrompt is empty" }
         val conversationId = ensureSubagentConversationId(task)
-        val history = loadSubagentConversationHistory(conversationId)
         val args = mutableMapOf<String, Any?>(
             "taskId" to "subagent_schedule_${System.currentTimeMillis()}_${task.taskId}",
             "userMessage" to prompt,
-            "conversationHistory" to history,
             "conversationId" to conversationId,
             "conversationMode" to SUBAGENT_MODE,
             "scheduledTaskId" to task.taskId,
@@ -277,78 +274,22 @@ class WorkspaceScheduledTaskScheduler(
         if (existingId != null && existingId > 0) {
             return existingId
         }
-        return allocateNextConversationIdFromFlutterStorage()
-    }
-
-    private fun allocateNextConversationIdFromFlutterStorage(): Long {
-        val flutterPrefs =
-            appContext.getSharedPreferences(FLUTTER_PREFS_NAME, Context.MODE_PRIVATE)
-        var maxId = 0L
-
-        val rawList = flutterPrefs.getString(FLUTTER_LOCAL_CONVERSATION_LIST_KEY, null).orEmpty()
-        if (rawList.isNotBlank()) {
-            val list = runCatching { JSONArray(rawList) }.getOrElse { JSONArray() }
-            for (index in 0 until list.length()) {
-                val item = list.optJSONObject(index) ?: continue
-                val id = item.optLong("id", -1L)
-                if (id > maxId) {
-                    maxId = id
-                }
-            }
-        }
-
-        flutterPrefs.all.keys.forEach { key ->
-            if (!key.startsWith(FLUTTER_CONVERSATION_MESSAGES_KEY_PREFIX)) {
-                return@forEach
-            }
-            val suffix = key.removePrefix(FLUTTER_CONVERSATION_MESSAGES_KEY_PREFIX)
-            val idCandidate = if (suffix.contains('_')) {
-                suffix.substringAfterLast('_')
-            } else {
-                suffix
-            }
-            val parsedId = idCandidate.toLongOrNull() ?: return@forEach
-            if (parsedId > maxId) {
-                maxId = parsedId
-            }
-        }
-
-        return (maxId + 1L).coerceAtLeast(1L)
-    }
-
-    private fun loadSubagentConversationHistory(conversationId: Long): List<Map<String, Any?>> {
-        val flutterPrefs =
-            appContext.getSharedPreferences(FLUTTER_PREFS_NAME, Context.MODE_PRIVATE)
-        val key = "${FLUTTER_PREF_PREFIX}conversation_messages_${SUBAGENT_MODE}_$conversationId"
-        val raw = flutterPrefs.getString(key, null).orEmpty()
-        if (raw.isBlank()) return emptyList()
-        val source = runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
-        val history = mutableListOf<Map<String, Any?>>()
-        for (index in source.length() - 1 downTo 0) {
-            val item = source.optJSONObject(index) ?: continue
-            val role = when (item.optInt("user", 0)) {
-                1 -> "user"
-                2 -> "assistant"
-                else -> "system"
-            }
-            var text = item.optJSONObject("content")
-                ?.optString("text")
-                ?.trim()
-                .orEmpty()
-            if (text.isEmpty()) {
-                text = item.optString("text").trim()
-            }
-            if (text.isEmpty()) {
-                continue
-            }
-            history.add(
-                mapOf(
-                    "role" to role,
-                    "content" to text
+        val now = System.currentTimeMillis()
+        return runBlocking {
+            DatabaseHelper.insertConversation(
+                Conversation(
+                    id = 0,
+                    title = task.title.ifBlank { "SubAgent 定时任务" },
+                    mode = SUBAGENT_MODE,
+                    summary = null,
+                    status = 0,
+                    lastMessage = null,
+                    messageCount = 0,
+                    createdAt = now,
+                    updatedAt = now
                 )
             )
         }
-        return history.takeLast(20)
     }
 
     private fun parseTask(rawTask: Map<String, Any?>, existing: StoredTask?): StoredTask {

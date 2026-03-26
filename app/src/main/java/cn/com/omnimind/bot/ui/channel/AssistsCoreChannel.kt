@@ -259,6 +259,15 @@ class AssistsCoreChannel {
                 "getConversations" -> {
                     assistsCoreManager!!.getConversations(call, result)
                 }
+                "getConversationMessages" -> {
+                    assistsCoreManager!!.getConversationMessages(call, result)
+                }
+                "replaceConversationMessages" -> {
+                    assistsCoreManager!!.replaceConversationMessages(call, result)
+                }
+                "clearConversationMessages" -> {
+                    assistsCoreManager!!.clearConversationMessages(call, result)
+                }
                 "getConversationsByPage" -> {
                     assistsCoreManager!!.getConversationsByPage(call, result)
                 }

@@ -666,6 +666,10 @@ class AssistsMessageService {
     List<Map<String, dynamic>> content, {
     String? provider,
     Map<String, dynamic>? openClawConfig,
+    int? conversationId,
+    String? conversationMode,
+    String? userMessage,
+    List<Map<String, dynamic>> userAttachments = const [],
   }) async {
     try {
       print('createChatTask taskID: $taskID content: $content');
@@ -675,6 +679,18 @@ class AssistsMessageService {
       }
       if (openClawConfig != null) {
         args['openClawConfig'] = openClawConfig;
+      }
+      if (conversationId != null) {
+        args['conversationId'] = conversationId;
+      }
+      if (conversationMode != null && conversationMode.trim().isNotEmpty) {
+        args['conversationMode'] = conversationMode.trim();
+      }
+      if (userMessage != null) {
+        args['userMessage'] = userMessage;
+      }
+      if (userAttachments.isNotEmpty) {
+        args['userAttachments'] = userAttachments;
       }
       final result = await assistCore.invokeMethod('createChatTask', args);
       return result == "SUCCESS";
@@ -1034,7 +1050,7 @@ class AssistsMessageService {
   static Future<bool> createAgentTask({
     required String taskId,
     required String userMessage,
-    required List<Map<String, dynamic>> conversationHistory,
+    List<Map<String, dynamic>> conversationHistory = const [],
     List<Map<String, dynamic>> attachments = const [],
     int? conversationId,
     String? conversationMode,
@@ -1047,8 +1063,10 @@ class AssistsMessageService {
       final args = <String, dynamic>{
         'taskId': taskId,
         'userMessage': userMessage,
-        'conversationHistory': conversationHistory,
       };
+      if (conversationHistory.isNotEmpty) {
+        args['conversationHistory'] = conversationHistory;
+      }
       if (conversationId != null) {
         args['conversationId'] = conversationId;
       }

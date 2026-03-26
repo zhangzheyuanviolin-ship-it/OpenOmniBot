@@ -1,17 +1,56 @@
-import 'dart:convert';
-
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/models/chat_message_model.dart';
-import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
+import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/conversation_history_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  const channel = MethodChannel('cn.com.omnimind.bot/AssistCoreEvent');
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  late Map<String, List<Map<String, dynamic>>> nativeMessages;
+
+  String threadKey(int conversationId, ConversationMode mode) {
+    return '${mode.storageValue}:$conversationId';
+  }
+
+  List<Map<String, dynamic>> normalizeMessageList(dynamic raw) {
+    return ((raw as List?) ?? const <dynamic>[])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item.cast<String, dynamic>()))
+        .toList();
+  }
+
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    nativeMessages = <String, List<Map<String, dynamic>>>{};
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      final args =
+          Map<String, dynamic>.from((call.arguments as Map?) ?? const {});
+      final conversationId = (args['conversationId'] as num?)?.toInt() ?? 0;
+      final mode = ConversationMode.fromStorageValue(args['mode'] as String?);
+      final key = threadKey(conversationId, mode);
+      switch (call.method) {
+        case 'replaceConversationMessages':
+          nativeMessages[key] = normalizeMessageList(args['messages']);
+          return 'SUCCESS';
+        case 'getConversationMessages':
+          return nativeMessages[key] ?? <Map<String, dynamic>>[];
+        case 'clearConversationMessages':
+          nativeMessages.remove(key);
+          return 'SUCCESS';
+        default:
+          return null;
+      }
+    });
+  });
+
+  tearDown(() async {
+    messenger.setMockMethodCallHandler(channel, null);
   });
 
   test('stores current conversation ids independently per mode', () async {
@@ -108,30 +147,7 @@ void main() {
     },
   );
 
-  test('supports legacy normal-mode storage fallback', () async {
-    final legacyMessages = <Map<String, dynamic>>[
-      ChatMessageModel.userMessage('legacy normal message').toJson(),
-    ];
-    SharedPreferences.setMockInitialValues(<String, Object>{
-      'current_conversation_id': 15,
-      'conversation_messages_15': jsonEncode(legacyMessages),
-    });
-
-    expect(
-      await ConversationHistoryService.getCurrentConversationId(
-        mode: ConversationMode.normal,
-      ),
-      15,
-    );
-    final messages = await ConversationHistoryService.getConversationMessages(
-      15,
-      mode: ConversationMode.normal,
-    );
-    expect(messages, hasLength(1));
-    expect(messages.single.text, 'legacy normal message');
-  });
-
-  test('stores conversation messages independently per mode', () async {
+  test('stores conversation messages independently per mode through native', () async {
     await ConversationHistoryService.saveConversationMessages(
       1,
       <ChatMessageModel>[ChatMessageModel.userMessage('normal thread')],
@@ -156,5 +172,24 @@ void main() {
 
     expect(normalMessages.single.text, 'normal thread');
     expect(openClawMessages.single.text, 'openclaw thread');
+  });
+
+  test('clears conversation messages through native', () async {
+    await ConversationHistoryService.saveConversationMessages(
+      7,
+      <ChatMessageModel>[ChatMessageModel.userMessage('to be cleared')],
+      mode: ConversationMode.subagent,
+    );
+
+    await ConversationHistoryService.clearConversationMessages(
+      7,
+      mode: ConversationMode.subagent,
+    );
+
+    final messages = await ConversationHistoryService.getConversationMessages(
+      7,
+      mode: ConversationMode.subagent,
+    );
+    expect(messages, isEmpty);
   });
 }

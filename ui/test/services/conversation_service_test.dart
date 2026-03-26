@@ -1,9 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/services/conversation_history_service.dart';
@@ -15,15 +12,47 @@ void main() {
   const channel = MethodChannel('cn.com.omnimind.bot/AssistCoreEvent');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  late List<Map<String, dynamic>> nativeConversations;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    nativeConversations = <Map<String, dynamic>>[];
     messenger.setMockMethodCallHandler(channel, (call) async {
+      final args =
+          Map<String, dynamic>.from((call.arguments as Map?) ?? const {});
       switch (call.method) {
         case 'getConversations':
-          return <Object?>[];
+          return nativeConversations;
+        case 'createConversation':
+          final nextId = nativeConversations.fold<int>(
+                0,
+                (maxId, item) => item['id'] as int > maxId
+                    ? item['id'] as int
+                    : maxId,
+              ) +
+              1;
+          nativeConversations.add({
+            'id': nextId,
+            'title': args['title'] ?? '新对话',
+            'mode': args['mode'] ?? ConversationMode.normal.storageValue,
+            'summary': args['summary'],
+            'status': 0,
+            'lastMessage': null,
+            'messageCount': 0,
+            'createdAt': 1,
+            'updatedAt': 1,
+          });
+          return nextId;
+        case 'updateConversation':
+        case 'updateConversationTitle':
+        case 'completeConversation':
         case 'setCurrentConversationId':
+          return 'SUCCESS';
         case 'deleteConversation':
+          final conversationId = (args['conversationId'] as num?)?.toInt();
+          nativeConversations.removeWhere(
+            (item) => item['id'] == conversationId,
+          );
           return 'SUCCESS';
         default:
           return null;
@@ -35,52 +64,56 @@ void main() {
     messenger.setMockMethodCallHandler(channel, null);
   });
 
-  test(
-    'derives openclaw conversations from mode-aware message storage',
-    () async {
-      await ConversationHistoryService.saveConversationMessages(
-        42,
-        <ChatMessageModel>[ChatMessageModel.userMessage('openclaw hello')],
-        mode: ConversationMode.openclaw,
-      );
+  test('loads conversations from native source', () async {
+    nativeConversations = <Map<String, dynamic>>[
+      {
+        'id': 42,
+        'title': 'openclaw hello',
+        'mode': ConversationMode.openclaw.storageValue,
+        'summary': null,
+        'status': 0,
+        'lastMessage': 'openclaw hello',
+        'messageCount': 2,
+        'createdAt': 1,
+        'updatedAt': 2,
+      },
+    ];
 
-      final conversations = await ConversationService.getAllConversations();
+    final conversations = await ConversationService.getAllConversations();
 
-      expect(conversations, hasLength(1));
-      expect(conversations.single.id, 42);
-      expect(conversations.single.mode, ConversationMode.openclaw);
-      expect(conversations.single.title, 'openclaw hello');
-    },
-  );
+    expect(conversations, hasLength(1));
+    expect(conversations.single.id, 42);
+    expect(conversations.single.mode, ConversationMode.openclaw);
+    expect(conversations.single.title, 'openclaw hello');
+  });
 
   test(
     'deletes only the targeted thread metadata and keeps other modes intact',
     () async {
-      final conversations = <ConversationModel>[
-        ConversationModel(
-          id: 1,
-          mode: ConversationMode.normal,
-          title: 'normal thread',
-          status: 0,
-          messageCount: 0,
-          createdAt: 1,
-          updatedAt: 1,
-        ),
-        ConversationModel(
-          id: 2,
-          mode: ConversationMode.openclaw,
-          title: 'openclaw thread',
-          status: 0,
-          messageCount: 0,
-          createdAt: 2,
-          updatedAt: 2,
-        ),
+      nativeConversations = <Map<String, dynamic>>[
+        {
+          'id': 1,
+          'title': 'normal thread',
+          'mode': ConversationMode.normal.storageValue,
+          'summary': null,
+          'status': 0,
+          'lastMessage': null,
+          'messageCount': 0,
+          'createdAt': 1,
+          'updatedAt': 1,
+        },
+        {
+          'id': 2,
+          'title': 'openclaw thread',
+          'mode': ConversationMode.openclaw.storageValue,
+          'summary': null,
+          'status': 0,
+          'lastMessage': null,
+          'messageCount': 0,
+          'createdAt': 2,
+          'updatedAt': 2,
+        },
       ];
-      SharedPreferences.setMockInitialValues(<String, Object>{
-        'local_conversation_list': jsonEncode(
-          conversations.map((conversation) => conversation.toJson()).toList(),
-        ),
-      });
       await ConversationHistoryService.saveCurrentConversationId(
         1,
         mode: ConversationMode.normal,

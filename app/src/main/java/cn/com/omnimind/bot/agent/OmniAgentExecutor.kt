@@ -5,10 +5,7 @@ import cn.com.omnimind.bot.mcp.RemoteMcpDiscoveryRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -48,6 +45,7 @@ class OmniAgentExecutor(
             conversationId = conversationId,
             agentRunId = agentRunId
         )
+        val historyRepository = AgentConversationHistoryRepository(context)
         val promptMemoryContext = runCatching {
             memoryService.buildPromptContext()
         }.getOrNull()
@@ -70,7 +68,10 @@ class OmniAgentExecutor(
             discoveredServers = discoveredServers
         )
         val initialMessages = buildInitialMessages(
-            conversationHistory = conversationHistory,
+            promptSeed = historyRepository.buildPromptSeed(
+                conversationId = conversationId,
+                conversationMode = conversationMode
+            ),
             userMessage = userMessage,
             attachments = attachments,
             workspaceDescriptor = workspaceDescriptor,
@@ -131,7 +132,7 @@ class OmniAgentExecutor(
     }
 
     private fun buildInitialMessages(
-        conversationHistory: List<Map<String, Any?>>,
+        promptSeed: AgentConversationHistoryRepository.PromptSeed,
         userMessage: String,
         attachments: List<Map<String, Any?>>,
         workspaceDescriptor: AgentWorkspaceDescriptor,
@@ -141,7 +142,7 @@ class OmniAgentExecutor(
         resolvedSkills: List<ResolvedSkillContext>,
         memoryContext: WorkspaceMemoryPromptContext?
     ): List<cn.com.omnimind.baselib.llm.ChatCompletionMessage> {
-        val historyMessages = normalizeConversationHistory(conversationHistory).toMutableList()
+        val historyMessages = promptSeed.historyMessages.toMutableList()
         if (historyMessages.lastOrNull()?.role == "user") {
             historyMessages.removeLast()
         }
@@ -164,23 +165,6 @@ class OmniAgentExecutor(
         messages.addAll(historyMessages)
         messages.add(buildCurrentUserMessage(userMessage, attachments))
         return messages
-    }
-
-    private fun normalizeConversationHistory(
-        conversationHistory: List<Map<String, Any?>>
-    ): List<cn.com.omnimind.baselib.llm.ChatCompletionMessage> {
-        if (conversationHistory.isEmpty()) return emptyList()
-        return conversationHistory.mapNotNull { raw ->
-            val role = raw["role"]?.toString()?.trim()?.lowercase().orEmpty()
-            if (role !in setOf("system", "user", "assistant")) return@mapNotNull null
-            val rawContent = raw["content"] ?: return@mapNotNull null
-            val content = mapToJsonElement(rawContent)
-            if (content is JsonPrimitive && content.content.isBlank()) return@mapNotNull null
-            cn.com.omnimind.baselib.llm.ChatCompletionMessage(
-                role = role,
-                content = content
-            )
-        }
     }
 
     private fun buildCurrentUserMessage(
@@ -253,21 +237,5 @@ class OmniAgentExecutor(
             return remoteUrl
         }
         return ""
-    }
-
-    private fun mapToJsonElement(value: Any?): JsonElement {
-        return when (value) {
-            null -> JsonNull
-            is JsonElement -> value
-            is Map<*, *> -> JsonObject(
-                value.entries.associate { (key, item) ->
-                    key.toString() to mapToJsonElement(item)
-                }
-            )
-            is List<*> -> JsonArray(value.map { mapToJsonElement(it) })
-            is Boolean -> JsonPrimitive(value)
-            is Number -> JsonPrimitive(value)
-            else -> JsonPrimitive(value.toString())
-        }
     }
 }

@@ -4,7 +4,6 @@ import 'package:ui/models/scheduled_task.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/scheduled_task_storage_service.dart';
 import 'package:ui/services/assists_core_service.dart';
-import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
 
 /// 定时任务调度服务
@@ -244,24 +243,10 @@ class ScheduledTaskSchedulerService {
           if (normalizedConversationId == null) {
             throw Exception('SubAgent conversation create failed');
           }
-          final historyMessages =
-              await ConversationHistoryService.getConversationMessages(
-                normalizedConversationId,
-                mode: ConversationMode.subagent,
-              );
-          final historyPayload = historyMessages.map((message) {
-            final role = switch (message.user) {
-              1 => 'user',
-              2 => 'assistant',
-              _ => 'system',
-            };
-            return {'role': role, 'content': message.text ?? ''};
-          }).toList();
           await AssistsMessageService.createAgentTask(
             taskId:
                 'subagent_schedule_${DateTime.now().millisecondsSinceEpoch}_${task.id}',
             userMessage: prompt,
-            conversationHistory: historyPayload,
             conversationId: normalizedConversationId,
             conversationMode: ConversationMode.subagent.storageValue,
             scheduledTaskId: task.id,

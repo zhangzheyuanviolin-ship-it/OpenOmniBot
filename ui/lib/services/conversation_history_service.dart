@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
@@ -6,6 +6,9 @@ import 'package:ui/models/conversation_thread_target.dart';
 
 /// 对话历史持久化服务
 class ConversationHistoryService {
+  static const MethodChannel _assistCore = MethodChannel(
+    'cn.com.omnimind.bot/AssistCoreEvent',
+  );
   static const String _legacyConversationIdKey = 'current_conversation_id';
   static const String _conversationIdKeyPrefix = 'current_conversation_id_';
   static const String _conversationTargetKeyPrefix =
@@ -228,15 +231,18 @@ class ConversationHistoryService {
     List<ChatMessageModel> messages, {
     ConversationMode mode = ConversationMode.normal,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
     final jsonList = messages.map((m) => m.toJson()).toList();
-    if (mode == ConversationMode.normal) {
-      await prefs.remove(_legacyConversationMessagesKey(conversationId));
+    try {
+      await _assistCore.invokeMethod('replaceConversationMessages', {
+        'conversationId': conversationId,
+        'mode': mode.storageValue,
+        'messages': jsonList,
+      });
+    } on PlatformException catch (e) {
+      print('保存对话历史失败: ${e.message}');
+    } catch (e) {
+      print('保存对话历史异常: $e');
     }
-    await prefs.setString(
-      conversationMessagesKey(conversationId, mode: mode),
-      jsonEncode(jsonList),
-    );
   }
 
   /// 获取对话消息列表
@@ -244,17 +250,23 @@ class ConversationHistoryService {
     int conversationId, {
     ConversationMode mode = ConversationMode.normal,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonStr =
-        prefs.getString(conversationMessagesKey(conversationId, mode: mode)) ??
-        (mode == ConversationMode.normal
-            ? prefs.getString(_legacyConversationMessagesKey(conversationId))
-            : null);
-    if (jsonStr == null) return [];
-
     try {
-      final jsonList = jsonDecode(jsonStr) as List;
-      return jsonList.map((json) => ChatMessageModel.fromJson(json)).toList();
+      final result = await _assistCore.invokeMethod<List<dynamic>>(
+        'getConversationMessages',
+        {'conversationId': conversationId, 'mode': mode.storageValue},
+      );
+      if (result == null) return [];
+      return result
+          .whereType<Map>()
+          .map(
+            (json) => ChatMessageModel.fromJson(
+              Map<String, dynamic>.from(json.cast<String, dynamic>()),
+            ),
+          )
+          .toList();
+    } on PlatformException catch (e) {
+      print('获取对话历史失败: ${e.message}');
+      return [];
     } catch (e) {
       print('解析对话历史失败: $e');
       return [];
@@ -266,10 +278,15 @@ class ConversationHistoryService {
     int conversationId, {
     ConversationMode mode = ConversationMode.normal,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(conversationMessagesKey(conversationId, mode: mode));
-    if (mode == ConversationMode.normal) {
-      await prefs.remove(_legacyConversationMessagesKey(conversationId));
+    try {
+      await _assistCore.invokeMethod('clearConversationMessages', {
+        'conversationId': conversationId,
+        'mode': mode.storageValue,
+      });
+    } on PlatformException catch (e) {
+      print('清理对话历史失败: ${e.message}');
+    } catch (e) {
+      print('清理对话历史异常: $e');
     }
   }
 }
