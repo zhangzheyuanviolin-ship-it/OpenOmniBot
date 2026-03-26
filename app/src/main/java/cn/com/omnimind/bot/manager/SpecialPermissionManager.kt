@@ -474,6 +474,26 @@ class SpecialPermissionManager(private val context: Context) {
         }
     }
 
+    fun dismissEmbeddedTerminalSetupSession(result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                embeddedTerminalSetupManager.dismissInstallSession()
+                withContext(Dispatchers.Main) {
+                    result.success(null)
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error dismissing embedded terminal setup session", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "DISMISS_SETUP_SESSION_FAILED",
+                        "Failed to dismiss embedded terminal setup session.",
+                        e.message
+                    )
+                }
+            }
+        }
+    }
+
     fun startOpenClawDeploy(call: MethodCall, result: MethodChannel.Result) {
         try {
             val providerBaseUrl = call.argument<String>("providerBaseUrl")?.trim().orEmpty()

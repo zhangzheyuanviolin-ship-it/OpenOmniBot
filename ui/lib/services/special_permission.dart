@@ -377,6 +377,10 @@ Future<EmbeddedTerminalSetupSessionSnapshot> startEmbeddedTerminalSetupSession(
   return EmbeddedTerminalSetupSessionSnapshot.fromMap(result ?? const {});
 }
 
+Future<void> dismissEmbeddedTerminalSetupSession() async {
+  await spePermission.invokeMethod<void>('dismissEmbeddedTerminalSetupSession');
+}
+
 Future<OpenClawDeployResult> startOpenClawDeploy(
   OpenClawDeployRequest request,
 ) async {

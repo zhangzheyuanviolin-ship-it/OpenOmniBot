@@ -48,7 +48,7 @@ class TerminalActivity : ComponentActivity() {
         setContent {
             val terminalManager = remember { TerminalManager.getInstance(this) }
             val requestedOpenSetup = intent?.getBooleanExtra(EXTRA_OPEN_SETUP, false) == true
-            val forceShowSetup by produceState(initialValue = false) {
+            val forceShowSetup by produceState(initialValue = requestedOpenSetup) {
                 value =
                     if (requestedOpenSetup) {
                         true

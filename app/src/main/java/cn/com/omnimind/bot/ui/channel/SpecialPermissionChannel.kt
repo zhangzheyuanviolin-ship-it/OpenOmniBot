@@ -110,6 +110,8 @@ class SpecialPermissionChannel {
                         .installEmbeddedTerminalPackages(call, result)
                     "startEmbeddedTerminalSetupSession" -> specialPermissionManager!!
                         .startEmbeddedTerminalSetupSession(call, result)
+                    "dismissEmbeddedTerminalSetupSession" -> specialPermissionManager!!
+                        .dismissEmbeddedTerminalSetupSession(result)
                     "startOpenClawDeploy" -> specialPermissionManager!!
                         .startOpenClawDeploy(call, result)
                     "getOpenClawDeploySnapshot" -> specialPermissionManager!!
