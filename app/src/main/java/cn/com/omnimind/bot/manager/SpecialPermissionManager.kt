@@ -502,10 +502,12 @@ class SpecialPermissionManager(private val context: Context) {
         }
     }
 
-    fun openNativeTerminal(result: MethodChannel.Result) {
+    fun openNativeTerminal(call: MethodCall, result: MethodChannel.Result) {
         try {
+            val openSetup = call.argument<Boolean>("openSetup") == true
             val intent = Intent(context, TerminalActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                putExtra(TerminalActivity.EXTRA_OPEN_SETUP, openSetup)
             }
             ContextCompat.startActivity(context, intent, null)
             result.success(true)

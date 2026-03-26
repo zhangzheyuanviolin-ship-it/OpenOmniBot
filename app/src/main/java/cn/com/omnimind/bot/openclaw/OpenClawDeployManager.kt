@@ -150,9 +150,9 @@ class OpenClawDeployManager(
     private suspend fun runDeploy(request: DeployRequest) {
         try {
             val readiness = EmbeddedTerminalRuntime.inspectRuntimeReadiness(context)
-            if (!readiness.supported || !readiness.runtimeReady || !readiness.basePackagesReady) {
+            if (!readiness.supported || !readiness.runtimeReady) {
                 fail(
-                    "内嵌 Ubuntu 尚未完成初始化，请先前往设置页完成初始化后再试。",
+                    "内嵌 Ubuntu 运行时尚未完成初始化，请先打开终端环境配置完成初始化后再试。",
                     stage = "运行时未就绪",
                     progress = 0.05
                 )

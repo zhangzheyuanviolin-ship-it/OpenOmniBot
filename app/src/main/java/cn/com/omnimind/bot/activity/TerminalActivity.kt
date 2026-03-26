@@ -29,6 +29,10 @@ import com.ai.assistance.operit.terminal.rememberTerminalEnv
 import kotlinx.coroutines.launch
 
 class TerminalActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_OPEN_SETUP = "open_setup"
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,11 +47,18 @@ class TerminalActivity : ComponentActivity() {
 
         setContent {
             val terminalManager = remember { TerminalManager.getInstance(this) }
+            val requestedOpenSetup = intent?.getBooleanExtra(EXTRA_OPEN_SETUP, false) == true
             val forceShowSetup by produceState(initialValue = false) {
-                value = runCatching {
-                    val readiness = EmbeddedTerminalRuntime.inspectRuntimeReadiness(this@TerminalActivity)
-                    !(readiness.supported && readiness.runtimeReady && readiness.basePackagesReady)
-                }.getOrDefault(false)
+                value =
+                    if (requestedOpenSetup) {
+                        true
+                    } else {
+                        runCatching {
+                            val readiness =
+                                EmbeddedTerminalRuntime.inspectRuntimeReadiness(this@TerminalActivity)
+                            !(readiness.supported && readiness.runtimeReady)
+                        }.getOrDefault(false)
+                    }
             }
             val env = rememberTerminalEnv(terminalManager, forceShowSetup = forceShowSetup)
 

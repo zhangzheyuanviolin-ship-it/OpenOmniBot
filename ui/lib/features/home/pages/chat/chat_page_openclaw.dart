@@ -338,7 +338,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
       );
     }
 
-    if (!runtimeStatus.allReady) {
+    if (!runtimeStatus.supported || !runtimeStatus.runtimeReady) {
       final message = runtimeStatus.message.isNotEmpty
           ? runtimeStatus.message
           : '内嵌 Ubuntu 尚未完成初始化。';
@@ -346,7 +346,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
         kind: _OpenClawDeployPanelKind.runtimeNotReady,
         title: '内嵌 Ubuntu 未就绪',
         message: message,
-        actionLabel: '去初始化',
+        actionLabel: '去环境配置',
         actionRoute: '/home/termux_setting',
       );
     }
@@ -944,7 +944,16 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton.tonal(
-                onPressed: () {
+                onPressed: () async {
+                  if (panelState.kind ==
+                      _OpenClawDeployPanelKind.runtimeNotReady) {
+                    try {
+                      await openNativeTerminal(openSetup: true);
+                    } catch (_) {
+                      _showSnackBar('打开终端环境配置失败');
+                    }
+                    return;
+                  }
                   if (panelState.actionRoute != null) {
                     GoRouterManager.push(panelState.actionRoute!);
                   }

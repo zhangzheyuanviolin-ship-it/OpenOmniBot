@@ -306,8 +306,10 @@ Future<void> stopOpenClawGateway() async {
   await spePermission.invokeMethod<void>('stopOpenClawGateway');
 }
 
-Future<void> openNativeTerminal() async {
-  await spePermission.invokeMethod<void>('openNativeTerminal');
+Future<void> openNativeTerminal({bool openSetup = false}) async {
+  await spePermission.invokeMethod<void>('openNativeTerminal', {
+    'openSetup': openSetup,
+  });
 }
 
 /// 检查无障碍权限，如果没有权限则弹出授权对话框

@@ -115,7 +115,7 @@ class SpecialPermissionChannel {
                     "stopOpenClawGateway" -> specialPermissionManager!!
                         .stopOpenClawGateway(result)
                     "openNativeTerminal" -> specialPermissionManager!!
-                        .openNativeTerminal(result)
+                        .openNativeTerminal(call, result)
                     "prepareTermuxLiveWrapper" -> specialPermissionManager!!
                         .prepareTermuxLiveWrapper(result)
                     "getEmbeddedTerminalInitSnapshot" -> specialPermissionManager!!

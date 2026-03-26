@@ -17,8 +17,6 @@ class TermuxSettingPage extends StatefulWidget {
 
 class _TermuxSettingPageState extends State<TermuxSettingPage>
     with WidgetsBindingObserver {
-  static const int _maxPrepareLogLines = 160;
-
   bool _isLoadingStatus = true;
   bool _isDeviceSupported = false;
   bool _isRuntimeReady = false;
@@ -38,31 +36,14 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   bool _isStoppingGateway = false;
   bool _isPollingGatewayStatus = false;
 
-  String? _wrapperMessage;
-  bool? _wrapperReady;
-  String? _prepareStage;
-  double _prepareProgress = 0.0;
-  final List<String> _prepareLogLines = <String>[];
-  late final ScrollController _prepareLogScrollController;
-  Timer? _prepareSnapshotPoller;
   Timer? _gatewayStatusPoller;
   Timer? _gatewayUptimeTicker;
   OpenClawGatewayStatus? _gatewayStatus;
   DateTime? _gatewayStatusSnapshotAt;
 
-  bool get _isFullyReady {
-    return _isDeviceSupported && _isRuntimeReady && _isBasePackagesReady;
-  }
-
-  bool get _shouldShowPrepareConsole {
-    return _isPreparingWrapper ||
-        (_wrapperReady == false && _prepareLogLines.isNotEmpty);
-  }
-
   @override
   void initState() {
     super.initState();
-    _prepareLogScrollController = ScrollController();
     WidgetsBinding.instance.addObserver(this);
     _startGatewayStatusPolling();
     _startGatewayUptimeTicker();
@@ -71,10 +52,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
 
   @override
   void dispose() {
-    _prepareSnapshotPoller?.cancel();
     _gatewayStatusPoller?.cancel();
     _gatewayUptimeTicker?.cancel();
-    _prepareLogScrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -149,7 +128,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _nodeMinMajor = status.nodeMinMajor;
         _pnpmReady = status.pnpmReady;
         _pnpmVersion = status.pnpmVersion;
-        _wrapperReady = status.allReady;
         _gatewayStatus = gatewayStatus;
         _gatewayStatusSnapshotAt = DateTime.now();
         _isLoadingStatus = false;
@@ -177,7 +155,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _nodeMinMajor = 22;
         _pnpmReady = false;
         _pnpmVersion = null;
-        _wrapperReady = false;
         _isLoadingStatus = false;
         _gatewayStatus = gatewayStatus;
         _gatewayStatusSnapshotAt = gatewayStatus == null
@@ -207,7 +184,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         _nodeMinMajor = 22;
         _pnpmReady = false;
         _pnpmVersion = null;
-        _wrapperReady = false;
         _isLoadingStatus = false;
         _gatewayStatus = gatewayStatus;
         _gatewayStatusSnapshotAt = gatewayStatus == null
@@ -337,136 +313,25 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
 
     setState(() {
       _isPreparingWrapper = true;
-      _wrapperMessage = null;
-      _wrapperReady = null;
-      _prepareStage = '准备开始';
-      _prepareProgress = 0.02;
-      _prepareLogLines
-        ..clear()
-        ..add('[系统] 正在启动内嵌 Ubuntu 环境初始化...');
     });
-    _startPrepareSnapshotPolling();
-    _schedulePrepareLogAutoScroll();
     try {
-      final result = await prepareTermuxLiveWrapper();
-      final success = result['success'] == true;
-      final message = (result['message'] as String?)?.trim();
-      await _pollPrepareSnapshot();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _wrapperReady = success;
-        _wrapperMessage = message;
-      });
-      showToast(
-        message?.isNotEmpty == true ? message! : '内嵌终端环境已完成检查',
-        type: success ? ToastType.success : ToastType.warning,
-      );
+      await openNativeTerminal(openSetup: true);
     } on PlatformException catch (e) {
-      await _pollPrepareSnapshot();
-      if (mounted) {
-        setState(() {
-          _prepareStage = '初始化失败';
-          _prepareLogLines.add('[错误] ${e.message ?? '检查内嵌终端环境失败'}');
-        });
-        _schedulePrepareLogAutoScroll();
-      }
-      showToast(e.message ?? '检查内嵌终端环境失败', type: ToastType.error);
+      showToast(e.message ?? '打开终端环境配置失败', type: ToastType.error);
     } catch (_) {
-      await _pollPrepareSnapshot();
-      if (mounted) {
-        setState(() {
-          _prepareStage = '初始化失败';
-          _prepareLogLines.add('[错误] 检查内嵌终端环境失败');
-        });
-        _schedulePrepareLogAutoScroll();
-      }
-      showToast('检查内嵌终端环境失败', type: ToastType.error);
+      showToast('打开终端环境配置失败', type: ToastType.error);
     } finally {
-      await _pollPrepareSnapshot();
-      _stopPrepareSnapshotPolling();
       if (mounted) {
         setState(() {
           _isPreparingWrapper = false;
         });
-        await _refreshStatus();
       }
     }
-  }
-
-  void _startPrepareSnapshotPolling() {
-    _stopPrepareSnapshotPolling();
-    _pollPrepareSnapshot();
-    _prepareSnapshotPoller = Timer.periodic(const Duration(milliseconds: 250), (
-      _,
-    ) {
-      _pollPrepareSnapshot();
-    });
-  }
-
-  void _stopPrepareSnapshotPolling() {
-    _prepareSnapshotPoller?.cancel();
-    _prepareSnapshotPoller = null;
-  }
-
-  Future<void> _pollPrepareSnapshot() async {
-    try {
-      final snapshot = await getEmbeddedTerminalInitSnapshot();
-      if (!mounted) {
-        return;
-      }
-
-      final nextLogLines = snapshot.logLines.length > _maxPrepareLogLines
-          ? snapshot.logLines.sublist(
-              snapshot.logLines.length - _maxPrepareLogLines,
-            )
-          : snapshot.logLines;
-      final shouldScroll =
-          nextLogLines.isNotEmpty &&
-          nextLogLines.join('\n') != _prepareLogLines.join('\n');
-
-      setState(() {
-        if (snapshot.stage.isNotEmpty) {
-          _prepareStage = snapshot.stage;
-        }
-        _prepareProgress = snapshot.progress;
-        if (nextLogLines.isNotEmpty) {
-          _prepareLogLines
-            ..clear()
-            ..addAll(nextLogLines);
-        }
-        if (snapshot.success != null) {
-          _wrapperReady = snapshot.success;
-        }
-      });
-
-      if (shouldScroll) {
-        _schedulePrepareLogAutoScroll();
-      }
-
-      if (snapshot.completed) {
-        _stopPrepareSnapshotPolling();
-      }
-    } catch (_) {
-      return;
-    }
-  }
-
-  void _schedulePrepareLogAutoScroll() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_prepareLogScrollController.hasClients) {
-        return;
-      }
-      _prepareLogScrollController.jumpTo(
-        _prepareLogScrollController.position.maxScrollExtent,
-      );
-    });
   }
 
   String _buildRuntimeSubtitle() {
     if (_isLoadingStatus) {
-      return '正在进行运行时功能检查';
+      return '正在检查 Ubuntu 运行时与环境工具状态';
     }
     if (!_isDeviceSupported) {
       return '当前设备 ABI 不受支持，仅支持 arm64-v8a';
@@ -474,17 +339,17 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     if (!_isRuntimeReady) {
       return _runtimeStatusMessage.isNotEmpty
           ? _runtimeStatusMessage
-          : '内嵌 Ubuntu 运行时未就绪，请先初始化。';
+          : '内嵌 Ubuntu 运行时未就绪，请打开终端环境配置完成初始化。';
     }
     if (!_isBasePackagesReady) {
       if (_missingCommands.isNotEmpty) {
-        return '缺失基础 CLI：${_missingCommands.join(", ")}';
+        return 'Ubuntu 已就绪，可前往终端“环境配置”按需安装 Node.js、Python、SSH、Java 等工具。当前探测缺少：${_missingCommands.join(", ")}';
       }
       return _runtimeStatusMessage.isNotEmpty
           ? _runtimeStatusMessage
-          : '基础 Agent CLI 包未就绪，请执行初始化。';
+          : 'Ubuntu 已就绪，可前往终端“环境配置”按需安装 Node.js、Python、SSH、Java 等工具。';
     }
-    return 'Ubuntu 运行时与基础 CLI 包已就绪。';
+    return 'Ubuntu 运行时已就绪，可继续在终端“环境配置”中管理 Node.js、Python、SSH、Java 等工具。';
   }
 
   @override
@@ -518,30 +383,23 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         ? '检测中'
         : (!_isDeviceSupported
               ? '不支持'
-              : (_isPreparingWrapper
-                    ? '初始化中...'
-                    : (_isFullyReady ? '已就绪' : '初始化')));
+              : (_isPreparingWrapper ? '打开中...' : '去配置'));
     final runtimeActionColor = _isLoadingStatus
         ? AppColors.text50
         : (!_isDeviceSupported
               ? const Color(0xFFB34A40)
               : (_isPreparingWrapper
                     ? const Color(0xFFD08A00)
-                    : (_isFullyReady
-                          ? const Color(0xFF1E9E63)
-                          : const Color(0xFFE58A00))));
+                    : const Color(0xFF1E9E63)));
     final runtimeActionEnabled =
-        !_isLoadingStatus &&
-        _isDeviceSupported &&
-        !_isPreparingWrapper &&
-        !_isFullyReady;
+        !_isLoadingStatus && _isDeviceSupported && !_isPreparingWrapper;
 
     return _buildSectionCard(
       title: '当前状态与操作',
       child: Column(
         children: [
           _StatusActionRow(
-            title: '内嵌 Ubuntu 运行时',
+            title: 'Ubuntu 运行时与环境配置',
             subtitle: _buildRuntimeSubtitle(),
             actionText: runtimeActionText,
             actionColor: runtimeActionColor,
@@ -550,37 +408,26 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
           const SizedBox(height: 14),
           _buildPrepareActionButton(),
           const SizedBox(height: 12),
-          _buildNodeAndPnpmStatusPanel(),
-          if (_shouldShowPrepareConsole) ...[
-            const SizedBox(height: 14),
-            _buildPrepareConsolePanel(),
-          ],
-          if (_wrapperMessage != null &&
-              _wrapperMessage!.isNotEmpty &&
-              !_shouldShowPrepareConsole) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: (_wrapperReady == true)
-                    ? const Color(0x141E9E63)
-                    : const Color(0x14EF6B5F),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _wrapperMessage!,
-                style: TextStyle(
-                  color: _wrapperReady == true
-                      ? const Color(0xFF1E9E63)
-                      : const Color(0xFFB34A40),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  height: 1.55,
-                ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFD),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0x14000000)),
+            ),
+            child: const Text(
+              '点击后会直接进入终端内的“环境配置”页面，按分类安装 Node.js、Python、SSH 工具、Java 环境等组件。',
+              style: TextStyle(
+                color: AppColors.text70,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.55,
               ),
             ),
-          ],
+          ),
+          const SizedBox(height: 12),
+          _buildNodeAndPnpmStatusPanel(),
         ],
       ),
     );
@@ -635,7 +482,9 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     required String detail,
     required String notReadyReason,
   }) {
-    final badgeColor = ready ? const Color(0x141E9E63) : const Color(0x14EF6B5F);
+    final badgeColor = ready
+        ? const Color(0x141E9E63)
+        : const Color(0x14EF6B5F);
     final badgeTextColor = ready
         ? const Color(0xFF1E9E63)
         : const Color(0xFFB34A40);
@@ -687,100 +536,17 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     );
   }
 
-  Widget _buildPrepareConsolePanel() {
-    final stageText =
-        _prepareStage ?? (_isPreparingWrapper ? '初始化进行中' : '最近一次初始化日志');
-    final consoleText = _prepareLogLines.isEmpty
-        ? '[系统] 初始化已启动，等待终端输出...'
-        : _prepareLogLines.join('\n');
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0B1220),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: _isPreparingWrapper
-                      ? const Color(0xFFF6C94C)
-                      : (_wrapperReady == true
-                            ? const Color(0xFF1E9E63)
-                            : const Color(0xFF8091A7)),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  stageText,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(maxHeight: 220, minHeight: 120),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF111B2E),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0x1FFFFFFF)),
-            ),
-            child: SingleChildScrollView(
-              controller: _prepareLogScrollController,
-              child: SelectableText(
-                consoleText,
-                style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  height: 1.55,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPrepareActionButton() {
-    final progress = _isPreparingWrapper
-        ? _prepareProgress.clamp(0.0, 1.0).toDouble()
-        : 0.0;
-    final progressPercent = (progress * 100).round();
-
     final bool disabled =
-        _isPreparingWrapper || !_isDeviceSupported || _isFullyReady;
-    final bool showInitState =
-        _isDeviceSupported && !_isPreparingWrapper && !_isFullyReady;
+        _isLoadingStatus || _isPreparingWrapper || !_isDeviceSupported;
     final buttonText = _isPreparingWrapper
-        ? '初始化中... $progressPercent%'
-        : (!_isDeviceSupported
-              ? '当前设备不支持（仅 arm64-v8a）'
-              : (_isFullyReady ? '内嵌 Ubuntu 已就绪' : '初始化内嵌 Ubuntu 环境'));
+        ? '正在打开环境配置...'
+        : (!_isDeviceSupported ? '当前设备不支持（仅 arm64-v8a）' : '打开终端环境配置');
     final gradientColors = _isPreparingWrapper
         ? const [Color(0xFF1930D9), Color(0xFF2DA5F0)]
         : (!_isDeviceSupported
               ? const [Color(0xFFBFC7D5), Color(0xFFA6AFBE)]
-              : (showInitState
-                    ? const [Color(0xFFE58A00), Color(0xFFFFB84D)]
-                    : const [Color(0xFF1E9E63), Color(0xFF45C07B)]));
+              : const [Color(0xFF1E9E63), Color(0xFF45C07B)]);
 
     return Material(
       color: Colors.transparent,
@@ -801,44 +567,16 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
           child: SizedBox(
             width: double.infinity,
             height: 46,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return Stack(
-                  children: [
-                    if (_isPreparingWrapper)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutCubic,
-                            width: constraints.maxWidth * progress,
-                            height: double.infinity,
-                            decoration: const BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                                colors: [Color(0x4DFFFFFF), Color(0x2AFFFFFF)],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    Center(
-                      child: Text(
-                        buttonText,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
+            child: Center(
+              child: Text(
+                buttonText,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ),
