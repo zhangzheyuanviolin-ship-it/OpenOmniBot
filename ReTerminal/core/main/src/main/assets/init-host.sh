@@ -9,6 +9,11 @@ if [ -z "$(ls -A "$ALPINE_DIR" | grep -vE '^(root|tmp)$')" ]; then
     tar -xf "$ALPINE_ARCHIVE" -C "$ALPINE_DIR"
 fi
 
+if [ -n "$OMNIBOT_HOST_WORKSPACE" ]; then
+    mkdir -p "$OMNIBOT_HOST_WORKSPACE"
+    mkdir -p "$ALPINE_DIR/workspace"
+fi
+
 [ ! -e "$PREFIX/local/bin/proot" ] && cp "$PREFIX/files/proot" "$PREFIX/local/bin"
 
 for sofile in "$PREFIX/files/"*.so.2; do
@@ -41,6 +46,10 @@ ARGS="$ARGS -b /proc"
 ARGS="$ARGS -b $PREFIX"
 ARGS="$ARGS -b $PREFIX/local/stat:/proc/stat"
 ARGS="$ARGS -b $PREFIX/local/vmstat:/proc/vmstat"
+
+if [ -n "$OMNIBOT_HOST_WORKSPACE" ]; then
+  ARGS="$ARGS -b $OMNIBOT_HOST_WORKSPACE:/workspace"
+fi
 
 if [ -e "/proc/self/fd" ]; then
   ARGS="$ARGS -b /proc/self/fd:/dev/fd"

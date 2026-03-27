@@ -20,13 +20,17 @@ import com.termux.terminal.TerminalEmulator
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import java.io.File
-import java.io.FileOutputStream
 
 object MkSession {
     fun createSession(
         activity: MainActivity, sessionClient: TerminalSessionClient, session_id: String,workingMode:Int
     ): TerminalSession {
         with(activity) {
+            val hostWorkspaceDir = File(applicationInfo.dataDir, "workspace").also { directory ->
+                if (!directory.exists()) {
+                    directory.mkdirs()
+                }
+            }
             val envVariables = mapOf(
                 "ANDROID_ART_ROOT" to System.getenv("ANDROID_ART_ROOT"),
                 "ANDROID_DATA" to System.getenv("ANDROID_DATA"),
@@ -42,18 +46,21 @@ object MkSession {
             val workingDir = pendingCommand?.workingDir ?: alpineHomeDir().path
 
             val initFile: File = localBinDir().child("init-host")
-
-            if (initFile.exists().not()){
-                initFile.createFileIfNot()
-                initFile.writeText(assets.open("init-host.sh").bufferedReader().use { it.readText() })
+            initFile.parentFile?.mkdirs()
+            initFile.createFileIfNot()
+            assets.open("init-host.sh").use { input ->
+                initFile.outputStream().use { output -> input.copyTo(output) }
             }
+            initFile.setExecutable(true, false)
 
 
             localBinDir().child("init").apply {
-                if (exists().not()){
-                    createFileIfNot()
-                    writeText(assets.open("init.sh").bufferedReader().use { it.readText() })
+                parentFile?.mkdirs()
+                createFileIfNot()
+                assets.open("init.sh").use { input ->
+                    outputStream().use { output -> input.copyTo(output) }
                 }
+                setExecutable(true, false)
             }
 
 
@@ -73,6 +80,7 @@ object MkSession {
                 "PKG=${packageName}",
                 "RISH_APPLICATION_ID=${packageName}",
                 "PKG_PATH=${applicationInfo.sourceDir}",
+                "OMNIBOT_HOST_WORKSPACE=${hostWorkspaceDir.absolutePath}",
                 "PROOT_TMP_DIR=${getTempDir().child(session_id).also { if (it.exists().not()){it.mkdirs()} }}",
                 "TMPDIR=${getTempDir().absolutePath}"
             )

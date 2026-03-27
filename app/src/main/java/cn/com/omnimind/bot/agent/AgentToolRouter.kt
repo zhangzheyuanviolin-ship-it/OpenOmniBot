@@ -14,6 +14,7 @@ import com.ai.assistance.operit.terminal.provider.type.TerminalType
 import cn.com.omnimind.bot.termux.TermuxCommandResult
 import cn.com.omnimind.bot.termux.TermuxCommandSpec
 import cn.com.omnimind.bot.termux.TermuxCommandBuilder
+import cn.com.omnimind.bot.termux.TermuxCommandRunner
 import cn.com.omnimind.bot.util.AssistsUtil
 import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
 import kotlinx.coroutines.CancellationException
@@ -541,29 +542,34 @@ class AgentToolRouter(
                     ?.let { workspaceManager.resolveShellPath(it, workspace, allowRootDirectories = true) }
                     ?: workspace.currentCwd
             )
-            val commandResult = executeDirectTerminalCommand(
-                command = parsedArgs.command,
-                workingDirectory = parsedArgs.workingDirectory,
-                timeoutSeconds = parsedArgs.timeoutSeconds,
-                environment = terminalEnvironment,
-                onLiveUpdate = { sessionId, outputDelta, streamState ->
+            val commandResult = TermuxCommandRunner.execute(
+                context = context,
+                spec = TermuxCommandSpec(
+                    command = parsedArgs.command,
+                    executionMode = parsedArgs.executionMode,
+                    prootDistro = parsedArgs.prootDistro,
+                    workingDirectory = parsedArgs.workingDirectory,
+                    timeoutSeconds = parsedArgs.timeoutSeconds,
+                    environment = terminalEnvironment
+                ),
+                onLiveUpdate = { update ->
                     reportToolProgress(
                         callback,
                         toolName,
-                        if (outputDelta.isBlank()) {
+                        if (update.outputDelta.isBlank()) {
                             "正在调用内嵌 Alpine 终端执行命令"
                         } else {
                             "终端输出更新中"
                         },
-                        mapOf(
-                            "summary" to if (outputDelta.isBlank()) {
+                        mapOf<String, Any?>(
+                            "summary" to if (update.outputDelta.isBlank()) {
                                 "正在调用内嵌 Alpine 终端执行命令"
                             } else {
                                 "终端输出更新中"
                             },
-                            "terminalSessionId" to sessionId,
-                            "terminalOutputDelta" to outputDelta,
-                            "terminalStreamState" to streamState
+                            "terminalSessionId" to update.sessionId,
+                            "terminalOutputDelta" to update.outputDelta,
+                            "terminalStreamState" to update.streamState
                         )
                     )
                 }
@@ -611,12 +617,14 @@ class AgentToolRouter(
             reportToolProgress(callback, toolName, "正在启动内嵌终端会话")
             val parsedArgs = parseTerminalSessionStartArgs(args)
             val workingDirectory = resolveShellWorkingDirectory(parsedArgs.workingDirectory, workspace)
-            val result = startDirectTerminalSession(
-                sessionTitle = parsedArgs.sessionName,
+            val sessionId = sanitizeTerminalSessionId(parsedArgs.sessionName)
+            val result = EmbeddedTerminalRuntime.startSession(
+                context = context,
+                requestedSessionId = sessionId,
                 workingDirectory = workingDirectory,
                 environment = terminalEnvironment
             )
-            val sessionId = result.sessionId
+            rememberOwnedTerminalSession(sessionId)
             terminalSessionDirectory(workspace, sessionId).mkdirs()
             val logArtifact = persistTerminalSessionTranscript(workspace, sessionId, result.transcript, toolName)
             val payload = linkedMapOf<String, Any?>(
@@ -671,32 +679,21 @@ class AgentToolRouter(
             requireWorkspaceStorageAccess(callback)?.let { return it }
             val parsedArgs = parseTerminalSessionExecArgs(args)
             val sessionId = parsedArgs.sessionId.trim()
+            require(isOwnedTerminalSession(sessionId)) { "终端会话不存在或不属于当前 agent：$sessionId" }
             val shellWorkingDirectory = parsedArgs.workingDirectory?.let {
                 resolveShellWorkingDirectory(it, workspace)
             }
             reportToolProgress(callback, toolName, "正在向终端会话发送命令")
-            val result = executeDirectTerminalSessionCommand(
+            val result = EmbeddedTerminalRuntime.executeSessionCommand(
+                context = context,
                 sessionId = sessionId,
                 command = parsedArgs.command,
                 workingDirectory = shellWorkingDirectory,
                 timeoutSeconds = parsedArgs.timeoutSeconds,
                 environment = terminalEnvironment,
-                onLiveUpdate = { outputDelta ->
-                    reportToolProgress(
-                        callback,
-                        toolName,
-                        if (outputDelta.isBlank()) "终端会话命令执行中" else "终端输出更新中",
-                        mapOf(
-                            "summary" to if (outputDelta.isBlank()) "终端会话命令执行中" else "终端输出更新中",
-                            "terminalSessionId" to sessionId,
-                            "terminalOutputDelta" to outputDelta,
-                            "terminalStreamState" to "running"
-                        )
-                    )
-                }
             )
             val terminalStreamState = when {
-                result.timedOut || result.commandRunning -> "running"
+                !result.completed -> "running"
                 result.errorMessage != null -> "error"
                 else -> "completed"
             }
@@ -706,7 +703,7 @@ class AgentToolRouter(
                 "workingDirectory" to shellWorkingDirectory,
                 "currentDirectory" to result.currentDirectory,
                 "command" to parsedArgs.command,
-                "exitCode" to null,
+                "exitCode" to result.exitCode,
                 "completed" to result.completed,
                 "logPath" to logArtifact.workspacePath,
                 "androidLogPath" to logArtifact.androidPath,
@@ -716,22 +713,22 @@ class AgentToolRouter(
                     if (result.completed) result.output else result.transcript,
                     12000
                 ),
-                "success" to (result.completed && !result.timedOut && result.errorMessage == null),
+                "success" to (result.completed && result.success && result.errorMessage == null),
                 "errorMessage" to result.errorMessage,
                 "terminalStreamState" to terminalStreamState
             )
             ToolExecutionResult.TerminalResult(
                 toolName = toolName,
-                summaryText = if (result.timedOut || !result.completed) {
+                summaryText = if (!result.completed) {
                     result.errorMessage ?: "会话命令仍在运行，请先读取输出确认状态"
-                } else if (result.errorMessage == null) {
+                } else if (result.errorMessage == null && result.success) {
                     "会话命令执行完成"
                 } else {
-                    result.errorMessage
+                    result.errorMessage ?: "会话命令执行失败"
                 },
                 previewJson = json.encodeToString(mapToJsonElement(rawResult)),
                 rawResultJson = json.encodeToString(mapToJsonElement(rawResult)),
-                success = result.completed && !result.timedOut && result.errorMessage == null,
+                success = result.completed && result.success && result.errorMessage == null,
                 terminalOutput = if (result.completed) result.output else result.transcript,
                 terminalSessionId = sessionId,
                 terminalStreamState = terminalStreamState,
@@ -756,10 +753,13 @@ class AgentToolRouter(
             requireWorkspaceStorageAccess(callback)?.let { return it }
             val parsedArgs = parseTerminalSessionReadArgs(args)
             val sessionId = parsedArgs.sessionId.trim()
-            val readResult = readDirectTerminalSession(sessionId)
+            require(isOwnedTerminalSession(sessionId)) { "终端会话不存在或不属于当前 agent：$sessionId" }
+            val readResult = EmbeddedTerminalRuntime.readSession(context, sessionId)
             val artifact = persistTerminalSessionTranscript(workspace, sessionId, readResult.transcript, toolName)
             val content = truncateText(
-                EmbeddedTerminalRuntime.sanitizeTerminalNoise(readResult.transcript),
+                EmbeddedTerminalRuntime.trimTerminalOutput(
+                    EmbeddedTerminalRuntime.sanitizeTerminalNoise(readResult.transcript)
+                ),
                 parsedArgs.maxChars
             )
             val payload = linkedMapOf<String, Any?>(
@@ -803,7 +803,15 @@ class AgentToolRouter(
             reportToolProgress(callback, toolName, "正在结束终端会话")
             val sessionId = args["sessionId"]?.jsonPrimitive?.content?.trim().orEmpty()
             require(sessionId.isNotEmpty()) { "缺少 sessionId" }
-            val result = stopDirectTerminalSession(sessionId)
+            val owned = isOwnedTerminalSession(sessionId)
+            val result = if (owned) {
+                EmbeddedTerminalRuntime.stopSession(context, sessionId)
+            } else {
+                false
+            }
+            if (owned) {
+                forgetOwnedTerminalSession(sessionId)
+            }
             val payload = linkedMapOf<String, Any?>(
                 "sessionId" to sessionId,
                 "success" to result
@@ -2072,13 +2080,11 @@ class AgentToolRouter(
         if (sessionIds.isEmpty()) {
             return
         }
-        withLocalTerminalManager { manager ->
-            sessionIds.forEach { sessionId ->
-                runCatching {
-                    manager.closeSession(sessionId)
-                }
-                forgetOwnedTerminalSession(sessionId)
+        sessionIds.forEach { sessionId ->
+            runCatching {
+                EmbeddedTerminalRuntime.stopSession(context, sessionId)
             }
+            forgetOwnedTerminalSession(sessionId)
         }
     }
 

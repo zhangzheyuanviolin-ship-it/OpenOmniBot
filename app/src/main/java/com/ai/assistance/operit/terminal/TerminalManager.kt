@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.util.Log
+import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import com.ai.assistance.operit.terminal.data.CommandHistoryItem
 import com.ai.assistance.operit.terminal.data.SessionInitState
 import com.ai.assistance.operit.terminal.data.TerminalSessionData
@@ -325,8 +326,8 @@ class TerminalManager private constructor(
 
     private fun buildEnvironmentMap(sessionId: String): Map<String, String> {
         val filesParent = context.filesDir.parentFile ?: context.filesDir
-        val localDir = localBinDir().parentFile ?: filesParent
         val linker = if (File("/system/bin/linker64").exists()) "/system/bin/linker64" else "/system/bin/linker"
+        val hostWorkspaceDir = AgentWorkspaceManager.rootDirectory(context).apply { mkdirs() }
         val env = linkedMapOf(
             "PATH" to "${System.getenv("PATH") ?: ""}:/sbin:${localBinDir().absolutePath}",
             "HOME" to "/root",
@@ -340,6 +341,7 @@ class TerminalManager private constructor(
             "NATIVE_LIB_DIR" to context.applicationInfo.nativeLibraryDir,
             "PKG" to context.packageName,
             "PKG_PATH" to context.applicationInfo.sourceDir,
+            "OMNIBOT_HOST_WORKSPACE" to hostWorkspaceDir.absolutePath,
             "PROOT_TMP_DIR" to App.getTempDir().resolve(sessionId).apply { mkdirs() }.absolutePath,
             "TMPDIR" to App.getTempDir().absolutePath
         )
@@ -357,20 +359,17 @@ class TerminalManager private constructor(
 
     private fun ensureShellScripts(): File {
         val initHost = localBinDir().resolve("init-host")
-        if (!initHost.exists()) {
-            context.assets.open("init-host.sh").use { input ->
-                initHost.outputStream().use { output -> input.copyTo(output) }
-            }
-            initHost.setExecutable(true, false)
+        initHost.parentFile?.mkdirs()
+        context.assets.open("init-host.sh").use { input ->
+            initHost.outputStream().use { output -> input.copyTo(output) }
         }
+        initHost.setExecutable(true, false)
 
         val init = localBinDir().resolve("init")
-        if (!init.exists()) {
-            context.assets.open("init.sh").use { input ->
-                init.outputStream().use { output -> input.copyTo(output) }
-            }
-            init.setExecutable(true, false)
+        context.assets.open("init.sh").use { input ->
+            init.outputStream().use { output -> input.copyTo(output) }
         }
+        init.setExecutable(true, false)
         return initHost
     }
 

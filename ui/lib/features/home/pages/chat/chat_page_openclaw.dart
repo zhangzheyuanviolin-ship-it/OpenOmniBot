@@ -327,7 +327,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
   _OpenClawDeployPanelState _buildOpenClawDeployPanelState() {
     if (_isLoadingOpenClawDeployStatus) {
       return const _OpenClawDeployPanelState.loading(
-        message: '正在检查内嵌 Ubuntu 与当前 Agent 模型...',
+        message: '正在检查内嵌 Alpine 与当前 Agent 模型...',
       );
     }
 
@@ -341,10 +341,10 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
     if (!runtimeStatus.supported || !runtimeStatus.runtimeReady) {
       final message = runtimeStatus.message.isNotEmpty
           ? runtimeStatus.message
-          : '内嵌 Ubuntu 尚未完成初始化。';
+          : '内嵌 Alpine 尚未完成初始化。';
       return _OpenClawDeployPanelState.action(
         kind: _OpenClawDeployPanelKind.runtimeNotReady,
-        title: '内嵌 Ubuntu 未就绪',
+        title: '内嵌 Alpine 未就绪',
         message: message,
         actionLabel: '去环境配置',
         actionRoute: '/home/termux_setting',
@@ -809,7 +809,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
           buildHeader(
             'OpenClaw 一键部署',
             isRunning
-                ? '正在将 OpenClaw 部署到内嵌 Ubuntu，并接入当前 OpenClaw 模式。'
+                ? '正在将 OpenClaw 部署到内嵌 Alpine，并接入当前 OpenClaw 模式。'
                 : isSuccess
                 ? '部署完成，正在回连本机 OpenClaw 网关。'
                 : '部署未完成，请查看日志后重试。',

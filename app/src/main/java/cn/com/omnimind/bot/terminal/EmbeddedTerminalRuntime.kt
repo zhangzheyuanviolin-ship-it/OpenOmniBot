@@ -107,7 +107,7 @@ object EmbeddedTerminalRuntime {
     private const val KEY_BASE_PACKAGE_VERSION = "base_package_version"
     private const val BASE_PACKAGE_VERSION = 2
     private const val SESSION_DONE_PREFIX = "__OMNIBOT_SESSION_DONE__"
-    private const val DEFAULT_CURRENT_DIRECTORY = "/root"
+    private const val DEFAULT_CURRENT_DIRECTORY = AgentWorkspaceManager.SHELL_ROOT_PATH
     private const val BASE_PACKAGE_READY_MARKER = "__OMNIBOT_BASE_PACKAGES_READY__"
     private const val BASE_PACKAGE_MISSING_MARKER = "__OMNIBOT_BASE_PACKAGES_MISSING__"
     private const val BASE_PACKAGE_NODE_VERSION_MARKER = "__OMNIBOT_NODE_VERSION__"
@@ -613,17 +613,19 @@ object EmbeddedTerminalRuntime {
             createdNewSession = true
         }
 
-        if (createdNewSession && !workingDirectory.isNullOrBlank()) {
+        val targetWorkingDirectory = workingDirectory?.trim().takeUnless { it.isNullOrBlank() }
+            ?: AgentWorkspaceManager.SHELL_ROOT_PATH
+        if (createdNewSession) {
             val cwdResult = executeSessionCommand(
                 context = context,
                 sessionId = requestedSessionId,
-                command = "cd ${TermuxCommandBuilder.quoteForShell(workingDirectory)}",
+                command = "cd ${TermuxCommandBuilder.quoteForShell(targetWorkingDirectory)}",
                 workingDirectory = null,
                 timeoutSeconds = 30,
                 environment = environment
             )
             require(cwdResult.completed && cwdResult.success) {
-                cwdResult.errorMessage ?: "无法切换到工作目录：$workingDirectory"
+                cwdResult.errorMessage ?: "无法切换到工作目录：$targetWorkingDirectory"
             }
         }
 

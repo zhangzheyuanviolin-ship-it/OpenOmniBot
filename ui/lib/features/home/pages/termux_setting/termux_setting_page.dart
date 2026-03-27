@@ -223,7 +223,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '主应用内不再显示环境安装状态或安装过程。Node.js、Python、SSH、Java 等环境请直接在 OperitTerminalCore 的环境配置页面中安装和修复。',
+            '主应用内不再显示环境安装状态或安装过程。Node.js、Python、SSH、Java 等环境请直接在内嵌 Alpine 终端的环境配置页面中安装和修复。',
             style: TextStyle(
               color: Color(0xFF64748B),
               fontSize: 13,
@@ -258,7 +258,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FA),
-      appBar: const CommonAppBar(title: 'Ubuntu 与 OpenClaw', primary: true),
+      appBar: const CommonAppBar(title: 'Alpine 与 OpenClaw', primary: true),
       body: SafeArea(
         top: false,
         child: RefreshIndicator(

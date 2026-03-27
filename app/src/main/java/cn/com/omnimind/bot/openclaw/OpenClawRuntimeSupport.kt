@@ -587,21 +587,17 @@ object OpenClawRuntimeSupport {
 
     private fun ensureEmbeddedShellScripts(context: Context): File {
         val initHost = localBinDir().resolve("init-host")
-        if (!initHost.exists()) {
-            initHost.parentFile?.mkdirs()
-            context.assets.open("init-host.sh").use { input ->
-                initHost.outputStream().use { output -> input.copyTo(output) }
-            }
-            initHost.setExecutable(true, false)
+        initHost.parentFile?.mkdirs()
+        context.assets.open("init-host.sh").use { input ->
+            initHost.outputStream().use { output -> input.copyTo(output) }
         }
+        initHost.setExecutable(true, false)
 
         val init = localBinDir().resolve("init")
-        if (!init.exists()) {
-            context.assets.open("init.sh").use { input ->
-                init.outputStream().use { output -> input.copyTo(output) }
-            }
-            init.setExecutable(true, false)
+        context.assets.open("init.sh").use { input ->
+            init.outputStream().use { output -> input.copyTo(output) }
         }
+        init.setExecutable(true, false)
 
         return initHost
     }

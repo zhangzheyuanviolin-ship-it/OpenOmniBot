@@ -192,7 +192,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                           icon: Icons.cloud_download_rounded,
                           iconColor: const Color(0xFF0F9D7A),
                           title: '/deploy',
-                          subtitle: '一键部署到内嵌 Ubuntu 并自动接入当前模式',
+                          subtitle: '一键部署到内嵌 Alpine 并自动接入当前模式',
                           onTap: () {
                             unawaited(_showOpenClawDeployPanel());
                           },

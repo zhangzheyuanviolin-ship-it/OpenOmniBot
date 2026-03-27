@@ -15,9 +15,9 @@ import com.rk.resources.drawables
 import com.rk.resources.strings
 import com.rk.terminal.ui.activities.terminal.MainActivity
 import com.rk.terminal.ui.screens.settings.Settings
+import com.rk.terminal.ui.screens.terminal.HeadlessTerminalSessionClient
 import com.rk.terminal.ui.screens.terminal.MkSession
 import com.termux.terminal.TerminalSession
-import com.termux.terminal.TerminalSessionClient
 
 class SessionService : Service() {
     private val sessions = hashMapOf<String, TerminalSession>()
@@ -34,10 +34,16 @@ class SessionService : Service() {
             }
             sessions.clear()
             sessionList.clear()
+            currentSession.value = Pair("main", com.rk.settings.Settings.working_Mode)
             updateNotification()
         }
-        fun createSession(id: String, client: TerminalSessionClient, activity: MainActivity,workingMode:Int): TerminalSession {
-            return MkSession.createSession(activity, client, id, workingMode = workingMode).also {
+        fun createSession(id: String, activity: MainActivity, workingMode:Int): TerminalSession {
+            return MkSession.createSession(
+                activity,
+                HeadlessTerminalSessionClient,
+                id,
+                workingMode = workingMode
+            ).also {
                 sessions[id] = it
                 sessionList[id] = workingMode
                 updateNotification()
@@ -58,8 +64,14 @@ class SessionService : Service() {
                 sessions.remove(id)
                 sessionList.remove(id)
                 if (sessions.isEmpty()) {
+                    currentSession.value = Pair("main", com.rk.settings.Settings.working_Mode)
                     stopSelf()
                 } else {
+                    if (currentSession.value.first == id) {
+                        sessionList.entries.firstOrNull()?.let { next ->
+                            currentSession.value = Pair(next.key, next.value)
+                        }
+                    }
                     updateNotification()
                 }
             }.onFailure { it.printStackTrace() }

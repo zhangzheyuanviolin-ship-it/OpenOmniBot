@@ -5,7 +5,6 @@ import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
-import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
@@ -32,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.outlined.Delete
@@ -78,7 +78,6 @@ import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import androidx.core.widget.doOnTextChanged
 import androidx.navigation.NavController
-import com.google.android.material.R
 import androidx.compose.ui.res.stringResource
 import com.rk.components.compose.preferences.base.PreferenceGroup
 import com.rk.libcommons.application
@@ -143,6 +142,14 @@ inline fun getComposeColor():androidx.compose.ui.graphics.Color{
     }
 }
 
+private fun applyTerminalPalette(targetView: TerminalView) {
+    val foregroundColor = getViewColor()
+    targetView.mEmulator?.mColors?.mCurrentColors?.apply {
+        set(256, foregroundColor)
+        set(258, foregroundColor)
+    }
+}
+
 var showToolbar = mutableStateOf(Settings.toolbar)
 var showVirtualKeys = mutableStateOf(Settings.virtualKeys)
 var showHorizontalToolbar = mutableStateOf(Settings.toolbar)
@@ -196,11 +203,7 @@ fun TerminalScreen(
             terminalView.get()?.apply {
                 onScreenUpdated()
 
-
-                mEmulator?.mColors?.mCurrentColors?.apply {
-                    set(256, getViewColor())
-                    set(258, getViewColor())
-                }
+                applyTerminalPalette(this)
             }
         }
 
@@ -248,17 +251,11 @@ fun TerminalScreen(
                     }
 
                     val sessionId = generateUniqueString(mainActivityActivity.sessionBinder!!.getService().sessionList.keys.toList())
-
-                    terminalView.get()
-                        ?.let {
-                            val client = TerminalBackEnd(it, mainActivityActivity)
-                            mainActivityActivity.sessionBinder!!.createSession(
-                                sessionId,
-                                client,
-                                mainActivityActivity, workingMode = workingMode
-                            )
-                        }
-
+                    mainActivityActivity.sessionBinder!!.createSession(
+                        sessionId,
+                        mainActivityActivity,
+                        workingMode = workingMode
+                    )
 
                     changeSession(mainActivityActivity, session_id = sessionId)
                 }
@@ -286,7 +283,7 @@ fun TerminalScreen(
 
         ModalNavigationDrawer(
             drawerState = drawerState,
-            gesturesEnabled = drawerState.isOpen || !(showToolbar.value && (LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE || showHorizontalToolbar.value)),
+            gesturesEnabled = true,
             drawerContent = {
                 ModalDrawerSheet(modifier = Modifier.width(drawerWidth)) {
                     Column(
@@ -416,12 +413,17 @@ fun TerminalScreen(
                                     },
                                     navigationIcon = {
                                         IconButton(onClick = {
+                                            mainActivityActivity.onBackPressedDispatcher.onBackPressed()
+                                        }) {
+                                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = color)
+                                        }
+                                    },
+                                    actions = {
+                                        IconButton(onClick = {
                                             scope.launch { drawerState.open() }
                                         }) {
                                             Icon(Icons.Default.Menu, null, tint = color)
                                         }
-                                    },
-                                    actions = {
                                         IconButton(onClick = {
                                             showAddDialog = true
                                         }) {
@@ -457,7 +459,6 @@ fun TerminalScreen(
                                                 )
                                                     ?: mainActivityActivity.sessionBinder!!.createSession(
                                                         pendingCommand!!.id,
-                                                        client,
                                                         mainActivityActivity, workingMode = Settings.working_Mode
                                                     )
                                             } else {
@@ -466,37 +467,16 @@ fun TerminalScreen(
                                                 )
                                                     ?: mainActivityActivity.sessionBinder!!.createSession(
                                                         mainActivityActivity.sessionBinder!!.getService().currentSession.value.first,
-                                                        client,
-                                                        mainActivityActivity,workingMode = Settings.working_Mode
+                                                        mainActivityActivity,
+                                                        workingMode = mainActivityActivity.sessionBinder!!.getService().currentSession.value.second
                                                     )
                                             }
 
-                                            session.updateTerminalSessionClient(client)
-                                            attachSession(session)
-                                            setTerminalViewClient(client)
-                                            setTypeface(font)
-
-                                            post {
-                                                val color = getViewColor()
-
-                                                keepScreenOn = true
-                                                requestFocus()
-                                                isFocusableInTouchMode = true
-
-                                                mEmulator?.mColors?.mCurrentColors?.apply {
-                                                    set(256, color)
-                                                    set(258, color)
-                                                }
-
-                                                val colorsFile = localDir().child("colors.properties")
-                                                if (colorsFile.exists() && colorsFile.isFile){
-                                                    val props = Properties()
-                                                    FileInputStream(colorsFile).use { input ->
-                                                        props.load(input)
-                                                    }
-                                                    TerminalColors.COLOR_SCHEME.updateWith(props)
-                                                }
-                                            }
+                                            attachSessionToTerminalView(
+                                                mainActivity = mainActivityActivity,
+                                                sessionId = session.mSessionName ?: mainActivityActivity.sessionBinder!!.getService().currentSession.value.first,
+                                                targetView = this
+                                            )
                                         }
                                     },
                                     modifier = Modifier
@@ -504,12 +484,7 @@ fun TerminalScreen(
                                         .weight(1f),
                                     update = { terminalView ->
                                         terminalView.onScreenUpdated()
-                                       val color = getViewColor()
-
-                                        terminalView.mEmulator?.mColors?.mCurrentColors?.apply {
-                                            set(256, color)
-                                            set(258, color)
-                                        }
+                                        applyTerminalPalette(terminalView)
                                     },
                                 )
 
@@ -699,43 +674,64 @@ fun SelectableCard(
 
 
 fun changeSession(mainActivityActivity: MainActivity, session_id: String) {
-    terminalView.get()?.apply {
-        val client = TerminalBackEnd(this, mainActivityActivity)
-        val session =
-            mainActivityActivity.sessionBinder!!.getSession(session_id)
-                ?: mainActivityActivity.sessionBinder!!.createSession(
-                    session_id,
-                    client,
-                    mainActivityActivity,workingMode = Settings.working_Mode
-                )
-        session.updateTerminalSessionClient(client)
-        attachSession(session)
-        setTerminalViewClient(client)
-        post {
-            val typedValue = TypedValue()
-
-            context.theme.resolveAttribute(
-                R.attr.colorOnSurface,
-                typedValue,
-                true
-            )
-            keepScreenOn = true
-            requestFocus()
-            isFocusableInTouchMode = true
-
-            mEmulator?.mColors?.mCurrentColors?.apply {
-                set(256, typedValue.data)
-                set(258, typedValue.data)
-            }
-        }
-        virtualKeysView.get()?.apply {
-            virtualKeysViewClient =
-                terminalView.get()?.mTermSession?.let { VirtualKeysListener(it) }
-        }
-
+    terminalView.get()?.let { activeView ->
+        attachSessionToTerminalView(
+            mainActivity = mainActivityActivity,
+            sessionId = session_id,
+            targetView = activeView
+        )
     }
-    mainActivityActivity.sessionBinder!!.getService().currentSession.value = Pair(session_id,mainActivityActivity.sessionBinder!!.getService().sessionList[session_id]!!)
+}
 
+private fun attachSessionToTerminalView(
+    mainActivity: MainActivity,
+    sessionId: String,
+    targetView: TerminalView
+) {
+    val binder = mainActivity.sessionBinder ?: return
+    val service = binder.getService()
+    val requestedWorkingMode = service.sessionList[sessionId]
+        ?: service.currentSession.value.takeIf { it.first == sessionId }?.second
+        ?: Settings.working_Mode
+
+    val currentAttachedSessionId = service.currentSession.value.first
+    if (currentAttachedSessionId != sessionId) {
+        binder.getSession(currentAttachedSessionId)?.updateTerminalSessionClient(HeadlessTerminalSessionClient)
+    }
+
+    val session = binder.getSession(sessionId)
+        ?: binder.createSession(
+            sessionId,
+            mainActivity,
+            workingMode = requestedWorkingMode
+        )
+    val client = TerminalBackEnd(targetView, mainActivity)
+    session.updateTerminalSessionClient(client)
+    targetView.attachSession(session)
+    targetView.setTerminalViewClient(client)
+    targetView.setTypeface(font)
+    targetView.post {
+        targetView.keepScreenOn = true
+        targetView.requestFocus()
+        targetView.isFocusableInTouchMode = true
+
+        applyTerminalPalette(targetView)
+
+        val colorsFile = localDir().child("colors.properties")
+        if (colorsFile.exists() && colorsFile.isFile){
+            val props = Properties()
+            FileInputStream(colorsFile).use { input ->
+                props.load(input)
+            }
+            TerminalColors.COLOR_SCHEME.updateWith(props)
+        }
+        targetView.onScreenUpdated()
+    }
+
+    virtualKeysView.get()?.apply {
+        virtualKeysViewClient = targetView.mTermSession?.let { VirtualKeysListener(it) }
+    }
+    service.currentSession.value = Pair(sessionId, requestedWorkingMode)
 }
 
 
