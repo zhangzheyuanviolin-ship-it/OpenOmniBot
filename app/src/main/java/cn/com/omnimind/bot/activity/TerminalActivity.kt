@@ -1,96 +1,94 @@
 package cn.com.omnimind.bot.activity
 
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
-import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import com.ai.assistance.operit.terminal.TerminalManager
-import com.ai.assistance.operit.terminal.main.TerminalScreen
-import com.ai.assistance.operit.terminal.provider.type.TerminalType
-import com.ai.assistance.operit.terminal.rememberTerminalEnv
+import com.ai.assistance.operit.terminal.setup.EnvironmentSetupLogic
+import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
+import com.rk.libcommons.ShellArgv
+import com.rk.libcommons.TerminalCommand
+import com.rk.libcommons.pendingCommand
+import com.rk.terminal.ui.activities.terminal.MainActivity
+import com.rk.terminal.ui.screens.settings.WorkingMode
 import kotlinx.coroutines.launch
+import java.io.File
 
 class TerminalActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3Api::class)
+    companion object {
+        private const val TAG = "TerminalActivity"
+        const val EXTRA_OPEN_SETUP = "open_setup"
+        const val EXTRA_SETUP_PACKAGE_IDS = "setup_package_ids"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        getSharedPreferences("terminal_prefs", MODE_PRIVATE)
-            .edit()
-            .putBoolean("is_first_launch", false)
-            .apply()
-
+        pendingCommand = null
         lifecycleScope.launch {
-            prepareLocalSession()
-        }
-
-        setContent {
-            val terminalManager = remember { TerminalManager.getInstance(this) }
-            val forceShowSetup by produceState(initialValue = false) {
-                value = runCatching {
-                    val readiness = EmbeddedTerminalRuntime.inspectRuntimeReadiness(this@TerminalActivity)
-                    !(readiness.supported && readiness.runtimeReady && readiness.basePackagesReady)
-                }.getOrDefault(false)
+            runCatching {
+                EmbeddedTerminalRuntime.warmup(this@TerminalActivity)
+                TerminalManager.getInstance(this@TerminalActivity).initializeEnvironment()
             }
-            val env = rememberTerminalEnv(terminalManager, forceShowSetup = forceShowSetup)
-
-            MaterialTheme {
-                Scaffold(
-                    topBar = {
-                        TopAppBar(
-                            title = { Text("终端") },
-                            navigationIcon = {
-                                IconButton(onClick = ::finish) {
-                                    androidx.compose.material3.Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "返回"
-                                    )
-                                }
-                            }
-                        )
-                    }
-                ) { paddingValues ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(paddingValues)
-                    ) {
-                        TerminalScreen(env)
-                    }
+            configurePendingSetupSession()
+            startActivity(
+                Intent(this@TerminalActivity, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    putExtra(EXTRA_OPEN_SETUP, intent?.getBooleanExtra(EXTRA_OPEN_SETUP, false) == true)
                 }
-            }
+            )
+            finish()
         }
     }
 
-    override fun onDestroy() {
-        TerminalManager.getInstance(this).setPreferredTerminalType(null)
-        super.onDestroy()
+    private fun configurePendingSetupSession() {
+        val openSetup = intent?.getBooleanExtra(EXTRA_OPEN_SETUP, false) == true
+        if (!openSetup) {
+            return
+        }
+        val selectedPackageIds = intent
+            ?.getStringArrayListExtra(EXTRA_SETUP_PACKAGE_IDS)
+            .orEmpty()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        if (selectedPackageIds.isEmpty()) {
+            return
+        }
+
+        val commands = EnvironmentSetupLogic.buildInstallCommands(
+            selectedPackageIds = selectedPackageIds,
+            repositorySetupCommand = ""
+        )
+        if (commands.isEmpty()) {
+            return
+        }
+
+        val initHostPath = File(filesDir.parentFile, "local/bin/init-host").absolutePath
+        val installScriptPath = prepareSetupScript(commands)
+
+        pendingCommand = TerminalCommand(
+            shell = ShellArgv.SYSTEM_SH,
+            args = ShellArgv.buildShellScriptArgv(initHostPath, "/bin/sh", installScriptPath),
+            id = "setup-${System.currentTimeMillis()}",
+            workingMode = WorkingMode.ALPINE,
+            terminatePreviousSession = false,
+            workingDir = "/"
+        )
+        Log.d(
+            TAG,
+            "Prepared setup session ${ShellArgv.formatExecSpec(ShellArgv.SYSTEM_SH, pendingCommand!!.args, "/")}"
+        )
     }
 
-    private suspend fun prepareLocalSession() {
-        runCatching {
-            val terminalManager = TerminalManager.getInstance(this)
-            terminalManager.prepareForMaintenance()
-            terminalManager.setPreferredTerminalType(TerminalType.LOCAL)
-            val localSession = terminalManager.createNewSession("OpenClaw", TerminalType.LOCAL)
-            terminalManager.switchToSession(localSession.id)
+    private fun prepareSetupScript(commands: List<String>): String {
+        val scriptFile = File(filesDir.parentFile, "local/bin/omni-setup.sh").apply {
+            parentFile?.mkdirs()
         }
+        val content = EnvironmentSetupLogic.buildSetupScript(commands)
+        scriptFile.writeText(content)
+        scriptFile.setExecutable(true, false)
+        return scriptFile.absolutePath
     }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
 import 'package:ui/widgets/omnibot_resource_widgets.dart';
@@ -66,23 +67,26 @@ class _OmnibotArtifactPreviewPageState
       appBar: CommonAppBar(
         title: widget.title,
         primary: true,
-        trailing: IconButton(
-          onPressed: () {
-            OmnibotResourceService.openWithSystem(
-              sourcePath: widget.path,
-              mimeType: widget.mimeType,
-            );
-          },
-          icon: SvgPicture.asset(
-            _externalLinkIconAsset,
-            width: 20,
-            height: 20,
-            colorFilter: const ColorFilter.mode(
-              Color(0xFF111827),
-              BlendMode.srcIn,
+        actions: [
+          IconButton(
+            tooltip: '系统打开',
+            onPressed: widget.exists ? _handleOpenWithSystem : null,
+            icon: SvgPicture.asset(
+              _externalLinkIconAsset,
+              width: 20,
+              height: 20,
+              colorFilter: const ColorFilter.mode(
+                Color(0xFF111827),
+                BlendMode.srcIn,
+              ),
             ),
           ),
-        ),
+          IconButton(
+            tooltip: '分享文件',
+            onPressed: widget.exists ? _handleShareFile : null,
+            icon: const Icon(Icons.share_outlined),
+          ),
+        ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -110,6 +114,60 @@ class _OmnibotArtifactPreviewPageState
     );
   }
 
+  Future<void> _handleOpenWithSystem() async {
+    try {
+      final opened = await OmnibotResourceService.openWithSystem(
+        sourcePath: widget.path,
+        mimeType: widget.mimeType,
+      );
+      if (!opened) {
+        showToast('系统打开失败，请稍后重试', type: ToastType.error);
+      }
+    } catch (error) {
+      showToast('系统打开失败：$error', type: ToastType.error);
+    }
+  }
+
+  Future<void> _handleShareFile() async {
+    try {
+      final shared = await OmnibotResourceService.shareFile(
+        sourcePath: widget.path,
+        fileName: widget.title,
+        mimeType: widget.mimeType,
+      );
+      if (!shared) {
+        showToast('分享失败，请稍后重试', type: ToastType.error);
+      }
+    } catch (error) {
+      showToast('分享失败：$error', type: ToastType.error);
+    }
+  }
+
+  OmnibotResourceMetadata _currentMetadata() {
+    return OmnibotResourceService.describePath(
+      widget.path,
+      uri: widget.uri,
+      shellPath: widget.shellPath,
+      title: widget.title,
+      previewKind: widget.previewKind,
+      mimeType: widget.mimeType,
+    );
+  }
+
+  Widget _buildInlineResourcePreview(BuildContext context) {
+    final metadata = _currentMetadata();
+    final maxWidth = MediaQuery.sizeOf(context).width - 32;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: OmnibotInlineResourceEmbed(
+          metadata: metadata,
+          maxWidth: maxWidth,
+        ),
+      ),
+    );
+  }
+
   Widget _buildBody() {
     if (!widget.exists) {
       return const Center(child: Text('文件不存在'));
@@ -124,20 +182,11 @@ class _OmnibotArtifactPreviewPageState
         );
       case 'audio':
       case 'video':
-        final metadata = OmnibotResourceService.describePath(
-          widget.path,
-          uri: widget.uri,
-          shellPath: widget.shellPath,
-          title: widget.title,
-          previewKind: widget.previewKind,
-          mimeType: widget.mimeType,
-        );
-        return Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: OmnibotInlineResourceEmbed(metadata: metadata),
-          ),
-        );
+        return _buildInlineResourcePreview(context);
+      case 'office_word':
+      case 'office_sheet':
+      case 'office_slide':
+        return _buildInlineResourcePreview(context);
       case 'html':
         return Center(
           child: FilledButton.icon(
@@ -197,12 +246,7 @@ class _OmnibotArtifactPreviewPageState
                 ),
                 const SizedBox(height: 16),
                 FilledButton.icon(
-                  onPressed: () {
-                    OmnibotResourceService.openWithSystem(
-                      sourcePath: widget.path,
-                      mimeType: widget.mimeType,
-                    );
-                  },
+                  onPressed: _handleOpenWithSystem,
                   icon: const Icon(Icons.open_in_new_outlined),
                   label: const Text('系统打开'),
                 ),

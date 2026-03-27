@@ -11,10 +11,9 @@ import androidx.core.content.ContextCompat
 import cn.com.omnimind.baselib.permission.PermissionRequest
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
-import cn.com.omnimind.bot.openclaw.OpenClawDeployManager
-import cn.com.omnimind.bot.openclaw.OpenClawGatewayManager
 import cn.com.omnimind.bot.activity.TerminalActivity
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
+import cn.com.omnimind.bot.terminal.EmbeddedTerminalSetupManager
 import cn.com.omnimind.bot.termux.TermuxCommandRunner
 import cn.com.omnimind.bot.util.AssistsUtil
 import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
@@ -32,17 +31,20 @@ class SpecialPermissionManager(private val context: Context) {
         private const val TAG = "[PlatformManager]"
         private const val MAX_INIT_LOG_LINES = 160
         private val BASE_PACKAGE_NAMES = listOf(
+            "bash",
             "ca-certificates",
             "curl",
             "git",
+            "gcompat",
+            "glib",
             "nodejs",
             "npm",
-            "python-is-python3",
             "python3",
-            "python3-pip",
-            "python3-venv",
+            "py3-pip",
+            "py3-virtualenv",
             "ripgrep",
-            "tmux"
+            "tmux",
+            "xz"
         )
     }
 
@@ -62,7 +64,7 @@ class SpecialPermissionManager(private val context: Context) {
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val embeddedTerminalInitLock = Any()
     private var embeddedTerminalInitState = EmbeddedTerminalInitState()
-    private val openClawDeployManager = OpenClawDeployManager(context)
+    private val embeddedTerminalSetupManager = EmbeddedTerminalSetupManager(context)
     var onEmbeddedTerminalInitProgress: ((Map<String, Any?>) -> Unit)? = null
 
     fun isAccessibilityServiceEnabled(result: MethodChannel.Result) {
@@ -393,60 +395,23 @@ class SpecialPermissionManager(private val context: Context) {
         }
     }
 
-    fun startOpenClawDeploy(call: MethodCall, result: MethodChannel.Result) {
-        try {
-            val providerBaseUrl = call.argument<String>("providerBaseUrl")?.trim().orEmpty()
-            val providerApiKey = call.argument<String>("providerApiKey")?.trim().orEmpty()
-            val modelId = call.argument<String>("modelId")?.trim().orEmpty()
-            val configJson = call.argument<String>("configJson")?.trim().orEmpty()
-            val deployResult = openClawDeployManager.startDeploy(
-                OpenClawDeployManager.DeployRequest(
-                    providerBaseUrl = providerBaseUrl,
-                    providerApiKey = providerApiKey,
-                    modelId = modelId,
-                    configJson = configJson
-                )
-            )
-            result.success(deployResult.toMap())
-        } catch (e: IllegalArgumentException) {
-            OmniLog.e(TAG, "Invalid OpenClaw deploy request", e)
-            result.error("INVALID_ARGS", e.message, null)
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "Error starting OpenClaw deploy", e)
-            result.error(
-                "START_DEPLOY_FAILED",
-                "Failed to start OpenClaw deploy.",
-                e.message
-            )
-        }
-    }
-
-    fun getOpenClawDeploySnapshot(result: MethodChannel.Result) {
-        try {
-            result.success(openClawDeployManager.getSnapshot().toMap())
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "Error reading OpenClaw deploy snapshot", e)
-            result.error(
-                "READ_DEPLOY_SNAPSHOT_FAILED",
-                "Failed to read OpenClaw deploy snapshot.",
-                e.message
-            )
-        }
-    }
-
-    fun getOpenClawGatewayStatus(result: MethodChannel.Result) {
+    fun getEmbeddedTerminalSetupStatus(result: MethodChannel.Result) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val status = OpenClawGatewayManager.getGatewayStatus(context)
+                val packageStatus = embeddedTerminalSetupManager.getPackageInstallStatus()
                 withContext(Dispatchers.Main) {
-                    result.success(status.toMap())
+                    result.success(
+                        mapOf(
+                            "packages" to packageStatus
+                        )
+                    )
                 }
             } catch (e: Exception) {
-                OmniLog.e(TAG, "Error reading OpenClaw gateway status", e)
+                OmniLog.e(TAG, "Error reading embedded terminal setup status", e)
                 withContext(Dispatchers.Main) {
                     result.error(
-                        "READ_GATEWAY_STATUS_FAILED",
-                        "Failed to read OpenClaw gateway status.",
+                        "READ_SETUP_STATUS_FAILED",
+                        "Failed to read embedded terminal setup status.",
                         e.message
                     )
                 }
@@ -454,58 +419,120 @@ class SpecialPermissionManager(private val context: Context) {
         }
     }
 
-    fun setOpenClawGatewayAutoStart(call: MethodCall, result: MethodChannel.Result) {
+    fun getEmbeddedTerminalSetupInventory(result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val packageInventory = embeddedTerminalSetupManager.getPackageInventory()
+                withContext(Dispatchers.Main) {
+                    result.success(
+                        mapOf(
+                            "packages" to packageInventory.mapValues { it.value.toMap() }
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error reading embedded terminal setup inventory", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "READ_SETUP_INVENTORY_FAILED",
+                        "Failed to read embedded terminal setup inventory.",
+                        e.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun installEmbeddedTerminalPackages(call: MethodCall, result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val packageIds = call.argument<List<String>>("packageIds").orEmpty()
+                val installResult = embeddedTerminalSetupManager.installPackages(packageIds)
+                withContext(Dispatchers.Main) {
+                    result.success(installResult.toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error installing embedded terminal packages", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "INSTALL_SETUP_PACKAGES_FAILED",
+                        "Failed to install embedded terminal packages.",
+                        e.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun getEmbeddedTerminalSetupSessionSnapshot(result: MethodChannel.Result) {
         try {
-            val enabled = call.argument<Boolean>("enabled") == true
-            OpenClawGatewayManager.setAutoStartEnabled(context, enabled)
-            result.success(
-                mapOf(
-                    "enabled" to enabled
-                )
-            )
+            result.success(embeddedTerminalSetupManager.getInstallSessionSnapshot().toMap())
         } catch (e: Exception) {
-            OmniLog.e(TAG, "Error updating OpenClaw auto-start setting", e)
+            OmniLog.e(TAG, "Error reading embedded terminal setup session snapshot", e)
             result.error(
-                "SET_GATEWAY_AUTOSTART_FAILED",
-                "Failed to update OpenClaw auto-start setting.",
+                "READ_SETUP_SESSION_FAILED",
+                "Failed to read embedded terminal setup session snapshot.",
                 e.message
             )
         }
     }
 
-    fun startOpenClawGateway(call: MethodCall, result: MethodChannel.Result) {
-        try {
-            val forceRestart = call.argument<Boolean>("forceRestart") == true
-            OpenClawGatewayManager.startGateway(context, forceRestart = forceRestart)
-            result.success(true)
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "Error starting OpenClaw gateway", e)
-            result.error(
-                "START_GATEWAY_FAILED",
-                "Failed to start OpenClaw gateway.",
-                e.message
-            )
+    fun startEmbeddedTerminalSetupSession(call: MethodCall, result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val packageIds = call.argument<List<String>>("packageIds").orEmpty()
+                val snapshot = embeddedTerminalSetupManager.startInstallSession(packageIds)
+                withContext(Dispatchers.Main) {
+                    result.success(snapshot.toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error starting embedded terminal setup session", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "START_SETUP_SESSION_FAILED",
+                        "Failed to start embedded terminal setup session.",
+                        e.message
+                    )
+                }
+            }
         }
     }
 
-    fun stopOpenClawGateway(result: MethodChannel.Result) {
-        try {
-            OpenClawGatewayManager.stopGateway(context)
-            result.success(true)
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "Error stopping OpenClaw gateway", e)
-            result.error(
-                "STOP_GATEWAY_FAILED",
-                "Failed to stop OpenClaw gateway.",
-                e.message
-            )
+    fun dismissEmbeddedTerminalSetupSession(result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                embeddedTerminalSetupManager.dismissInstallSession()
+                withContext(Dispatchers.Main) {
+                    result.success(null)
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error dismissing embedded terminal setup session", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "DISMISS_SETUP_SESSION_FAILED",
+                        "Failed to dismiss embedded terminal setup session.",
+                        e.message
+                    )
+                }
+            }
         }
     }
 
-    fun openNativeTerminal(result: MethodChannel.Result) {
+    fun openNativeTerminal(call: MethodCall, result: MethodChannel.Result) {
         try {
+            val openSetup = call.argument<Boolean>("openSetup") == true
+            val setupPackageIds = call.argument<List<String>>("setupPackageIds")
+                .orEmpty()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
             val intent = Intent(context, TerminalActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                putExtra(TerminalActivity.EXTRA_OPEN_SETUP, openSetup)
+                putStringArrayListExtra(
+                    TerminalActivity.EXTRA_SETUP_PACKAGE_IDS,
+                    ArrayList(setupPackageIds)
+                )
             }
             ContextCompat.startActivity(context, intent, null)
             result.success(true)
@@ -523,7 +550,7 @@ class SpecialPermissionManager(private val context: Context) {
         resetEmbeddedTerminalInitState()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                emitEmbeddedTerminalInitProgress("status", "开始准备内嵌 Ubuntu 终端环境")
+                emitEmbeddedTerminalInitProgress("status", "开始准备内嵌 Alpine 终端环境")
                 val status =
                     TermuxCommandRunner.prepareLiveEnvironment(context) { progress ->
                         emitEmbeddedTerminalInitProgress(
@@ -609,7 +636,7 @@ class SpecialPermissionManager(private val context: Context) {
                 success = null,
                 progress = 0.02,
                 stage = "准备开始",
-                logLines = listOf("[系统] 正在启动内嵌 Ubuntu 环境初始化..."),
+                logLines = listOf("[系统] 正在启动内嵌 Alpine 环境初始化..."),
                 startedAt = now,
                 updatedAt = now
             )
@@ -679,7 +706,7 @@ class SpecialPermissionManager(private val context: Context) {
     ) {
         val normalizedMessage = finalMessage.trim().ifBlank {
             if (success) {
-                "内嵌 Ubuntu 终端和基础 Agent CLI 包均已就绪。"
+                "内嵌 Alpine 终端和基础 Agent CLI 包均已就绪。"
             } else {
                 "检查内嵌终端环境失败"
             }
@@ -761,7 +788,10 @@ class SpecialPermissionManager(private val context: Context) {
             lowerCaseLines.any { line ->
                 line.contains(lowerPackageName) &&
                     (
-                        line.contains("get:") ||
+                        line.contains("fetch ") ||
+                            line.contains("installing ") ||
+                            line.contains("upgrading ") ||
+                            line.contains("get:") ||
                             line.contains("selecting previously") ||
                             line.contains("unpacking") ||
                             line.contains("setting up") ||
@@ -780,14 +810,11 @@ class SpecialPermissionManager(private val context: Context) {
         val normalizedMessage = message.trim()
         val stageProgress =
             when {
-                normalizedMessage.contains("开始准备内嵌 Ubuntu 终端环境") -> 0.04
+                normalizedMessage.contains("开始准备内嵌 Alpine 终端环境") -> 0.04
                 normalizedMessage.contains("正在准备 workspace 和运行目录") -> 0.10
                 normalizedMessage.contains("正在初始化宿主终端运行时") -> 0.14
-                normalizedMessage.contains("正在创建终端运行目录") -> 0.20
-                normalizedMessage.contains("正在准备 busybox/proot/bash") -> 0.30
-                normalizedMessage.contains("正在解压 Ubuntu 运行资源") -> 0.42
-                normalizedMessage.contains("正在生成启动脚本") -> 0.54
-                normalizedMessage.contains("终端运行时初始化完成") -> 0.60
+                normalizedMessage.contains("正在校验 Alpine 终端运行资源") -> 0.24
+                normalizedMessage.contains("正在安装 Alpine 终端运行资源") -> 0.42
                 normalizedMessage.contains("宿主终端环境校验完成") -> 0.60
                 normalizedMessage.contains("正在检查基础 Agent CLI 包") -> 0.68
                 normalizedMessage.contains("基础 Agent CLI 包已就绪") -> 0.96
@@ -804,16 +831,20 @@ class SpecialPermissionManager(private val context: Context) {
             return currentProgress
         }
 
-        if (normalizedMessage.contains("Reading package lists")) {
+        if (normalizedMessage.contains("fetch ", ignoreCase = true)) {
             return 0.74
         }
-        if (normalizedMessage.contains("Building dependency tree")) {
+        if (normalizedMessage.contains("installing ", ignoreCase = true)) {
             return 0.76
         }
-        if (normalizedMessage.contains("Reading state information")) {
+        if (normalizedMessage.contains("upgrading ", ignoreCase = true) ||
+            normalizedMessage.contains("executing busybox", ignoreCase = true)
+        ) {
             return 0.78
         }
-        if (normalizedMessage.contains("Need to get")) {
+        if (normalizedMessage.contains("npm install -g pnpm", ignoreCase = true) ||
+            normalizedMessage.contains("python3 -m pip install", ignoreCase = true)
+        ) {
             return 0.80
         }
         if (normalizedMessage.contains("Fetched ")) {

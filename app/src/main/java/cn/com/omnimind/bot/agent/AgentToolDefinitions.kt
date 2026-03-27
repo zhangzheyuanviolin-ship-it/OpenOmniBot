@@ -93,11 +93,11 @@ object AgentToolDefinitions {
             put("toolType", "terminal")
             put(
                 "description",
-                "通过应用内置的 Ubuntu（proot）环境执行一次性的非交互终端命令。这是默认首选的终端工具，适合文件处理、脚本、网络诊断、git、python、包管理等绝大多数 CLI 任务；不用于手机界面操作，也不用于交互式 TUI。只有明确需要跨多轮保留 cwd、环境或后台进程时，才改用 terminal_session_*。"
+                "通过应用内置的 Alpine（proot）环境执行一次性的非交互终端命令。这是默认首选的终端工具，适合文件处理、脚本、网络诊断、git、python、包管理等绝大多数 CLI 任务；不用于手机界面操作，也不用于交互式 TUI。只有明确需要跨多轮保留 cwd、环境或后台进程时，才改用 terminal_session_*。"
             )
             put(
                 "postToolRule",
-                "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 executionMode=proot（prootDistro=ubuntu）执行，传入 termux/debian 等参数会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 再次调用 terminal_execute 修正，最多 3 次；不要在同一个 tool_calls 中串联其他结果依赖型工具。"
+                "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 executionMode=proot（prootDistro=alpine）执行，传入 termux/debian 等参数会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 再次调用 terminal_execute 修正，最多 3 次；不要在同一个 tool_calls 中串联其他结果依赖型工具。"
             )
             putJsonObject("parameters") {
                 put("type", "object")
@@ -108,7 +108,7 @@ object AgentToolDefinitions {
                     }
                     putJsonObject("executionMode") {
                         put("type", "string")
-                        put("description", "可选。兼容字段，当前固定在 proot Ubuntu 执行，传入 termux 也会被自动忽略。")
+                        put("description", "可选。兼容字段，当前固定在 proot Alpine 执行，传入 termux 也会被自动忽略。")
                         putJsonArray("enum") {
                             add("proot")
                             add("termux")
@@ -116,7 +116,7 @@ object AgentToolDefinitions {
                     }
                     putJsonObject("prootDistro") {
                         put("type", "string")
-                        put("description", "可选。兼容字段，当前固定使用 ubuntu，传入其他 distro 会被自动忽略。")
+                        put("description", "可选。兼容字段，当前固定使用 alpine，传入其他 distro 会被自动忽略。")
                     }
                     putJsonObject("workingDirectory") {
                         put("type", "string")
@@ -140,7 +140,7 @@ object AgentToolDefinitions {
             put("name", "terminal_session_start")
             put("displayName", "启动终端会话")
             put("toolType", "terminal")
-            put("description", "启动一个可复用的 Ubuntu 终端会话，仅用于确实需要在后续多轮中保留 cwd、shell 环境、中间文件状态或后台进程的任务。不要为了运行单条命令、检查工具是否存在、读取单个文件或执行一次性脚本而使用它，这些场景应优先用 terminal_execute。")
+            put("description", "启动一个可复用的 Alpine 终端会话，仅用于确实需要在后续多轮中保留 cwd、shell 环境、中间文件状态或后台进程的任务。不要为了运行单条命令、检查工具是否存在、读取单个文件或执行一次性脚本而使用它，这些场景应优先用 terminal_execute。")
             put("postToolRule", "启动后等待工具结果，再决定是否继续向该 session 发送命令。")
             putJsonObject("parameters") {
                 put("type", "object")

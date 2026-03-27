@@ -186,6 +186,115 @@ void main() {
     expect(runtime.thinkingRound, 0);
   });
 
+  test(
+    'keeps assistant content visible when tool calls start afterwards',
+    () async {
+      const conversationId = 4501;
+      const taskId = 'agent-task-with-content';
+
+      final runtime = coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      runtime.currentDispatchTaskId = taskId;
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+        'taskId': taskId,
+        'message': '看起来克隆还没完全完成，只有 `.git` 目录。让我再等待一下，然后重新检查。',
+        'isFinal': false,
+      });
+
+      await emitPlatformEvent('onAgentToolCallStart', <String, dynamic>{
+        'taskId': taskId,
+        'toolName': 'terminal_execute',
+        'displayName': 'terminal_execute',
+        'toolType': 'terminal',
+        'summary': '检查 git 状态',
+      });
+
+      final textMessage = runtime.messages.firstWhere(
+        (msg) => msg.id == '$taskId-text',
+      );
+      final toolMessage = runtime.messages.firstWhere(
+        (msg) => msg.cardData?['type'] == 'agent_tool_summary',
+      );
+
+      expect(textMessage.text, contains('克隆还没完全完成'));
+      expect(toolMessage.cardData?['toolType'], 'terminal');
+      expect(runtime.pendingAgentTextTaskId, isNull);
+    },
+  );
+
+  test(
+    'renders later content plus tool-call rounds as new assistant messages instead of overwriting earlier ones',
+    () async {
+      const conversationId = 4601;
+      const taskId = 'agent-task-multi-round';
+
+      final runtime = coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      runtime.currentDispatchTaskId = taskId;
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+        'taskId': taskId,
+        'message': '第一轮：先检查仓库状态。',
+        'isFinal': false,
+      });
+
+      await emitPlatformEvent('onAgentToolCallStart', <String, dynamic>{
+        'taskId': taskId,
+        'toolName': 'terminal_execute',
+        'displayName': 'terminal_execute',
+        'toolType': 'terminal',
+        'summary': '检查 git 状态',
+      });
+
+      await emitPlatformEvent('onAgentToolCallComplete', <String, dynamic>{
+        'taskId': taskId,
+        'toolName': 'terminal_execute',
+        'displayName': 'terminal_execute',
+        'toolType': 'terminal',
+        'summary': 'git 状态已返回',
+        'success': true,
+      });
+
+      await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+        'taskId': taskId,
+        'message': '第二轮：继续等待克隆完成。',
+        'isFinal': false,
+      });
+
+      await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+        'taskId': taskId,
+        'message': '第二轮：继续等待克隆完成，然后再次检查。',
+        'isFinal': false,
+      });
+
+      final firstRoundMessage = runtime.messages.firstWhere(
+        (msg) => msg.id == '$taskId-text',
+      );
+      final secondRoundMessage = runtime.messages.firstWhere(
+        (msg) => msg.id == '$taskId-text-2',
+      );
+
+      expect(firstRoundMessage.text, '第一轮：先检查仓库状态。');
+      expect(secondRoundMessage.text, '第二轮：继续等待克隆完成，然后再次检查。');
+      expect(runtime.pendingAgentTextTaskId, taskId);
+    },
+  );
+
   test('forces tools layer when browser or terminal tools start', () async {
     const conversationId = 5001;
     const taskId = 'agent-tool-task';

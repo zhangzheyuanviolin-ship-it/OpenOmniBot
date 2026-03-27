@@ -7,10 +7,10 @@ import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.mcp.McpServerManager
-import cn.com.omnimind.bot.openclaw.OpenClawGatewayManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
+import com.rk.resources.Res
 import com.tencent.mmkv.MMKV
 import io.flutter.FlutterInjector
 import io.flutter.embedding.engine.FlutterEngine
@@ -101,6 +101,8 @@ class App : BaseApplication() {
             "App super.onCreate cost: ${System.currentTimeMillis() - appStartTime}ms"
         )
         instance = this
+        com.rk.libcommons.application = this
+        Res.application = this
 
         // MMKV 必须最先初始化，用于检查隐私政策状态
         MMKV.initialize(this)
@@ -139,9 +141,6 @@ class App : BaseApplication() {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
                 EmbeddedTerminalRuntime.warmup(this@App)
-            }
-            runCatching {
-                OpenClawGatewayManager.restoreIfNeeded(this@App)
             }
         }
         OmniLog.d(

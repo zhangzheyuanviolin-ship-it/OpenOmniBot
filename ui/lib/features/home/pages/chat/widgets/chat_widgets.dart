@@ -7,6 +7,11 @@ import '../../command_overlay/widgets/chat_input_area.dart';
 
 enum ChatSurfaceMode { workspace, normal, openclaw }
 
+const List<ChatSurfaceMode> kVisibleChatSurfaceModes = <ChatSurfaceMode>[
+  ChatSurfaceMode.workspace,
+  ChatSurfaceMode.normal,
+];
+
 /// 聊天页面 AppBar
 class ChatAppBar extends StatelessWidget {
   final VoidCallback onMenuTap;
@@ -18,8 +23,10 @@ class ChatAppBar extends StatelessWidget {
   final ChatIslandDisplayLayer displayLayer;
   final VoidCallback? onInteracted;
   final ValueChanged<ChatIslandDisplayLayer> onDisplayLayerChanged;
+  final ValueChanged<BuildContext> onTerminalEnvironmentTap;
   final VoidCallback onTerminalTap;
   final VoidCallback onBrowserTap;
+  final bool hasTerminalEnvironment;
   final bool isBrowserEnabled;
   final String? activeToolType;
   final bool isCompanionModeEnabled;
@@ -36,8 +43,10 @@ class ChatAppBar extends StatelessWidget {
     this.displayLayer = ChatIslandDisplayLayer.mode,
     this.onInteracted,
     required this.onDisplayLayerChanged,
+    required this.onTerminalEnvironmentTap,
     required this.onTerminalTap,
     required this.onBrowserTap,
+    this.hasTerminalEnvironment = false,
     this.isBrowserEnabled = false,
     this.activeToolType,
     this.isCompanionModeEnabled = false,
@@ -80,8 +89,10 @@ class ChatAppBar extends StatelessWidget {
                     displayLayer: displayLayer,
                     onInteracted: onInteracted,
                     onDisplayLayerChanged: onDisplayLayerChanged,
+                    onTerminalEnvironmentTap: onTerminalEnvironmentTap,
                     onTerminalTap: onTerminalTap,
                     onBrowserTap: onBrowserTap,
+                    hasTerminalEnvironment: hasTerminalEnvironment,
                     isBrowserEnabled: isBrowserEnabled,
                     activeToolType: activeToolType,
                   ),
@@ -136,8 +147,10 @@ class _ChatModeModelSwitcher extends StatefulWidget {
     required this.displayLayer,
     this.onInteracted,
     required this.onDisplayLayerChanged,
+    required this.onTerminalEnvironmentTap,
     required this.onTerminalTap,
     required this.onBrowserTap,
+    required this.hasTerminalEnvironment,
     required this.isBrowserEnabled,
     this.activeToolType,
   });
@@ -149,8 +162,10 @@ class _ChatModeModelSwitcher extends StatefulWidget {
   final ChatIslandDisplayLayer displayLayer;
   final VoidCallback? onInteracted;
   final ValueChanged<ChatIslandDisplayLayer> onDisplayLayerChanged;
+  final ValueChanged<BuildContext> onTerminalEnvironmentTap;
   final VoidCallback onTerminalTap;
   final VoidCallback onBrowserTap;
+  final bool hasTerminalEnvironment;
   final bool isBrowserEnabled;
   final String? activeToolType;
 
@@ -181,6 +196,13 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       'C5.9604 4.68775 8.7831 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 '
       '16.9706 21 12 21C11.5722 21 11.1513 20.9702 10.7394 20.9124"/>'
       '</svg>';
+  static const String _environmentIconSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+      'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+      'stroke-linecap="round" stroke-linejoin="round">'
+      '<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/>'
+      '<path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>'
+      '</svg>';
   static const Duration _switchDuration = Duration(milliseconds: 460);
   static const double _verticalSwitchThreshold = 10;
   static const double _verticalVelocityThreshold = 240;
@@ -189,6 +211,14 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
 
   double _verticalDragDelta = 0;
   double _horizontalDragDelta = 0;
+
+  int get _activeVisibleModeIndex {
+    final index = kVisibleChatSurfaceModes.indexOf(widget.activeMode);
+    if (index >= 0) {
+      return index;
+    }
+    return kVisibleChatSurfaceModes.indexOf(ChatSurfaceMode.normal);
+  }
 
   String get _modelLabel {
     final text = (widget.activeModelId ?? '').trim();
@@ -235,14 +265,14 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
     }
     final intent = _horizontalDragDelta + velocity * 0.015;
     _horizontalDragDelta = 0;
-    final currentIndex = ChatSurfaceMode.values.indexOf(widget.activeMode);
+    final currentIndex = _activeVisibleModeIndex;
     final delta = intent > 0 ? 1 : -1;
     final targetIndex = (currentIndex + delta).clamp(
       0,
-      ChatSurfaceMode.values.length - 1,
+      kVisibleChatSurfaceModes.length - 1,
     );
     widget.onInteracted?.call();
-    widget.onModeChanged(ChatSurfaceMode.values[targetIndex]);
+    widget.onModeChanged(kVisibleChatSurfaceModes[targetIndex]);
   }
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
@@ -306,9 +336,15 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       },
     );
     final toolLayerWidget = _ChatToolSlider(
+      environmentIconSvg: _environmentIconSvg,
       terminalIconSvg: _terminalIconSvg,
       browserIconSvg: _browserIconSvg,
       activeToolType: widget.activeToolType,
+      hasTerminalEnvironment: widget.hasTerminalEnvironment,
+      onTerminalEnvironmentTap: (anchorContext) {
+        widget.onInteracted?.call();
+        widget.onTerminalEnvironmentTap(anchorContext);
+      },
       isBrowserEnabled: widget.isBrowserEnabled,
       onTerminalTap: () {
         widget.onInteracted?.call();
@@ -395,18 +431,24 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
 }
 
 class _ChatToolSlider extends StatelessWidget {
+  final String environmentIconSvg;
   final String terminalIconSvg;
   final String browserIconSvg;
   final String? activeToolType;
+  final bool hasTerminalEnvironment;
+  final ValueChanged<BuildContext> onTerminalEnvironmentTap;
   final bool isBrowserEnabled;
   final VoidCallback onTerminalTap;
   final VoidCallback onBrowserTap;
   final VoidCallback? onInteracted;
 
   const _ChatToolSlider({
+    required this.environmentIconSvg,
     required this.terminalIconSvg,
     required this.browserIconSvg,
     this.activeToolType,
+    required this.hasTerminalEnvironment,
+    required this.onTerminalEnvironmentTap,
     this.isBrowserEnabled = false,
     required this.onTerminalTap,
     required this.onBrowserTap,
@@ -417,79 +459,124 @@ class _ChatToolSlider extends StatelessWidget {
   bool get _isTerminalActive => !_isBrowserActive;
 
   Alignment get _activeAlignment =>
-      _isBrowserActive ? Alignment.centerRight : Alignment.centerLeft;
+      _isBrowserActive ? Alignment.centerRight : Alignment.center;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 32,
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(999),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Stack(
+          children: [
+            AnimatedAlign(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              alignment: _activeAlignment,
+              child: FractionallySizedBox(
+                widthFactor: 1 / 3,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                    ),
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x291930D9),
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(child: _buildEnvironmentButton()),
+                Expanded(
+                  child: _buildToolSegment(
+                    key: const ValueKey('chat-island-terminal-button'),
+                    isSelected: _isTerminalActive,
+                    isEnabled: true,
+                    tooltip: '打开终端',
+                    onTap: onTerminalTap,
+                    child: SvgPicture.string(
+                      terminalIconSvg,
+                      width: 16,
+                      height: 16,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: _buildToolSegment(
+                    key: const ValueKey('chat-island-browser-button'),
+                    isSelected: _isBrowserActive,
+                    isEnabled: isBrowserEnabled,
+                    tooltip: isBrowserEnabled ? '打开当前会话浏览器' : '当前会话还没有可用的浏览器会话',
+                    onTap: onBrowserTap,
+                    child: SvgPicture.string(
+                      browserIconSvg,
+                      width: 16,
+                      height: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-      child: Stack(
-        children: [
-          AnimatedAlign(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            alignment: _activeAlignment,
-            child: FractionallySizedBox(
-              widthFactor: 0.5,
-              child: Container(
+    );
+  }
+
+  Widget _buildEnvironmentButton() {
+    return Builder(
+      builder: (anchorContext) {
+        return Tooltip(
+          message: '管理终端环境变量',
+          child: InkWell(
+            key: const ValueKey('chat-island-terminal-env-button'),
+            onTap: () {
+              onInteracted?.call();
+              onTerminalEnvironmentTap(anchorContext);
+            },
+            borderRadius: BorderRadius.circular(999),
+            child: SizedBox.expand(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
                 margin: const EdgeInsets.symmetric(horizontal: 1),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
-                  ),
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x291930D9),
-                      blurRadius: 10,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
+                ),
+                alignment: Alignment.center,
+                child: ColorFiltered(
+                  colorFilter: const ColorFilter.mode(
+                    Color(0xFF617390),
+                    BlendMode.srcIn,
+                  ),
+                  child: SvgPicture.string(
+                    environmentIconSvg,
+                    width: 15,
+                    height: 15,
+                  ),
                 ),
               ),
             ),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: _buildToolSegment(
-                  key: const ValueKey('chat-island-terminal-button'),
-                  isSelected: _isTerminalActive,
-                  isEnabled: true,
-                  tooltip: '打开终端',
-                  onTap: onTerminalTap,
-                  child: SvgPicture.string(
-                    terminalIconSvg,
-                    width: 16,
-                    height: 16,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: _buildToolSegment(
-                  key: const ValueKey('chat-island-browser-button'),
-                  isSelected: _isBrowserActive,
-                  isEnabled: isBrowserEnabled,
-                  tooltip: isBrowserEnabled ? '打开当前会话浏览器' : '当前会话还没有可用的浏览器会话',
-                  onTap: onBrowserTap,
-                  child: SvgPicture.string(
-                    browserIconSvg,
-                    width: 16,
-                    height: 16,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -568,28 +655,34 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
 
   double _dragDelta = 0;
 
+  int get _activeVisibleModeIndex {
+    final index = kVisibleChatSurfaceModes.indexOf(widget.activeMode);
+    if (index >= 0) {
+      return index;
+    }
+    return kVisibleChatSurfaceModes.indexOf(ChatSurfaceMode.normal);
+  }
+
   void _handleDragEnd({double velocity = 0}) {
     final intent = _dragDelta + velocity * 0.015;
     final shouldSwitch = _dragDelta.abs() > 14 || velocity.abs() > 250;
     if (shouldSwitch) {
-      final currentIndex = ChatSurfaceMode.values.indexOf(widget.activeMode);
+      final currentIndex = _activeVisibleModeIndex;
       final delta = intent > 0 ? 1 : -1;
       final targetIndex = (currentIndex + delta).clamp(
         0,
-        ChatSurfaceMode.values.length - 1,
+        kVisibleChatSurfaceModes.length - 1,
       );
-      widget.onChanged(ChatSurfaceMode.values[targetIndex]);
+      widget.onChanged(kVisibleChatSurfaceModes[targetIndex]);
     }
     _dragDelta = 0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final alignment = switch (widget.activeMode) {
-      ChatSurfaceMode.workspace => Alignment.centerLeft,
-      ChatSurfaceMode.normal => Alignment.center,
-      ChatSurfaceMode.openclaw => Alignment.centerRight,
-    };
+    final alignment = _activeVisibleModeIndex == 0
+        ? Alignment.centerLeft
+        : Alignment.centerRight;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragUpdate: (details) {
@@ -605,12 +698,12 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
         final box = context.findRenderObject() as RenderBox?;
         if (box == null || !box.hasSize) return;
         final local = box.globalToLocal(details.globalPosition);
-        final segmentWidth = box.size.width / ChatSurfaceMode.values.length;
+        final segmentWidth = box.size.width / kVisibleChatSurfaceModes.length;
         final targetIndex = (local.dx / segmentWidth).floor().clamp(
           0,
-          ChatSurfaceMode.values.length - 1,
+          kVisibleChatSurfaceModes.length - 1,
         );
-        widget.onChanged(ChatSurfaceMode.values[targetIndex]);
+        widget.onChanged(kVisibleChatSurfaceModes[targetIndex]);
       },
       child: Container(
         height: 32,
@@ -626,7 +719,7 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
               curve: Curves.easeOutCubic,
               alignment: alignment,
               child: FractionallySizedBox(
-                widthFactor: 1 / 3,
+                widthFactor: 1 / kVisibleChatSurfaceModes.length,
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 1),
                   decoration: BoxDecoration(
@@ -664,16 +757,6 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
                     isSelected: widget.activeMode == ChatSurfaceMode.normal,
                     child: SvgPicture.string(
                       _normalChatIconSvg,
-                      width: 16,
-                      height: 16,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: _buildModeIcon(
-                    isSelected: widget.activeMode == ChatSurfaceMode.openclaw,
-                    child: SvgPicture.asset(
-                      'assets/home/openclaw.svg',
                       width: 16,
                       height: 16,
                     ),

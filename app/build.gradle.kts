@@ -17,7 +17,6 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.1"
-        manifestPlaceholders["operitDocumentsAuthority"] = "${applicationId}.documents.ubuntu"
 
         ndk {
             abiFilters.addAll(listOf("arm64-v8a"))
@@ -118,7 +117,9 @@ dependencies {
     implementation(project(":flutter"))
     implementation(project(":uikit"))
     implementation(project(":baselib"))
-    implementation(project(":operitTerminalCore"))
+    implementation(project(":core:main"))
+    implementation(project(":core:terminal-view"))
+    implementation(project(":core:terminal-emulator"))
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar","*.jar"))))
     implementation(project(":assists"))
 //    implementation(project(":lib"))

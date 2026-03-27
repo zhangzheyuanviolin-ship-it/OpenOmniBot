@@ -301,8 +301,8 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     }
 
     if (_isOpenClawSurface && _openClawBaseUrl.trim().isEmpty) {
-      _showSnackBar('请先使用 /deploy 或 /openclaw 完成配置');
-      unawaited(_showOpenClawDeployPanel());
+      _showSnackBar('请先使用 /openclaw 完成配置');
+      _showOpenClawCommandPanel(expand: true);
       return;
     }
 
@@ -373,11 +373,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     };
     _showOpenClawWaitingCard(aiMessageId);
     _syncRuntimeSnapshotForMode(_activeMode);
-    final gatewayReady = await _waitForOpenClawGatewayHealthy();
-    if (!gatewayReady) {
-      _showOpenClawGatewayInitializingResponse(aiMessageId);
-      return;
-    }
     _registerActiveTaskBinding(aiMessageId);
     final success = await AssistsMessageService.createChatTask(
       aiMessageId,
@@ -391,12 +386,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     );
     if (success) return;
     _runtimeCoordinator.unregisterTask(aiMessageId);
-    final gatewayStatus = await _safeGetOpenClawGatewayStatus();
-    if (gatewayStatus != null &&
-        _shouldWaitForLocalOpenClawGateway(gatewayStatus)) {
-      _showOpenClawGatewayInitializingResponse(aiMessageId);
-      return;
-    }
 
     try {
       throw Exception('createChatTask returned false');
@@ -418,124 +407,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         );
       });
     }
-  }
-
-  Future<OpenClawGatewayStatus?> _safeGetOpenClawGatewayStatus() async {
-    if (!_isLocalOpenClawGatewayBaseUrl(_openClawBaseUrl)) {
-      return null;
-    }
-    try {
-      final status = await getOpenClawGatewayStatus();
-      _openClawGatewayStatus = status;
-      return status;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  bool _isLocalOpenClawGatewayBaseUrl(String baseUrl) {
-    final normalized = baseUrl.trim();
-    if (normalized.isEmpty) return false;
-    final uri = Uri.tryParse(normalized);
-    final host = (uri?.host ?? '').trim().toLowerCase();
-    final isLoopbackHost =
-        host == '127.0.0.1' || host == 'localhost' || host == '::1';
-    if (!isLoopbackHost) {
-      final lower = normalized.toLowerCase();
-      return lower.contains('127.0.0.1:18789') ||
-          lower.contains('localhost:18789');
-    }
-    final port = uri?.hasPort == true ? uri!.port : 18789;
-    return port == 18789;
-  }
-
-  bool _shouldWaitForLocalOpenClawGateway(OpenClawGatewayStatus status) {
-    return status.installed &&
-        status.configured &&
-        !status.legacyConfigNeedsRedeploy &&
-        !status.healthy;
-  }
-
-  void _showOpenClawGatewayInitializingToast({bool force = false}) {
-    final now = DateTime.now();
-    if (!force &&
-        _lastOpenClawGatewayInitToastAt != null &&
-        now.difference(_lastOpenClawGatewayInitToastAt!) <
-            _ChatPageStateBase._openClawGatewayInitToastCooldown) {
-      return;
-    }
-    _lastOpenClawGatewayInitToastAt = now;
-    showToast(
-      kOpenClawGatewayInitializingToastMessage,
-      type: ToastType.info,
-      duration: const Duration(seconds: 2),
-    );
-  }
-
-  Future<bool> _waitForOpenClawGatewayHealthy() async {
-    final initialStatus = await _safeGetOpenClawGatewayStatus();
-    if (initialStatus == null) {
-      return true;
-    }
-    if (!_shouldWaitForLocalOpenClawGateway(initialStatus)) {
-      return true;
-    }
-
-    _showOpenClawGatewayInitializingToast(force: true);
-    try {
-      await startOpenClawGateway(forceRestart: false);
-    } catch (_) {}
-
-    final deadline = DateTime.now().add(
-      _ChatPageStateBase._openClawGatewayReadyTimeout,
-    );
-    while (mounted && DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(
-        _ChatPageStateBase._openClawGatewayReadyPollInterval,
-      );
-      if (!mounted) return false;
-      final status = await _safeGetOpenClawGatewayStatus();
-      if (status == null) {
-        continue;
-      }
-      if (status.healthy) {
-        return true;
-      }
-      if (!_shouldWaitForLocalOpenClawGateway(status)) {
-        return false;
-      }
-    }
-    return false;
-  }
-
-  void _showOpenClawGatewayInitializingResponse(String aiMessageId) {
-    if (!mounted) return;
-    _showOpenClawGatewayInitializingToast();
-    _removeOpenClawWaitingCard(aiMessageId);
-    setState(() {
-      _isAiResponding = false;
-      removeLatestLoadingIfExists();
-      final content = <String, dynamic>{
-        'text': kOpenClawGatewayInitializingMessage,
-        'id': aiMessageId,
-      };
-      final index = _messages.indexWhere((msg) => msg.id == aiMessageId);
-      if (index == -1) {
-        _messages.insert(
-          0,
-          ChatMessageModel(id: aiMessageId, type: 1, user: 2, content: content),
-        );
-      } else {
-        _messages[index] = _messages[index].copyWith(
-          content: content,
-          isError: false,
-          isLoading: false,
-        );
-      }
-    });
-    unawaited(
-      persistConversationSnapshot(generateSummary: false, markComplete: true),
-    );
   }
 
   @override
@@ -573,6 +444,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         conversationId: _currentConversationId,
         conversationMode: activeConversationModeValue.storageValue,
         modelOverride: _buildAgentModelOverridePayload(),
+        terminalEnvironment: _buildAgentTerminalEnvironmentPayload(),
       );
       if (!success) {
         _runtimeCoordinator.unregisterTask(aiMessageId);

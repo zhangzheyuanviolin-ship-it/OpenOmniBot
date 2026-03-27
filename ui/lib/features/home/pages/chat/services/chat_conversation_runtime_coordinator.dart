@@ -97,6 +97,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         '应用列表读取权限': kInstalledAppsPermissionId,
       };
 
+  String _agentTextBaseId(String taskId) => '$taskId-text';
+
   final Map<String, ChatConversationRuntimeState> _runtimes =
       <String, ChatConversationRuntimeState>{};
   final Map<String, _TaskBinding> _taskBindings = <String, _TaskBinding>{};
@@ -482,12 +484,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       isError = true;
       isSummarizing = false;
       runtime.currentAiMessages.remove(taskId);
-    } else if (isErrorMessage &&
-        _isOpenClawGatewayInitializingError(runtime, content)) {
-      messageText = kOpenClawGatewayInitializingMessage;
-      isError = false;
-      isSummarizing = false;
-      runtime.currentAiMessages.remove(taskId);
     } else if (isErrorMessage) {
       messageText = kNetworkErrorMessage;
       isError = true;
@@ -682,7 +678,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     _updateToolLayerState(runtime, event);
 
-    _clearPendingAgentTextIfNeeded(runtime, taskId);
+    _finalizePendingAgentTextIfNeeded(runtime, taskId);
     runtime.currentThinkingStage = ThinkingStage.toolCall.value;
     runtime.toolCardSequence += 1;
     runtime.activeToolCardId = '$taskId-tool-${runtime.toolCardSequence}';
@@ -785,7 +781,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (resolvedTaskId == null || resolvedTaskId != taskId) return;
 
-    final aiTextMessageId = '$taskId-text';
+    final aiTextMessageId =
+        _resolvePendingAgentTextMessageId(runtime, taskId) ??
+        _nextAgentTextMessageId(runtime, taskId);
     final index = runtime.messages.indexWhere(
       (msg) => msg.id == aiTextMessageId,
     );
@@ -855,7 +853,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       );
     }
 
-    final textId = '$taskId-text';
+    final textId =
+        _resolvePendingAgentTextMessageId(runtime, taskId) ??
+        _nextAgentTextMessageId(runtime, taskId);
     final index = runtime.messages.indexWhere((msg) => msg.id == textId);
     if (index == -1) {
       runtime.messages.insert(
@@ -942,7 +942,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           !hasUserVisibleOutput &&
           !hasVisibleOutput;
       if (shouldInjectFallback) {
-        final fallbackId = '$taskId-text';
+        final fallbackId = _nextAgentTextMessageId(runtime, taskId);
         final index = runtime.messages.indexWhere(
           (msg) => msg.id == fallbackId,
         );
@@ -1011,7 +1011,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       );
     }
 
-    final textId = '$taskId-text';
+    final textId =
+        _resolvePendingAgentTextMessageId(runtime, taskId) ??
+        _nextAgentTextMessageId(runtime, taskId);
     final message = error.trim().isEmpty
         ? '暂时无法生成回复，请重试。'
         : '暂时无法生成回复，请重试。${error.trim()}';
@@ -1033,6 +1035,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         isError: true,
       );
     }
+    runtime.pendingAgentTextTaskId = null;
     runtime.isAiResponding = false;
     runtime.currentDispatchTaskId = null;
     clearConversationRuntimeSession(
@@ -1089,7 +1092,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       mode: binding.mode,
     );
 
-    final textMessageId = '$taskId-text';
+    final textMessageId = _nextAgentTextMessageId(runtime, taskId);
     final cardMessageId = '$taskId-permission';
     runtime.messages.insert(
       0,
@@ -1367,13 +1370,71 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     return exists ? baseId : null;
   }
 
-  void _clearPendingAgentTextIfNeeded(
+  String? _resolvePendingAgentTextMessageId(
     ChatConversationRuntimeState runtime,
     String taskId,
   ) {
-    if (runtime.pendingAgentTextTaskId != taskId) return;
-    final pendingTextMessageId = '$taskId-text';
-    runtime.messages.removeWhere((msg) => msg.id == pendingTextMessageId);
+    if (runtime.pendingAgentTextTaskId != taskId) return null;
+    for (final message in runtime.messages) {
+      if (_isAgentTextMessageForTask(message, taskId)) {
+        return message.id;
+      }
+    }
+    return null;
+  }
+
+  String _nextAgentTextMessageId(
+    ChatConversationRuntimeState runtime,
+    String taskId,
+  ) {
+    final baseId = _agentTextBaseId(taskId);
+    var maxSequence = 0;
+    for (final message in runtime.messages) {
+      final sequence = _agentTextMessageSequence(message.id, taskId);
+      if (sequence > maxSequence) {
+        maxSequence = sequence;
+      }
+    }
+    if (maxSequence == 0) {
+      return baseId;
+    }
+    return '$baseId-${maxSequence + 1}';
+  }
+
+  bool _isAgentTextMessageForTask(ChatMessageModel message, String taskId) {
+    if (message.type != 1 || message.user != 2) {
+      return false;
+    }
+    return _agentTextMessageSequence(message.id, taskId) > 0;
+  }
+
+  int _agentTextMessageSequence(String messageId, String taskId) {
+    final baseId = _agentTextBaseId(taskId);
+    if (messageId == baseId) {
+      return 1;
+    }
+    if (!messageId.startsWith('$baseId-')) {
+      return 0;
+    }
+    return int.tryParse(messageId.substring(baseId.length + 1)) ?? 0;
+  }
+
+  void _finalizePendingAgentTextIfNeeded(
+    ChatConversationRuntimeState runtime,
+    String taskId,
+  ) {
+    final pendingTextMessageId = _resolvePendingAgentTextMessageId(
+      runtime,
+      taskId,
+    );
+    if (pendingTextMessageId == null) {
+      runtime.pendingAgentTextTaskId = null;
+      return;
+    }
+    runtime.messages.removeWhere(
+      (msg) =>
+          msg.id == pendingTextMessageId && (msg.text?.trim().isEmpty ?? true),
+    );
     runtime.pendingAgentTextTaskId = null;
   }
 
@@ -1567,47 +1628,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   ) {
     final waitingCardId = '$taskId-openclaw-waiting';
     runtime.messages.removeWhere((msg) => msg.id == waitingCardId);
-  }
-
-  bool _isOpenClawGatewayInitializingError(
-    ChatConversationRuntimeState runtime,
-    String rawContent,
-  ) {
-    if (runtime.mode != kChatRuntimeModeOpenClaw) {
-      return false;
-    }
-    final payload = safeDecodeMap(rawContent);
-    final text = (payload['text'] ?? payload['message'] ?? rawContent)
-        .toString()
-        .trim()
-        .toLowerCase();
-    if (text.isEmpty) {
-      return false;
-    }
-
-    final hasOpenClawContext =
-        text.contains('openclaw') ||
-        text.contains('gateway') ||
-        text.contains('127.0.0.1') ||
-        text.contains('localhost') ||
-        text.contains('18789');
-    if (!hasOpenClawContext) {
-      return false;
-    }
-
-    return text.contains('econnrefused') ||
-        text.contains('connection refused') ||
-        text.contains('fetch failed') ||
-        text.contains('connect error') ||
-        text.contains('socket hang up') ||
-        text.contains('timeout') ||
-        text.contains('timed out') ||
-        text.contains('initializing') ||
-        text.contains('not ready') ||
-        text.contains('starting') ||
-        text.contains('restarting') ||
-        text.contains('初始化') ||
-        text.contains('启动中');
   }
 
   String _buildConversationHistoryText(List<ChatMessageModel> messages) {

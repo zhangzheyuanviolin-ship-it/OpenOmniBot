@@ -90,10 +90,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   @override
   Widget _buildSlashCommandPanel() {
     final visible =
-        _showSlashCommandPanel ||
         _showModelMentionPanel ||
         (_isOpenClawSurface &&
-            (_openClawPanelExpanded || _openClawDeployPanelExpanded));
+            (_showSlashCommandPanel || _openClawPanelExpanded));
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
       transitionBuilder: (child, animation) {
@@ -126,9 +125,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   ),
                 ],
               ),
-              child: _openClawDeployPanelExpanded
-                  ? _buildOpenClawDeployPanel()
-                  : _openClawPanelExpanded
+              child: _openClawPanelExpanded
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -171,37 +168,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   : _showModelMentionPanel
                   ? _buildModelMentionPanel()
                   : !_isOpenClawSurface
-                  ? Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFD),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        '请滑到右侧 OpenClaw 模式',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF64748B),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    )
+                  ? const SizedBox.shrink()
                   : Column(
                       children: [
-                        _buildOpenClawCommandRow(
-                          icon: Icons.cloud_download_rounded,
-                          iconColor: const Color(0xFF0F9D7A),
-                          title: '/deploy',
-                          subtitle: '一键部署到内嵌 Ubuntu 并自动接入当前模式',
-                          onTap: () {
-                            unawaited(_showOpenClawDeployPanel());
-                          },
-                        ),
-                        const SizedBox(height: 8),
                         _buildOpenClawCommandRow(
                           icon: Icons.link_rounded,
                           iconColor: const Color(0xFF2C7FEB),
@@ -353,8 +322,15 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                             onInteracted: _cancelNormalSurfaceModelReveal,
                             onDisplayLayerChanged:
                                 _handleChatIslandDisplayLayerChanged,
+                            onTerminalEnvironmentTap: (anchorContext) {
+                              unawaited(
+                                _openTerminalEnvironmentEditor(anchorContext),
+                              );
+                            },
                             onTerminalTap: _handleTerminalToolTap,
                             onBrowserTap: _handleBrowserToolTap,
+                            hasTerminalEnvironment:
+                                _terminalEnvironmentVariables.isNotEmpty,
                             isBrowserEnabled: _isBrowserSessionAvailable,
                             activeToolType: _lastAgentToolType,
                             isCompanionModeEnabled: _isCompanionModeEnabled,
@@ -384,9 +360,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                   children: [
                                     _buildWorkspaceSurfacePage(),
                                     _buildModeMessagePage(ChatPageMode.normal),
-                                    _buildModeMessagePage(
-                                      ChatPageMode.openclaw,
-                                    ),
                                   ],
                                 ),
                               ),

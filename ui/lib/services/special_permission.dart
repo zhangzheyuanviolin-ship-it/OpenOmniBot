@@ -118,127 +118,119 @@ class EmbeddedTerminalRuntimeStatus {
   }
 }
 
-class OpenClawDeployRequest {
-  const OpenClawDeployRequest({
-    required this.providerBaseUrl,
-    required this.providerApiKey,
-    required this.modelId,
-    required this.configJson,
-  });
+class EmbeddedTerminalSetupStatus {
+  const EmbeddedTerminalSetupStatus({required this.packages});
 
-  final String providerBaseUrl;
-  final String providerApiKey;
-  final String modelId;
-  final String configJson;
+  final Map<String, bool> packages;
 
-  Map<String, dynamic> toMap() {
-    return {
-      'providerBaseUrl': providerBaseUrl,
-      'providerApiKey': providerApiKey,
-      'modelId': modelId,
-      'configJson': configJson,
-    };
+  factory EmbeddedTerminalSetupStatus.fromMap(Map<dynamic, dynamic>? map) {
+    final rawPackages = map?['packages'];
+    final packages = <String, bool>{};
+    if (rawPackages is Map) {
+      for (final entry in rawPackages.entries) {
+        packages[entry.key.toString()] = entry.value == true;
+      }
+    }
+    return EmbeddedTerminalSetupStatus(packages: packages);
   }
 }
 
-class OpenClawDeployResult {
-  const OpenClawDeployResult({
-    required this.accepted,
-    required this.alreadyRunning,
-    required this.message,
+class EmbeddedTerminalSetupInventoryItem {
+  const EmbeddedTerminalSetupInventoryItem({
+    required this.ready,
+    required this.version,
   });
 
-  final bool accepted;
-  final bool alreadyRunning;
-  final String message;
+  final bool ready;
+  final String? version;
 
-  factory OpenClawDeployResult.fromMap(Map<dynamic, dynamic>? map) {
-    return OpenClawDeployResult(
-      accepted: map?['accepted'] == true,
-      alreadyRunning: map?['alreadyRunning'] == true,
-      message: (map?['message'] as String? ?? '').trim(),
+  factory EmbeddedTerminalSetupInventoryItem.fromMap(
+    Map<dynamic, dynamic>? map,
+  ) {
+    return EmbeddedTerminalSetupInventoryItem(
+      ready: map?['ready'] == true,
+      version: (map?['version'] as String?)?.trim(),
     );
   }
 }
 
-class OpenClawDeploySnapshot {
-  const OpenClawDeploySnapshot({
+class EmbeddedTerminalSetupInventory {
+  const EmbeddedTerminalSetupInventory({required this.packages});
+
+  final Map<String, EmbeddedTerminalSetupInventoryItem> packages;
+
+  factory EmbeddedTerminalSetupInventory.fromMap(Map<dynamic, dynamic>? map) {
+    final rawPackages = map?['packages'];
+    final packages = <String, EmbeddedTerminalSetupInventoryItem>{};
+    if (rawPackages is Map) {
+      for (final entry in rawPackages.entries) {
+        packages[entry.key
+            .toString()] = EmbeddedTerminalSetupInventoryItem.fromMap(
+          entry.value is Map
+              ? Map<dynamic, dynamic>.from(entry.value as Map)
+              : const <dynamic, dynamic>{},
+        );
+      }
+    }
+    return EmbeddedTerminalSetupInventory(packages: packages);
+  }
+}
+
+class EmbeddedTerminalSetupResult {
+  const EmbeddedTerminalSetupResult({
+    required this.success,
+    required this.message,
+    required this.output,
+  });
+
+  final bool success;
+  final String message;
+  final String output;
+
+  factory EmbeddedTerminalSetupResult.fromMap(Map<dynamic, dynamic>? map) {
+    return EmbeddedTerminalSetupResult(
+      success: map?['success'] == true,
+      message: (map?['message'] as String? ?? '').trim(),
+      output: (map?['output'] as String? ?? '').trim(),
+    );
+  }
+}
+
+class EmbeddedTerminalSetupSessionSnapshot {
+  const EmbeddedTerminalSetupSessionSnapshot({
+    required this.sessionId,
     required this.running,
     required this.completed,
     required this.success,
-    required this.progress,
-    required this.stage,
-    required this.logLines,
-    required this.gatewayBaseUrl,
-    required this.gatewayToken,
-    required this.errorMessage,
+    required this.message,
+    required this.selectedPackageIds,
   });
 
+  final String? sessionId;
   final bool running;
   final bool completed;
   final bool? success;
-  final double progress;
-  final String stage;
-  final List<String> logLines;
-  final String? gatewayBaseUrl;
-  final String? gatewayToken;
-  final String? errorMessage;
+  final String message;
+  final List<String> selectedPackageIds;
 
-  factory OpenClawDeploySnapshot.fromMap(Map<dynamic, dynamic>? map) {
-    final rawLogLines = map?['logLines'];
-    return OpenClawDeploySnapshot(
+  bool get hasSession => (sessionId ?? '').trim().isNotEmpty;
+
+  factory EmbeddedTerminalSetupSessionSnapshot.fromMap(
+    Map<dynamic, dynamic>? map,
+  ) {
+    final rawSelectedPackageIds = map?['selectedPackageIds'];
+    return EmbeddedTerminalSetupSessionSnapshot(
+      sessionId: (map?['sessionId'] as String?)?.trim(),
       running: map?['running'] == true,
       completed: map?['completed'] == true,
       success: map?['success'] as bool?,
-      progress: ((map?['progress'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 1.0),
-      stage: (map?['stage'] as String? ?? '').trim(),
-      logLines: rawLogLines is List
-          ? rawLogLines.map((item) => item.toString()).toList(growable: false)
+      message: (map?['message'] as String? ?? '').trim(),
+      selectedPackageIds: rawSelectedPackageIds is List
+          ? rawSelectedPackageIds
+                .map((item) => item.toString())
+                .where((item) => item.trim().isNotEmpty)
+                .toList(growable: false)
           : const <String>[],
-      gatewayBaseUrl: (map?['gatewayBaseUrl'] as String?)?.trim(),
-      gatewayToken: (map?['gatewayToken'] as String?)?.trim(),
-      errorMessage: (map?['errorMessage'] as String?)?.trim(),
-    );
-  }
-}
-
-class OpenClawGatewayStatus {
-  const OpenClawGatewayStatus({
-    required this.installed,
-    required this.configured,
-    required this.autoStartEnabled,
-    required this.running,
-    required this.healthy,
-    required this.restarting,
-    required this.dashboardUrl,
-    required this.lastError,
-    required this.legacyConfigNeedsRedeploy,
-    required this.uptimeSeconds,
-  });
-
-  final bool installed;
-  final bool configured;
-  final bool autoStartEnabled;
-  final bool running;
-  final bool healthy;
-  final bool restarting;
-  final String? dashboardUrl;
-  final String? lastError;
-  final bool legacyConfigNeedsRedeploy;
-  final int? uptimeSeconds;
-
-  factory OpenClawGatewayStatus.fromMap(Map<dynamic, dynamic>? map) {
-    return OpenClawGatewayStatus(
-      installed: map?['installed'] == true,
-      configured: map?['configured'] == true,
-      autoStartEnabled: map?['autoStartEnabled'] == true,
-      running: map?['running'] == true,
-      healthy: map?['healthy'] == true,
-      restarting: map?['restarting'] == true,
-      dashboardUrl: (map?['dashboardUrl'] as String?)?.trim(),
-      lastError: (map?['lastError'] as String?)?.trim(),
-      legacyConfigNeedsRedeploy: map?['legacyConfigNeedsRedeploy'] == true,
-      uptimeSeconds: (map?['uptimeSeconds'] as num?)?.toInt(),
     );
   }
 }
@@ -266,48 +258,61 @@ Future<EmbeddedTerminalRuntimeStatus> getEmbeddedTerminalRuntimeStatus() async {
   return EmbeddedTerminalRuntimeStatus.fromMap(result ?? const {});
 }
 
-Future<OpenClawDeployResult> startOpenClawDeploy(
-  OpenClawDeployRequest request,
+Future<EmbeddedTerminalSetupStatus> getEmbeddedTerminalSetupStatus() async {
+  final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
+    'getEmbeddedTerminalSetupStatus',
+  );
+  return EmbeddedTerminalSetupStatus.fromMap(result ?? const {});
+}
+
+Future<EmbeddedTerminalSetupInventory>
+getEmbeddedTerminalSetupInventory() async {
+  final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
+    'getEmbeddedTerminalSetupInventory',
+  );
+  return EmbeddedTerminalSetupInventory.fromMap(result ?? const {});
+}
+
+Future<EmbeddedTerminalSetupSessionSnapshot>
+getEmbeddedTerminalSetupSessionSnapshot() async {
+  final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
+    'getEmbeddedTerminalSetupSessionSnapshot',
+  );
+  return EmbeddedTerminalSetupSessionSnapshot.fromMap(result ?? const {});
+}
+
+Future<EmbeddedTerminalSetupResult> installEmbeddedTerminalPackages(
+  List<String> packageIds,
 ) async {
   final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
-    'startOpenClawDeploy',
-    request.toMap(),
+    'installEmbeddedTerminalPackages',
+    {'packageIds': packageIds},
   );
-  return OpenClawDeployResult.fromMap(result ?? const {});
+  return EmbeddedTerminalSetupResult.fromMap(result ?? const {});
 }
 
-Future<OpenClawDeploySnapshot> getOpenClawDeploySnapshot() async {
+Future<EmbeddedTerminalSetupSessionSnapshot> startEmbeddedTerminalSetupSession(
+  List<String> packageIds,
+) async {
   final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
-    'getOpenClawDeploySnapshot',
+    'startEmbeddedTerminalSetupSession',
+    {'packageIds': packageIds},
   );
-  return OpenClawDeploySnapshot.fromMap(result ?? const {});
+  return EmbeddedTerminalSetupSessionSnapshot.fromMap(result ?? const {});
 }
 
-Future<OpenClawGatewayStatus> getOpenClawGatewayStatus() async {
-  final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
-    'getOpenClawGatewayStatus',
-  );
-  return OpenClawGatewayStatus.fromMap(result ?? const {});
+Future<void> dismissEmbeddedTerminalSetupSession() async {
+  await spePermission.invokeMethod<void>('dismissEmbeddedTerminalSetupSession');
 }
 
-Future<void> setOpenClawGatewayAutoStart(bool enabled) async {
-  await spePermission.invokeMethod<void>('setOpenClawGatewayAutoStart', {
-    'enabled': enabled,
+Future<void> openNativeTerminal({
+  bool openSetup = false,
+  List<String> setupPackageIds = const <String>[],
+}) async {
+  await spePermission.invokeMethod<void>('openNativeTerminal', {
+    'openSetup': openSetup,
+    'setupPackageIds': setupPackageIds,
   });
-}
-
-Future<void> startOpenClawGateway({bool forceRestart = false}) async {
-  await spePermission.invokeMethod<void>('startOpenClawGateway', {
-    'forceRestart': forceRestart,
-  });
-}
-
-Future<void> stopOpenClawGateway() async {
-  await spePermission.invokeMethod<void>('stopOpenClawGateway');
-}
-
-Future<void> openNativeTerminal() async {
-  await spePermission.invokeMethod<void>('openNativeTerminal');
 }
 
 /// 检查无障碍权限，如果没有权限则弹出授权对话框

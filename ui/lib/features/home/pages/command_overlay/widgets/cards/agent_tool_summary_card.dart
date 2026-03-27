@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail_gesture_gate.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/terminal_output_utils.dart';
@@ -110,6 +112,7 @@ class _AgentToolSummaryCardState extends State<AgentToolSummaryCard> {
     final resultPreviewJson = (widget.cardData['resultPreviewJson'] ?? '')
         .toString();
     final terminalOutput = _resolveTerminalOutput(widget.cardData);
+    final terminalSessionId = widget.cardData['terminalSessionId']?.toString();
     final terminalStreamState = (widget.cardData['terminalStreamState'] ?? '')
         .toString();
     final workspaceId = widget.cardData['workspaceId']?.toString();
@@ -247,6 +250,7 @@ class _AgentToolSummaryCardState extends State<AgentToolSummaryCard> {
                                     const SizedBox(height: 10),
                                     _TerminalOutputBlock(
                                       content: terminalOutput,
+                                      terminalSessionId: terminalSessionId,
                                       streamState: terminalStreamState,
                                     ),
                                   ] else if (detailResultJson.isNotEmpty) ...[
@@ -1030,10 +1034,12 @@ class _ActionBlock extends StatelessWidget {
 
 class _TerminalOutputBlock extends StatelessWidget {
   final String content;
+  final String? terminalSessionId;
   final String streamState;
 
   const _TerminalOutputBlock({
     required this.content,
+    required this.terminalSessionId,
     required this.streamState,
   });
 
@@ -1068,6 +1074,18 @@ class _TerminalOutputBlock extends StatelessWidget {
       'fallback' => '未采集到实时输出，将展示最终终端结果。',
       _ => '暂无终端输出',
     };
+    final shouldUseNativeTerminalView =
+        !kIsWeb &&
+        !const bool.fromEnvironment('FLUTTER_TEST') &&
+        !WidgetsBinding.instance.runtimeType.toString().contains('Test') &&
+        defaultTargetPlatform == TargetPlatform.android &&
+        ((terminalSessionId?.isNotEmpty ?? false) || content.isNotEmpty);
+    final isLiveTerminalSession =
+        (terminalSessionId?.isNotEmpty ?? false) &&
+        (streamState == 'starting' || streamState == 'running');
+    final nativeTerminalViewKey = isLiveTerminalSession
+        ? 'agent_terminal_live_${terminalSessionId}_$streamState'
+        : 'agent_terminal_${terminalSessionId ?? "static"}_${streamState}_${content.hashCode}';
 
     return Column(
       key: _toolCardTerminalBlockKey,
@@ -1096,21 +1114,42 @@ class _TerminalOutputBlock extends StatelessWidget {
         const SizedBox(height: 6),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: const Color(0xFF0B1220),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0x1FFFFFFF)),
           ),
-          child: content.isNotEmpty
-              ? SelectableText.rich(
-                  AnsiTextSpanBuilder.build(content, terminalTextStyle),
-                )
-              : Text(
-                  placeholder,
-                  style: terminalTextStyle.copyWith(
-                    color: const Color(0xFFE5E7EB).withValues(alpha: 0.65),
+          child: shouldUseNativeTerminalView
+              ? SizedBox(
+                  height: 220,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: AndroidView(
+                      key: ValueKey<String>(nativeTerminalViewKey),
+                      viewType:
+                          'cn.com.omnimind.bot/embedded_terminal_view',
+                      creationParams: <String, dynamic>{
+                        'sessionId': terminalSessionId ?? '',
+                        'transcript': content,
+                      },
+                      creationParamsCodec: const StandardMessageCodec(),
+                    ),
                   ),
+                )
+              : Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: content.isNotEmpty
+                      ? SelectableText.rich(
+                          AnsiTextSpanBuilder.build(content, terminalTextStyle),
+                        )
+                      : Text(
+                          placeholder,
+                          style: terminalTextStyle.copyWith(
+                            color: const Color(
+                              0xFFE5E7EB,
+                            ).withValues(alpha: 0.65),
+                          ),
+                        ),
                 ),
         ),
       ],

@@ -3,7 +3,6 @@ package cn.com.omnimind.bot.terminal
 import android.content.Context
 import android.os.Build
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
-import cn.com.omnimind.bot.openclaw.OpenClawRuntimeSupport
 import cn.com.omnimind.bot.termux.TermuxCommandBuilder
 import cn.com.omnimind.bot.termux.TermuxLiveUpdate
 import com.ai.assistance.operit.terminal.TerminalManager
@@ -107,22 +106,23 @@ object EmbeddedTerminalRuntime {
     private const val KEY_BASE_PACKAGE_VERSION = "base_package_version"
     private const val BASE_PACKAGE_VERSION = 2
     private const val SESSION_DONE_PREFIX = "__OMNIBOT_SESSION_DONE__"
-    private const val DEFAULT_CURRENT_DIRECTORY = "/root"
+    private const val DEFAULT_CURRENT_DIRECTORY = AgentWorkspaceManager.SHELL_ROOT_PATH
     private const val BASE_PACKAGE_READY_MARKER = "__OMNIBOT_BASE_PACKAGES_READY__"
     private const val BASE_PACKAGE_MISSING_MARKER = "__OMNIBOT_BASE_PACKAGES_MISSING__"
     private const val BASE_PACKAGE_NODE_VERSION_MARKER = "__OMNIBOT_NODE_VERSION__"
     private const val BASE_PACKAGE_PNPM_VERSION_MARKER = "__OMNIBOT_PNPM_VERSION__"
     private const val NODE_MIN_MAJOR = 22
+    private val terminalEnvKeyPattern = Regex("^[A-Za-z_][A-Za-z0-9_]*$")
 
     private val sessionHandles = ConcurrentHashMap<String, SessionHandle>()
     private val packageInstallMutex = Mutex()
     private val requiredCliCommands = listOf(
+        "bash",
         "curl",
         "fuser",
         "git",
         "node",
         "npm",
-        "pipx",
         "pkill",
         "python",
         "python3",
@@ -140,27 +140,29 @@ object EmbeddedTerminalRuntime {
     )
 
     private val basePackageBootstrapCommand = """
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update &&
-        apt-get install -y \
+        export PATH="${'$'}HOME/.local/bin:${'$'}PATH"
+        apk update &&
+        apk add --no-cache \
+          bash \
           ca-certificates \
           curl \
+          gcompat \
           git \
+          glib \
           nodejs \
           npm \
-          pipx \
           procps \
           psmisc \
-          python-is-python3 \
           python3 \
-          python3-pip \
-          python3-venv \
+          py3-pip \
+          py3-virtualenv \
           ripgrep \
           tmux \
-          xz-utils && \
-        export PATH="${'$'}HOME/.local/bin:${'$'}PATH" && \
+          xz && \
+        ln -sf /usr/bin/python3 /usr/local/bin/python || true && \
+        python3 -m pip install --upgrade pip >/dev/null 2>&1 || true && \
+        python3 -m pip install --upgrade uv >/dev/null 2>&1 || true && \
         npm install -g pnpm --no-audit --no-fund >/dev/null 2>&1 || true && \
-        pipx install uv --force && \
         if [ -x "${'$'}HOME/.local/bin/uv" ]; then ln -sf "${'$'}HOME/.local/bin/uv" /usr/local/bin/uv; fi && \
         if [ -x "${'$'}HOME/.local/bin/uvx" ]; then ln -sf "${'$'}HOME/.local/bin/uvx" /usr/local/bin/uvx; fi
     """.trimIndent()
@@ -190,7 +192,7 @@ object EmbeddedTerminalRuntime {
                 runtimeReady = false,
                 basePackagesReady = false,
                 missingCommands = emptyList(),
-                message = "当前设备 ABI 不受支持，内嵌 Ubuntu 终端仅支持 arm64-v8a。",
+                message = "当前设备 ABI 不受支持，内嵌 Alpine 终端仅支持 arm64-v8a。",
                 nodeReady = false,
                 nodeVersion = null,
                 nodeMinMajor = NODE_MIN_MAJOR,
@@ -210,7 +212,7 @@ object EmbeddedTerminalRuntime {
                 runtimeReady = false,
                 basePackagesReady = false,
                 missingCommands = emptyList(),
-                message = environmentStatus.message.ifBlank { "内嵌 Ubuntu 终端初始化失败。" },
+                message = environmentStatus.message.ifBlank { "内嵌 Alpine 终端初始化失败。" },
                 nodeReady = false,
                 nodeVersion = null,
                 nodeMinMajor = NODE_MIN_MAJOR,
@@ -239,12 +241,11 @@ object EmbeddedTerminalRuntime {
         val missingCommands = probeResult.missingCommands
         if (missingCommands.isEmpty()) {
             markBasePackagesReady(context)
-            ensureOpenClawCompatRuntime(context)
             val readyMessage =
                 if (probeResult.nodeReady && probeResult.pnpmReady) {
-                    "内嵌 Ubuntu 终端和基础 Agent CLI 包均已就绪。"
+                    "内嵌 Alpine 终端和基础 Agent CLI 包均已就绪。"
                 } else {
-                    "内嵌 Ubuntu 终端和基础 Agent CLI 包已就绪；Node.js/PNPM 状态可在环境页查看。"
+                    "内嵌 Alpine 终端和基础 Agent CLI 包已就绪；Node.js/PNPM 状态可在环境页查看。"
                 }
             return RuntimeReadinessStatus(
                 supported = true,
@@ -284,14 +285,14 @@ object EmbeddedTerminalRuntime {
                 onProgress,
                 EnvironmentProgress(
                     kind = EnvironmentProgress.Kind.ERROR,
-                    message = "当前设备 ABI 不受支持，内嵌 Ubuntu 终端仅支持 arm64-v8a。"
+                    message = "当前设备 ABI 不受支持，内嵌 Alpine 终端仅支持 arm64-v8a。"
                 )
             )
             return EnvironmentStatus(
                 success = false,
                 initialized = false,
                 basePackagesReady = false,
-                message = "当前设备 ABI 不受支持，内嵌 Ubuntu 终端仅支持 arm64-v8a。"
+                message = "当前设备 ABI 不受支持，内嵌 Alpine 终端仅支持 arm64-v8a。"
             )
         }
 
@@ -329,28 +330,27 @@ object EmbeddedTerminalRuntime {
                 onProgress,
                 EnvironmentProgress(
                     kind = EnvironmentProgress.Kind.ERROR,
-                    message = "内嵌 Ubuntu 终端初始化失败。"
+                    message = "内嵌 Alpine 终端初始化失败。"
                 )
             )
             return EnvironmentStatus(
                 success = false,
                 initialized = false,
                 basePackagesReady = isBasePackagesReady(context),
-                message = "内嵌 Ubuntu 终端初始化失败。"
+                message = "内嵌 Alpine 终端初始化失败。"
             )
         }
 
         if (!installBasePackages) {
             val basePackagesReady = isBasePackagesReady(context)
-            ensureOpenClawCompatRuntime(context)
             emitEnvironmentProgress(
                 onProgress,
                 EnvironmentProgress(
                     kind = EnvironmentProgress.Kind.STATUS,
                     message = if (basePackagesReady) {
-                        "内嵌 Ubuntu 终端已就绪。"
+                        "内嵌 Alpine 终端已就绪。"
                     } else {
-                        "内嵌 Ubuntu 终端已就绪，基础 Agent CLI 包尚未完成预装。"
+                        "内嵌 Alpine 终端已就绪，基础 Agent CLI 包尚未完成预装。"
                     }
                 )
             )
@@ -359,9 +359,9 @@ object EmbeddedTerminalRuntime {
                 initialized = true,
                 basePackagesReady = basePackagesReady,
                 message = if (basePackagesReady) {
-                    "内嵌 Ubuntu 终端已就绪。"
+                    "内嵌 Alpine 终端已就绪。"
                 } else {
-                    "内嵌 Ubuntu 终端已就绪，基础 Agent CLI 包尚未完成预装。"
+                    "内嵌 Alpine 终端已就绪，基础 Agent CLI 包尚未完成预装。"
                 }
             )
         }
@@ -377,7 +377,6 @@ object EmbeddedTerminalRuntime {
             val preflightProbe = probeBasePackageCommands(context)
             if (preflightProbe.errorMessage == null && preflightProbe.missingCommands.isEmpty()) {
                 markBasePackagesReady(context)
-                ensureOpenClawCompatRuntime(context)
                 emitEnvironmentProgress(
                     onProgress,
                     EnvironmentProgress(
@@ -389,7 +388,7 @@ object EmbeddedTerminalRuntime {
                     success = true,
                     initialized = true,
                     basePackagesReady = true,
-                    message = "内嵌 Ubuntu 终端和基础 Agent CLI 包均已就绪。"
+                    message = "内嵌 Alpine 终端和基础 Agent CLI 包均已就绪。"
                 )
             }
 
@@ -439,7 +438,6 @@ object EmbeddedTerminalRuntime {
                 val postInstallProbe = probeBasePackageCommands(context)
                 if (postInstallProbe.errorMessage == null && postInstallProbe.missingCommands.isEmpty()) {
                     markBasePackagesReady(context)
-                    ensureOpenClawCompatRuntime(context)
                     emitEnvironmentProgress(
                         onProgress,
                         EnvironmentProgress(
@@ -451,7 +449,7 @@ object EmbeddedTerminalRuntime {
                         success = true,
                         initialized = true,
                         basePackagesReady = true,
-                        message = "内嵌 Ubuntu 终端和基础 Agent CLI 包均已就绪。"
+                        message = "内嵌 Alpine 终端和基础 Agent CLI 包均已就绪。"
                     )
                 }
                 val failureMessage = postInstallProbe.errorMessage
@@ -493,6 +491,7 @@ object EmbeddedTerminalRuntime {
         command: String,
         workingDirectory: String?,
         timeoutSeconds: Int,
+        environment: Map<String, String> = emptyMap(),
         onLiveUpdate: suspend (TermuxLiveUpdate) -> Unit = {}
     ): CommandResult {
         val status = ensureCommandEnvironmentReady(context) { progress ->
@@ -524,12 +523,16 @@ object EmbeddedTerminalRuntime {
         onLiveUpdate(
             TermuxLiveUpdate(
                 sessionId = liveSessionId,
-                summary = "正在执行内嵌 Ubuntu 终端命令",
+                summary = "正在执行内嵌 Alpine 终端命令",
                 streamState = "running"
             )
         )
 
-        val wrappedCommand = wrapOneShotCommand(command, workingDirectory)
+        val wrappedCommand = wrapOneShotCommand(
+            command = command,
+            workingDirectory = workingDirectory,
+            environment = environment
+        )
         val hiddenResult = terminalManager(context).executeHiddenCommand(
             command = wrappedCommand,
             executorKey = buildExecutorKey(workingDirectory),
@@ -577,7 +580,8 @@ object EmbeddedTerminalRuntime {
     suspend fun startSession(
         context: Context,
         requestedSessionId: String,
-        workingDirectory: String?
+        workingDirectory: String?,
+        environment: Map<String, String> = emptyMap()
     ): SessionStartResult {
         val status = ensureCommandEnvironmentReady(context)
         require(status.success) { status.message }
@@ -604,16 +608,19 @@ object EmbeddedTerminalRuntime {
             createdNewSession = true
         }
 
-        if (createdNewSession && !workingDirectory.isNullOrBlank()) {
+        val targetWorkingDirectory = workingDirectory?.trim().takeUnless { it.isNullOrBlank() }
+            ?: AgentWorkspaceManager.SHELL_ROOT_PATH
+        if (createdNewSession) {
             val cwdResult = executeSessionCommand(
                 context = context,
                 sessionId = requestedSessionId,
-                command = "cd ${TermuxCommandBuilder.quoteForShell(workingDirectory)}",
+                command = "cd ${TermuxCommandBuilder.quoteForShell(targetWorkingDirectory)}",
                 workingDirectory = null,
-                timeoutSeconds = 30
+                timeoutSeconds = 30,
+                environment = environment
             )
             require(cwdResult.completed && cwdResult.success) {
-                cwdResult.errorMessage ?: "无法切换到工作目录：$workingDirectory"
+                cwdResult.errorMessage ?: "无法切换到工作目录：$targetWorkingDirectory"
             }
         }
 
@@ -630,7 +637,8 @@ object EmbeddedTerminalRuntime {
         sessionId: String,
         command: String,
         workingDirectory: String?,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        environment: Map<String, String> = emptyMap()
     ): SessionCommandResult {
         val handle = sessionHandles[sessionId]
             ?: return SessionCommandResult(
@@ -678,7 +686,8 @@ object EmbeddedTerminalRuntime {
                     context = context,
                     handle = handle,
                     command = "cd ${TermuxCommandBuilder.quoteForShell(workingDirectory)}",
-                    timeoutSeconds = 30
+                    timeoutSeconds = 30,
+                    environment = environment
                 )
                 if (!cwdResult.completed || !cwdResult.success) {
                     return@withLock cwdResult.copy(sessionId = sessionId)
@@ -689,7 +698,8 @@ object EmbeddedTerminalRuntime {
                 context = context,
                 handle = handle,
                 command = command,
-                timeoutSeconds = timeoutSeconds
+                timeoutSeconds = timeoutSeconds,
+                environment = environment
             ).copy(sessionId = sessionId)
         }
     }
@@ -734,7 +744,8 @@ object EmbeddedTerminalRuntime {
         context: Context,
         handle: SessionHandle,
         command: String,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        environment: Map<String, String> = emptyMap()
     ): SessionCommandResult = coroutineScope {
         val manager = terminalManager(context)
         val commandId = UUID.randomUUID().toString()
@@ -751,7 +762,7 @@ object EmbeddedTerminalRuntime {
 
         manager.sendCommandToSession(
             sessionId = handle.terminalSessionId,
-            command = wrapPersistentSessionCommand(command, token),
+            command = wrapPersistentSessionCommand(command, token, environment),
             commandId = commandId
         )
 
@@ -784,9 +795,14 @@ object EmbeddedTerminalRuntime {
         )
     }
 
-    private fun wrapOneShotCommand(command: String, workingDirectory: String?): String {
+    private fun wrapOneShotCommand(
+        command: String,
+        workingDirectory: String?,
+        environment: Map<String, String>
+    ): String {
         val trimmedCommand = command.trim()
         val normalizedWorkingDirectory = workingDirectory?.trim().orEmpty()
+        val environmentExports = buildCommandEnvironmentExports(environment)
         return buildString {
             appendLine(buildPythonEnvironmentPrelude())
             if (normalizedWorkingDirectory.isNotBlank()) {
@@ -795,14 +811,22 @@ object EmbeddedTerminalRuntime {
                 appendLine(" || exit $?")
             }
             appendLine("__omni_prepare_python_env 0 || exit $?")
+            if (environmentExports.isNotBlank()) {
+                appendLine(environmentExports)
+            }
             append(trimmedCommand)
         }
     }
 
-    private fun wrapPersistentSessionCommand(command: String, token: String): String {
+    private fun wrapPersistentSessionCommand(
+        command: String,
+        token: String,
+        environment: Map<String, String>
+    ): String {
         val normalizedCommand = command.replace("\r\n", "\n").replace("\r", "\n")
         val tokenSuffix = token.replace("-", "")
         val heredocMarker = "__OMNIBOT_SESSION_${tokenSuffix}__"
+        val environmentExports = buildCommandEnvironmentExports(environment)
         return buildString {
             append("__omnibot_session_script=\"\${TMPDIR:-/tmp}/omni_session_")
             append(tokenSuffix)
@@ -813,6 +837,10 @@ object EmbeddedTerminalRuntime {
             append(buildPythonEnvironmentPrelude())
             append("\n")
             append("__omni_prepare_python_env 0 || return $?\n")
+            if (environmentExports.isNotBlank()) {
+                append(environmentExports)
+                append('\n')
+            }
             append(normalizedCommand)
             if (!normalizedCommand.endsWith("\n")) {
                 append('\n')
@@ -828,6 +856,25 @@ object EmbeddedTerminalRuntime {
             append(token)
             append(":%s\\n' \"\$__omnibot_session_rc\"\n")
         }
+    }
+
+    internal fun buildCommandEnvironmentExports(environment: Map<String, String>): String {
+        if (environment.isEmpty()) {
+            return ""
+        }
+        return buildString {
+            environment.forEach { (rawKey, rawValue) ->
+                val key = rawKey.trim()
+                if (key.isEmpty() || !terminalEnvKeyPattern.matches(key)) {
+                    return@forEach
+                }
+                append("export ")
+                append(key)
+                append("=")
+                append(TermuxCommandBuilder.quoteForShell(rawValue))
+                append('\n')
+            }
+        }.trimEnd()
     }
 
     internal fun buildPythonEnvironmentPrelude(): String = """
@@ -1105,20 +1152,8 @@ object EmbeddedTerminalRuntime {
     }
 
     private fun buildTranscript(session: TerminalSessionData): String {
-        val lines = session.ansiParser.getFullContent().map { row ->
-            buildString(row.size) {
-                row.forEach { terminalChar ->
-                    append(terminalChar.char)
-                }
-            }.trimEnd()
-        }.toMutableList()
-
-        while (lines.isNotEmpty() && lines.last().isBlank()) {
-            lines.removeAt(lines.lastIndex)
-        }
-
         return trimTerminalOutput(
-            sanitizeTerminalNoise(lines.joinToString("\n").trim('\n'))
+            sanitizeTerminalNoise(session.transcript.trim('\n'))
         )
     }
 
@@ -1141,12 +1176,6 @@ object EmbeddedTerminalRuntime {
             .edit()
             .putInt(KEY_BASE_PACKAGE_VERSION, BASE_PACKAGE_VERSION)
             .apply()
-    }
-
-    private fun ensureOpenClawCompatRuntime(context: Context) {
-        runCatching {
-            OpenClawRuntimeSupport.ensureRuntimeFiles(context)
-        }
     }
 
     private suspend fun ensureCommandEnvironmentReady(
@@ -1300,14 +1329,14 @@ object EmbeddedTerminalRuntime {
             result.error.isNotBlank() -> result.error
             else -> "未知错误"
         }
-        return "内嵌 Ubuntu 终端已初始化，但基础 Agent CLI 包安装失败：$details"
+        return "内嵌 Alpine 终端已初始化，但基础 Agent CLI 包安装失败：$details"
     }
 
     private fun buildMissingBasePackageFailureMessage(missingCommands: List<String>): String {
         if (missingCommands.isEmpty()) {
-            return "内嵌 Ubuntu 终端已初始化，但基础 Agent CLI 包安装后仍未通过校验。"
+            return "内嵌 Alpine 终端已初始化，但基础 Agent CLI 包安装后仍未通过校验。"
         }
-        return "内嵌 Ubuntu 终端已初始化，但基础 Agent CLI 包仍缺失：${missingCommands.joinToString(", ")}"
+        return "内嵌 Alpine 终端已初始化，但基础 Agent CLI 包仍缺失：${missingCommands.joinToString(", ")}"
     }
 
     private fun shouldSuppressTerminalLine(line: String): Boolean {

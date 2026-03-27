@@ -541,6 +541,12 @@ class AgentWorkspaceManager(
             "gif" -> "image/gif"
             "webp" -> "image/webp"
             "pdf" -> "application/pdf"
+            "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "docm" -> "application/vnd.ms-word.document.macroEnabled.12"
+            "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "xlsm" -> "application/vnd.ms-excel.sheet.macroEnabled.12"
+            "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            "pptm" -> "application/vnd.ms-powerpoint.presentation.macroEnabled.12"
             "mp3" -> "audio/mpeg"
             "m4a" -> "audio/mp4"
             "wav" -> "audio/wav"
@@ -560,6 +566,12 @@ class AgentWorkspaceManager(
                 mimeType == "application/x-ndjson" -> "code"
             mimeType == "text/html" -> "html"
             mimeType == "application/pdf" -> "pdf"
+            mimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+                mimeType == "application/vnd.ms-word.document.macroEnabled.12" -> "office_word"
+            mimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+                mimeType == "application/vnd.ms-excel.sheet.macroEnabled.12" -> "office_sheet"
+            mimeType == "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+                mimeType == "application/vnd.ms-powerpoint.presentation.macroEnabled.12" -> "office_slide"
             mimeType.startsWith("audio/") -> "audio"
             mimeType.startsWith("video/") -> "video"
             else -> "file"

@@ -10,12 +10,13 @@ data class TermuxCommandSpec(
     val executionMode: String = EXECUTION_MODE_TERMUX,
     val prootDistro: String? = null,
     val workingDirectory: String? = null,
-    val timeoutSeconds: Int = DEFAULT_TIMEOUT_SECONDS
+    val timeoutSeconds: Int = DEFAULT_TIMEOUT_SECONDS,
+    val environment: Map<String, String> = emptyMap()
 ) {
     companion object {
         const val EXECUTION_MODE_TERMUX = "termux"
         const val EXECUTION_MODE_PROOT = "proot"
-        const val DEFAULT_PROOT_DISTRO = "ubuntu"
+        const val DEFAULT_PROOT_DISTRO = "alpine"
         const val DEFAULT_TIMEOUT_SECONDS = 60
     }
 }
@@ -93,6 +94,7 @@ object TermuxCommandRunner {
             command = normalizedSpec.command,
             workingDirectory = normalizedSpec.workingDirectory,
             timeoutSeconds = normalizedSpec.timeoutSeconds,
+            environment = normalizedSpec.environment,
             onLiveUpdate = onLiveUpdate
         )
 

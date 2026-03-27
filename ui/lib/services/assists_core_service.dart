@@ -1069,6 +1069,7 @@ class AssistsMessageService {
     String? scheduledTaskTitle,
     bool? scheduleNotificationEnabled,
     Map<String, dynamic>? modelOverride,
+    Map<String, String>? terminalEnvironment,
   }) async {
     try {
       final args = <String, dynamic>{
@@ -1098,6 +1099,9 @@ class AssistsMessageService {
       }
       if (modelOverride != null) {
         args['modelOverride'] = modelOverride;
+      }
+      if (terminalEnvironment != null && terminalEnvironment.isNotEmpty) {
+        args['terminalEnvironment'] = terminalEnvironment;
       }
       final result = await assistCore.invokeMethod('createAgentTask', {
         ...args,

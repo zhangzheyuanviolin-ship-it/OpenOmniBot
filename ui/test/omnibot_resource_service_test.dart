@@ -38,6 +38,9 @@ void main() {
     final video = OmnibotResourceService.describePath(
       '/data/user/0/cn.com.omnimind.bot/workspace/video/demo.mp4',
     );
+    final office = OmnibotResourceService.describePath(
+      '/data/user/0/cn.com.omnimind.bot/workspace/docs/quarterly-report.docx',
+    );
     final document = OmnibotResourceService.describePath(
       '/data/user/0/cn.com.omnimind.bot/workspace/docs/spec.pdf',
     );
@@ -49,6 +52,15 @@ void main() {
     expect(video.shellPath, '/workspace/video/demo.mp4');
     expect(video.embedKind, 'video');
     expect(video.inlineRenderable, isTrue);
+
+    expect(office.shellPath, '/workspace/docs/quarterly-report.docx');
+    expect(office.previewKind, 'office_word');
+    expect(
+      office.mimeType,
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    expect(office.embedKind, 'office');
+    expect(office.inlineRenderable, isTrue);
 
     expect(document.shellPath, '/workspace/docs/spec.pdf');
     expect(document.embedKind, 'link');

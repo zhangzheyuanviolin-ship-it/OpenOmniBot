@@ -240,6 +240,23 @@ class OmnibotResourceService {
     return result == true;
   }
 
+  static Future<bool> shareFile({
+    required String sourcePath,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    await ensureWorkspacePathsLoaded();
+    if (!await _ensureWorkspaceStorageAccess()) {
+      return false;
+    }
+    final result = await _fileChannel.invokeMethod<dynamic>('shareFile', {
+      'sourcePath': sourcePath,
+      'fileName': fileName,
+      'mimeType': mimeType,
+    });
+    return result == true;
+  }
+
   static Future<bool> _ensureWorkspaceStorageAccess() async {
     final granted = await isWorkspaceStorageAccessGranted();
     if (granted) {
@@ -287,6 +304,7 @@ class OmnibotResourceService {
       'image' => 'image',
       'audio' => 'audio',
       'video' => 'video',
+      'office_word' || 'office_sheet' || 'office_slide' => 'office',
       _ => 'link',
     };
     return OmnibotResourceMetadata(
@@ -301,6 +319,12 @@ class OmnibotResourceService {
       embedKind: resolvedEmbedKind,
       inlineRenderable: resolvedEmbedKind != 'link',
     );
+  }
+
+  static bool isOfficePreviewKind(String previewKind) {
+    return previewKind == 'office_word' ||
+        previewKind == 'office_sheet' ||
+        previewKind == 'office_slide';
   }
 
   static String? resolveUriToPath(String uri) {
@@ -380,6 +404,15 @@ class OmnibotResourceService {
     if (_matchesAny(lower, const ['.png', '.jpg', '.jpeg', '.gif', '.webp'])) {
       return 'image';
     }
+    if (_matchesAny(lower, const ['.docx', '.docm'])) {
+      return 'office_word';
+    }
+    if (_matchesAny(lower, const ['.xlsx', '.xlsm'])) {
+      return 'office_sheet';
+    }
+    if (_matchesAny(lower, const ['.pptx', '.pptm'])) {
+      return 'office_slide';
+    }
     if (_matchesAny(lower, const ['.html', '.htm'])) {
       return 'html';
     }
@@ -422,6 +455,24 @@ class OmnibotResourceService {
   static String _guessMimeType(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.md')) return 'text/markdown';
+    if (lower.endsWith('.docx')) {
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    }
+    if (lower.endsWith('.docm')) {
+      return 'application/vnd.ms-word.document.macroEnabled.12';
+    }
+    if (lower.endsWith('.xlsx')) {
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
+    if (lower.endsWith('.xlsm')) {
+      return 'application/vnd.ms-excel.sheet.macroEnabled.12';
+    }
+    if (lower.endsWith('.pptx')) {
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    }
+    if (lower.endsWith('.pptm')) {
+      return 'application/vnd.ms-powerpoint.presentation.macroEnabled.12';
+    }
     if (lower.endsWith('.json')) return 'application/json';
     if (lower.endsWith('.jsonl')) return 'application/x-ndjson';
     if (lower.endsWith('.yaml') || lower.endsWith('.yml')) {

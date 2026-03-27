@@ -54,6 +54,7 @@ data class ArtifactRef(
             "image" -> "image"
             "audio" -> "audio"
             "video" -> "video"
+            "office_word", "office_sheet", "office_slide" -> "office"
             else -> "link"
         }
 

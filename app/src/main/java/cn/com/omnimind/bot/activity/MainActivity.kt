@@ -14,6 +14,7 @@ import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.AssistsUtil
 import cn.com.omnimind.bot.ui.halfScreen.HalfScreenListenerImpl
 import cn.com.omnimind.bot.ui.platformview.AgentBrowserPlatformViewFactory
+import cn.com.omnimind.bot.ui.platformview.EmbeddedTerminalPlatformViewFactory
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import kotlinx.coroutines.launch
@@ -80,6 +81,7 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         channelManager.configureFlutterEngine(flutterEngine)
         AgentBrowserPlatformViewFactory.registerWith(flutterEngine = flutterEngine)
+        EmbeddedTerminalPlatformViewFactory.registerWith(flutterEngine = flutterEngine)
 
         OmniLog.d(TAG, "MainActivity configureFlutterEngine cost: ${System.currentTimeMillis() - configStart}ms")
     }

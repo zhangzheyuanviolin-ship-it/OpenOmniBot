@@ -102,20 +102,20 @@ class SpecialPermissionChannel {
                         .getWorkspacePathSnapshot(result)
                     "getEmbeddedTerminalRuntimeStatus" -> specialPermissionManager!!
                         .getEmbeddedTerminalRuntimeStatus(result)
-                    "startOpenClawDeploy" -> specialPermissionManager!!
-                        .startOpenClawDeploy(call, result)
-                    "getOpenClawDeploySnapshot" -> specialPermissionManager!!
-                        .getOpenClawDeploySnapshot(result)
-                    "getOpenClawGatewayStatus" -> specialPermissionManager!!
-                        .getOpenClawGatewayStatus(result)
-                    "setOpenClawGatewayAutoStart" -> specialPermissionManager!!
-                        .setOpenClawGatewayAutoStart(call, result)
-                    "startOpenClawGateway" -> specialPermissionManager!!
-                        .startOpenClawGateway(call, result)
-                    "stopOpenClawGateway" -> specialPermissionManager!!
-                        .stopOpenClawGateway(result)
+                    "getEmbeddedTerminalSetupStatus" -> specialPermissionManager!!
+                        .getEmbeddedTerminalSetupStatus(result)
+                    "getEmbeddedTerminalSetupInventory" -> specialPermissionManager!!
+                        .getEmbeddedTerminalSetupInventory(result)
+                    "getEmbeddedTerminalSetupSessionSnapshot" -> specialPermissionManager!!
+                        .getEmbeddedTerminalSetupSessionSnapshot(result)
+                    "installEmbeddedTerminalPackages" -> specialPermissionManager!!
+                        .installEmbeddedTerminalPackages(call, result)
+                    "startEmbeddedTerminalSetupSession" -> specialPermissionManager!!
+                        .startEmbeddedTerminalSetupSession(call, result)
+                    "dismissEmbeddedTerminalSetupSession" -> specialPermissionManager!!
+                        .dismissEmbeddedTerminalSetupSession(result)
                     "openNativeTerminal" -> specialPermissionManager!!
-                        .openNativeTerminal(result)
+                        .openNativeTerminal(call, result)
                     "prepareTermuxLiveWrapper" -> specialPermissionManager!!
                         .prepareTermuxLiveWrapper(result)
                     "getEmbeddedTerminalInitSnapshot" -> specialPermissionManager!!

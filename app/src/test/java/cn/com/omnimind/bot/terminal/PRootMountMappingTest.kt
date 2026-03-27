@@ -27,7 +27,7 @@ class PRootMountMappingTest {
     fun mapLinuxPathToHostPathKeepsHomeDirDistinctFromWorkspace() {
         val hostPath = PRootMountMapping.mapLinuxPathToHostPath(
             linuxPath = "/data/user/0/cn.com.omnimind.bot/files/tmp.txt",
-            ubuntuRoot = File("/tmp/fake-rootfs"),
+            rootfsRoot = File("/tmp/fake-rootfs"),
             homeDir = "/data/user/0/cn.com.omnimind.bot/files",
             workspaceDir = "/data/user/0/cn.com.omnimind.bot/workspace",
             appDataDir = "/data/user/0/cn.com.omnimind.bot",

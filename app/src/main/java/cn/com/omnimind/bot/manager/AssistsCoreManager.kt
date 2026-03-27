@@ -102,6 +102,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         private const val MEMORY_GREETING_TOOL = "submit_memory_greeting"
         private const val DEFAULT_MEMORY_GREETING = "愿你今天也有温暖收获"
         private const val SUBAGENT_MODE = "subagent"
+        private val TERMINAL_ENV_KEY_PATTERN = Regex("^[A-Za-z_][A-Za-z0-9_]*$")
         private const val SCHEDULED_SUBAGENT_NOTIFICATION_CHANNEL =
             "scheduled_subagent_tasks_v1"
 
@@ -2681,6 +2682,22 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     /**
      * 创建 Agent 任务
      */
+    private fun parseTerminalEnvironmentMap(raw: Map<String, Any?>?): Map<String, String> {
+        if (raw.isNullOrEmpty()) {
+            return emptyMap()
+        }
+        val normalized = linkedMapOf<String, String>()
+        raw.forEach { (rawKey, rawValue) ->
+            val key = rawKey.trim()
+            if (key.isEmpty() || !TERMINAL_ENV_KEY_PATTERN.matches(key)) {
+                return@forEach
+            }
+            normalized.remove(key)
+            normalized[key] = rawValue?.toString() ?: ""
+        }
+        return normalized
+    }
+
     fun createAgentTask(call: MethodCall, result: MethodChannel.Result) {
         val taskId = (call.argument<String>("taskId") ?: "").trim()
         val userMessage = (call.argument<String>("userMessage") ?: "").toString()
@@ -2720,6 +2737,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 )
             }
         }
+        val terminalEnvironment = parseTerminalEnvironmentMap(
+            call.argument<Map<String, Any?>>("terminalEnvironment")
+        )
         if (taskId.isBlank()) {
             result.error("INVALID_ARGUMENTS", "taskId is empty", null)
             return
@@ -3103,6 +3123,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     conversationId,
                     resolvedConversationMode,
                     modelOverride,
+                    terminalEnvironment,
                     callback
                 )
 

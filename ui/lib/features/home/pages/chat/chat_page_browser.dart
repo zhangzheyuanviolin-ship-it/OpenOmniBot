@@ -9,6 +9,7 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
   static const double _kBrowserOverlayTopMargin = 64;
   static const double _kBrowserOverlayBottomMargin = 16;
   static const double _kPageSwipeThreshold = 18;
+  static const double _kRevealInterruptThreshold = 6;
 
   bool _isNormalChatListAtBottom() {
     final controller = _normalMessageScrollController;
@@ -51,7 +52,6 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
         _showSlashCommandPanel ||
         _showModelMentionPanel ||
         _openClawPanelExpanded ||
-        _openClawDeployPanelExpanded ||
         _isAiResponding ||
         _isCheckingExecutableTask ||
         _isExecutingTask) {
@@ -201,6 +201,11 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
       return;
     }
     _pageVerticalDragDelta += event.delta.dy;
+    if (_normalSurfaceModelRevealTimer != null &&
+        !_normalSurfaceModelRevealInterrupted &&
+        _pageVerticalDragDelta.abs() >= _kRevealInterruptThreshold) {
+      _interruptNormalSurfaceModelReveal();
+    }
     if (_isNewConversationPullTracking) {
       _updateNewConversationPullDistance(-_pageVerticalDragDelta);
     }

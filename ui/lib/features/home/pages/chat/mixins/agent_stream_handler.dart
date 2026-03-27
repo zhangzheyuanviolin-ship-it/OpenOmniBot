@@ -171,7 +171,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
     if (taskId == null) return;
 
-    _clearPendingAgentTextIfNeeded(taskId);
+    _finalizePendingAgentTextIfNeeded(taskId);
     currentThinkingStage = ThinkingStage.toolCall.value;
     _toolCardSequence += 1;
     _activeToolCardId = '$taskId-tool-$_toolCardSequence';
@@ -235,7 +235,9 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
     if (taskId == null) return;
 
-    final aiTextMessageId = '$taskId-text';
+    final aiTextMessageId =
+        _resolvePendingAgentTextMessageId(taskId) ??
+        _nextAgentTextMessageId(taskId);
     setState(() {
       final index = messages.indexWhere((msg) => msg.id == aiTextMessageId);
       if (index == -1) {
@@ -328,7 +330,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
             !hasUserVisibleOutput &&
             !hasVisibleOutput;
         if (shouldInjectFallback) {
-          final fallbackId = '$taskId-text';
+          final fallbackId = _nextAgentTextMessageId(taskId);
           final index = messages.indexWhere((msg) => msg.id == fallbackId);
           setState(() {
             if (index == -1) {
@@ -382,10 +384,12 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
       );
     }
 
-    final textId = '$taskId-text';
     final message = error.trim().isEmpty
         ? '抱歉，执行失败，请稍后重试。'
         : '抱歉，执行失败：${error.trim()}';
+    final textId =
+        _resolvePendingAgentTextMessageId(taskId) ??
+        _nextAgentTextMessageId(taskId);
     setState(() {
       final index = messages.indexWhere((msg) => msg.id == textId);
       if (index == -1) {
@@ -408,6 +412,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
       }
       isAiResponding = false;
     });
+    _pendingAgentTextTaskId = null;
 
     clearAgentStreamSessionState();
     resetDispatchState();
@@ -439,7 +444,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
 
     interruptActiveToolCard();
 
-    final textMessageId = '$taskId-text';
+    final textMessageId = _nextAgentTextMessageId(taskId);
     final cardMessageId = '$taskId-permission';
 
     setState(() {
@@ -487,6 +492,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
   }
 
   String _baseThinkingCardId(String taskId) => '$taskId-thinking';
+  String _agentTextBaseId(String taskId) => '$taskId-text';
 
   String? _resolveThinkingCardId(String taskId) {
     if (_activeThinkingCardId != null) {
@@ -495,6 +501,49 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     final baseId = _baseThinkingCardId(taskId);
     final exists = messages.any((msg) => msg.id == baseId);
     return exists ? baseId : null;
+  }
+
+  String? _resolvePendingAgentTextMessageId(String taskId) {
+    if (_pendingAgentTextTaskId != taskId) return null;
+    for (final message in messages) {
+      if (_isAgentTextMessageForTask(message, taskId)) {
+        return message.id;
+      }
+    }
+    return null;
+  }
+
+  String _nextAgentTextMessageId(String taskId) {
+    final baseId = _agentTextBaseId(taskId);
+    var maxSequence = 0;
+    for (final message in messages) {
+      final sequence = _agentTextMessageSequence(message.id, taskId);
+      if (sequence > maxSequence) {
+        maxSequence = sequence;
+      }
+    }
+    if (maxSequence == 0) {
+      return baseId;
+    }
+    return '$baseId-${maxSequence + 1}';
+  }
+
+  bool _isAgentTextMessageForTask(ChatMessageModel message, String taskId) {
+    if (message.type != 1 || message.user != 2) {
+      return false;
+    }
+    return _agentTextMessageSequence(message.id, taskId) > 0;
+  }
+
+  int _agentTextMessageSequence(String messageId, String taskId) {
+    final baseId = _agentTextBaseId(taskId);
+    if (messageId == baseId) {
+      return 1;
+    }
+    if (!messageId.startsWith('$baseId-')) {
+      return 0;
+    }
+    return int.tryParse(messageId.substring(baseId.length + 1)) ?? 0;
   }
 
   void _resetThinkingRoundState() {
@@ -537,11 +586,18 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     _activeToolCardId = null;
   }
 
-  void _clearPendingAgentTextIfNeeded(String taskId) {
-    if (_pendingAgentTextTaskId != taskId) return;
-    final pendingTextMessageId = '$taskId-text';
+  void _finalizePendingAgentTextIfNeeded(String taskId) {
+    final pendingTextMessageId = _resolvePendingAgentTextMessageId(taskId);
+    if (pendingTextMessageId == null) {
+      _pendingAgentTextTaskId = null;
+      return;
+    }
     setState(() {
-      messages.removeWhere((msg) => msg.id == pendingTextMessageId);
+      messages.removeWhere(
+        (msg) =>
+            msg.id == pendingTextMessageId &&
+            (msg.text?.trim().isEmpty ?? true),
+      );
     });
     _pendingAgentTextTaskId = null;
   }
