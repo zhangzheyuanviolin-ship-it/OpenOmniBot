@@ -29,9 +29,15 @@ class ConversationModel {
   final ConversationMode mode;
   final String title;
   final String? summary;
+  final String? contextSummary;
+  final int? contextSummaryCutoffEntryDbId;
+  final int contextSummaryUpdatedAt;
   final int status; // 0: 进行中, 1: 已完成
   final String? lastMessage;
   final int messageCount;
+  final int latestPromptTokens;
+  final int promptTokenThreshold;
+  final int latestPromptTokensUpdatedAt;
   final int createdAt;
   final int updatedAt;
 
@@ -40,9 +46,15 @@ class ConversationModel {
     this.mode = ConversationMode.normal,
     required this.title,
     this.summary,
+    this.contextSummary,
+    this.contextSummaryCutoffEntryDbId,
+    this.contextSummaryUpdatedAt = 0,
     required this.status,
     this.lastMessage,
     required this.messageCount,
+    this.latestPromptTokens = 0,
+    this.promptTokenThreshold = 128000,
+    this.latestPromptTokensUpdatedAt = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -53,9 +65,17 @@ class ConversationModel {
       mode: ConversationMode.fromStorageValue(json['mode'] as String?),
       title: json['title'] as String,
       summary: json['summary'] as String?,
+      contextSummary: json['contextSummary'] as String?,
+      contextSummaryCutoffEntryDbId:
+          (json['contextSummaryCutoffEntryDbId'] as num?)?.toInt(),
+      contextSummaryUpdatedAt: json['contextSummaryUpdatedAt'] as int? ?? 0,
       status: json['status'] as int? ?? 0,
       lastMessage: json['lastMessage'] as String?,
       messageCount: json['messageCount'] as int? ?? 0,
+      latestPromptTokens: json['latestPromptTokens'] as int? ?? 0,
+      promptTokenThreshold: json['promptTokenThreshold'] as int? ?? 128000,
+      latestPromptTokensUpdatedAt:
+          json['latestPromptTokensUpdatedAt'] as int? ?? 0,
       createdAt: json['createdAt'] as int? ?? 0,
       updatedAt: json['updatedAt'] as int? ?? 0,
     );
@@ -67,9 +87,15 @@ class ConversationModel {
       'mode': mode.storageValue,
       'title': title,
       'summary': summary,
+      'contextSummary': contextSummary,
+      'contextSummaryCutoffEntryDbId': contextSummaryCutoffEntryDbId,
+      'contextSummaryUpdatedAt': contextSummaryUpdatedAt,
       'status': status,
       'lastMessage': lastMessage,
       'messageCount': messageCount,
+      'latestPromptTokens': latestPromptTokens,
+      'promptTokenThreshold': promptTokenThreshold,
+      'latestPromptTokensUpdatedAt': latestPromptTokensUpdatedAt,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
@@ -80,9 +106,15 @@ class ConversationModel {
     ConversationMode? mode,
     String? title,
     String? summary,
+    String? contextSummary,
+    int? contextSummaryCutoffEntryDbId,
+    int? contextSummaryUpdatedAt,
     int? status,
     String? lastMessage,
     int? messageCount,
+    int? latestPromptTokens,
+    int? promptTokenThreshold,
+    int? latestPromptTokensUpdatedAt,
     int? createdAt,
     int? updatedAt,
   }) {
@@ -91,9 +123,18 @@ class ConversationModel {
       mode: mode ?? this.mode,
       title: title ?? this.title,
       summary: summary ?? this.summary,
+      contextSummary: contextSummary ?? this.contextSummary,
+      contextSummaryCutoffEntryDbId:
+          contextSummaryCutoffEntryDbId ?? this.contextSummaryCutoffEntryDbId,
+      contextSummaryUpdatedAt:
+          contextSummaryUpdatedAt ?? this.contextSummaryUpdatedAt,
       status: status ?? this.status,
       lastMessage: lastMessage ?? this.lastMessage,
       messageCount: messageCount ?? this.messageCount,
+      latestPromptTokens: latestPromptTokens ?? this.latestPromptTokens,
+      promptTokenThreshold: promptTokenThreshold ?? this.promptTokenThreshold,
+      latestPromptTokensUpdatedAt:
+          latestPromptTokensUpdatedAt ?? this.latestPromptTokensUpdatedAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -129,6 +170,14 @@ class ConversationModel {
   DateTime get updatedDate => DateTime.fromMillisecondsSinceEpoch(updatedAt);
 
   bool get isActive => status == 0;
+
+  double? get contextUsageRatio {
+    if (promptTokenThreshold <= 0) return null;
+    if (latestPromptTokensUpdatedAt <= 0 && latestPromptTokens <= 0) {
+      return null;
+    }
+    return latestPromptTokens / promptTokenThreshold;
+  }
 
   String get threadKey => '${mode.storageValue}:$id';
 }

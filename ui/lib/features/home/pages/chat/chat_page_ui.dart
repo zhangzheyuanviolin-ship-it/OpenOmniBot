@@ -1,5 +1,9 @@
 part of 'chat_page.dart';
 
+const int _kDefaultContextTokenThreshold = 128000;
+const int _kMinContextTokenThreshold = 10000;
+const int _kMaxContextTokenThreshold = 512000;
+
 mixin _ChatPageUiMixin on _ChatPageStateBase {
   bool get _showNewConversationPullIndicator =>
       _isNewConversationPullTracking || _newConversationPullDistance > 0;
@@ -419,6 +423,18 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                     ? _activeConversationModelOverrideSelection
                                           ?.modelId
                                     : null,
+                                contextUsageRatio:
+                                    _activeMode == ChatPageMode.normal
+                                    ? _currentConversation?.contextUsageRatio
+                                    : null,
+                                onTapContextUsageRing:
+                                    _activeMode == ChatPageMode.normal
+                                    ? _handleContextUsageRingTap
+                                    : null,
+                                onLongPressContextUsageRing:
+                                    _activeMode == ChatPageMode.normal
+                                    ? _handleContextUsageRingLongPress
+                                    : null,
                                 onClearSelectedModelOverride:
                                     _activeMode == ChatPageMode.normal &&
                                         _activeConversationModelOverrideSelection !=
@@ -464,6 +480,248 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _handleContextUsageRingTap() {
+    final conversation = _currentConversation;
+    if (conversation == null) {
+      return;
+    }
+    if (conversation.promptTokenThreshold <= 0) {
+      _showSnackBar('当前对话还没有可用的上下文阈值');
+      return;
+    }
+    if (conversation.latestPromptTokensUpdatedAt <= 0 &&
+        conversation.latestPromptTokens <= 0) {
+      _showSnackBar('当前对话还没有上下文 token 统计');
+      return;
+    }
+
+    final usedTokens = conversation.latestPromptTokens;
+    final thresholdTokens = conversation.promptTokenThreshold;
+    final usageRatio = usedTokens / thresholdTokens;
+    _showSnackBar(
+      '上下文已用 ${_formatTokenCount(usedTokens)} / '
+      '${_formatTokenCount(thresholdTokens)} tokens '
+      '(${_formatUsagePercent(usageRatio)})',
+    );
+  }
+
+  Future<void> _handleContextUsageRingLongPress() async {
+    final conversation = _currentConversation;
+    if (conversation == null || conversation.id <= 0) {
+      _showSnackBar('当前对话还没有可调整的上下文阈值');
+      return;
+    }
+
+    final nextThreshold = await showDialog<int>(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => _ContextThresholdDialog(
+        initialThreshold: conversation.promptTokenThreshold,
+      ),
+    );
+    if (!mounted || nextThreshold == null) return;
+    if (nextThreshold == conversation.promptTokenThreshold) return;
+
+    final success = await ConversationService.updateConversationPromptTokenThreshold(
+      conversationId: conversation.id,
+      promptTokenThreshold: nextThreshold,
+    );
+    if (!mounted) return;
+    if (!success) {
+      _showSnackBar('更新压缩阈值失败');
+      return;
+    }
+
+    final updatedConversation = conversation.copyWith(
+      promptTokenThreshold: nextThreshold,
+    );
+    setState(() {
+      _currentConversationByMode[ChatPageMode.normal] = updatedConversation;
+      if (_activeMode == ChatPageMode.normal) {
+        _currentConversation = updatedConversation;
+      }
+    });
+    _syncRuntimeSnapshotForMode(
+      ChatPageMode.normal,
+      conversation: updatedConversation,
+    );
+    _showSnackBar('压缩阈值已更新为 ${_formatThresholdLabel(nextThreshold)}');
+  }
+
+  String _formatThresholdLabel(int threshold) {
+    if (threshold >= 1000) {
+      final kilo = threshold / 1000;
+      final normalized = kilo % 1 == 0
+          ? kilo.toStringAsFixed(0)
+          : kilo.toStringAsFixed(1);
+      return '${normalized}k';
+    }
+    return threshold.toString();
+  }
+
+  String _formatTokenCount(int value) {
+    return value.toString().replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => ',',
+    );
+  }
+
+  String _formatUsagePercent(double ratio) {
+    if (!ratio.isFinite) {
+      return '0%';
+    }
+    final percent = ratio * 100;
+    final rounded = percent >= 100 || percent % 1 == 0
+        ? percent.toStringAsFixed(0)
+        : percent.toStringAsFixed(1);
+    return '$rounded%';
+  }
+}
+
+class _ContextThresholdDialog extends StatefulWidget {
+  const _ContextThresholdDialog({required this.initialThreshold});
+
+  final int initialThreshold;
+
+  @override
+  State<_ContextThresholdDialog> createState() => _ContextThresholdDialogState();
+}
+
+class _ContextThresholdDialogState extends State<_ContextThresholdDialog> {
+  late final TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialThreshold.toString());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+        _controller.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _controller.text.length,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _close([int? value]) {
+    _focusNode.unfocus();
+    Navigator.of(context).pop(value);
+  }
+
+  int? _parseInput() {
+    final raw = _controller.text.trim();
+    if (raw.isEmpty) {
+      setState(() {
+        _errorText = '请输入阈值';
+      });
+      return null;
+    }
+    final parsed = int.tryParse(raw);
+    if (parsed == null) {
+      setState(() {
+        _errorText = '阈值必须是整数';
+      });
+      return null;
+    }
+    if (parsed < _kMinContextTokenThreshold ||
+        parsed > _kMaxContextTokenThreshold) {
+      setState(() {
+        _errorText =
+            '阈值范围为 $_kMinContextTokenThreshold 到 $_kMaxContextTokenThreshold';
+      });
+      return null;
+    }
+    setState(() {
+      _errorText = null;
+    });
+    return parsed;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _close();
+      },
+      child: AlertDialog(
+        title: const Text('自定义压缩阈值'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '长按圆环可调整当前对话的上下文压缩阈值。',
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF54627A),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                labelText: 'Prompt token 阈值',
+                hintText: _kDefaultContextTokenThreshold.toString(),
+                helperText:
+                    '默认 $_kDefaultContextTokenThreshold，范围 $_kMinContextTokenThreshold - $_kMaxContextTokenThreshold',
+                errorText: _errorText,
+              ),
+              onChanged: (_) {
+                if (_errorText != null) {
+                  setState(() {
+                    _errorText = null;
+                  });
+                }
+              },
+              onSubmitted: (_) {
+                final parsed = _parseInput();
+                if (parsed != null) {
+                  _close(parsed);
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => _close(_kDefaultContextTokenThreshold),
+            child: const Text('恢复默认'),
+          ),
+          TextButton(
+            onPressed: () => _close(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              final parsed = _parseInput();
+              if (parsed != null) {
+                _close(parsed);
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
       ),
     );
   }

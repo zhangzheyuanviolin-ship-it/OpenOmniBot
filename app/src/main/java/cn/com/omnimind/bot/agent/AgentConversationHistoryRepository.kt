@@ -2,6 +2,7 @@ package cn.com.omnimind.bot.agent
 
 import android.content.Context
 import cn.com.omnimind.baselib.database.AgentConversationEntry
+import cn.com.omnimind.baselib.database.Conversation
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import com.google.gson.Gson
@@ -14,6 +15,12 @@ class AgentConversationHistoryRepository(
     @Suppress("UNUSED_PARAMETER")
     private val context: Context
 ) {
+    data class ContextCompactionCandidate(
+        val conversation: Conversation,
+        val entriesToCompact: List<AgentConversationEntry>,
+        val cutoffEntryDbId: Long
+    )
+
     data class PromptSeed(
         val historyMessages: List<ChatCompletionMessage>
     )
@@ -166,6 +173,7 @@ class AgentConversationHistoryRepository(
         messages: List<Map<String, Any?>>
     ) = withContext(Dispatchers.IO) {
         DatabaseHelper.deleteAgentConversationThread(conversationId, conversationMode)
+        resetContextSummary(conversationId)
         messages.sortedBy { parseCreatedAtMillis(it) }.forEach { message ->
             val entryId = message["id"]?.toString()?.trim().orEmpty().ifEmpty {
                 "entry_${System.currentTimeMillis()}"
@@ -210,6 +218,7 @@ class AgentConversationHistoryRepository(
         conversationMode: String
     ) = withContext(Dispatchers.IO) {
         DatabaseHelper.deleteAgentConversationThread(conversationId, conversationMode)
+        resetContextSummary(conversationId)
         refreshConversationMetadata(conversationId)
     }
 
@@ -224,10 +233,72 @@ class AgentConversationHistoryRepository(
         if (conversationId == null || conversationId <= 0L) {
             return@withContext PromptSeed(emptyList())
         }
+        val conversation = DatabaseHelper.getConversationById(conversationId)
         val normalizedEntries = normalizeInterruptedToolEntries(
             DatabaseHelper.getAgentConversationEntriesAsc(conversationId, conversationMode)
         )
-        AgentConversationHistorySupport.buildPromptSeedFromEntries(normalizedEntries)
+        AgentConversationHistorySupport.buildPromptSeedFromEntries(
+            entries = normalizedEntries,
+            contextSummary = conversation?.contextSummary,
+            cutoffEntryDbId = conversation?.contextSummaryCutoffEntryDbId
+        )
+    }
+
+    suspend fun getContextCompactionCandidate(
+        conversationId: Long,
+        conversationMode: String
+    ): ContextCompactionCandidate? = withContext(Dispatchers.IO) {
+        val conversation = DatabaseHelper.getConversationById(conversationId) ?: return@withContext null
+        val normalizedEntries = normalizeInterruptedToolEntries(
+            DatabaseHelper.getAgentConversationEntriesAsc(conversationId, conversationMode)
+        )
+        val selection = AgentConversationHistorySupport.selectEntriesToCompact(
+            entries = normalizedEntries,
+            cutoffEntryDbId = conversation.contextSummaryCutoffEntryDbId
+        ) ?: return@withContext null
+        ContextCompactionCandidate(
+            conversation = conversation,
+            entriesToCompact = selection.entriesToCompact,
+            cutoffEntryDbId = selection.cutoffEntryDbId
+        )
+    }
+
+    suspend fun updateContextSummary(
+        conversationId: Long,
+        summary: String,
+        cutoffEntryDbId: Long,
+        updatedAt: Long = System.currentTimeMillis()
+    ) = withContext(Dispatchers.IO) {
+        val conversation = DatabaseHelper.getConversationById(conversationId) ?: return@withContext
+        DatabaseHelper.updateConversation(
+            conversation.copy(
+                contextSummary = summary.trim(),
+                contextSummaryCutoffEntryDbId = cutoffEntryDbId,
+                contextSummaryUpdatedAt = updatedAt,
+                updatedAt = maxOf(conversation.updatedAt, updatedAt)
+            )
+        )
+    }
+
+    suspend fun updatePromptTokenUsage(
+        conversationId: Long,
+        promptTokens: Int,
+        threshold: Int,
+        updatedAt: Long = System.currentTimeMillis()
+    ) = withContext(Dispatchers.IO) {
+        val conversation = DatabaseHelper.getConversationById(conversationId) ?: return@withContext
+        DatabaseHelper.updateConversation(
+            conversation.copy(
+                latestPromptTokens = promptTokens.coerceAtLeast(0),
+                promptTokenThreshold = threshold.coerceAtLeast(1),
+                latestPromptTokensUpdatedAt = updatedAt,
+                updatedAt = maxOf(conversation.updatedAt, updatedAt)
+            )
+        )
+    }
+
+    suspend fun getConversation(conversationId: Long): Conversation? = withContext(Dispatchers.IO) {
+        DatabaseHelper.getConversationById(conversationId)
     }
 
     private suspend fun upsertMessageEntry(
@@ -279,6 +350,17 @@ class AgentConversationHistoryRepository(
             updatedAt = lastUpdate?.updatedAt ?: conversation.updatedAt
         )
         DatabaseHelper.updateConversation(updatedConversation)
+    }
+
+    private suspend fun resetContextSummary(conversationId: Long) {
+        val conversation = DatabaseHelper.getConversationById(conversationId) ?: return
+        DatabaseHelper.updateConversation(
+            conversation.copy(
+                contextSummary = null,
+                contextSummaryCutoffEntryDbId = null,
+                contextSummaryUpdatedAt = 0
+            )
+        )
     }
 
     private suspend fun normalizeInterruptedToolEntries(

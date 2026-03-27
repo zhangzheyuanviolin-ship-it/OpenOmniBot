@@ -123,11 +123,20 @@ mixin _ChatInputAreaComposerMixin
     required ThemeData theme,
     required bool hasPayload,
   }) {
+    final contextUsageRatio = widget.contextUsageRatio;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         SizedBox(width: 28, height: 28, child: _buildLargeAddButton()),
         const Spacer(),
+        if (contextUsageRatio != null) ...[
+          _ContextUsageRingButton(
+            ratio: contextUsageRatio,
+            onTap: widget.onTapContextUsageRing,
+            onLongPress: widget.onLongPressContextUsageRing,
+          ),
+          const SizedBox(width: 4),
+        ],
         SizedBox(
           width: 28,
           height: 28,
@@ -485,6 +494,7 @@ mixin _ChatInputAreaComposerMixin
     required bool isFocused,
     required Widget? openClawButton,
   }) {
+    final contextUsageRatio = widget.contextUsageRatio;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -492,6 +502,14 @@ mixin _ChatInputAreaComposerMixin
         if (openClawButton != null) ...[
           openClawButton,
           const SizedBox(width: 2),
+        ],
+        if (contextUsageRatio != null) ...[
+          _ContextUsageRingButton(
+            ratio: contextUsageRatio,
+            onTap: widget.onTapContextUsageRing,
+            onLongPress: widget.onLongPressContextUsageRing,
+          ),
+          const SizedBox(width: 4),
         ],
         SizedBox(
           width: 24,

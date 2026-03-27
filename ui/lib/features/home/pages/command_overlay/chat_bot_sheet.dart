@@ -333,6 +333,8 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       success,
       outputKind,
       hasUserVisibleOutput,
+      _latestPromptTokens,
+      _promptTokenThreshold,
     ) {
       if (!mounted) return;
       handleAgentComplete(

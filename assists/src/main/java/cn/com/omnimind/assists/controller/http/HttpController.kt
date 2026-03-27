@@ -362,15 +362,18 @@ object HttpController {
         val chatMessages = messages.map { message ->
             ChatCompletionMessage(
                 role = message["role"]?.toString().orEmpty().ifBlank { "user" },
-                content = parseChatMessageContent(message["content"])
+                content = parseChatMessageContent(message["content"]),
+                toolCalls = parseAssistantToolCalls(message["tool_calls"] ?: message["toolCalls"]),
+                toolCallId = parseOptionalText(message["tool_call_id"] ?: message["toolCallId"]),
+                name = parseOptionalText(message["name"])
             )
         }
         return ChatCompletionRequest(model = resolved.resolvedModel, messages = chatMessages)
     }
 
-    private fun parseChatMessageContent(raw: Any?): JsonElement {
+    private fun parseChatMessageContent(raw: Any?): JsonElement? {
         return when (raw) {
-            null -> JsonPrimitive("")
+            null -> null
             is String -> JsonPrimitive(raw)
             is List<*> -> {
                 val blocks = parseContentBlocks(raw)
@@ -390,6 +393,37 @@ object HttpController {
             }
             else -> JsonPrimitive(raw.toString())
         }
+    }
+
+    private fun parseAssistantToolCalls(raw: Any?): List<AssistantToolCall>? {
+        if (raw !is List<*>) return null
+        var fallbackIndex = 0
+        val parsed = raw.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            val function = map["function"] as? Map<*, *> ?: return@mapNotNull null
+            val name = parseOptionalText(function["name"]) ?: return@mapNotNull null
+            val arguments = when (val rawArguments = function["arguments"]) {
+                null -> "{}"
+                is String -> rawArguments
+                else -> JSONObject.wrap(rawArguments)?.toString() ?: rawArguments.toString()
+            }
+            AssistantToolCall(
+                id = parseOptionalText(map["id"]).orEmpty().ifBlank {
+                    "tool_call_${fallbackIndex++}"
+                },
+                type = parseOptionalText(map["type"]).orEmpty().ifBlank { "function" },
+                function = AssistantToolCallFunction(
+                    name = name,
+                    arguments = arguments
+                )
+            )
+        }
+        return parsed.ifEmpty { null }
+    }
+
+    private fun parseOptionalText(raw: Any?): String? {
+        val normalized = raw?.toString()?.trim().orEmpty()
+        return normalized.takeIf { it.isNotEmpty() }
     }
 
     private fun parseContentBlocks(raw: List<*>): KxJsonArray {

@@ -84,6 +84,9 @@ class ChatInputArea extends StatefulWidget {
   final ValueChanged<String>? onRemoveAttachment;
   final String? selectedModelOverrideId;
   final VoidCallback? onClearSelectedModelOverride;
+  final double? contextUsageRatio;
+  final VoidCallback? onTapContextUsageRing;
+  final VoidCallback? onLongPressContextUsageRing;
 
   const ChatInputArea({
     super.key,
@@ -106,10 +109,123 @@ class ChatInputArea extends StatefulWidget {
     this.onRemoveAttachment,
     this.selectedModelOverrideId,
     this.onClearSelectedModelOverride,
+    this.contextUsageRatio,
+    this.onTapContextUsageRing,
+    this.onLongPressContextUsageRing,
   });
 
   @override
   State<ChatInputArea> createState() => ChatInputAreaState();
+}
+
+class _ContextUsageRing extends StatelessWidget {
+  const _ContextUsageRing({required this.ratio});
+
+  final double ratio;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = ratio.isFinite ? ratio : 0.0;
+    final progress = normalized.clamp(0.0, 1.0).toDouble();
+    final color = normalized >= 1.0
+        ? const Color(0xFFD65A3A)
+        : normalized >= 0.85
+        ? const Color(0xFFC69234)
+        : const Color(0xFF5A8DDE);
+
+    return SizedBox(
+      width: 18,
+      height: 18,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: progress),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, _) {
+          return CustomPaint(
+            painter: _ContextUsageRingPainter(
+              progress: value,
+              color: color,
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ContextUsageRingButton extends StatelessWidget {
+  const _ContextUsageRingButton({
+    required this.ratio,
+    this.onTap,
+    this.onLongPress,
+  });
+
+  final double ratio;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = SizedBox(
+      width: 22,
+      height: 22,
+      child: Center(child: _ContextUsageRing(ratio: ratio)),
+    );
+    if (onTap == null && onLongPress == null) {
+      return child;
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: child,
+    );
+  }
+}
+
+class _ContextUsageRingPainter extends CustomPainter {
+  const _ContextUsageRingPainter({
+    required this.progress,
+    required this.color,
+  });
+
+  final double progress;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final strokeWidth = 1.8;
+    final radius = (math.min(size.width, size.height) - strokeWidth) / 2;
+    final center = Offset(size.width / 2, size.height / 2);
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final trackPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0x18000000);
+    final progressPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+
+    canvas.drawArc(rect, 0, math.pi * 2, false, trackPaint);
+    if (progress <= 0) return;
+    canvas.drawArc(
+      rect,
+      -math.pi / 2,
+      math.pi * 2 * progress.clamp(0.0, 1.0),
+      false,
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ContextUsageRingPainter oldDelegate) {
+    return oldDelegate.progress != progress || oldDelegate.color != color;
+  }
 }
 
 class ChatInputAreaState extends _ChatInputAreaStateBase

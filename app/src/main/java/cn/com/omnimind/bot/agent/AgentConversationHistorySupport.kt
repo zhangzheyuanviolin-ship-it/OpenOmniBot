@@ -12,42 +12,200 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 internal object AgentConversationHistorySupport {
-    private const val MAX_PROMPT_RELEVANT_ENTRIES = 20
+    data class CompactionSelection(
+        val entriesToCompact: List<AgentConversationEntry>,
+        val cutoffEntryDbId: Long
+    )
+
+    data class RuntimeCompactionWindow(
+        val existingSummary: String?,
+        val messagesToCompact: List<ChatCompletionMessage>
+    )
+
     private const val MAX_TOOL_SUMMARY_CHARS = 240
     private const val MAX_TOOL_PREVIEW_CHARS = 800
     private const val MAX_TOOL_TERMINAL_CHARS = 1200
+    private const val CONTEXT_SUMMARY_SYSTEM_PREFIX = """
+以下是同一会话较早历史的压缩总结。它替代了压缩点之前的原始消息，请在后续对话中将其视为既有上下文。
+如果总结与压缩点之后的新消息冲突，应以后续原始消息为准。
+
+"""
 
     private val gson = Gson()
 
     fun buildPromptSeedFromEntries(
-        entries: List<AgentConversationEntry>
+        entries: List<AgentConversationEntry>,
+        contextSummary: String? = null,
+        cutoffEntryDbId: Long? = null
     ): AgentConversationHistoryRepository.PromptSeed {
-        val relevantEntries = entries
-            .filter {
-                it.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_USER_MESSAGE ||
-                    it.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_ASSISTANT_MESSAGE ||
-                    it.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT
-            }
-            .takeLast(MAX_PROMPT_RELEVANT_ENTRIES)
+        val historyMessages = mutableListOf<ChatCompletionMessage>()
+        contextSummary?.trim()?.takeIf { it.isNotEmpty() }?.let { summary ->
+            historyMessages += buildContextSummarySystemMessage(summary)
+        }
+        historyMessages += buildPromptRelevantMessages(
+            entries = entries,
+            cutoffEntryDbId = cutoffEntryDbId
+        )
+        return AgentConversationHistoryRepository.PromptSeed(historyMessages = historyMessages)
+    }
 
-        val historyMessages = relevantEntries.flatMap { entry ->
+    fun buildPromptRelevantMessages(
+        entries: List<AgentConversationEntry>,
+        cutoffEntryDbId: Long? = null
+    ): List<ChatCompletionMessage> {
+        val relevantEntries = entries
+            .asSequence()
+            .filter(::isPromptRelevantEntry)
+            .filter { entry -> cutoffEntryDbId == null || entry.id > cutoffEntryDbId }
+            .toList()
+
+        val replayMessages = mutableListOf<ChatCompletionMessage>()
+        val deferredAssistantEntries = mutableListOf<AgentConversationEntry>()
+
+        fun flushDeferredAssistantEntries() {
+            if (deferredAssistantEntries.isEmpty()) return
+            deferredAssistantEntries.forEach { assistantEntry ->
+                replayMessages += buildAssistantPromptMessages(assistantEntry)
+            }
+            deferredAssistantEntries.clear()
+        }
+
+        relevantEntries.forEachIndexed { index, entry ->
             when (entry.entryType) {
                 AgentConversationHistoryRepository.ENTRY_TYPE_USER_MESSAGE -> {
-                    buildUserPromptMessages(entry)
+                    flushDeferredAssistantEntries()
+                    replayMessages += buildUserPromptMessages(entry)
                 }
 
                 AgentConversationHistoryRepository.ENTRY_TYPE_ASSISTANT_MESSAGE -> {
-                    buildAssistantPromptMessages(entry)
+                    if (shouldReplayAssistantContentAfterTools(relevantEntries, index, entry)) {
+                        deferredAssistantEntries += entry
+                    } else {
+                        flushDeferredAssistantEntries()
+                        replayMessages += buildAssistantPromptMessages(entry)
+                    }
                 }
 
                 AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT -> {
-                    buildToolReplayMessages(entry)
+                    replayMessages += buildToolReplayMessages(entry)
                 }
 
-                else -> emptyList()
+                else -> Unit
             }
         }
-        return AgentConversationHistoryRepository.PromptSeed(historyMessages = historyMessages)
+
+        flushDeferredAssistantEntries()
+        return replayMessages
+    }
+
+    fun buildContextSummarySystemMessage(summary: String): ChatCompletionMessage {
+        return ChatCompletionMessage(
+            role = "system",
+            content = JsonPrimitive(CONTEXT_SUMMARY_SYSTEM_PREFIX + summary.trim())
+        )
+    }
+
+    fun extractContextSummaryText(message: ChatCompletionMessage): String? {
+        val content = message.content as? JsonPrimitive ?: return null
+        if (message.role != "system" || !content.content.startsWith(CONTEXT_SUMMARY_SYSTEM_PREFIX)) {
+            return null
+        }
+        return content.content.removePrefix(CONTEXT_SUMMARY_SYSTEM_PREFIX).trim()
+    }
+
+    fun isContextSummarySystemMessage(message: ChatCompletionMessage): Boolean {
+        val content = message.content as? JsonPrimitive ?: return false
+        return message.role == "system" &&
+            content.content.startsWith(CONTEXT_SUMMARY_SYSTEM_PREFIX)
+    }
+
+    fun isPromptRelevantEntry(entry: AgentConversationEntry): Boolean {
+        return entry.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_USER_MESSAGE ||
+            entry.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_ASSISTANT_MESSAGE ||
+            entry.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT
+    }
+
+    fun selectEntriesToCompact(
+        entries: List<AgentConversationEntry>,
+        cutoffEntryDbId: Long? = null
+    ): CompactionSelection? {
+        val relevantEntries = entries
+            .asSequence()
+            .filter(::isPromptRelevantEntry)
+            .filter { entry -> cutoffEntryDbId == null || entry.id > cutoffEntryDbId }
+            .toList()
+        val lastUserIndex = relevantEntries.indexOfLast {
+            it.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_USER_MESSAGE
+        }
+        if (lastUserIndex <= 0) {
+            return null
+        }
+        val entriesToCompact = relevantEntries.subList(0, lastUserIndex)
+        val cutoff = entriesToCompact.lastOrNull()?.id ?: return null
+        return CompactionSelection(
+            entriesToCompact = entriesToCompact,
+            cutoffEntryDbId = cutoff
+        )
+    }
+
+    fun buildRuntimeCompactionWindow(
+        messages: List<ChatCompletionMessage>
+    ): RuntimeCompactionWindow? {
+        if (messages.isEmpty()) return null
+        val leadingSystemCount = messages.takeWhile { it.role == "system" }.size
+        var summaryIndex = -1
+        for (index in 0 until leadingSystemCount) {
+            if (isContextSummarySystemMessage(messages[index])) {
+                summaryIndex = index
+            }
+        }
+        val latestUserIndex = messages.indexOfLast { it.role == "user" }
+        if (latestUserIndex == -1) return null
+        val compactionStartIndex = if (summaryIndex >= 0) summaryIndex + 1 else leadingSystemCount
+        if (latestUserIndex <= compactionStartIndex) {
+            return null
+        }
+        val messagesToCompact = messages.subList(compactionStartIndex, latestUserIndex)
+            .filter { it.role != "system" }
+        if (messagesToCompact.isEmpty()) {
+            return null
+        }
+        val existingSummary = if (summaryIndex >= 0) {
+            extractContextSummaryText(messages[summaryIndex])
+        } else {
+            null
+        }
+        return RuntimeCompactionWindow(
+            existingSummary = existingSummary,
+            messagesToCompact = messagesToCompact
+        )
+    }
+
+    fun rebuildMessagesWithCompactedSummary(
+        messages: List<ChatCompletionMessage>,
+        summary: String
+    ): List<ChatCompletionMessage> {
+        val preservedSystemMessages = messages
+            .takeWhile { it.role == "system" }
+            .filterNot(::isContextSummarySystemMessage)
+        val latestUserIndex = messages.indexOfLast { it.role == "user" }
+        if (latestUserIndex == -1) {
+            return preservedSystemMessages + buildContextSummarySystemMessage(summary)
+        }
+        val rebuilt = mutableListOf<ChatCompletionMessage>()
+        rebuilt += preservedSystemMessages
+        rebuilt += buildContextSummarySystemMessage(summary)
+        rebuilt += messages[latestUserIndex]
+        messages.drop(latestUserIndex + 1)
+            .firstOrNull { message -> message.role == "assistant" && !message.toolCalls.isNullOrEmpty() }
+            ?.let { pendingToolCallMessage ->
+                rebuilt += ChatCompletionMessage(
+                    role = "assistant",
+                    toolCalls = pendingToolCallMessage.toolCalls,
+                    name = pendingToolCallMessage.name
+                )
+            }
+        return rebuilt
     }
 
     fun normalizeInterruptedEntries(
@@ -169,6 +327,27 @@ internal object AgentConversationHistorySupport {
         )
     }
 
+    private fun shouldReplayAssistantContentAfterTools(
+        entries: List<AgentConversationEntry>,
+        assistantIndex: Int,
+        assistantEntry: AgentConversationEntry
+    ): Boolean {
+        val assistantTaskId = extractAssistantReplayTaskId(assistantEntry.entryId) ?: return false
+        for (index in assistantIndex + 1 until entries.size) {
+            val nextEntry = entries[index]
+            if (nextEntry.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_USER_MESSAGE) {
+                break
+            }
+            if (nextEntry.entryType != AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT) {
+                continue
+            }
+            if (extractToolReplayTaskId(nextEntry.entryId) == assistantTaskId) {
+                return true
+            }
+        }
+        return false
+    }
+
     private fun buildToolReplayMessages(entry: AgentConversationEntry): List<ChatCompletionMessage> {
         val payload = readMap(entry.payloadJson)
         val toolName = payload["toolName"]?.toString()?.trim().orEmpty()
@@ -194,6 +373,24 @@ internal object AgentConversationHistorySupport {
             content = JsonPrimitive(buildToolSummaryContent(entry, payload))
         )
         return listOf(assistantMessage, toolMessage)
+    }
+
+    private fun extractAssistantReplayTaskId(entryId: String): String? {
+        val marker = "-assistant"
+        val index = entryId.lastIndexOf(marker)
+        if (index <= 0 || index + marker.length != entryId.length) {
+            return null
+        }
+        return entryId.substring(0, index).takeIf { it.isNotBlank() }
+    }
+
+    private fun extractToolReplayTaskId(entryId: String): String? {
+        val marker = "-tool-"
+        val index = entryId.indexOf(marker)
+        if (index <= 0) {
+            return null
+        }
+        return entryId.substring(0, index).takeIf { it.isNotBlank() }
     }
 
     private fun buildToolSummaryContent(

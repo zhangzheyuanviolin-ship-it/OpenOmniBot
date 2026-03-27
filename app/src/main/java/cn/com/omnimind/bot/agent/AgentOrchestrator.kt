@@ -28,7 +28,9 @@ class AgentOrchestrator(
     data class Input(
         val callback: AgentCallback,
         val initialMessages: List<ChatCompletionMessage>,
-        val executionEnv: AgentToolRouter.ExecutionEnvironment
+        val executionEnv: AgentToolRouter.ExecutionEnvironment,
+        val conversationId: Long? = null,
+        val contextCompactor: AgentConversationContextCompactor? = null
     )
 
     private val json = Json {
@@ -96,13 +98,15 @@ class AgentOrchestrator(
 
     suspend fun run(input: Input): AgentResult {
         val callback = input.callback
-        val messages = input.initialMessages.toMutableList()
+        var messages = input.initialMessages.toMutableList()
         val executedTools = mutableListOf<ToolExecutionResult>()
         var outputKind = AgentOutputKind.NONE
         var hasUserFacingOutput = false
         var toolExecutionCount = 0
         var lastAssistantContent = ""
         var lastFinishReason: String? = null
+        var latestPromptTokens: Int? = null
+        var latestPromptTokenThreshold: Int? = null
         var terminalRetryState = TerminalRetryState()
         val executionIntent = AgentExecutionIntentPolicy.isExecutionIntent(input.executionEnv.userMessage)
         var executionIntentRetryCount = 0
@@ -171,6 +175,16 @@ class AgentOrchestrator(
                         toolCalls = toolCalls.ifEmpty { null }
                     )
                 )
+                latestPromptTokens = turn.usage?.promptTokens
+                input.contextCompactor?.let { compactor ->
+                    latestPromptTokenThreshold = compactor.resolvePromptTokenThreshold(input.conversationId)
+                    messages = compactor.compactIfNeeded(
+                        conversationId = input.conversationId,
+                        conversationMode = input.executionEnv.conversationMode,
+                        promptTokens = latestPromptTokens,
+                        messages = messages
+                    ).toMutableList()
+                }
 
                 if (toolCalls.isEmpty()) {
                     val failure = pendingRecoverableToolFailure
@@ -431,11 +445,15 @@ class AgentOrchestrator(
         val finalResult = AgentResult.Success(
             response = AgentFinalResponse(
                 content = lastAssistantContent,
-                finishReason = lastFinishReason
+                finishReason = lastFinishReason,
+                latestPromptTokens = latestPromptTokens,
+                promptTokenThreshold = latestPromptTokens?.let { latestPromptTokenThreshold }
             ),
             executedTools = executedTools,
             outputKind = outputKind.value,
-            hasUserVisibleOutput = hasUserFacingOutput
+            hasUserVisibleOutput = hasUserFacingOutput,
+            latestPromptTokens = latestPromptTokens,
+            promptTokenThreshold = latestPromptTokens?.let { latestPromptTokenThreshold }
         )
         callback.onComplete(finalResult)
         return finalResult

@@ -25,7 +25,9 @@ data class AgentContext(
 @Serializable
 data class AgentFinalResponse(
     val content: String = "",
-    val finishReason: String? = null
+    val finishReason: String? = null,
+    val latestPromptTokens: Int? = null,
+    val promptTokenThreshold: Int? = null
 )
 
 /**
@@ -36,7 +38,9 @@ sealed class AgentResult {
         val response: AgentFinalResponse,
         val executedTools: List<ToolExecutionResult>,
         val outputKind: String = AgentOutputKind.NONE.value,
-        val hasUserVisibleOutput: Boolean = false
+        val hasUserVisibleOutput: Boolean = false,
+        val latestPromptTokens: Int? = null,
+        val promptTokenThreshold: Int? = null
     ) : AgentResult()
     
     data class Error(

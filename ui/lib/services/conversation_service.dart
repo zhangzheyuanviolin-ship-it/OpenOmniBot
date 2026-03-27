@@ -95,6 +95,28 @@ class ConversationService {
     }
   }
 
+  static Future<bool> updateConversationPromptTokenThreshold({
+    required int conversationId,
+    required int promptTokenThreshold,
+  }) async {
+    try {
+      final result = await _assistCore.invokeMethod<dynamic>(
+        'updateConversationPromptTokenThreshold',
+        {
+          'conversationId': conversationId,
+          'promptTokenThreshold': promptTokenThreshold,
+        },
+      );
+      return result == 'SUCCESS';
+    } on PlatformException catch (e) {
+      print('更新对话压缩阈值失败: ${e.message}');
+      return false;
+    } catch (e) {
+      print('更新对话压缩阈值失败: $e');
+      return false;
+    }
+  }
+
   static Future<bool> deleteConversation(
     int conversationId, {
     ConversationMode? mode,

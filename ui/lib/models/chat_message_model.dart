@@ -44,31 +44,47 @@ class ChatMessageModel {
   }) : createAt = createAt ?? DateTime.now();
   
   /// 获取文本内容
-  String? get text => content?['text'] as String?;
+  String? get text {
+    final value = content?['text'];
+    return value == null ? null : value.toString();
+  }
   
   /// 获取卡片数据
-  Map<String, dynamic>? get cardData => content?['cardData'] as Map<String, dynamic>?;
+  Map<String, dynamic>? get cardData {
+    final value = content?['cardData'];
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is Map) {
+      return _normalizeMap(value);
+    }
+    return null;
+  }
   
   /// 获取内容ID（用于卡片）
-  String? get contentId => content?['id'] as String?;
+  String? get contentId {
+    final value = content?['id'];
+    return value == null ? null : value.toString();
+  }
   
   /// 获取数据库ID（用于本地存储和渲染key）
-  int? get dbId => content?['dbId'] as int?;
+  int? get dbId => _asNullableInt(content?['dbId']);
   
   /// 从JSON创建
   factory ChatMessageModel.fromJson(Map<String, dynamic> json) {
+    final normalizedContent = _normalizeDynamic(json['content']);
     return ChatMessageModel(
-      id: json['id'] as String,
-      type: json['type'] as int? ?? 1,
-      user: json['user'] as int? ?? 1,
-      content: json['content'] as Map<String, dynamic>?,
+      id: json['id']?.toString() ?? '',
+      type: _asNullableInt(json['type']) ?? 1,
+      user: _asNullableInt(json['user']) ?? 1,
+      content: normalizedContent is Map<String, dynamic>
+          ? normalizedContent
+          : null,
       isLoading: json['isLoading'] as bool? ?? false,
       isFirst: json['isFirst'] as bool? ?? false,
       isError: json['isError'] as bool? ?? false,
       isSummarizing: json['isSummarizing'] as bool? ?? false,
-      createAt: json['createAt'] != null
-          ? DateTime.parse(json['createAt'] as String)
-          : DateTime.now(),
+      createAt: _parseCreateAt(json['createAt']),
     );
   }
 
@@ -156,6 +172,82 @@ class ChatMessageModel {
       isSummarizing: isSummarizing ?? this.isSummarizing,
       createAt: createAt ?? this.createAt,
     );
+  }
+
+  static int? _asNullableInt(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) {
+      final asDouble = raw.toDouble();
+      if (asDouble.isFinite && asDouble == asDouble.truncateToDouble()) {
+        return raw.toInt();
+      }
+      return null;
+    }
+    if (raw is String) {
+      final trimmed = raw.trim();
+      final parsedInt = int.tryParse(trimmed);
+      if (parsedInt != null) {
+        return parsedInt;
+      }
+      final parsedDouble = double.tryParse(trimmed);
+      if (parsedDouble != null &&
+          parsedDouble.isFinite &&
+          parsedDouble == parsedDouble.truncateToDouble()) {
+        return parsedDouble.toInt();
+      }
+    }
+    return null;
+  }
+
+  static DateTime _parseCreateAt(dynamic raw) {
+    if (raw is DateTime) {
+      return raw;
+    }
+    if (raw is num) {
+      return DateTime.fromMillisecondsSinceEpoch(raw.toInt());
+    }
+    if (raw is String) {
+      final trimmed = raw.trim();
+      if (trimmed.isEmpty) {
+        return DateTime.now();
+      }
+      final parsedDateTime = DateTime.tryParse(trimmed);
+      if (parsedDateTime != null) {
+        return parsedDateTime;
+      }
+      final millis = int.tryParse(trimmed);
+      if (millis != null) {
+        return DateTime.fromMillisecondsSinceEpoch(millis);
+      }
+    }
+    return DateTime.now();
+  }
+
+  static Map<String, dynamic> _normalizeMap(Map<dynamic, dynamic> source) {
+    return source.map(
+      (key, value) => MapEntry(key.toString(), _normalizeDynamic(value)),
+    );
+  }
+
+  static dynamic _normalizeDynamic(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value.map(
+        (key, nestedValue) => MapEntry(key, _normalizeDynamic(nestedValue)),
+      );
+    }
+    if (value is Map) {
+      return _normalizeMap(value);
+    }
+    if (value is List) {
+      return value.map(_normalizeDynamic).toList();
+    }
+    if (value is double && value.isFinite) {
+      final integral = value.toInt();
+      if (value == integral.toDouble()) {
+        return integral;
+      }
+    }
+    return value;
   }
 }
 

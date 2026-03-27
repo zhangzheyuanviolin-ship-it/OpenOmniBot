@@ -564,6 +564,7 @@ object ModelSceneRegistry {
             "scene.vlm.operation.primary",
             "scene.dispatch.model",
             "scene.compactor.context",
+            "scene.compactor.context.chat",
             "scene.loading.sprite",
             "scene.memory.embedding",
             "scene.memory.rollup" -> SceneTransport.OPENAI_COMPATIBLE
@@ -575,6 +576,7 @@ object ModelSceneRegistry {
         return when (sceneId) {
             "scene.vlm.operation.primary" -> ResponseParser.OPENAI_TOOL_ACTIONS
             "scene.compactor.context" -> ResponseParser.JSON_CONTENT
+            "scene.compactor.context.chat",
             "scene.loading.sprite",
             "scene.memory.embedding",
             "scene.memory.rollup",

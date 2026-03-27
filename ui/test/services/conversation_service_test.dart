@@ -87,6 +87,37 @@ void main() {
     expect(conversations.single.title, 'openclaw hello');
   });
 
+  test('parses context compaction metadata from native source', () async {
+    nativeConversations = <Map<String, dynamic>>[
+      {
+        'id': 7,
+        'title': 'normal hello',
+        'mode': ConversationMode.normal.storageValue,
+        'summary': '摘要',
+        'contextSummary': '【用户目标与约束】\n- 测试',
+        'contextSummaryCutoffEntryDbId': 33,
+        'contextSummaryUpdatedAt': 101,
+        'status': 0,
+        'lastMessage': 'hello',
+        'messageCount': 9,
+        'latestPromptTokens': 64000,
+        'promptTokenThreshold': 128000,
+        'latestPromptTokensUpdatedAt': 202,
+        'createdAt': 1,
+        'updatedAt': 2,
+      },
+    ];
+
+    final conversations = await ConversationService.getAllConversations();
+
+    expect(conversations, hasLength(1));
+    expect(conversations.single.contextSummary, contains('用户目标'));
+    expect(conversations.single.contextSummaryCutoffEntryDbId, 33);
+    expect(conversations.single.latestPromptTokens, 64000);
+    expect(conversations.single.promptTokenThreshold, 128000);
+    expect(conversations.single.contextUsageRatio, closeTo(0.5, 0.0001));
+  });
+
   test(
     'deletes only the targeted thread metadata and keeps other modes intact',
     () async {

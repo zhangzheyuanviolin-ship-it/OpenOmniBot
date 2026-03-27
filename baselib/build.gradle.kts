@@ -11,6 +11,7 @@ android {
 
     defaultConfig {
         minSdk = 25
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         consumerProguardFiles("consumer-rules.pro")
     }
@@ -63,4 +64,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     // ML Kit for OCR
     implementation(libs.text.recognition.chinese)
+
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
 }

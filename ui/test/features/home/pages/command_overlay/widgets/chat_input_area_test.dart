@@ -1,0 +1,153 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:ui/features/home/pages/command_overlay/widgets/chat_input_area.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const speechChannel = MethodChannel('cn.com.omnimind.bot/SpeechRecognition');
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+  setUp(() {
+    messenger.setMockMethodCallHandler(speechChannel, (call) async {
+      if (call.method == 'initialize') {
+        return true;
+      }
+      return null;
+    });
+  });
+
+  tearDown(() {
+    messenger.setMockMethodCallHandler(speechChannel, null);
+  });
+
+  testWidgets('does not render context usage ring when ratio is absent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp(contextUsageRatio: null));
+    await tester.pump();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_ContextUsageRingPainter',
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('renders context usage ring when ratio is provided', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp(contextUsageRatio: 0.72));
+    await tester.pump();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_ContextUsageRingPainter',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('long pressing context usage ring triggers callback', (
+    tester,
+  ) async {
+    var longPressed = false;
+    await tester.pumpWidget(
+      _buildTestApp(
+        contextUsageRatio: 0.72,
+        onLongPressContextUsageRing: () {
+          longPressed = true;
+        },
+      ),
+    );
+    await tester.pump();
+
+    await tester.longPress(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_ContextUsageRingPainter',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(longPressed, isTrue);
+  });
+
+  testWidgets('tapping context usage ring triggers callback', (tester) async {
+    var tapped = false;
+    await tester.pumpWidget(
+      _buildTestApp(
+        contextUsageRatio: 0.72,
+        onTapContextUsageRing: () {
+          tapped = true;
+        },
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_ContextUsageRingPainter',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tapped, isTrue);
+  });
+}
+
+Widget _buildTestApp({
+  required double? contextUsageRatio,
+  VoidCallback? onTapContextUsageRing,
+  VoidCallback? onLongPressContextUsageRing,
+}) {
+  return DefaultAssetBundle(
+    bundle: _TestAssetBundle(),
+    child: MaterialApp(
+      home: Scaffold(
+        body: ChatInputArea(
+          controller: TextEditingController(),
+          focusNode: FocusNode(),
+          isProcessing: false,
+          onSendMessage: () {},
+          onCancelTask: () {},
+          contextUsageRatio: contextUsageRatio,
+          onTapContextUsageRing: onTapContextUsageRing,
+          onLongPressContextUsageRing: onLongPressContextUsageRing,
+        ),
+      ),
+    ),
+  );
+}
+
+class _TestAssetBundle extends CachingAssetBundle {
+  static const String _svg = '''
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="10" stroke="#1930D9" stroke-width="2"/>
+</svg>
+''';
+
+  @override
+  Future<ByteData> load(String key) async {
+    final bytes = Uint8List.fromList(utf8.encode(_svg));
+    return ByteData.view(bytes.buffer);
+  }
+
+  @override
+  Future<String> loadString(String key, {bool cache = true}) async {
+    return _svg;
+  }
+}

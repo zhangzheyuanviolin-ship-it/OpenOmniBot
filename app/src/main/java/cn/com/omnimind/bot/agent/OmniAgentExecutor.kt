@@ -88,6 +88,10 @@ class OmniAgentExecutor(
             json = json,
             modelOverride = modelOverride
         )
+        val contextCompactor = AgentConversationContextCompactor(
+            historyRepository = historyRepository,
+            json = json
+        )
         val toolRouter = AgentToolRouter(
             context = context,
             scope = scope,
@@ -108,6 +112,8 @@ class OmniAgentExecutor(
                 AgentOrchestrator.Input(
                     callback = callback,
                     initialMessages = initialMessages,
+                    conversationId = conversationId,
+                    contextCompactor = contextCompactor,
                     executionEnv = AgentToolRouter.ExecutionEnvironment(
                         agentRunId = agentRunId,
                         userMessage = userMessage,

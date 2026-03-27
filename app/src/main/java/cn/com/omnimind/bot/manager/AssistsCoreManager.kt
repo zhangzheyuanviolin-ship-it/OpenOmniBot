@@ -2994,6 +2994,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         val outputKind = (result as? AgentResult.Success)?.outputKind ?: "none"
                         val hasUserVisibleOutput =
                             (result as? AgentResult.Success)?.hasUserVisibleOutput == true
+                        val latestPromptTokens = (result as? AgentResult.Success)?.latestPromptTokens
+                        val promptTokenThreshold =
+                            (result as? AgentResult.Success)?.promptTokenThreshold
                         val streamed = scheduledAssistantBuffer.toString().trim()
                         val fallback = (result as? AgentResult.Success)
                             ?.response
@@ -3025,7 +3028,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             mapOf(
                                 "success" to isSuccess,
                                 "outputKind" to outputKind,
-                                "hasUserVisibleOutput" to hasUserVisibleOutput
+                                "hasUserVisibleOutput" to hasUserVisibleOutput,
+                                "latestPromptTokens" to latestPromptTokens,
+                                "promptTokenThreshold" to promptTokenThreshold
                             )
                         )
                     }
@@ -3242,19 +3247,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             try {
                 val conversations = DatabaseHelper.getAllConversations()
                 OmniLog.d(TAG, "[getConversations] 从数据库获取到 ${conversations.size} 条对话记录")
-                val jsonList = conversations.map { conv ->
-                    mapOf(
-                        "id" to conv.id,
-                        "title" to conv.title,
-                        "mode" to conv.mode,
-                        "summary" to conv.summary,
-                        "status" to conv.status,
-                        "lastMessage" to conv.lastMessage,
-                        "messageCount" to conv.messageCount,
-                        "createdAt" to conv.createdAt,
-                        "updatedAt" to conv.updatedAt
-                    )
-                }
+                val jsonList = conversations.map(::conversationToMap)
                 withContext(Dispatchers.Main) {
                     OmniLog.d(TAG, "[getConversations] 返回 Flutter: $jsonList")
                     result.success(jsonList)
@@ -3361,19 +3354,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 val conversations = DatabaseHelper.getConversationsByPage(offset, limit)
-                val jsonList = conversations.map { conv ->
-                    mapOf(
-                        "id" to conv.id,
-                        "title" to conv.title,
-                        "mode" to conv.mode,
-                        "summary" to conv.summary,
-                        "status" to conv.status,
-                        "lastMessage" to conv.lastMessage,
-                        "messageCount" to conv.messageCount,
-                        "createdAt" to conv.createdAt,
-                        "updatedAt" to conv.updatedAt
-                    )
-                }
+                val jsonList = conversations.map(::conversationToMap)
                 withContext(Dispatchers.Main) {
                     result.success(jsonList)
                 }
@@ -3437,13 +3418,39 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         }
                         return@launch
                     }
+                    val incomingContextSummary =
+                        (conversationMap["contextSummary"] as? String)?.trim()
+                    val incomingContextSummaryCutoffEntryDbId =
+                        conversationMap.readLong("contextSummaryCutoffEntryDbId")
+                    val incomingContextSummaryUpdatedAt =
+                        conversationMap.readLong("contextSummaryUpdatedAt")
                     val updatedConversation = existing.copy(
                         title = (conversationMap["title"] as? String)?.trim()?.ifEmpty {
                             existing.title
                         } ?: existing.title,
                         mode = normalizeConversationMode(conversationMap["mode"] as? String ?: existing.mode),
                         summary = conversationMap["summary"] as String?,
+                        // contextSummary 由原生压缩链路维护；Flutter 的通用 updateConversation
+                        // 经常拿到的是未同步的旧快照，这里默认保留已有值，避免刚压缩出的总结被覆盖为 null。
+                        contextSummary = incomingContextSummary
+                            ?.takeIf { it.isNotEmpty() }
+                            ?: existing.contextSummary,
+                        contextSummaryCutoffEntryDbId = incomingContextSummaryCutoffEntryDbId
+                            ?: existing.contextSummaryCutoffEntryDbId,
+                        contextSummaryUpdatedAt = incomingContextSummaryUpdatedAt
+                            ?.takeIf { it > 0L }
+                            ?: existing.contextSummaryUpdatedAt,
                         status = (conversationMap["status"] as? Number)?.toInt() ?: existing.status,
+                        lastMessage = conversationMap["lastMessage"] as? String ?: existing.lastMessage,
+                        messageCount = conversationMap.readInt("messageCount") ?: existing.messageCount,
+                        latestPromptTokens = conversationMap.readInt("latestPromptTokens")
+                            ?: existing.latestPromptTokens,
+                        promptTokenThreshold = conversationMap.readInt("promptTokenThreshold")
+                            ?.coerceAtLeast(1)
+                            ?: existing.promptTokenThreshold.coerceAtLeast(1),
+                        latestPromptTokensUpdatedAt = conversationMap.readLong("latestPromptTokensUpdatedAt")
+                            ?: existing.latestPromptTokensUpdatedAt,
+                        createdAt = conversationMap.readLong("createdAt") ?: existing.createdAt,
                         updatedAt = System.currentTimeMillis()
                     )
                     DatabaseHelper.updateConversation(updatedConversation)
@@ -3481,6 +3488,46 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 OmniLog.e(TAG, "删除对话失败: ${e.message}")
                 withContext(Dispatchers.Main) {
                     result.error("DELETE_CONVERSATION_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun updateConversationPromptTokenThreshold(call: MethodCall, result: MethodChannel.Result) {
+        val conversationId = (call.argument<Number>("conversationId"))?.toLong()
+        val promptTokenThreshold = (call.argument<Number>("promptTokenThreshold"))?.toInt()
+
+        workJob.launch {
+            try {
+                if (conversationId == null || conversationId <= 0L || promptTokenThreshold == null) {
+                    withContext(Dispatchers.Main) {
+                        result.error(
+                            "INVALID_ARGUMENTS",
+                            "conversationId or promptTokenThreshold is invalid",
+                            null
+                        )
+                    }
+                    return@launch
+                }
+                val existing = DatabaseHelper.getConversationById(conversationId)
+                if (existing == null) {
+                    withContext(Dispatchers.Main) {
+                        result.error("CONVERSATION_NOT_FOUND", "Conversation not found", null)
+                    }
+                    return@launch
+                }
+                val updatedConversation = existing.copy(
+                    promptTokenThreshold = promptTokenThreshold.coerceAtLeast(1),
+                    updatedAt = System.currentTimeMillis()
+                )
+                DatabaseHelper.updateConversation(updatedConversation)
+                withContext(Dispatchers.Main) {
+                    result.success("SUCCESS")
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "更新对话压缩阈值失败: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("UPDATE_CONVERSATION_THRESHOLD_ERROR", e.message, null)
                 }
             }
         }
@@ -3543,7 +3590,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 """.trimIndent()
 
                 // 调用 LLM 生成摘要
-                val llmResult = HttpController.postLLMRequest("scene.compactor.context", prompt)
+                val llmResult = HttpController.postLLMRequest("scene.compactor.context.chat", prompt)
                 val summary = llmResult.message
                     .trim()
                     .take(10)
@@ -3560,6 +3607,34 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             }
         }
+    }
+
+    private fun conversationToMap(conversation: Conversation): Map<String, Any?> {
+        return mapOf(
+            "id" to conversation.id,
+            "title" to conversation.title,
+            "mode" to conversation.mode,
+            "summary" to conversation.summary,
+            "contextSummary" to conversation.contextSummary,
+            "contextSummaryCutoffEntryDbId" to conversation.contextSummaryCutoffEntryDbId,
+            "contextSummaryUpdatedAt" to conversation.contextSummaryUpdatedAt,
+            "status" to conversation.status,
+            "lastMessage" to conversation.lastMessage,
+            "messageCount" to conversation.messageCount,
+            "latestPromptTokens" to conversation.latestPromptTokens,
+            "promptTokenThreshold" to conversation.promptTokenThreshold,
+            "latestPromptTokensUpdatedAt" to conversation.latestPromptTokensUpdatedAt,
+            "createdAt" to conversation.createdAt,
+            "updatedAt" to conversation.updatedAt
+        )
+    }
+
+    private fun Map<String, Any>.readLong(key: String): Long? {
+        return (this[key] as? Number)?.toLong()
+    }
+
+    private fun Map<String, Any>.readInt(key: String): Int? {
+        return (this[key] as? Number)?.toInt()
     }
 
     /**

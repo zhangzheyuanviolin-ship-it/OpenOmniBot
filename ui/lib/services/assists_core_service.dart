@@ -50,6 +50,8 @@ typedef AgentCompleteCallback =
       bool success,
       String outputKind,
       bool hasUserVisibleOutput,
+      int? latestPromptTokens,
+      int? promptTokenThreshold,
     );
 typedef AgentErrorCallback = void Function(String taskId, String error);
 typedef AgentPermissionRequiredCallback =
@@ -363,6 +365,8 @@ class AssistsMessageService {
             data['success'] == true,
             (data['outputKind'] ?? 'none').toString(),
             data['hasUserVisibleOutput'] == true,
+            _asNullableInt(data['latestPromptTokens']),
+            _asNullableInt(data['promptTokenThreshold']),
           );
           break;
         case 'onAgentError':
@@ -547,6 +551,13 @@ class AssistsMessageService {
 
   static void setOnAgentCompleteCallback(AgentCompleteCallback? callback) {
     _onAgentCompleteCallback = callback;
+  }
+
+  static int? _asNullableInt(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw);
+    return null;
   }
 
   static void setOnAgentErrorCallback(AgentErrorCallback? callback) {

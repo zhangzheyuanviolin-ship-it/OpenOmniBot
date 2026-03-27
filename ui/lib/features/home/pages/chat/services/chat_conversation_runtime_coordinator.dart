@@ -893,10 +893,27 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     bool success,
     String outputKind,
     bool hasUserVisibleOutput,
+    int? latestPromptTokens,
+    int? promptTokenThreshold,
   ) {
     final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
     if (binding == null || runtime == null) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (latestPromptTokens != null || promptTokenThreshold != null) {
+      final conversation = runtime.conversation;
+      if (conversation != null) {
+        runtime.conversation = conversation.copyWith(
+          latestPromptTokens:
+              latestPromptTokens ?? conversation.latestPromptTokens,
+          promptTokenThreshold:
+              promptTokenThreshold ?? conversation.promptTokenThreshold,
+          latestPromptTokensUpdatedAt: latestPromptTokens != null
+              ? now
+              : conversation.latestPromptTokensUpdatedAt,
+        );
+      }
+    }
 
     runtime.currentThinkingStage = ThinkingStage.complete.value;
     runtime.isDeepThinking = false;

@@ -872,6 +872,9 @@ class ChatInputWrapper extends StatelessWidget {
   final Widget? topBanner;
   final String? selectedModelOverrideId;
   final VoidCallback? onClearSelectedModelOverride;
+  final double? contextUsageRatio;
+  final VoidCallback? onTapContextUsageRing;
+  final VoidCallback? onLongPressContextUsageRing;
 
   const ChatInputWrapper({
     super.key,
@@ -893,6 +896,9 @@ class ChatInputWrapper extends StatelessWidget {
     this.topBanner,
     this.selectedModelOverrideId,
     this.onClearSelectedModelOverride,
+    this.contextUsageRatio,
+    this.onTapContextUsageRing,
+    this.onLongPressContextUsageRing,
   });
 
   @override
@@ -922,6 +928,9 @@ class ChatInputWrapper extends StatelessWidget {
             onRemoveAttachment: onRemoveAttachment,
             selectedModelOverrideId: selectedModelOverrideId,
             onClearSelectedModelOverride: onClearSelectedModelOverride,
+            contextUsageRatio: contextUsageRatio,
+            onTapContextUsageRing: onTapContextUsageRing,
+            onLongPressContextUsageRing: onLongPressContextUsageRing,
           ),
         ],
       ),

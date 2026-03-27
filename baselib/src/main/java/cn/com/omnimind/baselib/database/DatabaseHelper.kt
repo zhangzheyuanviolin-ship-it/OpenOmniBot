@@ -88,13 +88,12 @@ object DatabaseHelper {
     // Migration from version 5 to 6 - adding conversations table
     private val MIGRATION_5_6 = object : Migration(5, 6) {
         override fun migrate(database: SupportSQLiteDatabase) {
-            // Create conversations table
+            // Keep the released v6 schema exact so later migrations can apply cleanly.
             database.execSQL(
                 """
                 CREATE TABLE IF NOT EXISTS `conversations` (
                     `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                     `title` TEXT NOT NULL,
-                    `mode` TEXT NOT NULL DEFAULT 'normal',
                     `summary` TEXT,
                     `status` INTEGER NOT NULL DEFAULT 0,
                     `lastMessage` TEXT,
@@ -105,27 +104,6 @@ object DatabaseHelper {
                 """.trimIndent()
             )
 
-            // 插入示例数据
-            val now = System.currentTimeMillis()
-            database.execSQL(
-                """
-                INSERT INTO conversations (title, mode, summary, status, lastMessage, messageCount, createdAt, updatedAt)
-                VALUES ('帮我订明天去北京的机票', 'normal', '订机票', 0, '好的，请告诉我出发城市和时间。', 2, $now, $now)
-                """.trimIndent()
-            )
-            database.execSQL(
-                """
-                INSERT INTO conversations (title, mode, summary, status, lastMessage, messageCount, createdAt, updatedAt)
-                VALUES ('现在打一辆车去国贸', 'normal', '打车', 1, '已为您安排车辆', 2, $now, $now)
-                """.trimIndent()
-            )
-            database.execSQL(
-                """
-                INSERT INTO conversations (title, mode, summary, status, lastMessage, messageCount, createdAt, updatedAt)
-                VALUES ('五点叫个快递', 'normal', '快递', 1, '好的，已提醒', 2, $now, $now)
-                """.trimIndent()
-            )
-            OmniLog.d("DatabaseHelper", "已插入3条示例对话记录")
         }
     }
 
@@ -172,18 +150,32 @@ object DatabaseHelper {
         }
     }
 
+    private val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE conversations ADD COLUMN contextSummary TEXT")
+            database.execSQL("ALTER TABLE conversations ADD COLUMN contextSummaryCutoffEntryDbId INTEGER")
+            database.execSQL("ALTER TABLE conversations ADD COLUMN contextSummaryUpdatedAt INTEGER NOT NULL DEFAULT 0")
+            database.execSQL("ALTER TABLE conversations ADD COLUMN latestPromptTokens INTEGER NOT NULL DEFAULT 0")
+            database.execSQL("ALTER TABLE conversations ADD COLUMN promptTokenThreshold INTEGER NOT NULL DEFAULT 128000")
+            database.execSQL("ALTER TABLE conversations ADD COLUMN latestPromptTokensUpdatedAt INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    internal val ALL_MIGRATIONS = arrayOf(
+        MIGRATION_1_2,
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+        MIGRATION_6_7,
+        MIGRATION_7_8,
+        MIGRATION_8_9
+    )
+
     fun init(context: Context) {
         database = Room.databaseBuilder(
             context.applicationContext, AppDatabase::class.java, LOCAL_DATABASE_NAME
-        ).addMigrations(
-            MIGRATION_1_2,
-            MIGRATION_2_3,
-            MIGRATION_3_4,
-            MIGRATION_4_5,
-            MIGRATION_5_6,
-            MIGRATION_6_7,
-            MIGRATION_7_8
-        ).build()
+        ).addMigrations(*ALL_MIGRATIONS).build()
 
     }
 

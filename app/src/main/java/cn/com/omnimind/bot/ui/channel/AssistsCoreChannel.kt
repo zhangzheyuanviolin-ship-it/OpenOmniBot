@@ -277,6 +277,9 @@ class AssistsCoreChannel {
                 "updateConversation" -> {
                     assistsCoreManager!!.updateConversation(call, result)
                 }
+                "updateConversationPromptTokenThreshold" -> {
+                    assistsCoreManager!!.updateConversationPromptTokenThreshold(call, result)
+                }
                 "deleteConversation" -> {
                     assistsCoreManager!!.deleteConversation(call, result)
                 }
