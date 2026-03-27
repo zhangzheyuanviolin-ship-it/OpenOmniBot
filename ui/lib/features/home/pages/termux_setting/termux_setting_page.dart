@@ -223,7 +223,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '主应用内不再显示环境安装状态或安装过程。Node.js、Python、SSH、Java 等环境请直接在内嵌 Alpine 终端的环境配置页面中安装和修复。',
+            '不再集中管理开发环境配置，请自行安装或者叫小万安装',
             style: TextStyle(
               color: Color(0xFF64748B),
               fontSize: 13,
@@ -246,7 +246,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                         color: Colors.white,
                       ),
                     )
-                  : const Text('打开终端环境配置'),
+                  : const Text('打开终端'),
             ),
           ),
         ],
