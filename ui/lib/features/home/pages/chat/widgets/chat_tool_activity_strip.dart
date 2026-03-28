@@ -19,6 +19,14 @@ const ValueKey<String> kChatToolActivityToggleKey = ValueKey<String>(
   'chat-tool-activity-toggle',
 );
 
+const double _kToolActivityRowHeight = 46;
+const double _kToolActivitySurfaceRadius = 18;
+const double _kToolActivityPreviewWidth = 112;
+const double _kToolActivityPreviewHeight = 62;
+const double _kToolActivityPreviewDockDepth = 18;
+const double _kToolActivityDrawerMaxHeight = 228;
+const Color _kToolActivitySurfaceColor = Color(0xFFF9FCFF);
+
 class ChatToolActivityStrip extends StatefulWidget {
   const ChatToolActivityStrip({
     super.key,
@@ -36,14 +44,6 @@ class ChatToolActivityStrip extends StatefulWidget {
 }
 
 class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
-  static const double _barHeight = 46;
-  static const double _barRadius = 22;
-  static const double _previewWidth = 104;
-  static const double _previewHeight = 62;
-  static const double _previewOverlap = 8;
-  static const double _drawerGap = 10;
-  static const double _drawerMaxHeight = 220;
-
   bool _expanded = false;
   double? _lastReportedOccupiedHeight;
 
@@ -64,18 +64,30 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
     final isExpanded = _expanded && canExpand;
     final transcript = buildAgentToolTranscript(cards);
     final title = resolveAgentToolTitle(activeCard);
+    final currentIndex = math.max(
+      1,
+      cards.indexWhere((card) => _cardIdentity(card) == activeCardId) + 1,
+    );
     final historyHeight = isExpanded
         ? _resolveHistoryHeight(historyCards)
         : 0.0;
+    final dividerHeight = isExpanded ? 1.0 : 0.0;
+    final surfaceHeight =
+        _kToolActivityRowHeight + historyHeight + dividerHeight;
     final totalHeight =
-        _barHeight +
-        (isExpanded ? historyHeight + _drawerGap : 0.0) +
-        (!isExpanded ? _previewHeight - _previewOverlap : 0.0);
+        surfaceHeight +
+        (!isExpanded
+            ? _kToolActivityPreviewHeight - _kToolActivityPreviewDockDepth
+            : 0.0);
+    final collapsedLeadingInset = math.max(
+      0.0,
+      _kToolActivityPreviewWidth - 10,
+    );
     _reportOccupiedHeight(totalHeight);
 
     return AnimatedSize(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutQuart,
       alignment: Alignment.bottomLeft,
       child: SizedBox(
         width: widget.anchorRect?.width ?? double.infinity,
@@ -83,40 +95,51 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            if (isExpanded)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: _barHeight + _drawerGap,
-                child: _HistoryDrawer(
-                  cards: historyCards,
-                  height: historyHeight,
-                ),
-              ),
-            if (!isExpanded)
-              Positioned(
-                left: 0,
-                bottom: _barHeight - _previewOverlap,
-                child: _TerminalThumbnail(
-                  key: kChatToolActivityPreviewKey,
-                  previewText: _buildPreviewText(activeCard),
-                  transcript: transcript,
-                  onTap: () => _openTranscriptDialog(
-                    context,
-                    transcript: transcript,
-                    title: title,
-                  ),
-                ),
-              ),
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: _ActivityBar(
-                card: activeCard,
+              child: _ActivityDrawerSurface(
+                activeCard: activeCard,
+                historyCards: historyCards,
+                historyHeight: historyHeight,
                 expanded: isExpanded,
                 canExpand: canExpand,
+                currentIndex: currentIndex,
+                totalCount: cards.length,
+                leadingInset: isExpanded ? 0 : collapsedLeadingInset,
                 onToggle: () => setState(() => _expanded = !_expanded),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              bottom: _kToolActivityRowHeight - _kToolActivityPreviewDockDepth,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  final offset = Tween<Offset>(
+                    begin: const Offset(-0.05, 0.12),
+                    end: Offset.zero,
+                  ).animate(animation);
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(position: offset, child: child),
+                  );
+                },
+                child: isExpanded
+                    ? const SizedBox.shrink(key: ValueKey('hidden-preview'))
+                    : _TerminalThumbnail(
+                        key: kChatToolActivityPreviewKey,
+                        previewText: _buildPreviewText(activeCard),
+                        transcript: transcript,
+                        onTap: () => _openTranscriptDialog(
+                          context,
+                          transcript: transcript,
+                          title: title,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -177,8 +200,11 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
   double _resolveHistoryHeight(List<Map<String, dynamic>> cards) {
     final visibleCount = cards.length.clamp(1, 5);
     final estimated =
-        18 + (visibleCount * 40) + (math.max(0, visibleCount - 1) * 2) + 14;
-    return math.min(_drawerMaxHeight, estimated.toDouble());
+        8 +
+        (visibleCount * _kToolActivityRowHeight) +
+        math.max(0, visibleCount - 1) +
+        6;
+    return math.min(_kToolActivityDrawerMaxHeight, estimated.toDouble());
   }
 
   void _reportOccupiedHeight(double height) {
@@ -294,17 +320,27 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
   }
 }
 
-class _ActivityBar extends StatelessWidget {
-  const _ActivityBar({
-    required this.card,
+class _ActivityDrawerSurface extends StatelessWidget {
+  const _ActivityDrawerSurface({
+    required this.activeCard,
+    required this.historyCards,
+    required this.historyHeight,
     required this.expanded,
     required this.canExpand,
+    required this.currentIndex,
+    required this.totalCount,
+    required this.leadingInset,
     required this.onToggle,
   });
 
-  final Map<String, dynamic> card;
+  final Map<String, dynamic> activeCard;
+  final List<Map<String, dynamic>> historyCards;
+  final double historyHeight;
   final bool expanded;
   final bool canExpand;
+  final int currentIndex;
+  final int totalCount;
+  final double leadingInset;
   final VoidCallback onToggle;
 
   @override
@@ -313,42 +349,102 @@ class _ActivityBar extends StatelessWidget {
       color: Colors.transparent,
       child: Ink(
         key: kChatToolActivityBarKey,
-        decoration: _surfaceDecoration(
-          borderRadius: BorderRadius.circular(
-            _ChatToolActivityStripState._barRadius,
-          ),
+        decoration: _surfaceDecoration(expanded: expanded),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedCrossFade(
+              duration: const Duration(milliseconds: 240),
+              firstCurve: Curves.easeInCubic,
+              secondCurve: Curves.easeOutCubic,
+              sizeCurve: Curves.easeOutQuart,
+              alignment: Alignment.bottomCenter,
+              crossFadeState: expanded
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              firstChild: const SizedBox.shrink(
+                key: ValueKey('collapsed-panel'),
+              ),
+              secondChild: SizedBox(
+                height: historyHeight,
+                child: _HistoryDrawer(cards: historyCards),
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              height: expanded ? 1 : 0,
+              margin: const EdgeInsets.only(left: 28, right: 14),
+              color: const Color(0x140F2034),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: canExpand ? onToggle : null,
+              child: ToolActivityRow(
+                card: activeCard,
+                leadingInset: leadingInset,
+                trailing: canExpand
+                    ? _ActivityBarTrailing(
+                        currentIndex: currentIndex,
+                        totalCount: totalCount,
+                        expanded: expanded,
+                        onToggle: onToggle,
+                      )
+                    : null,
+              ),
+            ),
+          ],
         ),
-        child: InkWell(
-          onTap: canExpand ? onToggle : null,
-          borderRadius: BorderRadius.circular(
-            _ChatToolActivityStripState._barRadius,
-          ),
-          child: ToolActivityRow(
-            card: card,
-            trailing: canExpand
-                ? Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      key: kChatToolActivityToggleKey,
-                      onTap: onToggle,
-                      borderRadius: BorderRadius.circular(999),
-                      child: Padding(
-                        padding: const EdgeInsets.all(2),
-                        child: AnimatedRotation(
-                          turns: expanded ? 0.5 : 0,
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOutCubic,
-                          child: const Icon(
-                            Icons.keyboard_arrow_up_rounded,
-                            size: 18,
-                            color: Color(0xFF5B6E8A),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                : null,
-          ),
+      ),
+    );
+  }
+}
+
+class _ActivityBarTrailing extends StatelessWidget {
+  const _ActivityBarTrailing({
+    required this.currentIndex,
+    required this.totalCount,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final int currentIndex;
+  final int totalCount;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: kChatToolActivityToggleKey,
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggle,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$currentIndex/$totalCount',
+              style: const TextStyle(
+                color: Color(0xFF66788F),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(width: 2),
+            AnimatedRotation(
+              turns: expanded ? 0 : 0.5,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              child: const Icon(
+                Icons.keyboard_arrow_up_rounded,
+                size: 18,
+                color: Color(0xFF657891),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -356,32 +452,29 @@ class _ActivityBar extends StatelessWidget {
 }
 
 class _HistoryDrawer extends StatelessWidget {
-  const _HistoryDrawer({required this.cards, required this.height});
+  const _HistoryDrawer({required this.cards});
 
   final List<Map<String, dynamic>> cards;
-  final double height;
 
   @override
   Widget build(BuildContext context) {
+    final scrollable = cards.length > 4;
     return Container(
       key: kChatToolActivityPanelKey,
-      height: height,
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-      decoration: _surfaceDecoration(
-        borderRadius: BorderRadius.circular(
-          _ChatToolActivityStripState._barRadius,
-        ),
-      ),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 6),
       child: ListView.separated(
         padding: EdgeInsets.zero,
         shrinkWrap: true,
+        physics: scrollable
+            ? const BouncingScrollPhysics(parent: ClampingScrollPhysics())
+            : const NeverScrollableScrollPhysics(),
         itemBuilder: (context, index) {
           return ToolActivityRow(card: cards[index]);
         },
-        separatorBuilder: (_, __) => Divider(
-          height: 2,
-          thickness: 1,
-          color: const Color(0xFF1A273B).withValues(alpha: 0.05),
+        separatorBuilder: (_, __) => Container(
+          height: 1,
+          margin: const EdgeInsets.only(left: 28, right: 14),
+          color: const Color(0x140F2034),
         ),
         itemCount: cards.length,
       ),
@@ -390,9 +483,15 @@ class _HistoryDrawer extends StatelessWidget {
 }
 
 class ToolActivityRow extends StatelessWidget {
-  const ToolActivityRow({super.key, required this.card, this.trailing});
+  const ToolActivityRow({
+    super.key,
+    required this.card,
+    this.leadingInset = 0,
+    this.trailing,
+  });
 
   final Map<String, dynamic> card;
+  final double leadingInset;
   final Widget? trailing;
 
   @override
@@ -402,48 +501,72 @@ class ToolActivityRow extends StatelessWidget {
         '${resolveAgentToolTypeLabel(card)} · ${resolveAgentToolStatusLabel(card)}';
 
     return SizedBox(
-      height: 40,
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: _statusColor(status),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              resolveAgentToolTitle(card),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                height: 1.1,
+      height: _kToolActivityRowHeight,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.fromLTRB(14 + leadingInset, 0, 12, 0),
+        child: Row(
+          children: [
+            _StatusDot(status: status),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                resolveAgentToolTitle(card),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              meta,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: AppColors.text50,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                height: 1.1,
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                meta,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  color: Color(0xFF7C8DA5),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.1,
+                ),
               ),
             ),
-          ),
-          if (trailing != null) ...[const SizedBox(width: 6), trailing!],
-        ],
+            if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusColor(status);
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.55), width: 1),
+      ),
+      alignment: Alignment.center,
+      child: Container(
+        width: 4,
+        height: 4,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
     );
   }
@@ -463,40 +586,72 @@ class _TerminalThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lines = _thumbnailText(previewText, transcript)
+        .split('\n')
+        .map((line) => line.trimRight())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    final headline = lines.isEmpty ? '\$ idle' : lines.first;
+    final body = lines.length > 1 ? lines.sublist(1).join('\n') : '';
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: Ink(
-          width: _ChatToolActivityStripState._previewWidth,
-          height: _ChatToolActivityStripState._previewHeight,
-          padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+          width: _kToolActivityPreviewWidth,
+          height: _kToolActivityPreviewHeight,
+          padding: const EdgeInsets.fromLTRB(12, 10, 11, 10),
           decoration: BoxDecoration(
-            color: const Color(0xFF191D27),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF2B313F)),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1D212B), Color(0xFF12161E)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFF2C3240)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x2E0D1627),
+                color: Color(0x2B0B1220),
                 blurRadius: 18,
-                offset: Offset(0, 12),
+                offset: Offset(0, 10),
               ),
             ],
           ),
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: Text(
-              _thumbnailText(previewText, transcript),
-              maxLines: 4,
-              overflow: TextOverflow.clip,
-              style: const TextStyle(
-                color: Color(0xFF9AF9B7),
-                fontSize: 7.4,
-                height: 1.1,
-                fontFamily: 'monospace',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                headline,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFFF4F7FB),
+                  fontSize: 8.1,
+                  height: 1.05,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'monospace',
+                ),
               ),
-            ),
+              if (body.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Expanded(
+                  child: Text(
+                    body,
+                    maxLines: 3,
+                    overflow: TextOverflow.clip,
+                    style: const TextStyle(
+                      color: Color(0xFF88EEA6),
+                      fontSize: 7.1,
+                      height: 1.16,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ] else
+                const Spacer(),
+            ],
           ),
         ),
       ),
@@ -540,16 +695,23 @@ Color _statusColor(String status) {
   }
 }
 
-BoxDecoration _surfaceDecoration({required BorderRadius borderRadius}) {
+BoxDecoration _surfaceDecoration({required bool expanded}) {
   return BoxDecoration(
-    color: const Color(0xFFFDFEFF),
-    borderRadius: borderRadius,
-    border: Border.all(color: const Color(0xFF102039).withValues(alpha: 0.06)),
-    boxShadow: const [
+    color: _kToolActivitySurfaceColor,
+    borderRadius: const BorderRadius.only(
+      topLeft: Radius.circular(_kToolActivitySurfaceRadius),
+      topRight: Radius.circular(_kToolActivitySurfaceRadius),
+    ),
+    border: Border(
+      left: BorderSide(color: const Color(0xFF102039).withValues(alpha: 0.06)),
+      top: BorderSide(color: const Color(0xFF102039).withValues(alpha: 0.06)),
+      right: BorderSide(color: const Color(0xFF102039).withValues(alpha: 0.06)),
+    ),
+    boxShadow: [
       BoxShadow(
-        color: Color(0x14111B2D),
-        blurRadius: 20,
-        offset: Offset(0, 10),
+        color: const Color(0x14111B2D).withValues(alpha: expanded ? 0.13 : 0.1),
+        blurRadius: expanded ? 24 : 18,
+        offset: const Offset(0, 8),
       ),
     ],
   );

@@ -125,9 +125,20 @@ void main() {
     final previewTopLeft = tester.getTopLeft(
       find.byKey(kChatToolActivityPreviewKey),
     );
+    final previewTopRight = tester.getTopRight(
+      find.byKey(kChatToolActivityPreviewKey),
+    );
     final barTopLeft = tester.getTopLeft(find.byKey(kChatToolActivityBarKey));
+    final titleTopLeft = tester.getTopLeft(find.text('检查 git 状态'));
+    final barInk = tester.widget<Ink>(find.byKey(kChatToolActivityBarKey));
+    final decoration = barInk.decoration! as BoxDecoration;
+    final borderRadius = decoration.borderRadius! as BorderRadius;
 
     expect(previewTopLeft.dx, 52);
     expect(previewTopLeft.dy, lessThan(barTopLeft.dy));
+    expect(titleTopLeft.dx, greaterThan(previewTopRight.dx - 12));
+    expect(decoration.color, const Color(0xFFF9FCFF));
+    expect(borderRadius.bottomLeft, Radius.zero);
+    expect(borderRadius.bottomRight, Radius.zero);
   });
 }
