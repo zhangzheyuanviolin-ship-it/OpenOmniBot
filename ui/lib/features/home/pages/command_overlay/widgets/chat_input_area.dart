@@ -85,7 +85,7 @@ class ChatInputArea extends StatefulWidget {
   final String? selectedModelOverrideId;
   final VoidCallback? onClearSelectedModelOverride;
   final double? contextUsageRatio;
-  final VoidCallback? onTapContextUsageRing;
+  final String? contextUsageTooltipMessage;
   final VoidCallback? onLongPressContextUsageRing;
 
   const ChatInputArea({
@@ -110,7 +110,7 @@ class ChatInputArea extends StatefulWidget {
     this.selectedModelOverrideId,
     this.onClearSelectedModelOverride,
     this.contextUsageRatio,
-    this.onTapContextUsageRing,
+    this.contextUsageTooltipMessage,
     this.onLongPressContextUsageRing,
   });
 
@@ -156,12 +156,12 @@ class _ContextUsageRing extends StatelessWidget {
 class _ContextUsageRingButton extends StatelessWidget {
   const _ContextUsageRingButton({
     required this.ratio,
-    this.onTap,
+    this.tooltipMessage,
     this.onLongPress,
   });
 
   final double ratio;
-  final VoidCallback? onTap;
+  final String? tooltipMessage;
   final VoidCallback? onLongPress;
 
   @override
@@ -171,18 +171,47 @@ class _ContextUsageRingButton extends StatelessWidget {
       height: 22,
       child: Center(child: _ContextUsageRing(ratio: ratio)),
     );
-    if (onTap == null && onLongPress == null) {
-      return child;
+    final interactiveChild =
+        onLongPress == null
+            ? child
+            : GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: onLongPress,
+                child: child,
+              );
+    final tooltip = tooltipMessage?.trim() ?? '';
+    if (tooltip.isEmpty) {
+      return interactiveChild;
     }
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: child,
+    return Tooltip(
+      message: tooltip,
+      triggerMode: TooltipTriggerMode.tap,
+      waitDuration: Duration.zero,
+      showDuration: const Duration(seconds: 3),
+      preferBelow: false,
+      verticalOffset: 12,
+      decoration: BoxDecoration(
+        color: const Color(0xFF172033),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x24172033),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      textStyle: const TextStyle(
+        color: Colors.white,
+        fontSize: 12,
+        height: 1.45,
+        fontWeight: FontWeight.w500,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: interactiveChild,
     );
   }
 }
-
 class _ContextUsageRingPainter extends CustomPainter {
   const _ContextUsageRingPainter({
     required this.progress,
@@ -386,3 +415,5 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     });
   }
 }
+
+

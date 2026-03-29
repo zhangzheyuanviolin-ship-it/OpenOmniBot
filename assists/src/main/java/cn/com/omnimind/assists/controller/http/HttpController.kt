@@ -8,6 +8,7 @@ import cn.com.omnimind.baselib.llm.AssistantToolCall
 import cn.com.omnimind.baselib.llm.AssistantToolCallFunction
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
+import cn.com.omnimind.baselib.llm.ChatCompletionStreamOptions
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.util.OmniLog
@@ -357,7 +358,8 @@ object HttpController {
 
     private fun createChatRequestFromMessages(
         resolved: ResolvedSceneRequest,
-        messages: List<Map<String, Any>>
+        messages: List<Map<String, Any>>,
+        enableThinking: Boolean? = null
     ): ChatCompletionRequest {
         val chatMessages = messages.map { message ->
             ChatCompletionMessage(
@@ -368,7 +370,12 @@ object HttpController {
                 name = parseOptionalText(message["name"])
             )
         }
-        return ChatCompletionRequest(model = resolved.resolvedModel, messages = chatMessages)
+        return ChatCompletionRequest(
+            model = resolved.resolvedModel,
+            messages = chatMessages,
+            enableThinking = enableThinking,
+            streamOptions = ChatCompletionStreamOptions(includeUsage = true),
+        )
     }
 
     private fun parseChatMessageContent(raw: Any?): JsonElement? {
@@ -719,12 +726,19 @@ object HttpController {
      * @return EventSource 事件源
      */
     suspend fun postLLMStreamRequestWithContextAsFlow(
-        model: String, messages: List<Map<String, Any>>, event: EventSourceListener
+        model: String,
+        messages: List<Map<String, Any>>,
+        event: EventSourceListener,
+        enableThinking: Boolean? = null
     ): EventSource {
         val resolved = resolveSceneRequest(model)
         logSceneProfile(resolved)
         return postOpenAIStreamRequestAsFlow(
-            chatRequest = createChatRequestFromMessages(resolved, messages),
+            chatRequest = createChatRequestFromMessages(
+                resolved = resolved,
+                messages = messages,
+                enableThinking = enableThinking
+            ),
             apiBase = resolved.apiBase,
             apiKey = resolved.apiKey,
             event = event,

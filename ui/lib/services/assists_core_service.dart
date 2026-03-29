@@ -42,6 +42,13 @@ typedef AgentToolCallProgressCallback = void Function(AgentToolEventData event);
 typedef AgentToolCallCompleteCallback = void Function(AgentToolEventData event);
 typedef AgentChatMessageCallback =
     void Function(String taskId, String message, {bool isFinal});
+typedef AgentContextCompactionStateCallback =
+    void Function(
+      String taskId,
+      bool isCompacting,
+      int? latestPromptTokens,
+      int? promptTokenThreshold,
+    );
 typedef AgentClarifyCallback =
     void Function(String taskId, String question, List<String> missingFields);
 typedef AgentCompleteCallback =
@@ -195,6 +202,8 @@ class AssistsMessageService {
   static AgentToolCallProgressCallback? _onAgentToolCallProgressCallback;
   static AgentToolCallCompleteCallback? _onAgentToolCallCompleteCallback;
   static AgentChatMessageCallback? _onAgentChatMessageCallback;
+  static AgentContextCompactionStateCallback?
+  _onAgentContextCompactionStateCallback;
   static AgentClarifyCallback? _onAgentClarifyCallback;
   static AgentCompleteCallback? _onAgentCompleteCallback;
   static AgentErrorCallback? _onAgentErrorCallback;
@@ -342,6 +351,17 @@ class AssistsMessageService {
             (data['taskId'] ?? '').toString(),
             (data['message'] ?? '').toString(),
             isFinal: isFinal,
+          );
+          break;
+        case 'onAgentContextCompactionStateChanged':
+          final Map<String, dynamic> data = Map<String, dynamic>.from(
+            call.arguments,
+          );
+          _onAgentContextCompactionStateCallback?.call(
+            (data['taskId'] ?? '').toString(),
+            data['isCompacting'] == true,
+            _asNullableInt(data['latestPromptTokens']),
+            _asNullableInt(data['promptTokenThreshold']),
           );
           break;
         case 'onAgentClarifyRequired':
@@ -546,6 +566,12 @@ class AssistsMessageService {
     AgentChatMessageCallback? callback,
   ) {
     _onAgentChatMessageCallback = callback;
+  }
+
+  static void setOnAgentContextCompactionStateCallback(
+    AgentContextCompactionStateCallback? callback,
+  ) {
+    _onAgentContextCompactionStateCallback = callback;
   }
 
   static void setOnAgentClarifyCallback(AgentClarifyCallback? callback) {

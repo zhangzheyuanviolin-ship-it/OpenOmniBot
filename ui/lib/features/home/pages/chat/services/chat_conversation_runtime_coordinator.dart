@@ -30,6 +30,7 @@ class ChatConversationRuntimeState {
   final List<ChatMessageModel> messages = <ChatMessageModel>[];
   final Map<String, String> currentAiMessages = <String, String>{};
   bool isAiResponding = false;
+  bool isContextCompressing = false;
   bool isCheckingExecutableTask = false;
   bool isSubmittingVlmReply = false;
   String? vlmInfoQuestion;
@@ -134,6 +135,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     AssistsMessageService.setOnAgentChatMessageCallback(
       _handleAgentChatMessage,
     );
+    AssistsMessageService.setOnAgentContextCompactionStateCallback(
+      _handleAgentContextCompactionStateChanged,
+    );
     AssistsMessageService.setOnAgentClarifyCallback(_handleAgentClarify);
     AssistsMessageService.setOnAgentCompleteCallback(_handleAgentComplete);
     AssistsMessageService.setOnAgentErrorCallback(_handleAgentError);
@@ -191,6 +195,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     required List<ChatMessageModel> messages,
     ConversationModel? conversation,
     bool isAiResponding = false,
+    bool isContextCompressing = false,
     bool isCheckingExecutableTask = false,
     bool isSubmittingVlmReply = false,
     String? vlmInfoQuestion,
@@ -222,6 +227,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       ..addAll(messages);
     runtime.conversation = conversation ?? runtime.conversation;
     runtime.isAiResponding = isAiResponding;
+    runtime.isContextCompressing = isContextCompressing;
     runtime.isCheckingExecutableTask = isCheckingExecutableTask;
     runtime.isSubmittingVlmReply = isSubmittingVlmReply;
     runtime.vlmInfoQuestion = vlmInfoQuestion;
@@ -281,6 +287,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final runtime = runtimeFor(conversationId: conversationId, mode: mode);
     if (runtime == null) return;
     runtime.currentDispatchTaskId = null;
+    runtime.isContextCompressing = false;
     runtime.deepThinkingContent = '';
     runtime.isDeepThinking = false;
     runtime.currentThinkingStage = ThinkingStage.thinking.value;
@@ -483,21 +490,25 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       messageText = kRateLimitErrorMessage;
       isError = true;
       isSummarizing = false;
+      runtime.isContextCompressing = false;
       runtime.currentAiMessages.remove(taskId);
     } else if (isErrorMessage) {
       messageText = kNetworkErrorMessage;
       isError = true;
       isSummarizing = false;
+      runtime.isContextCompressing = false;
       runtime.currentAiMessages.remove(taskId);
     } else if (isSummaryStart) {
       messageText = '';
       isError = false;
       isSummarizing = true;
+      runtime.isContextCompressing = true;
       runtime.currentAiMessages[taskId] = '';
     } else if (isOpenClawAttachment) {
       messageText = runtime.currentAiMessages[taskId] ?? '';
       isError = false;
       isSummarizing = false;
+      runtime.isContextCompressing = false;
     } else {
       final text = (payload['text'] ?? '').toString();
       runtime.currentAiMessages[taskId] =
@@ -505,6 +516,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       messageText = runtime.currentAiMessages[taskId] ?? '';
       isError = false;
       isSummarizing = false;
+      runtime.isContextCompressing = false;
     }
 
     _removeOpenClawWaitingCard(runtime, taskId);
@@ -530,6 +542,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     if (binding == null || runtime == null) return;
 
     runtime.isAiResponding = false;
+    runtime.isContextCompressing = false;
     final index = runtime.messages.indexWhere((msg) => msg.id == taskId);
     final isErrorMessage = index != -1 && runtime.messages[index].isError;
     final messageText = isErrorMessage
@@ -825,6 +838,39 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         mode: binding.mode,
       );
     }
+  }
+
+  void _handleAgentContextCompactionStateChanged(
+    String taskId,
+    bool isCompacting,
+    int? latestPromptTokens,
+    int? promptTokenThreshold,
+  ) {
+    final binding = _taskBindings[taskId];
+    final runtime = _runtimeForTask(taskId);
+    if (binding == null || runtime == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final conversation = runtime.conversation;
+    if (conversation != null &&
+        (latestPromptTokens != null || promptTokenThreshold != null)) {
+      runtime.conversation = conversation.copyWith(
+        latestPromptTokens:
+            latestPromptTokens ?? conversation.latestPromptTokens,
+        promptTokenThreshold:
+            promptTokenThreshold ?? conversation.promptTokenThreshold,
+        latestPromptTokensUpdatedAt: latestPromptTokens != null
+            ? now
+            : conversation.latestPromptTokensUpdatedAt,
+      );
+    }
+
+    runtime.isContextCompressing = isCompacting;
+    notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: binding.conversationId,
+      mode: binding.mode,
+    );
   }
 
   void _handleAgentClarify(

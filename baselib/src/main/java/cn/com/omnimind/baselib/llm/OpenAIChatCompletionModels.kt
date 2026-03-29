@@ -30,7 +30,9 @@ data class ChatCompletionRequest(
     val parallelToolCalls: Boolean? = null,
     val functions: List<ChatCompletionFunction>? = null,
     @SerialName("function_call")
-    val functionCall: JsonElement? = null
+    val functionCall: JsonElement? = null,
+    @SerialName("enable_thinking")
+    val enableThinking: Boolean? = null
 )
 
 @Serializable

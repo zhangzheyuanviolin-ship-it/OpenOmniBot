@@ -138,7 +138,7 @@ mixin _ChatInputAreaComposerMixin
         if (contextUsageRatio != null) ...[
           _ContextUsageRingButton(
             ratio: contextUsageRatio,
-            onTap: widget.onTapContextUsageRing,
+            tooltipMessage: widget.contextUsageTooltipMessage,
             onLongPress: widget.onLongPressContextUsageRing,
           ),
           const SizedBox(width: 4),
@@ -512,7 +512,7 @@ mixin _ChatInputAreaComposerMixin
         if (contextUsageRatio != null) ...[
           _ContextUsageRingButton(
             ratio: contextUsageRatio,
-            onTap: widget.onTapContextUsageRing,
+            tooltipMessage: widget.contextUsageTooltipMessage,
             onLongPress: widget.onLongPressContextUsageRing,
           ),
           const SizedBox(width: 4),
@@ -803,3 +803,4 @@ class _ComposerFlowBorderPainter extends CustomPainter {
         oldDelegate.strokeWidth != strokeWidth;
   }
 }
+
