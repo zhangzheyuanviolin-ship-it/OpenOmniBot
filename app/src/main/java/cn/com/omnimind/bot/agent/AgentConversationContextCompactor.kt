@@ -33,18 +33,16 @@ open class AgentConversationContextCompactor(
         private const val CHAT_COMPACTOR_SCENE = "scene.compactor.context.chat"
         private const val TAG = "AgentConversationContextCompactor"
         private const val COMPACTION_REQUEST_PROMPT = """
-你将收到同一会话中已经发生的一段真实历史。
-请把这些历史与已有累计总结整合为一份新的累计总结。
+你是一个用户与Agent对话上下文压缩器。你的职责是把一段多轮聊天历史压缩为一份可持续累积的上下文总结，供后续对话继续参考。\n\n
+# 要求：\n
+1. 只输出纯文本，不要 JSON，不要 Markdown 代码块。\n
+3. 保留长期目标、用户偏好、约束条件、关键文件路径、参数、工具结果、未完成任务、待确认点。\n
+4. 去掉冗余寒暄、重复措辞、无关中间推理，但不能丢失会影响后续执行的重要事实。\n
+5. 如果系统消息里已经给出旧的累计总结，要将其与新历史整合为一份新的累计总结，而不是简单拼接。\n
+6. 不要编造不存在的事实；不确定时明确写“待确认”。\n
+# 输出格式：\n
+## 用户目标与约束 \n- ...\n\n## 已确认事实与已完成结果\n- ...\n\n## 关键上下文与参数\n- ...\n\n## 未完成事项与下一步\n- ...\n
 
-必须遵守：
-1. 只输出一份新的累计总结。
-2. 只保留后续继续对话真正需要的信息，删除冗余措辞。
-3. 必须包含以下四段，并保留原样标题：
-【用户目标与约束】
-【已确认事实与已完成结果】
-【关键上下文与参数】
-【未完成事项与下一步】
-4. 不要输出代码块，不要输出 JSON，不要解释你的做法。
 """
         private const val EXISTING_SUMMARY_PROMPT_PREFIX = """
 以下是之前已经累计好的历史总结，请将它与后续原始历史合并为新的累计总结：
@@ -66,7 +64,8 @@ open class AgentConversationContextCompactor(
         conversationId: Long?,
         conversationMode: String,
         promptTokens: Int?,
-        messages: List<ChatCompletionMessage>
+        messages: List<ChatCompletionMessage>,
+        callback: AgentCallback? = null
     ): List<ChatCompletionMessage> {
         if (conversationId == null || conversationId <= 0L) {
             return messages
@@ -88,33 +87,46 @@ open class AgentConversationContextCompactor(
         val runtimeWindow = AgentConversationHistorySupport.buildRuntimeCompactionWindow(messages)
             ?: return messages
 
-        return runCatching {
-            val requestMessages = buildCompactionRequestMessages(
-                existingSummary = runtimeWindow.existingSummary
-                    ?: candidate.conversation.contextSummary,
-                messagesToCompact = runtimeWindow.messagesToCompact
-            )
-            val summary = requestCompactedSummary(requestMessages)
-            if (summary.isBlank()) {
-                OmniLog.w(TAG, "conversation=$conversationId compaction returned blank summary")
+        callback?.onContextCompactionStateChanged(
+            isCompacting = true,
+            latestPromptTokens = normalizedPromptTokens,
+            promptTokenThreshold = promptTokenThreshold
+        )
+        try {
+            return runCatching {
+                val requestMessages = buildCompactionRequestMessages(
+                    existingSummary = runtimeWindow.existingSummary
+                        ?: candidate.conversation.contextSummary,
+                    messagesToCompact = runtimeWindow.messagesToCompact
+                )
+                val summary = requestCompactedSummary(requestMessages)
+                if (summary.isBlank()) {
+                    OmniLog.w(TAG, "conversation=$conversationId compaction returned blank summary")
+                    messages
+                } else {
+                    historyRepository.updateContextSummary(
+                        conversationId = conversationId,
+                        summary = summary,
+                        cutoffEntryDbId = candidate.cutoffEntryDbId
+                    )
+                    AgentConversationHistorySupport.rebuildMessagesWithCompactedSummary(
+                        messages = messages,
+                        summary = summary
+                    )
+                }
+            }.getOrElse { error ->
+                OmniLog.w(
+                    TAG,
+                    "conversation=$conversationId compaction failed: ${error.message}"
+                )
                 messages
-            } else {
-                historyRepository.updateContextSummary(
-                    conversationId = conversationId,
-                    summary = summary,
-                    cutoffEntryDbId = candidate.cutoffEntryDbId
-                )
-                AgentConversationHistorySupport.rebuildMessagesWithCompactedSummary(
-                    messages = messages,
-                    summary = summary
-                )
             }
-        }.getOrElse { error ->
-            OmniLog.w(
-                TAG,
-                "conversation=$conversationId compaction failed: ${error.message}"
+        } finally {
+            callback?.onContextCompactionStateChanged(
+                isCompacting = false,
+                latestPromptTokens = normalizedPromptTokens,
+                promptTokenThreshold = promptTokenThreshold
             )
-            messages
         }
     }
 

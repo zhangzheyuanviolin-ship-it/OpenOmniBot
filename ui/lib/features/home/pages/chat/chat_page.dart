@@ -186,6 +186,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     ChatPageMode.normal: false,
     ChatPageMode.openclaw: false,
   };
+  final Map<ChatPageMode, bool> _isContextCompressingByMode = {
+    ChatPageMode.normal: false,
+    ChatPageMode.openclaw: false,
+  };
   final Map<ChatPageMode, bool> _isCheckingExecutableTaskByMode = {
     ChatPageMode.normal: false,
     ChatPageMode.openclaw: false,
@@ -347,6 +351,18 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       return;
     }
     _isAiRespondingByMode[_activeMode] = value;
+  }
+
+  bool get _isContextCompressing =>
+      _activeRuntime?.isContextCompressing ??
+      (_isContextCompressingByMode[_activeMode] ?? false);
+  set _isContextCompressing(bool value) {
+    final runtime = _activeRuntime;
+    if (runtime != null) {
+      runtime.isContextCompressing = value;
+      return;
+    }
+    _isContextCompressingByMode[_activeMode] = value;
   }
 
   bool get _isCheckingExecutableTask =>
@@ -1028,6 +1044,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _messagesByMode[mode]!.clear();
     _inputAreaHeightByMode[mode] = 0;
     _isAiRespondingByMode[mode] = false;
+    _isContextCompressingByMode[mode] = false;
     _isCheckingExecutableTaskByMode[mode] = false;
     _isSubmittingVlmReplyByMode[mode] = false;
     _vlmInfoQuestionByMode[mode] = null;

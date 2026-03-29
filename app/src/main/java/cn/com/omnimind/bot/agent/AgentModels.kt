@@ -205,6 +205,15 @@ interface AgentCallback {
     suspend fun onChatMessage(message: String, isFinal: Boolean) {
         onChatMessage(message)
     }
+
+    /**
+     * 对话上下文压缩状态变化
+     */
+    suspend fun onContextCompactionStateChanged(
+        isCompacting: Boolean,
+        latestPromptTokens: Int?,
+        promptTokenThreshold: Int?
+    ) = Unit
     
     /**
      * 需要用户输入（追问）

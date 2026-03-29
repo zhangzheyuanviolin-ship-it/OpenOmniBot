@@ -186,6 +186,61 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     );
   }
 
+  Widget _buildContextCompressingHint() {
+    return IgnorePointer(
+      child: SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xE61C2430),
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x26000000),
+                    blurRadius: 12,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFFF6FAFF),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      '正在压缩上下文',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFFF6FAFF),
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget _buildSlashCommandPanel() {
     final visible =
@@ -518,9 +573,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                     _activeMode == ChatPageMode.normal
                                     ? _currentConversation?.contextUsageRatio
                                     : null,
-                                onTapContextUsageRing:
+                                contextUsageTooltipMessage:
                                     _activeMode == ChatPageMode.normal
-                                    ? _handleContextUsageRingTap
+                                    ? _buildContextUsageTooltipMessage()
                                     : null,
                                 onLongPressContextUsageRing:
                                     _activeMode == ChatPageMode.normal
@@ -572,6 +627,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                         _buildNewConversationPullIndicator(
                           newConversationPullIndicatorTopOffset,
                         ),
+                      if (!_isWorkspaceSurface && _isContextCompressing)
+                        Positioned.fill(child: _buildContextCompressingHint()),
                       if (_isPopupVisible && !_isWorkspaceSurface)
                         Positioned(
                           right: 24,
@@ -593,29 +650,26 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     );
   }
 
-  void _handleContextUsageRingTap() {
+  String? _buildContextUsageTooltipMessage() {
     final conversation = _currentConversation;
     if (conversation == null) {
-      return;
+      return null;
     }
     if (conversation.promptTokenThreshold <= 0) {
-      _showSnackBar('当前对话还没有可用的上下文阈值');
-      return;
+      return '当前对话还没有可用的上下文阈值';
     }
     if (conversation.latestPromptTokensUpdatedAt <= 0 &&
         conversation.latestPromptTokens <= 0) {
-      _showSnackBar('当前对话还没有上下文 token 统计');
-      return;
+      return '当前对话还没有上下文 token 统计\n长按可调整阈值';
     }
 
     final usedTokens = conversation.latestPromptTokens;
     final thresholdTokens = conversation.promptTokenThreshold;
     final usageRatio = usedTokens / thresholdTokens;
-    _showSnackBar(
-      '上下文已用 ${_formatTokenCount(usedTokens)} / '
-      '${_formatTokenCount(thresholdTokens)} tokens '
-      '(${_formatUsagePercent(usageRatio)})',
-    );
+    return '当前上下文 ${_formatTokenCount(usedTokens)} / '
+        '${_formatTokenCount(thresholdTokens)} tokens'
+        '\n占阈值 ${_formatUsagePercent(usageRatio)}'
+        '\n长按可调整阈值';
   }
 
   Future<void> _handleContextUsageRingLongPress() async {
@@ -625,11 +679,14 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return;
     }
 
-    final nextThreshold = await showDialog<int>(
+    final nextThreshold = await showModalBottomSheet<int>(
       context: context,
+      isScrollControlled: true,
       useRootNavigator: false,
-      builder: (_) => _ContextThresholdDialog(
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ContextThresholdSheet(
         initialThreshold: conversation.promptTokenThreshold,
+        currentUsageTokens: conversation.latestPromptTokens,
       ),
     );
     if (!mounted || nextThreshold == null) return;
@@ -692,20 +749,26 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   }
 }
 
-class _ContextThresholdDialog extends StatefulWidget {
-  const _ContextThresholdDialog({required this.initialThreshold});
+class _ContextThresholdSheet extends StatefulWidget {
+  const _ContextThresholdSheet({
+    required this.initialThreshold,
+    required this.currentUsageTokens,
+  });
 
   final int initialThreshold;
+  final int currentUsageTokens;
 
   @override
-  State<_ContextThresholdDialog> createState() =>
-      _ContextThresholdDialogState();
+  State<_ContextThresholdSheet> createState() => _ContextThresholdSheetState();
 }
 
-class _ContextThresholdDialogState extends State<_ContextThresholdDialog> {
+class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
   late final TextEditingController _controller;
   final FocusNode _focusNode = FocusNode();
   String? _errorText;
+  late double _draftThreshold;
+
+  static const List<int> _presets = <int>[32000, 64000, 128000, 256000, 512000];
 
   @override
   void initState() {
@@ -713,15 +776,7 @@ class _ContextThresholdDialogState extends State<_ContextThresholdDialog> {
     _controller = TextEditingController(
       text: widget.initialThreshold.toString(),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _focusNode.requestFocus();
-        _controller.selection = TextSelection(
-          baseOffset: 0,
-          extentOffset: _controller.text.length,
-        );
-      }
-    });
+    _draftThreshold = widget.initialThreshold.toDouble();
   }
 
   @override
@@ -734,6 +789,24 @@ class _ContextThresholdDialogState extends State<_ContextThresholdDialog> {
   void _close([int? value]) {
     _focusNode.unfocus();
     Navigator.of(context).pop(value);
+  }
+
+  void _updateDraftThreshold(double value, {bool updateText = true}) {
+    final normalized = value.round().clamp(
+      _kMinContextTokenThreshold,
+      _kMaxContextTokenThreshold,
+    );
+    setState(() {
+      _draftThreshold = normalized.toDouble();
+      if (updateText) {
+        final text = normalized.toString();
+        _controller.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+      }
+      _errorText = null;
+    });
   }
 
   int? _parseInput() {
@@ -761,78 +834,336 @@ class _ContextThresholdDialogState extends State<_ContextThresholdDialog> {
     }
     setState(() {
       _errorText = null;
+      _draftThreshold = parsed.toDouble();
     });
     return parsed;
   }
 
+  String _formatThresholdLabel(int threshold) {
+    if (threshold >= 1000) {
+      final kilo = threshold / 1000;
+      return kilo % 1 == 0
+          ? '${kilo.toStringAsFixed(0)}k'
+          : '${kilo.toStringAsFixed(1)}k';
+    }
+    return threshold.toString();
+  }
+
+  String _formatTokenCount(int value) {
+    return value.toString().replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => ',',
+    );
+  }
+
+  String _formatUsagePercent(double ratio) {
+    if (!ratio.isFinite) {
+      return '0%';
+    }
+    final percent = ratio * 100;
+    final rounded = percent >= 100 || percent % 1 == 0
+        ? percent.toStringAsFixed(0)
+        : percent.toStringAsFixed(1);
+    return '$rounded%';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _close();
-      },
-      child: AlertDialog(
-        title: const Text('自定义压缩阈值'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '长按圆环可调整当前对话的上下文压缩阈值。',
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFF54627A),
-                height: 1.4,
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final draftThreshold = _draftThreshold.round();
+    final usageRatio = widget.currentUsageTokens <= 0
+        ? 0.0
+        : widget.currentUsageTokens / draftThreshold;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(12, 0, 12, 12 + bottomInset),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FBFF),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1A16304A),
+                blurRadius: 28,
+                offset: Offset(0, 14),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(
-                labelText: 'Prompt token 阈值',
-                hintText: _kDefaultContextTokenThreshold.toString(),
-                helperText:
-                    '默认 $_kDefaultContextTokenThreshold，范围 $_kMinContextTokenThreshold - $_kMaxContextTokenThreshold',
-                errorText: _errorText,
-              ),
-              onChanged: (_) {
-                if (_errorText != null) {
-                  setState(() {
-                    _errorText = null;
-                  });
-                }
-              },
-              onSubmitted: (_) {
-                final parsed = _parseInput();
-                if (parsed != null) {
-                  _close(parsed);
-                }
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => _close(_kDefaultContextTokenThreshold),
-            child: const Text('恢复默认'),
+            ],
           ),
-          TextButton(onPressed: () => _close(), child: const Text('取消')),
-          TextButton(
-            onPressed: () {
-              final parsed = _parseInput();
-              if (parsed != null) {
-                _close(parsed);
-              }
-            },
-            child: const Text('保存'),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD6E0F5),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                '调整上下文阈值',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF172033),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFEDF4FF), Color(0xFFF6F9FF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFD9E6FB)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _ThresholdMetric(
+                        label: '当前上下文',
+                        value: _formatTokenCount(widget.currentUsageTokens),
+                        accent: const Color(0xFF5A8DDE),
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 38,
+                      color: const Color(0xFFD9E6FB),
+                    ),
+                    Expanded(
+                      child: _ThresholdMetric(
+                        label: '目标阈值',
+                        value: _formatTokenCount(draftThreshold),
+                        accent: const Color(0xFF1930D9),
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 38,
+                      color: const Color(0xFFD9E6FB),
+                    ),
+                    Expanded(
+                      child: _ThresholdMetric(
+                        label: '占用比例',
+                        value: _formatUsagePercent(usageRatio),
+                        accent: usageRatio >= 1
+                            ? const Color(0xFFD65A3A)
+                            : const Color(0xFF2F8F6B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: const Color(0xFF2B63F6),
+                  inactiveTrackColor: const Color(0xFFD8E3FB),
+                  thumbColor: Colors.white,
+                  overlayColor: const Color(0x1A2B63F6),
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 11,
+                  ),
+                  trackHeight: 5,
+                ),
+                child: Slider(
+                  min: _kMinContextTokenThreshold.toDouble(),
+                  max: _kMaxContextTokenThreshold.toDouble(),
+                  divisions: (_kMaxContextTokenThreshold - _kMinContextTokenThreshold) ~/ 1000,
+                  value: _draftThreshold.clamp(
+                    _kMinContextTokenThreshold.toDouble(),
+                    _kMaxContextTokenThreshold.toDouble(),
+                  ),
+                  onChanged: (value) => _updateDraftThreshold(value),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _presets.map((preset) {
+                  final selected = draftThreshold == preset;
+                  return GestureDetector(
+                    onTap: () => _updateDraftThreshold(preset.toDouble()),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFF1F56F0)
+                            : const Color(0xFFFFFFFF),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFF1F56F0)
+                              : const Color(0xFFD9E6FB),
+                        ),
+                      ),
+                      child: Text(
+                        _formatThresholdLabel(preset),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: selected
+                              ? Colors.white
+                              : const Color(0xFF54627A),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: InputDecoration(
+                  labelText: '精确阈值',
+                  hintText: _kDefaultContextTokenThreshold.toString(),
+                  helperText:
+                      '默认 $_kDefaultContextTokenThreshold，范围 $_kMinContextTokenThreshold - $_kMaxContextTokenThreshold',
+                  errorText: _errorText,
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Color(0xFFD9E6FB)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Color(0xFFD9E6FB)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF2B63F6),
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+                onChanged: (_) {
+                  if (_errorText != null) {
+                    setState(() {
+                      _errorText = null;
+                    });
+                  }
+                  final parsed = int.tryParse(_controller.text.trim());
+                  if (parsed != null &&
+                      parsed >= _kMinContextTokenThreshold &&
+                      parsed <= _kMaxContextTokenThreshold) {
+                    setState(() {
+                      _draftThreshold = parsed.toDouble();
+                    });
+                  }
+                },
+                onSubmitted: (_) {
+                  final parsed = _parseInput();
+                  if (parsed != null) {
+                    _close(parsed);
+                  }
+                },
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _close(_kDefaultContextTokenThreshold),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        side: const BorderSide(color: Color(0xFFD9E6FB)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text('恢复默认'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        final parsed = _parseInput();
+                        if (parsed != null) {
+                          _close(parsed);
+                        }
+                      },
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        backgroundColor: const Color(0xFF1F56F0),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text('保存阈值'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThresholdMetric extends StatelessWidget {
+  const _ThresholdMetric({
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6A7891),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: accent,
+            ),
           ),
         ],
       ),
     );
   }
 }
+

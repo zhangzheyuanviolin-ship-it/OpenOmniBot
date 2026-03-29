@@ -3008,6 +3008,21 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         dispatchAgentChatMessage(message, isFinal)
                     }
 
+                    override suspend fun onContextCompactionStateChanged(
+                        isCompacting: Boolean,
+                        latestPromptTokens: Int?,
+                        promptTokenThreshold: Int?
+                    ) {
+                        sendEvent(
+                            "onAgentContextCompactionStateChanged",
+                            mapOf(
+                                "isCompacting" to isCompacting,
+                                "latestPromptTokens" to latestPromptTokens,
+                                "promptTokenThreshold" to promptTokenThreshold
+                            )
+                        )
+                    }
+
                     override suspend fun onClarifyRequired(
                         question: String,
                         missingFields: List<String>?

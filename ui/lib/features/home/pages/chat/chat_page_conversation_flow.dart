@@ -44,6 +44,9 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
           _currentConversationByMode[mode],
       isAiResponding:
           runtime?.isAiResponding ?? (_isAiRespondingByMode[mode] ?? false),
+      isContextCompressing:
+          runtime?.isContextCompressing ??
+          (_isContextCompressingByMode[mode] ?? false),
       isCheckingExecutableTask:
           runtime?.isCheckingExecutableTask ??
           (_isCheckingExecutableTaskByMode[mode] ?? false),
@@ -417,6 +420,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       _removeOpenClawWaitingCard(aiMessageId);
       setState(() {
         _isAiResponding = false;
+        _isContextCompressing = false;
         removeLatestLoadingIfExists();
         _messages.insert(
           0,
@@ -593,6 +597,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
 
       setState(() {
         _isAiResponding = false;
+        _isContextCompressing = false;
         _isCheckingExecutableTask = false;
         _isExecutingTask = false;
         _isInputAreaVisible = true;
@@ -634,6 +639,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       resetDispatchState();
       setState(() {
         _isAiResponding = false;
+        _isContextCompressing = false;
         _isExecutingTask = false;
         _isInputAreaVisible = true;
         _messages.removeWhere(

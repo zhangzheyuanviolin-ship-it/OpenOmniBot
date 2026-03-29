@@ -111,7 +111,8 @@ class AgentOrchestrator(
                         conversationId = input.conversationId,
                         conversationMode = input.executionEnv.conversationMode,
                         promptTokens = latestPromptTokens,
-                        messages = messages
+                        messages = messages,
+                        callback = callback
                     ).toMutableList()
                 }
 
