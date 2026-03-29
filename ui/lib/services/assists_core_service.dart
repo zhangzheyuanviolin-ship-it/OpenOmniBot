@@ -99,6 +99,7 @@ class AgentToolEventData {
   final String taskId;
   final String toolName;
   final String displayName;
+  final String toolTitle;
   final String toolType;
   final String? serverName;
   final String status;
@@ -120,6 +121,7 @@ class AgentToolEventData {
     required this.taskId,
     required this.toolName,
     required this.displayName,
+    this.toolTitle = '',
     required this.toolType,
     this.serverName,
     this.status = '',
@@ -144,6 +146,7 @@ class AgentToolEventData {
       taskId: (raw['taskId'] ?? '').toString(),
       toolName: (raw['toolName'] ?? '').toString(),
       displayName: (raw['displayName'] ?? raw['toolName'] ?? '').toString(),
+      toolTitle: (raw['toolTitle'] ?? '').toString(),
       toolType: (raw['toolType'] ?? 'builtin').toString(),
       serverName: raw['serverName']?.toString(),
       status: (raw['status'] ?? '').toString(),

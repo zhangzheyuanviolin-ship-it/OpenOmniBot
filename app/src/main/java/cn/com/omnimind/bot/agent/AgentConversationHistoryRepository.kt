@@ -445,6 +445,7 @@ class AgentConversationHistoryRepository(
             "cardId" to messageId,
             "toolName" to payload["toolName"]?.toString().orEmpty(),
             "displayName" to payload["displayName"]?.toString().orEmpty(),
+            "toolTitle" to payload["toolTitle"]?.toString().orEmpty(),
             "toolType" to payload["toolType"]?.toString().orEmpty().ifEmpty { "builtin" },
             "serverName" to payload["serverName"],
             "status" to entry.status,

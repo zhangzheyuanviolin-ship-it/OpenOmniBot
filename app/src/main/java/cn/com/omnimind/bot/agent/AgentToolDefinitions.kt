@@ -1,14 +1,133 @@
 package cn.com.omnimind.bot.agent
 
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 object AgentToolDefinitions {
+    private const val TOOL_TITLE_FIELD = "tool_title"
+    private const val TOOL_TITLE_RULE =
+        "调用时必须提供 tool_title，作为展示给用户的简洁标题，建议 4-12 个字并使用与用户相同的语言。"
+
+    private fun toolTitlePropertySchema(): JsonObject = buildJsonObject {
+        put("type", "string")
+        put("description", "本次工具调用要做什么的简洁标题，展示给用户，建议 4-12 个字并使用与用户相同的语言。")
+    }
+
+    private fun ensureToolTitleDescription(description: String): String {
+        val trimmed = description.trim()
+        if (trimmed.contains(TOOL_TITLE_FIELD)) {
+            return trimmed
+        }
+        if (trimmed.isEmpty()) {
+            return TOOL_TITLE_RULE
+        }
+        return "$trimmed $TOOL_TITLE_RULE"
+    }
+
+    fun decorateParameterSchema(parameters: JsonObject): JsonObject {
+        val properties = (parameters["properties"] as? JsonObject) ?: JsonObject(emptyMap())
+        val required = (parameters["required"] as? JsonArray)
+            ?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.toMutableList()
+            ?: mutableListOf()
+
+        val updatedProperties = buildJsonObject {
+            put(TOOL_TITLE_FIELD, toolTitlePropertySchema())
+            properties.forEach { (key, value) ->
+                if (key != TOOL_TITLE_FIELD) {
+                    put(key, value)
+                }
+            }
+        }
+
+        if (!required.contains(TOOL_TITLE_FIELD)) {
+            required.add(0, TOOL_TITLE_FIELD)
+        }
+
+        return buildJsonObject {
+            parameters.forEach { (key, value) ->
+                when (key) {
+                    "properties" -> put("properties", updatedProperties)
+                    "required" -> {
+                        put(
+                            "required",
+                            buildJsonArray {
+                                required.forEach { add(JsonPrimitive(it)) }
+                            }
+                        )
+                    }
+
+                    else -> put(key, value)
+                }
+            }
+            if (parameters["properties"] == null) {
+                put("properties", updatedProperties)
+            }
+            if (parameters["required"] == null) {
+                put(
+                    "required",
+                    buildJsonArray {
+                        required.forEach { add(JsonPrimitive(it)) }
+                    }
+                )
+            }
+        }
+    }
+
+    fun decorateToolDefinition(definition: JsonObject): JsonObject {
+        val function = definition["function"] as? JsonObject ?: return definition
+        val parameters = (function["parameters"] as? JsonObject) ?: buildJsonObject {
+            put("type", "object")
+            put("properties", JsonObject(emptyMap()))
+        }
+
+        return buildJsonObject {
+            definition.forEach { (key, value) ->
+                if (key != "function") {
+                    put(key, value)
+                }
+            }
+            put(
+                "function",
+                buildJsonObject {
+                    function.forEach { (key, value) ->
+                        when (key) {
+                            "description" -> put(
+                                "description",
+                                ensureToolTitleDescription(
+                                    value.jsonPrimitive.contentOrNull.orEmpty()
+                                )
+                            )
+
+                            "parameters" -> put(
+                                "parameters",
+                                decorateParameterSchema(parameters)
+                            )
+
+                            else -> put(key, value)
+                        }
+                    }
+                    if (function["description"] == null) {
+                        put("description", TOOL_TITLE_RULE)
+                    }
+                    if (function["parameters"] == null) {
+                        put("parameters", decorateParameterSchema(parameters))
+                    }
+                }
+            )
+        }
+    }
+
     val contextAppsQueryTool: JsonObject = buildJsonObject {
         put("type", "function")
         putJsonObject("function") {
@@ -97,7 +216,7 @@ object AgentToolDefinitions {
             )
             put(
                 "postToolRule",
-                "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 executionMode=proot（prootDistro=alpine）执行，传入 termux/debian 等参数会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 再次调用 terminal_execute 修正，最多 3 次；不要在同一个 tool_calls 中串联其他结果依赖型工具。"
+                "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 executionMode=proot（prootDistro=alpine）执行，传入 termux/debian 等参数会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute；不要在同一个 tool_calls 中串联其他结果依赖型工具。"
             )
             putJsonObject("parameters") {
                 put("type", "object")
@@ -1162,20 +1281,20 @@ object AgentToolDefinitions {
         fileMoveTool,
         skillsListTool,
         skillsReadTool
-    )
+    ).map(::decorateToolDefinition)
 
     val scheduleTools: List<JsonObject> = listOf(
         scheduleTaskCreateTool,
         scheduleTaskListTool,
         scheduleTaskUpdateTool,
         scheduleTaskDeleteTool
-    )
+    ).map(::decorateToolDefinition)
 
     val alarmTools: List<JsonObject> = listOf(
         alarmReminderCreateTool,
         alarmReminderListTool,
         alarmReminderDeleteTool
-    )
+    ).map(::decorateToolDefinition)
 
     val calendarTools: List<JsonObject> = listOf(
         calendarListTool,
@@ -1183,18 +1302,18 @@ object AgentToolDefinitions {
         calendarEventListTool,
         calendarEventUpdateTool,
         calendarEventDeleteTool
-    )
+    ).map(::decorateToolDefinition)
 
     val memoryTools: List<JsonObject> = listOf(
         memorySearchTool,
         memoryWriteDailyTool,
         memoryUpsertLongTermTool,
         memoryRollupDayTool
-    )
+    ).map(::decorateToolDefinition)
 
     val subagentTools: List<JsonObject> = listOf(
         subagentDispatchTool
-    )
+    ).map(::decorateToolDefinition)
 
     fun staticTools(): List<JsonObject> = builtinTools + scheduleTools + alarmTools + calendarTools
 }

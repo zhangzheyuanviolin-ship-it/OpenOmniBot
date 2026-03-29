@@ -430,14 +430,15 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "args" to argsJson,
             "argsJson" to argsJson
         ).apply {
-            extractToolTitleSummary(toolName, argsJson)?.let { summary ->
-                put("summary", summary)
+            extractToolTitle(argsJson)?.let { toolTitle ->
+                put("toolTitle", toolTitle)
+                put("summary", toolTitle)
             }
         }
     }
 
-    private fun extractToolTitleSummary(toolName: String, argsJson: String): String? {
-        if (toolName != "browser_use" || argsJson.isBlank()) return null
+    private fun extractToolTitle(argsJson: String): String? {
+        if (argsJson.isBlank()) return null
         return runCatching {
             JSONObject(argsJson).optString("tool_title").trim()
         }.getOrNull()?.takeIf { it.isNotEmpty() }
@@ -459,6 +460,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "args" to argsJson,
             "argsJson" to argsJson
         )
+        extractToolTitle(argsJson)?.let { toolTitle ->
+            payload["toolTitle"] = toolTitle
+            if ((payload["summary"]?.toString() ?: "").isBlank()) {
+                payload["summary"] = toolTitle
+            }
+        }
         payload.putAll(extras)
         return payload
     }
@@ -569,6 +576,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "rawResultJson" to rawResultJson,
             "success" to success
         )
+        extractToolTitle(argsJson)?.let { payload["toolTitle"] = it }
         if (result is ToolExecutionResult.TerminalResult) {
             payload["terminalOutput"] = result.terminalOutput
             payload["terminalSessionId"] = result.terminalSessionId

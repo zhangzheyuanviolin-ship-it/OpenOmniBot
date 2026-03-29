@@ -279,6 +279,7 @@ internal object AgentConversationHistorySupport {
             "taskId" to chooseAny("taskId"),
             "toolName" to chooseText("toolName"),
             "displayName" to chooseText("displayName"),
+            "toolTitle" to chooseText("toolTitle"),
             "toolType" to toolType,
             "serverName" to chooseAny("serverName"),
             "status" to chooseText("status", fallbackStatus),

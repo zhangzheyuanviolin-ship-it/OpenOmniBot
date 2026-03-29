@@ -4,6 +4,13 @@ const int _kDefaultContextTokenThreshold = 128000;
 const int _kMinContextTokenThreshold = 10000;
 const int _kMaxContextTokenThreshold = 512000;
 
+class _ToolActivityAnchorGeometry {
+  const _ToolActivityAnchorGeometry({required this.rect, required this.bottom});
+
+  final Rect rect;
+  final double bottom;
+}
+
 mixin _ChatPageUiMixin on _ChatPageStateBase {
   bool get _showNewConversationPullIndicator =>
       _isNewConversationPullTracking || _newConversationPullDistance > 0;
@@ -36,6 +43,64 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     }
     final inputTop = inputBox.localToGlobal(Offset.zero, ancestor: stackBox).dy;
     return (inputTop - 30).clamp(8.0, constraints.maxHeight - 24).toDouble();
+  }
+
+  _ToolActivityAnchorGeometry _resolveToolActivityAnchorGeometry({
+    required BuildContext layoutContext,
+    required BoxConstraints constraints,
+    required double inputBottomPadding,
+    required double keyboardSpacer,
+  }) {
+    final fallbackBottom = (inputBottomPadding + keyboardSpacer + 84)
+        .clamp(0.0, constraints.maxHeight)
+        .toDouble();
+    final fallbackRect = Rect.fromLTWH(
+      24,
+      constraints.maxHeight - fallbackBottom,
+      math.max(0.0, constraints.maxWidth - 48),
+      0,
+    );
+    if (!_isInputAreaVisible) {
+      return _ToolActivityAnchorGeometry(
+        rect: fallbackRect,
+        bottom: fallbackBottom,
+      );
+    }
+    final inputContext = _chatInputAreaKey.currentContext;
+    final inputBox = inputContext?.findRenderObject();
+    final stackBox = layoutContext.findRenderObject();
+    if (inputBox is! RenderBox ||
+        stackBox is! RenderBox ||
+        !inputBox.hasSize ||
+        !stackBox.hasSize) {
+      return _ToolActivityAnchorGeometry(
+        rect: fallbackRect,
+        bottom: fallbackBottom,
+      );
+    }
+    final inputOffset = inputBox.localToGlobal(Offset.zero, ancestor: stackBox);
+    final rect = inputOffset & inputBox.size;
+    return _ToolActivityAnchorGeometry(
+      rect: rect,
+      bottom: (constraints.maxHeight - rect.top)
+          .clamp(0.0, constraints.maxHeight)
+          .toDouble(),
+    );
+  }
+
+  void _scheduleToolActivityInsetSync(double height) {
+    final normalized = height.isFinite ? height : 0.0;
+    if ((_toolActivityOccupiedHeight - normalized).abs() < 0.5) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || (_toolActivityOccupiedHeight - normalized).abs() < 0.5) {
+        return;
+      }
+      setState(() {
+        _toolActivityOccupiedHeightByMode[_activeMode] = normalized;
+      });
+    });
   }
 
   Widget _buildNewConversationPullIndicator(double topOffset) {
@@ -192,6 +257,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     return ChatMessageList(
       messages: runtime?.messages ?? _messagesByMode[mode]!,
       scrollController: _scrollControllerForMode(mode),
+      bottomOverlayInset: mode == _activeMode && !_isWorkspaceSurface
+          ? _toolActivityOccupiedHeight
+          : 0,
       onBeforeTaskExecute: handleBeforeTaskExecute,
       onCancelTask: _onCancelTaskFromCard,
       onRequestAuthorize: mode == ChatPageMode.normal
@@ -279,6 +347,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               onPointerCancel: _handlePagePointerCancel,
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  final toolActivityCards = !_isWorkspaceSurface
+                      ? extractAgentToolCards(_messages)
+                      : const <Map<String, dynamic>>[];
                   final newConversationPullIndicatorTopOffset =
                       _resolveNewConversationPullIndicatorTop(
                         layoutContext: context,
@@ -286,6 +357,18 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                         inputBottomPadding: inputBottomPadding,
                         keyboardSpacer: keyboardSpacer,
                       );
+                  final toolActivityAnchor = toolActivityCards.isEmpty
+                      ? null
+                      : _resolveToolActivityAnchorGeometry(
+                          layoutContext: context,
+                          constraints: constraints,
+                          inputBottomPadding: inputBottomPadding,
+                          keyboardSpacer: keyboardSpacer,
+                        );
+                  if (toolActivityCards.isEmpty &&
+                      _toolActivityOccupiedHeight > 0) {
+                    _scheduleToolActivityInsetSync(0);
+                  }
                   return Stack(
                     clipBehavior: Clip.hardEdge,
                     children: [
@@ -424,6 +507,22 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                           SizedBox(height: inputBottomPadding + keyboardSpacer),
                         ],
                       ),
+                      if (!_isWorkspaceSurface &&
+                          _isInputAreaVisible &&
+                          toolActivityCards.isNotEmpty)
+                        Positioned(
+                          left: toolActivityAnchor?.rect.left ?? 24,
+                          width:
+                              toolActivityAnchor?.rect.width ??
+                              math.max(0.0, constraints.maxWidth - 48),
+                          bottom: toolActivityAnchor?.bottom ?? 0,
+                          child: ChatToolActivityStrip(
+                            messages: _messages,
+                            anchorRect: toolActivityAnchor?.rect,
+                            onOccupiedHeightChanged:
+                                _scheduleToolActivityInsetSync,
+                          ),
+                        ),
                       if (!_isWorkspaceSurface)
                         Positioned(
                           left: 24,
@@ -499,10 +598,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     if (!mounted || nextThreshold == null) return;
     if (nextThreshold == conversation.promptTokenThreshold) return;
 
-    final success = await ConversationService.updateConversationPromptTokenThreshold(
-      conversationId: conversation.id,
-      promptTokenThreshold: nextThreshold,
-    );
+    final success =
+        await ConversationService.updateConversationPromptTokenThreshold(
+          conversationId: conversation.id,
+          promptTokenThreshold: nextThreshold,
+        );
     if (!mounted) return;
     if (!success) {
       _showSnackBar('更新压缩阈值失败');
@@ -561,7 +661,8 @@ class _ContextThresholdDialog extends StatefulWidget {
   final int initialThreshold;
 
   @override
-  State<_ContextThresholdDialog> createState() => _ContextThresholdDialogState();
+  State<_ContextThresholdDialog> createState() =>
+      _ContextThresholdDialogState();
 }
 
 class _ContextThresholdDialogState extends State<_ContextThresholdDialog> {
@@ -572,7 +673,9 @@ class _ContextThresholdDialogState extends State<_ContextThresholdDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.initialThreshold.toString());
+    _controller = TextEditingController(
+      text: widget.initialThreshold.toString(),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _focusNode.requestFocus();
@@ -681,10 +784,7 @@ class _ContextThresholdDialogState extends State<_ContextThresholdDialog> {
             onPressed: () => _close(_kDefaultContextTokenThreshold),
             child: const Text('恢复默认'),
           ),
-          TextButton(
-            onPressed: () => _close(),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => _close(), child: const Text('取消')),
           TextButton(
             onPressed: () {
               final parsed = _parseInput();

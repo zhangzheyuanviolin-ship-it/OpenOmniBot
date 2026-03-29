@@ -59,20 +59,7 @@ class AgentToolRouter(
     private val scope: CoroutineScope,
     private val scheduleToolBridge: AgentScheduleToolBridge,
     private val workspaceManager: AgentWorkspaceManager
-) {
-    data class ExecutionEnvironment(
-        val agentRunId: String,
-        val userMessage: String,
-        val currentPackageName: String?,
-        val runtimeContextRepository: AgentRuntimeContextRepository,
-        val workspaceDescriptor: AgentWorkspaceDescriptor,
-        val resolvedSkills: List<ResolvedSkillContext>,
-        val workspaceManager: AgentWorkspaceManager,
-        val workspaceMemoryService: WorkspaceMemoryService,
-        val conversationMode: String,
-        val terminalEnvironment: Map<String, String> = emptyMap()
-    )
-
+) : AgentToolExecutor {
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -89,7 +76,6 @@ class AgentToolRouter(
     private val ownedTerminalSessionIds = mutableSetOf<String>()
     companion object {
         private const val DEFAULT_CONTEXT_QUERY_LIMIT = 20
-        private const val MAX_TERMINAL_AUTO_RETRIES = 3
         private const val DEFAULT_FILE_READ_MAX_CHARS = 8000
         private const val DEFAULT_FILE_LIST_LIMIT = 200
         private const val DEFAULT_FILE_SEARCH_LIMIT = 50
@@ -167,11 +153,11 @@ class AgentToolRouter(
         val errorMessage: String? = null
     )
 
-    suspend fun execute(
+    override suspend fun execute(
         toolCall: cn.com.omnimind.baselib.llm.AssistantToolCall,
         args: JsonObject,
         runtimeDescriptor: AgentToolRegistry.RuntimeToolDescriptor,
-        env: ExecutionEnvironment,
+        env: AgentExecutionEnvironment,
         callback: AgentCallback
     ): ToolExecutionResult {
         ensureRunActive()
@@ -291,7 +277,7 @@ class AgentToolRouter(
         }
     }
 
-    suspend fun dispose() {
+    override suspend fun dispose() {
         closeOwnedTerminalSessions()
         LiveAgentBrowserSessionManager.releaseRunOwnership()
     }
@@ -345,7 +331,7 @@ class AgentToolRouter(
 
     private suspend fun executeBrowserUse(
         args: JsonObject,
-        env: ExecutionEnvironment,
+        env: AgentExecutionEnvironment,
         callback: AgentCallback
     ): ToolExecutionResult {
         val toolName = "browser_use"
@@ -1737,17 +1723,18 @@ class AgentToolRouter(
         callback: AgentCallback
     ): ToolExecutionResult {
         return try {
+            val toolTitle = args["tool_title"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
             reportToolProgress(
                 callback,
                 remoteTool.encodedToolName,
-                "正在调用 ${remoteTool.serverName} 的 ${remoteTool.toolName}"
+                toolTitle.ifBlank { "正在调用 ${remoteTool.serverName} 的 ${remoteTool.toolName}" }
             )
             val config = RemoteMcpConfigStore.getServer(remoteTool.serverId)
                 ?: throw IllegalStateException("Remote MCP server not found")
             val result = RemoteMcpClient.callTool(
                 config = config,
                 toolName = remoteTool.toolName,
-                arguments = jsonObjectToMap(args)
+                arguments = jsonObjectToMap(args).filterKeys { it != "tool_title" }
             )
             ToolExecutionResult.McpResult(
                 toolName = remoteTool.encodedToolName,
@@ -1767,7 +1754,7 @@ class AgentToolRouter(
     private suspend fun executeMemoryTool(
         toolName: String,
         args: JsonObject,
-        env: ExecutionEnvironment,
+        env: AgentExecutionEnvironment,
         callback: AgentCallback
     ): ToolExecutionResult {
         return try {
@@ -1876,7 +1863,7 @@ class AgentToolRouter(
 
     private suspend fun executeSubagentDispatch(
         args: JsonObject,
-        env: ExecutionEnvironment,
+        env: AgentExecutionEnvironment,
         callback: AgentCallback
     ): ToolExecutionResult {
         val toolName = "subagent_dispatch"
@@ -2658,36 +2645,6 @@ class AgentToolRouter(
             terminalStreamState = result.liveStreamState,
             artifacts = artifacts,
             workspaceId = workspace.id
-        )
-    }
-
-    internal fun buildTerminalRetryBudgetExhaustedResult(
-        args: JsonObject,
-        retryState: TerminalRetryState
-    ): ToolExecutionResult.TerminalResult {
-        val payload = linkedMapOf<String, Any?>(
-            "reason" to "terminal_retry_budget_exhausted",
-            "success" to false,
-            "timedOut" to false,
-            "retryCount" to retryState.retryCount,
-            "retryLimit" to MAX_TERMINAL_AUTO_RETRIES,
-            "remainingRetries" to retryState.remainingRetries,
-            "errorMessage" to "终端自动修正已达到上限，请基于已有结果输出诊断和建议"
-        )
-        args["command"]?.jsonPrimitive?.contentOrNull?.let { payload["command"] = it }
-        args["executionMode"]?.jsonPrimitive?.contentOrNull?.let { payload["executionMode"] = it }
-        args["prootDistro"]?.jsonPrimitive?.contentOrNull?.let { payload["prootDistro"] = it }
-        args["workingDirectory"]?.jsonPrimitive?.contentOrNull?.let { payload["workingDirectory"] = it }
-        args["timeoutSeconds"]?.jsonPrimitive?.intOrNull?.let { payload["timeoutSeconds"] = it }
-
-        val payloadJson = json.encodeToString(mapToJsonElement(payload))
-        return ToolExecutionResult.TerminalResult(
-            toolName = "terminal_execute",
-            summaryText = "终端自动修正已达到上限（$MAX_TERMINAL_AUTO_RETRIES 次），请基于现有 stderr/stdout 输出诊断和建议",
-            previewJson = payloadJson,
-            rawResultJson = payloadJson,
-            success = false,
-            terminalStreamState = "error"
         )
     }
 

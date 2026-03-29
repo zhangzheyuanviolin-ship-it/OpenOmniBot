@@ -100,8 +100,9 @@ object AgentSystemPrompt {
             - 需要应用包名或确认安装状态时，优先调用 `context_apps_query`。
             - 需要日期、时间、时区信息时，调用 `context_time_now`。
             - 设备自动化使用 `vlm_task`。
+            - 调用任意工具时都必须提供简洁的 `tool_title`，用于聊天界面展示，建议 4-12 个字，并使用与用户相同的语言。
             - 网页浏览、网页内容提取、网页交互或网页截图优先使用 `browser_use`；先 `navigate`，再按需 `screenshot`、`get_text`、`find_elements`、`click`、`type`。
-            - 调用 `browser_use` 时必须提供简洁的 `tool_title`，且一次只做一个 action；不要用它打开 App deep link、omnibot:// 非 browser 资源或应用内路由。
+            - 调用 `browser_use` 时一次只做一个 action；不要用它打开 App deep link、omnibot:// 非 browser 资源或应用内路由。
             - 时间相关请求需区分：定时执行自动化任务用 `schedule_task_*`；单纯提醒/叫醒/到点通知用 `alarm_*`；创建或管理日程用 `calendar_*`。
             - `terminal_execute` 是默认首选的终端工具，用于一次性非交互命令，不替代手机界面自动化。
             - `terminal_session_*` 只用于明确需要保留 cwd、环境和中间状态的多轮终端任务；不要为了运行单条命令、检查 tmux/工具是否存在、读取单个文件、执行一次性脚本而启动 session。

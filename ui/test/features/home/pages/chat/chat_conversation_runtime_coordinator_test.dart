@@ -230,6 +230,38 @@ void main() {
     },
   );
 
+  test('stores toolTitle from agent tool events on tool cards', () async {
+    const conversationId = 4555;
+    const taskId = 'agent-task-title';
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = taskId;
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onAgentToolCallStart', <String, dynamic>{
+      'taskId': taskId,
+      'toolName': 'file_read',
+      'displayName': '读取文件',
+      'toolType': 'workspace',
+      'toolTitle': '查看配置',
+      'summary': '查看配置',
+      'argsJson': jsonEncode({'tool_title': '查看配置', 'path': 'README.md'}),
+    });
+
+    final toolMessage = runtime.messages.firstWhere(
+      (msg) => msg.cardData?['type'] == 'agent_tool_summary',
+    );
+
+    expect(toolMessage.cardData?['toolTitle'], '查看配置');
+  });
+
   test(
     'renders later content plus tool-call rounds as new assistant messages instead of overwriting earlier ones',
     () async {

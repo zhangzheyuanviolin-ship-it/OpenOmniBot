@@ -17,7 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class AgentToolRegistry(
     discoveredServers: List<RemoteMcpDiscoveredServer>
-) {
+) : AgentToolCatalog {
     data class RuntimeToolDescriptor(
         val name: String,
         val displayName: String,
@@ -29,7 +29,7 @@ class AgentToolRegistry(
     private val tag = "AgentToolRegistry"
     private val toolSchemas = linkedMapOf<String, JsonObject>()
     private val runtimeDescriptors = linkedMapOf<String, RuntimeToolDescriptor>()
-    val toolsForModel: List<ChatCompletionTool>
+    override val toolsForModel: List<ChatCompletionTool>
 
     init {
         val runtimeDefinitions = mutableListOf<JsonObject>()
@@ -71,7 +71,7 @@ class AgentToolRegistry(
         }
     }
 
-    fun runtimeDescriptor(toolName: String): RuntimeToolDescriptor {
+    override fun runtimeDescriptor(toolName: String): RuntimeToolDescriptor {
         return runtimeDescriptors[toolName] ?: RuntimeToolDescriptor(
             name = toolName,
             displayName = toolName,
@@ -79,7 +79,7 @@ class AgentToolRegistry(
         )
     }
 
-    fun validateArguments(toolName: String, arguments: JsonObject) {
+    override fun validateArguments(toolName: String, arguments: JsonObject) {
         val schema = toolSchemas[toolName] ?: return
         validateWithSchema(toolName, schema, arguments)
     }
@@ -171,7 +171,7 @@ class AgentToolRegistry(
     }
 
     private fun toDynamicMcpToolDefinition(tool: RemoteMcpToolDescriptor): JsonObject {
-        return buildJsonObject {
+        return AgentToolDefinitions.decorateToolDefinition(buildJsonObject {
             put("type", JsonPrimitive("function"))
             put("function", buildJsonObject {
                 put("name", JsonPrimitive(tool.encodedToolName))
@@ -184,7 +184,7 @@ class AgentToolRegistry(
                 )
                 put("parameters", mapToJsonElement(tool.inputSchema))
             })
-        }
+        })
     }
 
     private fun mapToJsonElement(value: Any?): JsonElement {

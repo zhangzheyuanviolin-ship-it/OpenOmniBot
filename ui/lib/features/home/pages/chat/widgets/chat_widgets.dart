@@ -793,6 +793,7 @@ class ChatMessageList extends StatelessWidget {
   final Future<void> Function() onBeforeTaskExecute;
   final void Function(String taskId)? onCancelTask;
   final void Function(List<String> requiredPermissionIds)? onRequestAuthorize;
+  final double bottomOverlayInset;
 
   const ChatMessageList({
     super.key,
@@ -801,6 +802,7 @@ class ChatMessageList extends StatelessWidget {
     required this.onBeforeTaskExecute,
     this.onCancelTask,
     this.onRequestAuthorize,
+    this.bottomOverlayInset = 0,
   });
 
   @override
@@ -833,12 +835,13 @@ class ChatMessageList extends StatelessWidget {
             final message = messages[index];
             final isLastMessage = index == 0;
             final isOldestMessage = index == messages.length - 1;
-            final needBottomPadding = isLastMessage && messages.length > 1;
+            final bottomPadding = isLastMessage ? bottomOverlayInset : 0.0;
             final needTopPadding = isOldestMessage && message.user != 1;
             return Padding(
+              key: ValueKey('chat-message-list-item-$index'),
               padding: EdgeInsets.only(
                 top: needTopPadding ? 24.0 : 0.0,
-                bottom: needBottomPadding ? 40.0 : 0.0,
+                bottom: bottomPadding,
               ),
               child: MessageBubble(
                 message: message,
