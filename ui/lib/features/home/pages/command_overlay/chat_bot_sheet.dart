@@ -137,6 +137,24 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     _currentThinkingStage = value;
   }
 
+  void _persistDeepThinkingCardIfNeeded(ChatMessageModel message) {
+    final conversationId = _currentConversationId;
+    final cardData = message.cardData;
+    if (conversationId == null ||
+        message.type != 2 ||
+        cardData?['type'] != 'deep_thinking') {
+      return;
+    }
+    unawaited(
+      ConversationHistoryService.upsertConversationUiCard(
+        conversationId,
+        entryId: message.id,
+        cardData: Map<String, dynamic>.from(cardData!),
+        createdAtMillis: message.createAt.millisecondsSinceEpoch,
+      ),
+    );
+  }
+
   @override
   List<ChatMessageModel> get messages => _messages;
 
@@ -682,6 +700,19 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
 
         await ConversationService.updateConversation(updatedConversation);
         _currentConversation = updatedConversation;
+        for (final message in _messages.where((item) {
+          final cardData = item.cardData;
+          return item.type == 2 && cardData?['type'] == 'deep_thinking';
+        })) {
+          final cardData = message.cardData;
+          if (cardData == null) continue;
+          await ConversationHistoryService.upsertConversationUiCard(
+            _currentConversationId!,
+            entryId: message.id,
+            cardData: Map<String, dynamic>.from(cardData),
+            createdAtMillis: message.createAt.millisecondsSinceEpoch,
+          );
+        }
 
         if (markComplete) {
           await ConversationService.completeConversation(
@@ -802,6 +833,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         ),
       );
     });
+    _persistDeepThinkingCardIfNeeded(_messages.first);
   }
 
   /// 任务完成回调，用于恢复输入框显示
@@ -1090,6 +1122,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
           type: 2,
           user: 3,
           content: {'cardData': cardData, 'id': thinkingCardId},
+          createAt: DateTime.fromMillisecondsSinceEpoch(startTime),
         ),
       );
     });
@@ -1137,6 +1170,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         content['cardData'] = cardData;
         _messages[index] = existing.copyWith(content: content);
       });
+      _persistDeepThinkingCardIfNeeded(_messages[index]);
     }
   }
 
@@ -1574,8 +1608,10 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         type: 2,
         user: 3,
         content: {'cardData': cardData, 'id': thinkingCardId},
+        createAt: thinkingCard.createAt,
       );
     });
+    _persistDeepThinkingCardIfNeeded(_messages[index]);
   }
 
   void _onPopupVisibilityChanged(bool visible) {

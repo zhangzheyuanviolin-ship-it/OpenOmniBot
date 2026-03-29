@@ -273,6 +273,30 @@ class ConversationHistoryService {
     }
   }
 
+  static Future<void> upsertConversationUiCard(
+    int conversationId, {
+    required String entryId,
+    required Map<String, dynamic> cardData,
+    int? createdAtMillis,
+    ConversationMode mode = ConversationMode.normal,
+  }) async {
+    final normalizedEntryId = entryId.trim();
+    if (normalizedEntryId.isEmpty) return;
+    try {
+      await _assistCore.invokeMethod('upsertConversationUiCard', {
+        'conversationId': conversationId,
+        'mode': mode.storageValue,
+        'entryId': normalizedEntryId,
+        'cardData': cardData,
+        'createdAt': createdAtMillis,
+      });
+    } on PlatformException catch (e) {
+      print('保存 UI 卡片失败: ${e.message}');
+    } catch (e) {
+      print('保存 UI 卡片异常: $e');
+    }
+  }
+
   /// 清除对话消息
   static Future<void> clearConversationMessages(
     int conversationId, {

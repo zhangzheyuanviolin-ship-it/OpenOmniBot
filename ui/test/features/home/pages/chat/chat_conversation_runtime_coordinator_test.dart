@@ -10,7 +10,9 @@ void main() {
 
   const channelName = 'cn.com.omnimind.bot/AssistCoreEvent';
   const codec = StandardMethodCodec();
+  const methodChannel = MethodChannel(channelName);
   final coordinator = ChatConversationRuntimeCoordinator.instance;
+  final recordedMethodCalls = <MethodCall>[];
 
   Future<void> emitPlatformEvent(String method, [dynamic arguments]) async {
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -25,6 +27,18 @@ void main() {
   setUp(() {
     coordinator.resetForTest();
     coordinator.ensureInitialized();
+    recordedMethodCalls.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, (call) async {
+          recordedMethodCalls.add(call);
+          return 'SUCCESS';
+        });
+  });
+
+  tearDown(() async {
+    coordinator.resetForTest();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, null);
   });
 
   test('routes agent chat updates to the bound conversation only', () async {
@@ -260,6 +274,54 @@ void main() {
     );
 
     expect(toolMessage.cardData?['toolTitle'], '查看配置');
+  });
+
+  test('persists deep thinking cards for history restoration', () async {
+    const conversationId = 4666;
+    const taskId = 'agent-task-thinking-persist';
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = taskId;
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onAgentThinkingStart', <String, dynamic>{
+      'taskId': taskId,
+    });
+    await emitPlatformEvent('onAgentThinkingUpdate', <String, dynamic>{
+      'taskId': taskId,
+      'thinking': '恢复后也要能看到这段思考',
+    });
+    await Future<void>.delayed(Duration.zero);
+
+    final upsertCall = recordedMethodCalls.lastWhere(
+      (call) => call.method == 'upsertConversationUiCard',
+    );
+    final arguments = Map<String, dynamic>.from(
+      upsertCall.arguments as Map<dynamic, dynamic>,
+    );
+    final cardData = Map<String, dynamic>.from(
+      arguments['cardData'] as Map<dynamic, dynamic>,
+    );
+    final thinkingMessage = runtime.messages.firstWhere(
+      (message) => message.id == '$taskId-thinking',
+    );
+
+    expect(arguments['conversationId'], conversationId);
+    expect(arguments['mode'], 'normal');
+    expect(arguments['entryId'], '$taskId-thinking');
+    expect(
+      arguments['createdAt'],
+      thinkingMessage.createAt.millisecondsSinceEpoch,
+    );
+    expect(cardData['type'], 'deep_thinking');
+    expect(cardData['thinkingContent'], '恢复后也要能看到这段思考');
   });
 
   test(

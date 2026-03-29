@@ -69,7 +69,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
   @override
   void initState() {
     super.initState();
-    _isCollapsed = widget.isCollapsible && widget.stage == 4;
+    _isCollapsed = false;
     _updateElapsedTime(notify: false);
     // 如果正在进行中（未完成且未取消），启动计时器
     if (widget.stage != 4 && widget.stage != 5) {
@@ -313,6 +313,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
         AnimatedSize(
           duration: sizeAnimationDuration,
           curve: Curves.easeInOut,
+          alignment: Alignment.topLeft,
           child:
               (hasContent &&
                   widget.stage != 5 &&

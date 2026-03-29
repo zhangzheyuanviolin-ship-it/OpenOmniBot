@@ -265,6 +265,9 @@ class AssistsCoreChannel {
                 "replaceConversationMessages" -> {
                     assistsCoreManager!!.replaceConversationMessages(call, result)
                 }
+                "upsertConversationUiCard" -> {
+                    assistsCoreManager!!.upsertConversationUiCard(call, result)
+                }
                 "clearConversationMessages" -> {
                     assistsCoreManager!!.clearConversationMessages(call, result)
                 }

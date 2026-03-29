@@ -10,6 +10,28 @@ import '../../../../../services/conversation_history_service.dart';
 mixin ConversationManager<T extends StatefulWidget> on State<T> {
   bool _hasSavedConversation = false;
 
+  Future<void> _persistDeepThinkingCardsForConversation(
+    int conversationId,
+    List<ChatMessageModel> snapshotMessages,
+    ConversationMode mode,
+  ) async {
+    final candidates = snapshotMessages.where((message) {
+      final cardData = message.cardData;
+      return message.type == 2 && cardData?['type'] == 'deep_thinking';
+    });
+    for (final message in candidates) {
+      final cardData = message.cardData;
+      if (cardData == null) continue;
+      await ConversationHistoryService.upsertConversationUiCard(
+        conversationId,
+        entryId: message.id,
+        cardData: Map<String, dynamic>.from(cardData),
+        createdAtMillis: message.createAt.millisecondsSinceEpoch,
+        mode: mode,
+      );
+    }
+  }
+
   // ===================== 抽象属性/方法（需要在主类中实现）=====================
 
   List<ChatMessageModel> get messages;
@@ -535,6 +557,12 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
         );
 
         await ConversationService.updateConversation(updatedConversation);
+
+        await _persistDeepThinkingCardsForConversation(
+          targetId,
+          snapshotMessages,
+          snapshotMode,
+        );
 
         if (mounted && currentConversationId == snapshotConversationId) {
           setState(() {

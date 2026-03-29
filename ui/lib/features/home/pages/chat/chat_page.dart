@@ -178,6 +178,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     ChatPageMode.normal: 0,
     ChatPageMode.openclaw: 0,
   };
+  final Map<ChatPageMode, double> _inputAreaHeightByMode = {
+    ChatPageMode.normal: 0,
+    ChatPageMode.openclaw: 0,
+  };
   final Map<ChatPageMode, bool> _isAiRespondingByMode = {
     ChatPageMode.normal: false,
     ChatPageMode.openclaw: false,
@@ -332,6 +336,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       _activeRuntime?.messages ?? _messagesByMode[_activeMode]!;
   double get _toolActivityOccupiedHeight =>
       _toolActivityOccupiedHeightByMode[_activeMode] ?? 0;
+  double get _inputAreaHeight => _inputAreaHeightByMode[_activeMode] ?? 0;
   bool get _isAiResponding =>
       _activeRuntime?.isAiResponding ??
       (_isAiRespondingByMode[_activeMode] ?? false);
@@ -860,6 +865,11 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     } else if (conversation != null) {
       runtime.conversation = conversation;
     }
+    _syncRuntimeSnapshotForMode(
+      pageMode,
+      conversation: conversation,
+      messages: messages,
+    );
     if (pageMode == ChatPageMode.normal) {
       unawaited(
         _loadConversationModelOverrideForNormalConversation(conversationId),
@@ -1016,6 +1026,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   void _resetLocalConversationState(ChatPageMode mode) {
     _messagesByMode[mode]!.clear();
+    _inputAreaHeightByMode[mode] = 0;
     _isAiRespondingByMode[mode] = false;
     _isCheckingExecutableTaskByMode[mode] = false;
     _isSubmittingVlmReplyByMode[mode] = false;

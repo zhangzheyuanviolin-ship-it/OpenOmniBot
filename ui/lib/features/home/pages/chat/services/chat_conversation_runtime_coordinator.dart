@@ -1311,7 +1311,13 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         type: 2,
         user: 3,
         content: {'cardData': cardData, 'id': thinkingCardId},
+        createAt: DateTime.fromMillisecondsSinceEpoch(startTime),
       ),
+    );
+    _persistDeepThinkingCardIfNeeded(
+      conversationId: runtime.conversationId,
+      mode: runtime.mode,
+      message: runtime.messages.first,
     );
   }
 
@@ -1354,6 +1360,31 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     content['cardData'] = cardData;
     runtime.messages[index] = existing.copyWith(content: content);
+    _persistDeepThinkingCardIfNeeded(
+      conversationId: runtime.conversationId,
+      mode: runtime.mode,
+      message: runtime.messages[index],
+    );
+  }
+
+  void _persistDeepThinkingCardIfNeeded({
+    required int conversationId,
+    required String mode,
+    required ChatMessageModel message,
+  }) {
+    final cardData = message.cardData;
+    if (message.type != 2 || cardData?['type'] != 'deep_thinking') {
+      return;
+    }
+    unawaited(
+      ConversationHistoryService.upsertConversationUiCard(
+        conversationId,
+        entryId: message.id,
+        cardData: Map<String, dynamic>.from(cardData!),
+        createdAtMillis: message.createAt.millisecondsSinceEpoch,
+        mode: _conversationModeFromRuntimeMode(mode),
+      ),
+    );
   }
 
   String _baseThinkingCardId(String taskId) => '$taskId-thinking';

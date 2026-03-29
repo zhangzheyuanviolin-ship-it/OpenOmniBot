@@ -1,6 +1,25 @@
 part of 'chat_page.dart';
 
 mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
+  void _persistDeepThinkingCardIfNeeded(ChatMessageModel message) {
+    final conversationId = _currentConversationId;
+    final cardData = message.cardData;
+    if (conversationId == null ||
+        message.type != 2 ||
+        cardData?['type'] != 'deep_thinking') {
+      return;
+    }
+    unawaited(
+      ConversationHistoryService.upsertConversationUiCard(
+        conversationId,
+        entryId: message.id,
+        cardData: Map<String, dynamic>.from(cardData!),
+        createdAtMillis: message.createAt.millisecondsSinceEpoch,
+        mode: activeConversationModeValue,
+      ),
+    );
+  }
+
   @override
   void _syncRuntimeSnapshotForMode(
     ChatPageMode mode, {
@@ -127,9 +146,11 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
           type: 2,
           user: 3,
           content: {'cardData': cardData, 'id': thinkingCardId},
+          createAt: DateTime.fromMillisecondsSinceEpoch(startTime),
         ),
       );
     });
+    _persistDeepThinkingCardIfNeeded(_messages.first);
   }
 
   @override
@@ -170,6 +191,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       content['cardData'] = cardData;
       _messages[index] = existing.copyWith(content: content);
     });
+    _persistDeepThinkingCardIfNeeded(_messages[index]);
   }
 
   @override
@@ -443,6 +465,9 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         attachments: attachments,
         conversationId: _currentConversationId,
         conversationMode: activeConversationModeValue.storageValue,
+        userMessageCreatedAtMillis: userMessageId.endsWith('-user')
+            ? int.tryParse(userMessageId.split('-').first)
+            : null,
         modelOverride: _buildAgentModelOverridePayload(),
         terminalEnvironment: _buildAgentTerminalEnvironmentPayload(),
       );
@@ -647,8 +672,10 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         type: 2,
         user: 3,
         content: {'cardData': cardData, 'id': thinkingCardId},
+        createAt: thinkingCard.createAt,
       );
     });
+    _persistDeepThinkingCardIfNeeded(_messages[index]);
   }
 
   @override

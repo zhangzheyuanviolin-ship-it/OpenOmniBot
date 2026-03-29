@@ -50,14 +50,33 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     required BoxConstraints constraints,
     required double inputBottomPadding,
     required double keyboardSpacer,
+    required double inputAreaHeight,
   }) {
+    final normalizedInputHeight = inputAreaHeight.isFinite
+        ? inputAreaHeight
+        : 0.0;
+    final derivedWidth = math.max(0.0, constraints.maxWidth - 48);
+    if (_isInputAreaVisible && normalizedInputHeight > 0.5) {
+      final bottom =
+          (inputBottomPadding + keyboardSpacer + normalizedInputHeight)
+              .clamp(0.0, constraints.maxHeight)
+              .toDouble();
+      final top = (constraints.maxHeight - bottom)
+          .clamp(0.0, constraints.maxHeight)
+          .toDouble();
+      return _ToolActivityAnchorGeometry(
+        rect: Rect.fromLTWH(24, top, derivedWidth, normalizedInputHeight),
+        bottom: bottom,
+      );
+    }
+
     final fallbackBottom = (inputBottomPadding + keyboardSpacer + 84)
         .clamp(0.0, constraints.maxHeight)
         .toDouble();
     final fallbackRect = Rect.fromLTWH(
       24,
       constraints.maxHeight - fallbackBottom,
-      math.max(0.0, constraints.maxWidth - 48),
+      derivedWidth,
       0,
     );
     if (!_isInputAreaVisible) {
@@ -99,6 +118,21 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       }
       setState(() {
         _toolActivityOccupiedHeightByMode[_activeMode] = normalized;
+      });
+    });
+  }
+
+  void _handleInputAreaHeightChanged(double height) {
+    final normalized = height.isFinite ? height : 0.0;
+    if ((_inputAreaHeight - normalized).abs() < 0.5) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || (_inputAreaHeight - normalized).abs() < 0.5) {
+        return;
+      }
+      setState(() {
+        _inputAreaHeightByMode[_activeMode] = normalized;
       });
     });
   }
@@ -364,6 +398,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                           constraints: constraints,
                           inputBottomPadding: inputBottomPadding,
                           keyboardSpacer: keyboardSpacer,
+                          inputAreaHeight: _inputAreaHeight,
                         );
                   if (toolActivityCards.isEmpty &&
                       _toolActivityOccupiedHeight > 0) {
@@ -491,6 +526,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                     _activeMode == ChatPageMode.normal
                                     ? _handleContextUsageRingLongPress
                                     : null,
+                                onInputHeightChanged:
+                                    _handleInputAreaHeightChanged,
                                 onClearSelectedModelOverride:
                                     _activeMode == ChatPageMode.normal &&
                                         _activeConversationModelOverrideSelection !=

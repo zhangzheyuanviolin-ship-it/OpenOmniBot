@@ -482,11 +482,13 @@ mixin TaskExecutionHandler<T extends StatefulWidget> on State<T> {
   }
 
   /// 添加用户消息
-  ({String userMessageId, String aiMessageId}) addUserMessage(
+  ({String userMessageId, String aiMessageId, int userCreatedAtMillis})
+  addUserMessage(
     String text, {
     List<Map<String, dynamic>> attachments = const [],
   }) {
-    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final createdAt = DateTime.now();
+    final timestamp = createdAt.millisecondsSinceEpoch.toString();
     final userMessageId = '$timestamp-user';
     final aiMessageId = '$timestamp-ai';
 
@@ -497,12 +499,22 @@ mixin TaskExecutionHandler<T extends StatefulWidget> on State<T> {
       }
       messages.insert(
         0,
-        ChatMessageModel(id: userMessageId, type: 1, user: 1, content: content),
+        ChatMessageModel(
+          id: userMessageId,
+          type: 1,
+          user: 1,
+          content: content,
+          createAt: createdAt,
+        ),
       );
       messageController.clear();
       isAiResponding = true;
     });
 
-    return (userMessageId: userMessageId, aiMessageId: aiMessageId);
+    return (
+      userMessageId: userMessageId,
+      aiMessageId: aiMessageId,
+      userCreatedAtMillis: createdAt.millisecondsSinceEpoch,
+    );
   }
 }

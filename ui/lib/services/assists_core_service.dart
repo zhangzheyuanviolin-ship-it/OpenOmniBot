@@ -1066,6 +1066,7 @@ class AssistsMessageService {
     required String userMessage,
     List<Map<String, dynamic>> conversationHistory = const [],
     List<Map<String, dynamic>> attachments = const [],
+    int? userMessageCreatedAtMillis,
     int? conversationId,
     String? conversationMode,
     String? scheduledTaskId,
@@ -1087,6 +1088,10 @@ class AssistsMessageService {
       }
       if (conversationMode != null && conversationMode.trim().isNotEmpty) {
         args['conversationMode'] = conversationMode.trim();
+      }
+      if (userMessageCreatedAtMillis != null &&
+          userMessageCreatedAtMillis > 0) {
+        args['userMessageCreatedAt'] = userMessageCreatedAtMillis;
       }
       if (scheduledTaskId != null && scheduledTaskId.trim().isNotEmpty) {
         args['scheduledTaskId'] = scheduledTaskId.trim();

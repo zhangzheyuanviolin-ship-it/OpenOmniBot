@@ -261,6 +261,11 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     } else if (resolvedConversation != null) {
       runtime.conversation = resolvedConversation;
     }
+    _syncRuntimeSnapshotForMode(
+      mode,
+      conversation: resolvedConversation,
+      messages: resolvedMessages,
+    );
   }
 
   @override

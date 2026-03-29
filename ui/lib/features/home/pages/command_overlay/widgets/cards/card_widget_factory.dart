@@ -36,17 +36,20 @@ class CardWidgetFactory {
       case 'permission_button':
         return PermissionButtonCard(cardData: cardData);
       case 'deep_thinking':
-        final isLoading = cardData['isLoading'] as bool? ?? true;
-        final thinkingText = cardData['thinkingContent'] as String? ?? '';
-        final stage = cardData['stage'] as int? ?? 1;
-        final taskID = cardData['taskID'] as String?;
-        final startTime = cardData['startTime'] as int?;
-        final endTime = cardData['endTime'] as int?;
-        final isExecutable = cardData['isExecutable'] as bool? ?? false;
-        final isCollapsible =
-            cardData['isCollapsible'] as bool? ?? enableThinkingCollapse;
-        // 使用 taskID 作为 key，确保同一个 task 使用同一个 Widget 实例
-        final key = taskID != null ? ValueKey('deep_thinking_$taskID') : null;
+        final isLoading = _asBool(cardData['isLoading'], fallback: true);
+        final thinkingText = _asString(cardData['thinkingContent']);
+        final stage = _asInt(cardData['stage']) ?? 1;
+        final taskID = _asNullableString(cardData['taskID']);
+        final startTime = _asInt(cardData['startTime']);
+        final endTime = _asInt(cardData['endTime']);
+        final isExecutable = _asBool(cardData['isExecutable']);
+        final isCollapsible = _asBool(
+          cardData['isCollapsible'],
+          fallback: enableThinkingCollapse,
+        );
+        final key = taskID != null
+            ? ValueKey('deep_thinking_${taskID}_${startTime ?? 'na'}')
+            : null;
         return DeepThinkingCard(
           key: key,
           isLoading: isLoading,
@@ -89,6 +92,41 @@ class CardWidgetFactory {
       default:
         return _UnknownCard(type: type);
     }
+  }
+
+  static String _asString(dynamic value) => value?.toString() ?? '';
+
+  static String? _asNullableString(dynamic value) {
+    final normalized = value?.toString().trim() ?? '';
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) {
+      final number = value.toDouble();
+      if (number.isFinite) {
+        return number.round();
+      }
+      return null;
+    }
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return null;
+    final parsedInt = int.tryParse(text);
+    if (parsedInt != null) return parsedInt;
+    final parsedDouble = double.tryParse(text);
+    if (parsedDouble != null && parsedDouble.isFinite) {
+      return parsedDouble.round();
+    }
+    return null;
+  }
+
+  static bool _asBool(dynamic value, {bool fallback = false}) {
+    if (value is bool) return value;
+    final text = value?.toString().trim().toLowerCase() ?? '';
+    if (text == 'true') return true;
+    if (text == 'false') return false;
+    return fallback;
   }
 }
 

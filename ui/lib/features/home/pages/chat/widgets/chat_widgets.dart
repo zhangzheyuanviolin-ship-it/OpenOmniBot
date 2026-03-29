@@ -961,6 +961,7 @@ class ChatInputWrapper extends StatelessWidget {
   final double? contextUsageRatio;
   final VoidCallback? onTapContextUsageRing;
   final VoidCallback? onLongPressContextUsageRing;
+  final ValueChanged<double>? onInputHeightChanged;
 
   const ChatInputWrapper({
     super.key,
@@ -985,6 +986,7 @@ class ChatInputWrapper extends StatelessWidget {
     this.contextUsageRatio,
     this.onTapContextUsageRing,
     this.onLongPressContextUsageRing,
+    this.onInputHeightChanged,
   });
 
   @override
@@ -1017,6 +1019,7 @@ class ChatInputWrapper extends StatelessWidget {
             contextUsageRatio: contextUsageRatio,
             onTapContextUsageRing: onTapContextUsageRing,
             onLongPressContextUsageRing: onLongPressContextUsageRing,
+            onInputHeightChanged: onInputHeightChanged,
           ),
         ],
       ),

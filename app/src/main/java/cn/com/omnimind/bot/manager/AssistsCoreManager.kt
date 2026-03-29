@@ -2712,6 +2712,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val legacyConversationHistory =
             call.argument<List<Map<String, Any?>>>("conversationHistory") ?: emptyList()
         val attachments = call.argument<List<Map<String, Any?>>>("attachments") ?: emptyList()
+        val userMessageCreatedAt = call.argument<Number>("userMessageCreatedAt")?.toLong()
         val conversationId = call.argument<Number>("conversationId")?.toLong()?.takeIf { it > 0L }
         val requestedConversationMode =
             call.argument<String>("conversationMode")?.trim()?.ifEmpty { null }
@@ -2908,7 +2909,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             conversationMode = resolvedConversationMode,
                             entryId = "$taskId-user",
                             text = userMessage,
-                            attachments = attachments
+                            attachments = attachments,
+                            createdAt = userMessageCreatedAt ?: System.currentTimeMillis()
                         )
                     }
                 }
@@ -3341,6 +3343,43 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 OmniLog.e(TAG, "替换对话消息失败: ${e.message}")
                 withContext(Dispatchers.Main) {
                     result.error("REPLACE_CONVERSATION_MESSAGES_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun upsertConversationUiCard(call: MethodCall, result: MethodChannel.Result) {
+        val conversationId = call.argument<Number>("conversationId")?.toLong() ?: 0L
+        val mode = normalizeConversationMode(
+            call.argument<String>("mode") ?: call.argument<String>("conversationMode")
+        )
+        val entryId = call.argument<String>("entryId")?.trim().orEmpty()
+        val cardData = call.argument<Map<String, Any?>>("cardData") ?: emptyMap()
+        val createdAt = call.argument<Number>("createdAt")?.toLong()
+        if (conversationId <= 0L) {
+            result.error("INVALID_ARGUMENTS", "conversationId is invalid", null)
+            return
+        }
+        if (entryId.isEmpty()) {
+            result.error("INVALID_ARGUMENTS", "entryId is invalid", null)
+            return
+        }
+        workJob.launch {
+            try {
+                conversationHistoryRepository().upsertUiCard(
+                    conversationId = conversationId,
+                    conversationMode = mode,
+                    entryId = entryId,
+                    cardData = cardData,
+                    createdAt = createdAt ?: System.currentTimeMillis()
+                )
+                withContext(Dispatchers.Main) {
+                    result.success("SUCCESS")
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "保存 UI 卡片失败: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("UPSERT_CONVERSATION_UI_CARD_ERROR", e.message, null)
                 }
             }
         }
