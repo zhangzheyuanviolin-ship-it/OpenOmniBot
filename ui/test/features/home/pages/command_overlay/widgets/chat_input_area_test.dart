@@ -84,34 +84,10 @@ void main() {
     expect(longPressed, isTrue);
   });
 
-  testWidgets('tapping context usage ring triggers callback', (tester) async {
-    var tapped = false;
-    await tester.pumpWidget(
-      _buildTestApp(
-        contextUsageRatio: 0.72,
-        onTapContextUsageRing: () {
-          tapped = true;
-        },
-      ),
-    );
-    await tester.pump();
-
-    await tester.tap(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is CustomPaint &&
-            widget.painter.runtimeType.toString() == '_ContextUsageRingPainter',
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(tapped, isTrue);
-  });
 }
 
 Widget _buildTestApp({
   required double? contextUsageRatio,
-  VoidCallback? onTapContextUsageRing,
   VoidCallback? onLongPressContextUsageRing,
 }) {
   return DefaultAssetBundle(
@@ -125,7 +101,6 @@ Widget _buildTestApp({
           onSendMessage: () {},
           onCancelTask: () {},
           contextUsageRatio: contextUsageRatio,
-          onTapContextUsageRing: onTapContextUsageRing,
           onLongPressContextUsageRing: onLongPressContextUsageRing,
         ),
       ),
