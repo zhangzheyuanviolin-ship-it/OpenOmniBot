@@ -59,6 +59,29 @@ object SceneModelBindingStore {
         writeBindingMap(mmkv, current)
     }
 
+    fun replaceBindings(entries: List<SceneModelBindingEntry>) {
+        ensureMigrated()
+        val mmkv = MMKV.defaultMMKV() ?: return
+        val map = linkedMapOf<String, SceneModelBindingEntry>()
+        entries.forEach { entry ->
+            val normalizedSceneId = entry.sceneId.trim()
+            val normalizedProfileId = entry.providerProfileId.trim()
+            val normalizedModelId = entry.modelId.trim()
+            if (!isValidSceneId(normalizedSceneId)) {
+                return@forEach
+            }
+            if (normalizedProfileId.isEmpty() || !isValidModelName(normalizedModelId)) {
+                return@forEach
+            }
+            map[normalizedSceneId] = SceneModelBindingEntry(
+                sceneId = normalizedSceneId,
+                providerProfileId = normalizedProfileId,
+                modelId = normalizedModelId
+            )
+        }
+        writeBindingMap(mmkv, map)
+    }
+
     fun isValidSceneId(sceneId: String): Boolean {
         return sceneId.trim() in allowedScenes
     }

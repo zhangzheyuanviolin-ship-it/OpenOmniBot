@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
@@ -31,7 +33,7 @@ class _SettingsPageState extends State<SettingsPage> {
   McpServerInfo? _mcpInfo;
   bool _workspaceMemoryLoaded = false;
   WorkspaceMemoryEmbeddingConfig? _embeddingConfig;
-  WorkspaceMemoryRollupStatus? _rollupStatus;
+  StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
 
   @override
   void initState() {
@@ -47,6 +49,19 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadAutoBackToChatAfterTaskState();
     _loadMcpServerState();
     _loadWorkspaceMemoryState();
+    _configChangedSubscription =
+        AssistsMessageService.agentAiConfigChangedStream.listen((event) {
+          if (event.source != 'file' || !mounted) {
+            return;
+          }
+          _loadWorkspaceMemoryState();
+        });
+  }
+
+  @override
+  void dispose() {
+    _configChangedSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadVibrationState() async {
@@ -151,7 +166,6 @@ class _SettingsPageState extends State<SettingsPage> {
       if (!mounted) return;
       setState(() {
         _embeddingConfig = results[0] as WorkspaceMemoryEmbeddingConfig;
-        _rollupStatus = results[1] as WorkspaceMemoryRollupStatus;
         _workspaceMemoryLoaded = true;
       });
     } catch (e) {

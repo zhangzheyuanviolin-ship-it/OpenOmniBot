@@ -157,6 +157,7 @@ class OmnibotResourceService {
     String? previewKind,
     String? mimeType,
     String? shellPath,
+    bool startInEditMode = false,
   }) async {
     await ensureWorkspacePathsLoaded();
     if (!await _ensureWorkspaceStorageAccess()) {
@@ -181,6 +182,7 @@ class OmnibotResourceService {
         'mimeType': metadata.mimeType,
         'shellPath': metadata.shellPath,
         'exists': metadata.exists,
+        'startInEditMode': startInEditMode,
       },
     );
   }

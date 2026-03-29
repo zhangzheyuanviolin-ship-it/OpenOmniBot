@@ -70,6 +70,8 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
     final activeCardId = _cardIdentity(activeCard);
     final historyCards = cards
         .where((card) => _cardIdentity(card) != activeCardId)
+        .toList(growable: false)
+        .reversed
         .toList(growable: false);
     final canExpand = historyCards.isNotEmpty;
     final isExpanded = _expanded && canExpand;

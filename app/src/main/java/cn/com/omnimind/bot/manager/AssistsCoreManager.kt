@@ -28,6 +28,7 @@ import cn.com.omnimind.baselib.llm.ModelProviderProfile
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.llm.ModelSceneRegistry
 import cn.com.omnimind.baselib.llm.ProviderModelOption
+import cn.com.omnimind.baselib.llm.SceneModelCatalogResolver
 import cn.com.omnimind.baselib.llm.SceneCatalogItem
 import cn.com.omnimind.baselib.llm.SceneModelBindingEntry
 import cn.com.omnimind.baselib.llm.SceneModelBindingStore
@@ -44,6 +45,7 @@ import cn.com.omnimind.assists.controller.http.HttpController
 import cn.com.omnimind.baselib.util.SchemeUtil
 import cn.com.omnimind.bot.agent.AgentCallback
 import cn.com.omnimind.bot.agent.AgentAlarmToolService
+import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
 import cn.com.omnimind.bot.agent.AgentModelOverride
 import cn.com.omnimind.bot.agent.AgentResult
 import cn.com.omnimind.bot.agent.AgentConversationHistoryRepository
@@ -113,6 +115,18 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             mainEngineChannel = channel
         }
 
+        fun dispatchAgentAiConfigChanged(source: String, path: String) {
+            val payload = mapOf(
+                "source" to source,
+                "path" to path
+            )
+            runCatching {
+                mainEngineChannel?.invokeMethod("onAgentAiConfigChanged", payload)
+            }.onFailure {
+                OmniLog.w("[AssistsCoreManager]", "dispatchAgentAiConfigChanged failed: ${it.message}")
+            }
+        }
+
         private fun isSummaryTask(taskId: String): Boolean {
             return taskId.startsWith(SUMMARY_TASK_PREFIX_VLM) ||
                 taskId.startsWith(SUMMARY_TASK_PREFIX_TASK)
@@ -178,6 +192,21 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             if (activeAgentJobs[taskId] == job) {
                 activeAgentJobs.remove(taskId)
             }
+        }
+    }
+
+    private fun syncAgentAiCapabilityConfigFile() {
+        runCatching {
+            AgentAiCapabilityConfigSync.get(context).syncFileFromStores()
+            val workspaceManager = AgentWorkspaceManager(context)
+            val configFile = workspaceManager.agentConfigFile()
+            dispatchAgentAiConfigChanged(
+                source = "store",
+                path = workspaceManager.shellPathForAndroid(configFile)
+                    ?: configFile.absolutePath
+            )
+        }.onFailure {
+            OmniLog.w(TAG, "sync agent ai config file failed: ${it.message}")
         }
     }
 
@@ -1843,6 +1872,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     baseUrl = baseUrl,
                     apiKey = apiKey
                 )
+                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(saved.toMap())
                 }
@@ -1861,6 +1891,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 val profiles = ModelProviderConfigStore.deleteProfile(profileId)
+                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(
                         mapOf(
@@ -1884,6 +1915,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 val selected = ModelProviderConfigStore.setEditingProfile(profileId)
+                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(selected.toMap())
                 }
@@ -1904,6 +1936,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             try {
                 ModelProviderConfigStore.saveConfig(baseUrl, apiKey)
                 val saved = ModelProviderConfigStore.getConfig()
+                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(saved.toMap())
                 }
@@ -1920,6 +1953,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 ModelProviderConfigStore.clearConfig()
+                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(ModelProviderConfigStore.getConfig().toMap())
                 }
@@ -1997,36 +2031,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     fun getSceneModelCatalog(call: MethodCall, result: MethodChannel.Result) {
         workJob.launch {
             try {
-                val profilesById = ModelProviderConfigStore.listProfiles().associateBy { it.id }
-                val bindings = SceneModelBindingStore.getBindingMap()
-                val catalog = ModelSceneRegistry.listRuntimeProfiles()
-                    .map { profile ->
-                        val binding = bindings[profile.sceneId]
-                        val boundProfile = binding?.providerProfileId?.let(profilesById::get)
-                        val bindingApplied = binding != null && boundProfile?.isConfigured() == true
-                        val bindingProfileMissing = binding != null && boundProfile == null
-                        SceneCatalogItem(
-                            sceneId = profile.sceneId,
-                            description = profile.description,
-                            defaultModel = profile.model,
-                            effectiveModel = if (bindingApplied) binding.modelId else profile.model,
-                            effectiveProviderProfileId = if (bindingApplied) boundProfile?.id else null,
-                            effectiveProviderProfileName = if (bindingApplied) boundProfile?.name else null,
-                            boundProviderProfileId = binding?.providerProfileId,
-                            boundProviderProfileName = boundProfile?.name,
-                            transport = if (bindingApplied) {
-                                ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE.wireValue
-                            } else {
-                                profile.transport.wireValue
-                            },
-                            configSource = profile.configSource.wireValue,
-                            overrideApplied = bindingApplied,
-                            overrideModel = binding?.modelId,
-                            providerConfigured = boundProfile?.isConfigured() == true,
-                            bindingExists = binding != null,
-                            bindingProfileMissing = bindingProfileMissing
-                        )
-                    }
+                val catalog = SceneModelCatalogResolver.listCatalogItems()
                 withContext(Dispatchers.Main) {
                     result.success(catalog.map { it.toMap() })
                 }
@@ -2062,6 +2067,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 SceneModelBindingStore.saveBinding(sceneId, providerProfileId, modelId)
+                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(SceneModelBindingStore.getBindingEntries().map { it.toMap() })
                 }
@@ -2080,6 +2086,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 SceneModelBindingStore.clearBinding(sceneId)
+                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(SceneModelBindingStore.getBindingEntries().map { it.toMap() })
                 }
@@ -2114,6 +2121,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 SceneModelOverrideStore.saveOverride(sceneId, model)
+                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(SceneModelOverrideStore.getOverrideEntries().map { it.toMap() })
                 }
@@ -2132,6 +2140,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 SceneModelOverrideStore.clearOverride(sceneId)
+                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(SceneModelOverrideStore.getOverrideEntries().map { it.toMap() })
                 }

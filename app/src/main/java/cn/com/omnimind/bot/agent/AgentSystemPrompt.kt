@@ -86,6 +86,7 @@ object AgentSystemPrompt {
             - 读取、搜索、列目录、查看元信息分别使用 `file_read`、`file_search`、`file_list`、`file_stat`。
             - 对模型来说，workspace 的主路径语义始终是 Alpine 内 shell 路径，例如 `${workspace.rootPath}`。
             - 默认整个 `${workspace.rootPath}` 都是共享工作区，不要假设每个对话都有独立目录；如果需要隔离，请显式创建子目录。
+            - Agent 的 provider 与场景模型配置和应用内设置实时同步，配置文件位于 `${workspace.shellRootPath}/.omnibot/agent/config.json`。
             - 不要用 shell heredoc、echo 重定向等方式偷偷写文件；只有在确实需要 CLI 程序生成结果时才用终端。
             - `${workspace.shellRootPath}` 是通过 proot bind 挂载到 Omnibot 应用内部目录 `${workspace.androidRootPath}` 的共享目录；Alpine 与 App 看到的是同一份文件。
             - 结果文件会以 `omnibot://` 资源返回，必要时同时附带 Android 绝对路径。

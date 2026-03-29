@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
@@ -54,11 +57,25 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   List<ModelProviderProfileSummary> _profiles = const [];
   Map<String, List<ProviderModelOption>> _providerModelsByProfileId = {};
   Set<String> _savingSceneIds = <String>{};
+  StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _configChangedSubscription =
+        AssistsMessageService.agentAiConfigChangedStream.listen((event) {
+          if (event.source != 'file' || !mounted) {
+            return;
+          }
+          unawaited(_loadData());
+        });
+  }
+
+  @override
+  void dispose() {
+    _configChangedSubscription?.cancel();
+    super.dispose();
   }
 
   List<SceneCatalogItem> get _orderedCatalog {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
@@ -75,6 +76,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   bool _isSwitchingProfile = false;
 
   Timer? _autoSaveTimer;
+  StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
 
   List<ModelProviderProfileSummary> _profiles = const [];
   String _editingProfileId = '';
@@ -132,6 +134,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   void initState() {
     super.initState();
     _loadData();
+    _configChangedSubscription =
+        AssistsMessageService.agentAiConfigChangedStream.listen((event) {
+          if (event.source != 'file' || !mounted) {
+            return;
+          }
+          unawaited(_loadData());
+        });
     _nameController.addListener(_onProfileChanged);
     _baseUrlController.addListener(_onProfileChanged);
     _apiKeyController.addListener(_onProfileChanged);
@@ -139,6 +148,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
 
   @override
   void dispose() {
+    _configChangedSubscription?.cancel();
     _autoSaveTimer?.cancel();
     if (_shouldAutoSaveDraft) {
       unawaited(_persistProfileDraft());

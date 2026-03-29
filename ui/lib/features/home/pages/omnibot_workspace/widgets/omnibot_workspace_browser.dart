@@ -6,7 +6,7 @@ import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
 
-enum _WorkspaceEntryAction { rename, delete }
+enum _WorkspaceEntryAction { edit, rename, delete }
 
 class _WorkspaceDragPayload {
   const _WorkspaceDragPayload({
@@ -305,14 +305,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
           }
           return;
         }
-        final shellPath =
-            OmnibotResourceService.shellPathForAndroidPath(entry.path) ??
-            (currentShellPath == null ? null : '$currentShellPath/$name');
-        OmnibotResourceService.openFilePath(
-          entry.path,
-          title: name,
-          shellPath: shellPath,
-        );
+        _openFileEntry(entry, currentShellPath: currentShellPath);
       },
       onLongPress: () => _showEntryActionSheet(entry),
     );
@@ -551,6 +544,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
 
   Future<void> _showEntryActionSheet(FileSystemEntity entry) async {
     final name = _entryNameFromPath(entry.path);
+    final editable = _canEditEntry(entry);
     final action = await showModalBottomSheet<_WorkspaceEntryAction>(
       context: context,
       backgroundColor: Colors.white,
@@ -594,6 +588,30 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (editable) ...[
+                  ListTile(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    tileColor: const Color(0xFFF7F8FA),
+                    leading: const Icon(
+                      Icons.edit_outlined,
+                      color: AppColors.text,
+                    ),
+                    title: const Text(
+                      '编辑',
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'PingFang SC',
+                      ),
+                    ),
+                    onTap: () => Navigator.of(
+                      sheetContext,
+                    ).pop(_WorkspaceEntryAction.edit),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 ListTile(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -665,11 +683,40 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     );
 
     if (!mounted || action == null) return;
+    if (action == _WorkspaceEntryAction.edit) {
+      _openFileEntry(entry, startInEditMode: true);
+      return;
+    }
     if (action == _WorkspaceEntryAction.rename) {
       await _promptRenameEntry(entry);
       return;
     }
     await _confirmAndDeleteEntry(entry);
+  }
+
+  bool _canEditEntry(FileSystemEntity entry) {
+    if (entry is! File) {
+      return false;
+    }
+    final metadata = OmnibotResourceService.describePath(entry.path);
+    return metadata.previewKind == 'text' || metadata.previewKind == 'code';
+  }
+
+  void _openFileEntry(
+    FileSystemEntity entry, {
+    String? currentShellPath,
+    bool startInEditMode = false,
+  }) {
+    final name = _entryNameFromPath(entry.path);
+    final shellPath =
+        OmnibotResourceService.shellPathForAndroidPath(entry.path) ??
+        (currentShellPath == null ? null : '$currentShellPath/$name');
+    OmnibotResourceService.openFilePath(
+      entry.path,
+      title: name,
+      shellPath: shellPath,
+      startInEditMode: startInEditMode,
+    );
   }
 
   Future<void> _promptRenameEntry(FileSystemEntity entry) async {

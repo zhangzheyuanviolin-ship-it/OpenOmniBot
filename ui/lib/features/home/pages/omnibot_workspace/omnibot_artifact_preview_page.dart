@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -17,6 +19,7 @@ class OmnibotArtifactPreviewPage extends StatefulWidget {
   final String mimeType;
   final String? shellPath;
   final bool exists;
+  final bool startInEditMode;
 
   const OmnibotArtifactPreviewPage({
     super.key,
@@ -27,6 +30,7 @@ class OmnibotArtifactPreviewPage extends StatefulWidget {
     this.shellPath,
     this.uri,
     this.exists = true,
+    this.startInEditMode = false,
   });
 
   @override
@@ -39,79 +43,182 @@ class _OmnibotArtifactPreviewPageState
   static const String _externalLinkIconAsset =
       'assets/home/workspace_external_link_icon.svg';
 
+  final TextEditingController _editorController = TextEditingController();
+
+  StreamSubscription<AgentAiConfigChangedEvent>? _fileChangedSubscription;
   String? _textContent;
   String? _error;
+  bool _loadingText = false;
+  bool _isEditing = false;
+  bool _isSaving = false;
+  bool _isDirty = false;
+  bool _allowPop = false;
+
+  bool get _isTextLike =>
+      widget.previewKind == 'text' || widget.previewKind == 'code';
+
+  bool get _canEdit => widget.exists && _isTextLike;
+
+  bool get _preferMonospace =>
+      widget.previewKind == 'code' ||
+      widget.mimeType == 'application/json' ||
+      widget.mimeType == 'application/xml' ||
+      widget.mimeType == 'application/yaml';
 
   @override
   void initState() {
     super.initState();
+    _isEditing = widget.startInEditMode && _canEdit;
+    _editorController.addListener(_handleEditorChanged);
     _loadIfNeeded();
-  }
-
-  Future<void> _loadIfNeeded() async {
-    if (!widget.exists) return;
-    if (widget.previewKind != 'text' && widget.previewKind != 'code') return;
-    try {
-      final text = await File(widget.path).readAsString();
-      if (!mounted) return;
-      setState(() => _textContent = text);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = '读取失败：$e');
-    }
+    _fileChangedSubscription = AssistsMessageService.agentAiConfigChangedStream
+        .listen(_handleExternalFileChanged);
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CommonAppBar(
-        title: widget.title,
-        primary: true,
-        actions: [
-          IconButton(
-            tooltip: '系统打开',
-            onPressed: widget.exists ? _handleOpenWithSystem : null,
-            icon: SvgPicture.asset(
-              _externalLinkIconAsset,
-              width: 20,
-              height: 20,
-              colorFilter: const ColorFilter.mode(
-                Color(0xFF111827),
-                BlendMode.srcIn,
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: '分享文件',
-            onPressed: widget.exists ? _handleShareFile : null,
-            icon: const Icon(Icons.share_outlined),
-          ),
-        ],
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            color: const Color(0xFFF5F7FB),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.path,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF667085),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(child: _buildBody()),
-        ],
-      ),
-    );
+  void dispose() {
+    _fileChangedSubscription?.cancel();
+    _editorController
+      ..removeListener(_handleEditorChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleEditorChanged() {
+    if (!_isEditing) {
+      return;
+    }
+    final nextDirty = _editorController.text != (_textContent ?? '');
+    if (nextDirty == _isDirty || !mounted) {
+      return;
+    }
+    setState(() => _isDirty = nextDirty);
+  }
+
+  Future<void> _loadIfNeeded({bool showLoading = true}) async {
+    if (!widget.exists || !_isTextLike) return;
+    if (showLoading && mounted) {
+      setState(() => _loadingText = true);
+    }
+    try {
+      final text = await File(widget.path).readAsString();
+      if (!mounted) return;
+      final keepDraft = _isEditing && _isDirty;
+      if (!keepDraft) {
+        _editorController.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+      }
+      setState(() {
+        _textContent = text;
+        _error = null;
+        _loadingText = false;
+        if (!keepDraft) {
+          _isDirty = false;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '读取失败：$e';
+        _loadingText = false;
+      });
+    }
+  }
+
+  void _handleExternalFileChanged(AgentAiConfigChangedEvent event) {
+    if (!_matchesCurrentFile(event.path) || !mounted) {
+      return;
+    }
+    if (_isSaving) {
+      return;
+    }
+    if (_isEditing && _isDirty) {
+      showToast('文件已被外部更新，当前未保存修改仍会保留', type: ToastType.info);
+      return;
+    }
+    unawaited(_loadIfNeeded(showLoading: false));
+  }
+
+  bool _matchesCurrentFile(String changedPath) {
+    final normalized = changedPath.trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    if (normalized == widget.path) {
+      return true;
+    }
+    final currentShellPath = widget.shellPath?.trim();
+    return currentShellPath != null &&
+        currentShellPath.isNotEmpty &&
+        normalized == currentShellPath;
+  }
+
+  Future<void> _handleEditPressed() async {
+    if (!_canEdit) return;
+    if (_textContent == null && !_loadingText) {
+      await _loadIfNeeded();
+    }
+    if (!mounted) return;
+    setState(() {
+      _isEditing = true;
+      _isDirty = false;
+      _editorController.value = TextEditingValue(
+        text: _textContent ?? '',
+        selection: TextSelection.collapsed(offset: (_textContent ?? '').length),
+      );
+    });
+  }
+
+  Future<void> _handleCancelEditing() async {
+    if (!_isEditing) return;
+    if (_isDirty) {
+      final confirmed = await AppDialog.confirm(
+        context,
+        title: '放弃修改',
+        content: '当前有未保存修改，确认放弃吗？',
+        cancelText: '继续编辑',
+        confirmText: '放弃',
+      );
+      if (confirmed != true || !mounted) {
+        return;
+      }
+    }
+    setState(() {
+      _isEditing = false;
+      _isDirty = false;
+      _editorController.value = TextEditingValue(
+        text: _textContent ?? '',
+        selection: TextSelection.collapsed(offset: (_textContent ?? '').length),
+      );
+    });
+  }
+
+  Future<void> _handleSaveText() async {
+    if (!_canEdit || _isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      final savedText = _editorController.text;
+      await File(widget.path).writeAsString(savedText);
+      if (!mounted) return;
+      setState(() {
+        _textContent = savedText;
+        _isDirty = false;
+        _error = null;
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await _loadIfNeeded(showLoading: false);
+      if (!mounted) return;
+      showToast('文件已保存', type: ToastType.success);
+    } catch (error) {
+      if (!mounted) return;
+      showToast('保存失败：$error', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   Future<void> _handleOpenWithSystem() async {
@@ -143,6 +250,27 @@ class _OmnibotArtifactPreviewPageState
     }
   }
 
+  Future<void> _handleBackNavigation(bool didPop) async {
+    if (didPop || !_isEditing || !_isDirty) {
+      return;
+    }
+    final confirmed = await AppDialog.confirm(
+      context,
+      title: '退出编辑',
+      content: '当前有未保存修改，确认退出吗？',
+      cancelText: '继续编辑',
+      confirmText: '退出',
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() {
+      _allowPop = true;
+      _isDirty = false;
+    });
+    Navigator.of(context).maybePop();
+  }
+
   OmnibotResourceMetadata _currentMetadata() {
     return OmnibotResourceService.describePath(
       widget.path,
@@ -168,6 +296,54 @@ class _OmnibotArtifactPreviewPageState
     );
   }
 
+  Widget _buildEditor() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          color: const Color(0xFFF5F7FB),
+          child: Text(
+            _isDirty ? '编辑中，存在未保存修改' : '编辑中，保存后会立即写回 workspace',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _editorController,
+              expands: true,
+              minLines: null,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              textAlignVertical: TextAlignVertical.top,
+              style: TextStyle(
+                fontFamily: _preferMonospace ? 'monospace' : null,
+                fontSize: 14,
+                height: 1.5,
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
+                hintText: '输入文件内容',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF2C7FEB)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBody() {
     if (!widget.exists) {
       return const Center(child: Text('文件不存在'));
@@ -175,6 +351,13 @@ class _OmnibotArtifactPreviewPageState
     if (_error != null) {
       return Center(child: Text(_error!));
     }
+    if (_isEditing) {
+      if (_loadingText && _textContent == null) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return _buildEditor();
+    }
+
     switch (widget.previewKind) {
       case 'image':
         return InteractiveViewer(
@@ -205,8 +388,11 @@ class _OmnibotArtifactPreviewPageState
         );
       case 'text':
       case 'code':
-        if (_textContent == null) {
+        if (_loadingText && _textContent == null) {
           return const Center(child: CircularProgressIndicator());
+        }
+        if (_textContent == null) {
+          return const Center(child: Text('暂无内容'));
         }
         if (widget.mimeType == 'text/markdown') {
           return SingleChildScrollView(
@@ -223,7 +409,7 @@ class _OmnibotArtifactPreviewPageState
           child: SelectableText(
             _textContent!,
             style: TextStyle(
-              fontFamily: widget.previewKind == 'code' ? 'monospace' : null,
+              fontFamily: _preferMonospace ? 'monospace' : null,
               fontSize: 14,
               height: 1.5,
             ),
@@ -255,5 +441,92 @@ class _OmnibotArtifactPreviewPageState
           ),
         );
     }
+  }
+
+  List<Widget> _buildActions() {
+    final actions = <Widget>[];
+    if (_canEdit) {
+      if (_isEditing) {
+        actions.add(
+          IconButton(
+            tooltip: '取消编辑',
+            onPressed: _handleCancelEditing,
+            icon: const Icon(Icons.close_rounded),
+          ),
+        );
+        actions.add(
+          IconButton(
+            tooltip: '保存文件',
+            onPressed: _isSaving ? null : _handleSaveText,
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save_outlined),
+          ),
+        );
+      } else {
+        actions.add(
+          IconButton(
+            tooltip: '编辑文件',
+            onPressed: _handleEditPressed,
+            icon: const Icon(Icons.edit_outlined),
+          ),
+        );
+      }
+    }
+    actions.addAll([
+      IconButton(
+        tooltip: '系统打开',
+        onPressed: widget.exists ? _handleOpenWithSystem : null,
+        icon: SvgPicture.asset(
+          _externalLinkIconAsset,
+          width: 20,
+          height: 20,
+          colorFilter: const ColorFilter.mode(
+            Color(0xFF111827),
+            BlendMode.srcIn,
+          ),
+        ),
+      ),
+      IconButton(
+        tooltip: '分享文件',
+        onPressed: widget.exists ? _handleShareFile : null,
+        icon: const Icon(Icons.share_outlined),
+      ),
+    ]);
+    return actions;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _allowPop || !(_isEditing && _isDirty),
+      onPopInvokedWithResult: (didPop, _) => _handleBackNavigation(didPop),
+      child: Scaffold(
+        appBar: CommonAppBar(
+          title: widget.title,
+          primary: true,
+          actions: _buildActions(),
+        ),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: const Color(0xFFF5F7FB),
+              child: Text(
+                widget.path,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
+              ),
+            ),
+            Expanded(child: _buildBody()),
+          ],
+        ),
+      ),
+    );
   }
 }

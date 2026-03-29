@@ -68,6 +68,52 @@ object ModelProviderConfigStore {
         return target
     }
 
+    fun replaceProfiles(
+        profiles: List<ModelProviderProfile>,
+        editingProfileId: String? = null
+    ): List<ModelProviderProfile> {
+        ModelProviderMigration.ensureMigrated()
+
+        val sanitized = buildList<ModelProviderProfile> {
+            profiles.forEach { profile ->
+                val existing = toList()
+                val requestedId = profile.id.trim()
+                val normalizedId = when {
+                    requestedId.isEmpty() -> generateProfileId(existing)
+                    existing.any { it.id == requestedId } -> generateProfileId(existing)
+                    else -> requestedId
+                }
+                add(
+                    ModelProviderProfile(
+                        id = normalizedId,
+                        name = sanitizeProfileName(
+                            raw = profile.name,
+                            profiles = existing,
+                            existingId = null
+                        ),
+                        baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
+                        apiKey = profile.apiKey.trim()
+                    )
+                )
+            }
+        }.ifEmpty { defaultProfiles() }
+
+        val resolvedEditingId = editingProfileId
+            ?.trim()
+            ?.takeIf { candidate -> sanitized.any { it.id == candidate } }
+            ?: sanitized.first().id
+
+        val mmkv = MMKV.defaultMMKV()
+        if (mmkv != null) {
+            writeProfiles(mmkv, sanitized)
+            mmkv.encode(KEY_EDITING_PROFILE_ID, resolvedEditingId)
+            sanitized.firstOrNull { it.id == resolvedEditingId }
+                ?.let { syncLegacyFlatConfig(mmkv, it) }
+        }
+
+        return sanitized
+    }
+
     fun saveProfile(
         id: String? = null,
         name: String,

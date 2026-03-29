@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:ui/services/agent_schedule_bridge_service.dart';
 import 'package:ui/services/app_state_service.dart';
@@ -180,6 +182,20 @@ class AgentToolEventData {
   }
 }
 
+class AgentAiConfigChangedEvent {
+  final String source;
+  final String path;
+
+  const AgentAiConfigChangedEvent({required this.source, required this.path});
+
+  factory AgentAiConfigChangedEvent.fromMap(Map<dynamic, dynamic>? map) {
+    return AgentAiConfigChangedEvent(
+      source: (map?['source'] ?? '').toString(),
+      path: (map?['path'] ?? '').toString(),
+    );
+  }
+}
+
 class AssistsMessageService {
   static const MethodChannel assistCore = MethodChannel(
     'cn.com.omnimind.bot/AssistCoreEvent',
@@ -211,11 +227,17 @@ class AssistsMessageService {
 
   static ScheduledTaskCancelledCallBack? _onScheduledTaskCancelledCallBack;
   static ScheduledTaskExecuteNowCallBack? _onScheduledTaskExecuteNowCallBack;
+  static final StreamController<AgentAiConfigChangedEvent>
+  _agentAiConfigChangedController =
+      StreamController<AgentAiConfigChangedEvent>.broadcast();
 
   // 改为回调列表，支持多个监听器
   static final List<VLMTaskFinishEndCallBack> _onVLMTaskFinishCallBacks = [];
   static final List<CommonTaskFinishEndCallBack> _onCommonTaskFinishCallBacks =
       [];
+
+  static Stream<AgentAiConfigChangedEvent> get agentAiConfigChangedStream =>
+      _agentAiConfigChangedController.stream;
 
   static void initialize() {
     assistCore.setMethodCallHandler(_handleMethod);
@@ -234,6 +256,14 @@ class AssistsMessageService {
         case 'onTaskFinish':
           print('任务完成');
           _onTaskFinishCallback?.call();
+          break;
+        case 'onAgentAiConfigChanged':
+          final data = Map<String, dynamic>.from(
+            (call.arguments as Map?) ?? const <String, dynamic>{},
+          );
+          _agentAiConfigChangedController.add(
+            AgentAiConfigChangedEvent.fromMap(data),
+          );
           break;
         case 'onChatMessage':
           final Map<String, dynamic> data = Map<String, dynamic>.from(

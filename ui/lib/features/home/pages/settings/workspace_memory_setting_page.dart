@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
@@ -14,7 +17,8 @@ class WorkspaceMemorySettingPage extends StatefulWidget {
       _WorkspaceMemorySettingPageState();
 }
 
-class _WorkspaceMemorySettingPageState extends State<WorkspaceMemorySettingPage> {
+class _WorkspaceMemorySettingPageState
+    extends State<WorkspaceMemorySettingPage> {
   final TextEditingController _soulController = TextEditingController();
   final TextEditingController _memoryController = TextEditingController();
 
@@ -25,15 +29,29 @@ class _WorkspaceMemorySettingPageState extends State<WorkspaceMemorySettingPage>
   bool _rollupEnabled = true;
   WorkspaceMemoryEmbeddingConfig? _embeddingConfig;
   WorkspaceMemoryRollupStatus? _rollupStatus;
+  StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadAll();
+    _configChangedSubscription = AssistsMessageService
+        .agentAiConfigChangedStream
+        .listen((event) {
+          if (event.source != 'file' || !mounted) {
+            return;
+          }
+          if (event.path.endsWith('/SOUL.md')) {
+            unawaited(_refreshSoulDocument());
+            return;
+          }
+          unawaited(_refreshCapabilityState());
+        });
   }
 
   @override
   void dispose() {
+    _configChangedSubscription?.cancel();
     _soulController.dispose();
     _memoryController.dispose();
     super.dispose();
@@ -67,6 +85,36 @@ class _WorkspaceMemorySettingPageState extends State<WorkspaceMemorySettingPage>
       if (mounted) {
         setState(() => _loading = false);
       }
+    }
+  }
+
+  Future<void> _refreshCapabilityState() async {
+    try {
+      final results = await Future.wait([
+        WorkspaceMemoryService.getEmbeddingConfig(),
+        WorkspaceMemoryService.getRollupStatus(),
+      ]);
+      if (!mounted) return;
+      final embedding = results[0] as WorkspaceMemoryEmbeddingConfig;
+      final rollup = results[1] as WorkspaceMemoryRollupStatus;
+      setState(() {
+        _embeddingConfig = embedding;
+        _rollupStatus = rollup;
+        _embeddingEnabled = embedding.enabled;
+        _rollupEnabled = rollup.enabled;
+      });
+    } catch (_) {
+      // Keep current UI state when passive refresh fails.
+    }
+  }
+
+  Future<void> _refreshSoulDocument() async {
+    try {
+      final soul = await WorkspaceMemoryService.getSoul();
+      if (!mounted) return;
+      _soulController.text = soul;
+    } catch (_) {
+      // Keep current UI state when passive refresh fails.
     }
   }
 
@@ -140,8 +188,9 @@ class _WorkspaceMemorySettingPageState extends State<WorkspaceMemorySettingPage>
       await _loadAll();
     } on PlatformException catch (e) {
       final message = e.message?.trim();
-      final errorText =
-          (message == null || message.isEmpty) ? '立即整理失败' : '立即整理失败：$message';
+      final errorText = (message == null || message.isEmpty)
+          ? '立即整理失败'
+          : '立即整理失败：$message';
       showToast(errorText, type: ToastType.error);
     } catch (e) {
       showToast('立即整理失败：$e', type: ToastType.error);
@@ -242,10 +291,7 @@ class _WorkspaceMemorySettingPageState extends State<WorkspaceMemorySettingPage>
                   ),
                 ),
               ),
-              Switch(
-                value: value,
-                onChanged: onChanged,
-              ),
+              Switch(value: value, onChanged: onChanged),
             ],
           ),
           const SizedBox(height: 4),
@@ -253,10 +299,7 @@ class _WorkspaceMemorySettingPageState extends State<WorkspaceMemorySettingPage>
             subtitle,
             style: const TextStyle(fontSize: 12, color: AppColors.text70),
           ),
-          if (footer != null) ...[
-            const SizedBox(height: 8),
-            footer,
-          ],
+          if (footer != null) ...[const SizedBox(height: 8), footer],
         ],
       ),
     );

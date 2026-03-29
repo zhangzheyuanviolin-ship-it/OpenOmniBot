@@ -29,6 +29,7 @@ class AgentWorkspaceManager(
         private const val DIR_SKILLS = "skills"
         private const val DIR_MEMORY = "memory"
         private const val DIR_AGENT = "agent"
+        private const val FILE_AI_CONFIG = "config.json"
         private const val FILE_SOUL = "SOUL.md"
         private const val FILE_MEMORY = "MEMORY.md"
         private const val DIR_SHORT_MEMORIES = "short-memories"
@@ -274,6 +275,11 @@ class AgentWorkspaceManager(
     fun soulMarkdownFile(): File {
         ensureRuntimeDirectories()
         return soulFile
+    }
+
+    fun agentConfigFile(): File {
+        ensureRuntimeDirectories()
+        return File(agentDir, FILE_AI_CONFIG)
     }
 
     fun longTermMemoryMarkdownFile(): File {

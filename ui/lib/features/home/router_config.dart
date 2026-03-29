@@ -166,6 +166,7 @@ List<GoRoute> homeRoutes = [
         mimeType: (extra['mimeType'] ?? 'application/octet-stream').toString(),
         shellPath: extra['shellPath']?.toString(),
         exists: extra['exists'] != false,
+        startInEditMode: extra['startInEditMode'] == true,
       );
     },
   ),

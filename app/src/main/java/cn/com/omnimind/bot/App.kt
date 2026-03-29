@@ -4,6 +4,7 @@ import BaseApplication
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
+import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
 import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.mcp.McpServerManager
@@ -126,6 +127,9 @@ class App : BaseApplication() {
         )
         runCatching {
             AgentWorkspaceManager(this).ensureRuntimeDirectories()
+        }
+        runCatching {
+            AgentAiCapabilityConfigSync.get(this).initialize()
         }
         runCatching {
             WorkspaceMemoryRollupScheduler(this).ensureScheduledIfEnabled()
