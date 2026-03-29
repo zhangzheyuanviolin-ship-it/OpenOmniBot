@@ -127,13 +127,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     if ((_inputAreaHeight - normalized).abs() < 0.5) {
       return;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || (_inputAreaHeight - normalized).abs() < 0.5) {
-        return;
-      }
-      setState(() {
-        _inputAreaHeightByMode[_activeMode] = normalized;
-      });
+    if (!mounted) {
+      _inputAreaHeightByMode[_activeMode] = normalized;
+      return;
+    }
+    setState(() {
+      _inputAreaHeightByMode[_activeMode] = normalized;
     });
   }
 

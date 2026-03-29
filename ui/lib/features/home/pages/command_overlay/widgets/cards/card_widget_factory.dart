@@ -36,9 +36,12 @@ class CardWidgetFactory {
       case 'permission_button':
         return PermissionButtonCard(cardData: cardData);
       case 'deep_thinking':
-        final isLoading = _asBool(cardData['isLoading'], fallback: true);
-        final thinkingText = _asString(cardData['thinkingContent']);
         final stage = _asInt(cardData['stage']) ?? 1;
+        final isLoading = _asBool(
+          cardData['isLoading'],
+          fallback: stage != 4 && stage != 5,
+        );
+        final thinkingText = _asString(cardData['thinkingContent']);
         final taskID = _asNullableString(cardData['taskID']);
         final startTime = _asInt(cardData['startTime']);
         final endTime = _asInt(cardData['endTime']);

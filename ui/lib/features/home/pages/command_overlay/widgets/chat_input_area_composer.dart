@@ -5,13 +5,12 @@ mixin _ChatInputAreaComposerMixin
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (widget.useLargeComposerStyle) {
-      return SafeArea(child: _buildLargeComposerShell(theme));
-    }
-
-    if (widget.useFrostedGlass) {
-      // command_overlay 样式：毛玻璃效果
-      return SafeArea(
+    final composer = switch ((
+      widget.useLargeComposerStyle,
+      widget.useFrostedGlass,
+    )) {
+      (true, _) => SafeArea(child: _buildLargeComposerShell(theme)),
+      (false, true) => SafeArea(
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: BackdropFilter(
@@ -27,10 +26,8 @@ mixin _ChatInputAreaComposerMixin
             ),
           ),
         ),
-      );
-    } else {
-      // chatbotsheet 样式：白色+阴影
-      return SafeArea(
+      ),
+      (false, false) => SafeArea(
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
@@ -55,8 +52,15 @@ mixin _ChatInputAreaComposerMixin
             ),
           ),
         ),
-      );
-    }
+      ),
+    };
+    return NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (_) {
+        _reportInputHeightAfterBuild();
+        return false;
+      },
+      child: SizeChangedLayoutNotifier(child: composer),
+    );
   }
 
   /// 构建输入框内容区域（按钮、文本框等）
@@ -104,7 +108,9 @@ mixin _ChatInputAreaComposerMixin
                   _buildAttachmentPreview(),
                   const SizedBox(height: 8),
                 ],
-                if ((widget.selectedModelOverrideId ?? '').trim().isNotEmpty) ...[
+                if ((widget.selectedModelOverrideId ?? '')
+                    .trim()
+                    .isNotEmpty) ...[
                   _buildSelectedModelOverrideChip(),
                   const SizedBox(height: 8),
                 ],

@@ -64,12 +64,14 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
   final ScrollController _scrollController = ScrollController();
   bool _showGradient = false;
   bool _isCollapsed = false;
+  bool _hasAutoCollapsedForCurrentCompletion = false;
   static const double _bottomTolerance = 1.0;
 
   @override
   void initState() {
     super.initState();
-    _isCollapsed = false;
+    _hasAutoCollapsedForCurrentCompletion = _shouldAutoCollapse(widget);
+    _isCollapsed = _hasAutoCollapsedForCurrentCompletion;
     _updateElapsedTime(notify: false);
     // 如果正在进行中（未完成且未取消），启动计时器
     if (widget.stage != 4 && widget.stage != 5) {
@@ -89,29 +91,42 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     _updateElapsedTime();
 
     final becameCompleted =
-        oldWidget.stage != 4 && oldWidget.stage != 5 && widget.stage == 4;
+        !_isCompletedStage(oldWidget.stage) && widget.stage == 4;
     final becameThinking =
-        (oldWidget.stage == 4 || oldWidget.stage == 5) &&
-        widget.stage != 4 &&
-        widget.stage != 5;
+        _isCompletedStage(oldWidget.stage) && !_isCompletedStage(widget.stage);
+    final completionSettled =
+        _shouldAutoCollapse(widget) &&
+        (!_shouldAutoCollapse(oldWidget) ||
+            oldWidget.isLoading != widget.isLoading ||
+            oldWidget.isCollapsible != widget.isCollapsible);
 
     // 如果从非完成状态变为完成状态（stage 变为 4）
     if (becameCompleted) {
       _stopTimer();
-      if (widget.isCollapsible && !_isCollapsed) {
-        setState(() {
-          _isCollapsed = true;
-        });
-      }
     }
 
     // 如果从完成/取消状态变回非完成状态，重新启动计时器并展开内容
     if (becameThinking) {
       _startTimer();
-      if (_isCollapsed) {
+      _hasAutoCollapsedForCurrentCompletion = false;
+    }
+
+    if (completionSettled && !_hasAutoCollapsedForCurrentCompletion) {
+      _hasAutoCollapsedForCurrentCompletion = true;
+      if (!_isCollapsed && mounted) {
+        setState(() {
+          _isCollapsed = true;
+        });
+      } else {
+        _isCollapsed = true;
+      }
+    } else if (becameThinking && _isCollapsed) {
+      if (mounted) {
         setState(() {
           _isCollapsed = false;
         });
+      } else {
+        _isCollapsed = false;
       }
     }
 
@@ -199,8 +214,17 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     if (!widget.isCollapsible || widget.stage != 4) return;
     setState(() {
       _isCollapsed = !_isCollapsed;
+      if (_shouldAutoCollapse(widget)) {
+        _hasAutoCollapsedForCurrentCompletion = true;
+      }
     });
   }
+
+  bool _shouldAutoCollapse(DeepThinkingCard widget) {
+    return widget.isCollapsible && widget.stage == 4 && !widget.isLoading;
+  }
+
+  bool _isCompletedStage(int stage) => stage == 4 || stage == 5;
 
   @override
   void dispose() {

@@ -4,25 +4,26 @@ import 'package:ui/features/home/pages/command_overlay/widgets/cards/card_widget
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/deep_thinking_card.dart';
 
 void main() {
-  testWidgets('historical completed thinking card starts expanded', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: DeepThinkingCard(
-            thinkingText: '历史思考内容',
-            stage: 4,
-            isCollapsible: true,
+  testWidgets(
+    'historical completed thinking card stays visible after restore',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DeepThinkingCard(
+              thinkingText: '历史思考内容',
+              stage: 4,
+              isCollapsible: true,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('思考完成'), findsOneWidget);
-    expect(find.textContaining('历史思考内容'), findsOneWidget);
-  });
+      expect(find.text('思考完成'), findsOneWidget);
+      expect(find.byType(DeepThinkingCard), findsOneWidget);
+    },
+  );
 
   testWidgets('thinking expansion stays anchored to the top edge', (
     tester,
@@ -69,6 +70,56 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('思考完成'), findsOneWidget);
-    expect(find.textContaining('恢复后的思考内容'), findsOneWidget);
+    expect(find.byType(DeepThinkingCard), findsOneWidget);
+  });
+
+  testWidgets('auto-collapses when completion settles after staged updates', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: DeepThinkingCard(
+            thinkingText: '流式思考内容',
+            stage: 3,
+            isLoading: true,
+            isCollapsible: false,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: DeepThinkingCard(
+            thinkingText: '流式思考内容',
+            stage: 4,
+            isLoading: true,
+            isCollapsible: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('流式思考内容'), findsOneWidget);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: DeepThinkingCard(
+            thinkingText: '流式思考内容',
+            stage: 4,
+            isLoading: false,
+            isCollapsible: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('思考完成'), findsOneWidget);
+    expect(find.textContaining('流式思考内容'), findsNothing);
   });
 }
