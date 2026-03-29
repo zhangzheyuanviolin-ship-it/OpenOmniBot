@@ -152,7 +152,7 @@ class OmniAgentExecutor(
     ): List<cn.com.omnimind.baselib.llm.ChatCompletionMessage> {
         val historyMessages = promptSeed.historyMessages.toMutableList()
         if (historyMessages.lastOrNull()?.role == "user") {
-            historyMessages.removeLast()
+            historyMessages.removeAt(historyMessages.lastIndex)
         }
         val messages = mutableListOf<cn.com.omnimind.baselib.llm.ChatCompletionMessage>()
         messages.add(
