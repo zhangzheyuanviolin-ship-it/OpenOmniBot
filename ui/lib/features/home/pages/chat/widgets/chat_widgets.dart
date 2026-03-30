@@ -846,6 +846,8 @@ class ChatMessageList extends StatefulWidget {
   final void Function(String taskId)? onCancelTask;
   final void Function(List<String> requiredPermissionIds)? onRequestAuthorize;
   final double bottomOverlayInset;
+  final void Function(ChatMessageModel message, LongPressStartDetails details)?
+  onUserMessageLongPressStart;
 
   const ChatMessageList({
     super.key,
@@ -855,6 +857,7 @@ class ChatMessageList extends StatefulWidget {
     this.onCancelTask,
     this.onRequestAuthorize,
     this.bottomOverlayInset = 0,
+    this.onUserMessageLongPressStart,
   });
 
   @override
@@ -957,6 +960,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
                 enableThinkingCollapse: true,
                 parentScrollController: widget.scrollController,
                 onRequestAuthorize: widget.onRequestAuthorize,
+                onUserMessageLongPressStart: widget.onUserMessageLongPressStart,
               ),
             );
           },
@@ -1132,4 +1136,3 @@ class ChatInputWrapper extends StatelessWidget {
     );
   }
 }
-

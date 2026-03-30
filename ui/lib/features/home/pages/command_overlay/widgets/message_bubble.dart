@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../widgets/streaming_text.dart';
 import 'thinking_dots_indicator.dart';
-import '../../../../../widgets/text_input_context_menu.dart';
 import 'cards/card_widget_factory.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -33,6 +32,8 @@ class MessageBubble extends StatelessWidget {
   /// 外层消息列表滚动控制器，用于卡片内嵌滚动与父列表联动
   final ScrollController? parentScrollController;
   final OnRequestAuthorize? onRequestAuthorize;
+  final void Function(ChatMessageModel message, LongPressStartDetails details)?
+  onUserMessageLongPressStart;
 
   const MessageBubble({
     super.key,
@@ -42,6 +43,7 @@ class MessageBubble extends StatelessWidget {
     this.enableThinkingCollapse = false,
     this.parentScrollController,
     this.onRequestAuthorize,
+    this.onUserMessageLongPressStart,
   });
 
   @override
@@ -100,25 +102,33 @@ class MessageBubble extends StatelessWidget {
     final attachments = _extractAttachments();
 
     if (isUserMessage) {
-      // 用户消息：保持气泡样式
-      return Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        decoration: ShapeDecoration(
-          color: const Color(0xCCF1F8FF), // rgba(241,248,255,0.8)
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (text.isNotEmpty) _buildUserText(text),
-            if (attachments.isNotEmpty) ...[
-              if (text.isNotEmpty) const SizedBox(height: 8),
-              _buildUserAttachmentList(attachments),
+      // 用户消息：整块气泡长按触发快捷操作。
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPressStart: onUserMessageLongPressStart == null
+            ? null
+            : (details) => onUserMessageLongPressStart!(message, details),
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: ShapeDecoration(
+            color: const Color(0xCCF1F8FF), // rgba(241,248,255,0.8)
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (text.isNotEmpty) _buildUserText(text),
+              if (attachments.isNotEmpty) ...[
+                if (text.isNotEmpty) const SizedBox(height: 8),
+                _buildUserAttachmentList(attachments),
+              ],
             ],
-          ],
+          ),
         ),
       );
     }
@@ -338,7 +348,7 @@ class MessageBubble extends StatelessWidget {
 
   /// 构建用户文本（不使用流式效果）
   Widget _buildUserText(String text) {
-    return SelectableText(
+    return Text(
       text,
       style: const TextStyle(
         color: Color(0xFF353E53), // #353E53
@@ -349,12 +359,6 @@ class MessageBubble extends StatelessWidget {
         letterSpacing: 0.33,
       ),
       textAlign: TextAlign.left,
-      contextMenuBuilder: (context, editableTextState) {
-        return TextInputContextMenu(
-          editableTextState: editableTextState,
-          readOnly: true, // 只读模式，仅显示全选和复制
-        );
-      },
     );
   }
 

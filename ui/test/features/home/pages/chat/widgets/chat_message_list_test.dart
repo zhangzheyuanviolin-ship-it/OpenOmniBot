@@ -90,4 +90,30 @@ void main() {
     expect(cardTopAfter, closeTo(cardTopBefore, 1.5));
     expect(find.textContaining('第一行'), findsOneWidget);
   });
+
+  testWidgets('forwards user message long press callback', (tester) async {
+    final message = ChatMessageModel.userMessage('长按这条消息', id: 'user-1');
+    ChatMessageModel? pressedMessage;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatMessageList(
+            messages: [message],
+            scrollController: ScrollController(),
+            onBeforeTaskExecute: () async {},
+            onUserMessageLongPressStart: (value, _) {
+              pressedMessage = value;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('长按这条消息'));
+    await tester.pumpAndSettle();
+
+    expect(pressedMessage?.id, 'user-1');
+  });
 }

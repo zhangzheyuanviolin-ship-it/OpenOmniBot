@@ -11,6 +11,8 @@ class _ToolActivityAnchorGeometry {
   final double bottom;
 }
 
+enum _UserMessageQuickAction { copy, retry }
+
 mixin _ChatPageUiMixin on _ChatPageStateBase {
   bool get _showNewConversationPullIndicator =>
       _isNewConversationPullTracking || _newConversationPullDistance > 0;
@@ -352,6 +354,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       onCancelTask: _onCancelTaskFromCard,
       onRequestAuthorize: mode == ChatPageMode.normal
           ? _requestAuthorizeForExecution
+          : null,
+      onUserMessageLongPressStart: mode == ChatPageMode.normal
+          ? _handleUserMessageLongPressStart
           : null,
     );
   }
@@ -729,6 +734,82 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     _showSnackBar('压缩阈值已更新为 ${_formatThresholdLabel(nextThreshold)}');
   }
 
+  Future<void> _handleUserMessageLongPressStart(
+    ChatMessageModel message,
+    LongPressStartDetails details,
+  ) async {
+    final text = (message.text ?? '').trim();
+    if (text.isEmpty) {
+      showToast('这条用户消息没有可操作的文本', type: ToastType.warning);
+      return;
+    }
+
+    final action = await _showUserMessageQuickMenu(details.globalPosition);
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case _UserMessageQuickAction.copy:
+        await _copyUserMessageText(text);
+        return;
+      case _UserMessageQuickAction.retry:
+        await _retryUserMessage(message);
+        return;
+    }
+  }
+
+  Future<_UserMessageQuickAction?> _showUserMessageQuickMenu(
+    Offset globalPosition,
+  ) {
+    final position = PopupMenuAnchorPosition.fromGlobalOffset(
+      context: context,
+      globalOffset: globalPosition,
+      estimatedMenuHeight: 116,
+      verticalGap: 10,
+      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
+    );
+    return showMenu<_UserMessageQuickAction>(
+      context: context,
+      position: position,
+      color: Colors.transparent,
+      shadowColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      menuPadding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 188, maxWidth: 188),
+      items: const [
+        _UserMessageQuickMenuEntry(width: 188, estimatedHeight: 116),
+      ],
+    );
+  }
+
+  Future<void> _copyUserMessageText(String text) async {
+    final success = await AssistsMessageService.copyToClipboard(text);
+    if (!mounted) return;
+    showToast(
+      success ? '已复制消息内容' : '复制失败',
+      type: success ? ToastType.success : ToastType.error,
+    );
+  }
+
+  Future<void> _retryUserMessage(ChatMessageModel message) async {
+    final text = (message.text ?? '').trim();
+    if (text.isEmpty) {
+      showToast('这条用户消息没有可重试的文本', type: ToastType.warning);
+      return;
+    }
+
+    final copied = await AssistsMessageService.copyToClipboard(text);
+    if (!mounted) return;
+
+    await _retryUserMessageText(text);
+    if (!mounted) return;
+
+    showToast(
+      copied ? '已复制并重新启动 Agent' : '已重新启动 Agent',
+      type: ToastType.success,
+    );
+  }
+
   String _formatThresholdLabel(int threshold) {
     if (threshold >= 1000) {
       final kilo = threshold / 1000;
@@ -756,6 +837,104 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         ? percent.toStringAsFixed(0)
         : percent.toStringAsFixed(1);
     return '$rounded%';
+  }
+}
+
+class _UserMessageQuickMenuEntry
+    extends PopupMenuEntry<_UserMessageQuickAction> {
+  const _UserMessageQuickMenuEntry({
+    required this.width,
+    required this.estimatedHeight,
+  });
+
+  final double width;
+  final double estimatedHeight;
+
+  @override
+  double get height => estimatedHeight;
+
+  @override
+  bool represents(_UserMessageQuickAction? value) => false;
+
+  @override
+  State<_UserMessageQuickMenuEntry> createState() =>
+      _UserMessageQuickMenuEntryState();
+}
+
+class _UserMessageQuickMenuEntryState
+    extends State<_UserMessageQuickMenuEntry> {
+  void _select(_UserMessageQuickAction action) {
+    Navigator.of(context).pop(action);
+  }
+
+  Widget _buildAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: Colors.black),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.black,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.width,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          margin: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0x14000000), width: 1),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x26000000),
+                blurRadius: 18,
+                offset: Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildAction(
+                icon: Icons.content_copy_rounded,
+                label: '复制',
+                onTap: () => _select(_UserMessageQuickAction.copy),
+              ),
+              const Divider(height: 1, thickness: 1, color: Color(0x14000000)),
+              _buildAction(
+                icon: Icons.refresh_rounded,
+                label: '重试这条消息',
+                onTap: () => _select(_UserMessageQuickAction.retry),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -991,7 +1170,10 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
                 child: Slider(
                   min: _kMinContextTokenThreshold.toDouble(),
                   max: _kMaxContextTokenThreshold.toDouble(),
-                  divisions: (_kMaxContextTokenThreshold - _kMinContextTokenThreshold) ~/ 1000,
+                  divisions:
+                      (_kMaxContextTokenThreshold -
+                          _kMinContextTokenThreshold) ~/
+                      1000,
                   value: _draftThreshold.clamp(
                     _kMinContextTokenThreshold.toDouble(),
                     _kMaxContextTokenThreshold.toDouble(),
@@ -1176,4 +1358,3 @@ class _ThresholdMetric extends StatelessWidget {
     );
   }
 }
-

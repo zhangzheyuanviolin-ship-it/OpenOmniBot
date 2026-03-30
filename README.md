@@ -183,25 +183,25 @@ cd ..
 ## 🧪 Demo
 <table width="100%">
   <tr>
-    <td width="25%" align="center">
+    <td width="20%" align="center">
       <div>
         <p><strong>下载抖音视频Skill演示</strong></p>
         <video src="https://github.com/user-attachments/assets/8dbe772a-b300-4d52-9428-c3030fbf97a8" controls="controls" style="max-width: 100%;"></video>
       </div>
     </td>
-    <td width="25%" align="center">
+    <td width="20%" align="center">
       <div>
         <p><strong>手机任务执行</strong></p>
         <video src="https://github.com/user-attachments/assets/a9a22755-e6fb-43d9-8647-1bc62549a1da" controls="controls" style="max-width: 100%;"></video>
       </div>
     </td>
-    <td width="25%" align="center">
+    <td width="20%" align="center">
       <div>
         <p><strong>定时任务演示</strong></p>
         <video src="https://github.com/user-attachments/assets/9bc78501-55ab-4c41-837d-5b8c6589e352" controls="controls" style="max-width: 100%;"></video>
       </div>
     </td>
-    <td width="25%" align="center">
+    <td width="20%" align="center">
       <div>
         <p><strong>原生OpenClaw演示</strong></p>
         <video src="https://github.com/user-attachments/assets/45b235ae-17fb-4af6-89f0-03419a063441" controls="controls" style="max-width: 100%;"></video>

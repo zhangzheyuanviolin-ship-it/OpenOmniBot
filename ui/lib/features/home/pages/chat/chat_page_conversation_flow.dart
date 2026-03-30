@@ -320,7 +320,46 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     final hasAttachments = _pendingAttachments.isNotEmpty;
     if ((messageText.isEmpty && !hasAttachments) || _isAiResponding) return;
 
-    if (messageText.isNotEmpty) {
+    final attachments = _pendingAttachments
+        .map((item) => item.toMap())
+        .toList();
+    if (attachments.isNotEmpty && mounted) {
+      setState(() => _pendingAttachments.clear());
+    }
+
+    await _dispatchUserMessage(
+      messageText,
+      attachments: attachments,
+      runSlashCommand: true,
+    );
+  }
+
+  @override
+  Future<void> _retryUserMessageText(String text) async {
+    final messageText = text.trim();
+    if (messageText.isEmpty) return;
+
+    if (_isAiResponding) {
+      _onCancelTask();
+    }
+
+    await _dispatchUserMessage(
+      messageText,
+      attachments: const [],
+      runSlashCommand: false,
+      restoreInputValue: _messageController.value,
+    );
+  }
+
+  Future<void> _dispatchUserMessage(
+    String messageText, {
+    required List<Map<String, dynamic>> attachments,
+    required bool runSlashCommand,
+    TextEditingValue? restoreInputValue,
+  }) async {
+    if (messageText.isEmpty || _isAiResponding) return;
+
+    if (runSlashCommand) {
       final handledSlash = await _tryHandleSlashCommand(messageText);
       if (handledSlash) return;
     }
@@ -331,15 +370,11 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       return;
     }
 
-    final attachments = _pendingAttachments
-        .map((item) => item.toMap())
-        .toList();
-    if (attachments.isNotEmpty && mounted) {
-      setState(() => _pendingAttachments.clear());
-    }
-
     _inputFocusNode.unfocus();
     final messageIds = addUserMessage(messageText, attachments: attachments);
+    if (restoreInputValue != null && mounted) {
+      _messageController.value = restoreInputValue;
+    }
 
     if (_isOpenClawSurface) {
       await _sendChatMessage(messageIds.aiMessageId);
