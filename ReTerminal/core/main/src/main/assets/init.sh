@@ -2,13 +2,20 @@ set -e  # Exit immediately on Failure
 
 export PATH=/root/.npm-global/bin:/root/.local/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/usr/local/bin:/usr/local/sbin:/system/bin:/system/xbin
 export HOME=/root
+HEADLESS_MODE="${OMNIBOT_HEADLESS:-0}"
 
 if [ ! -s /etc/resolv.conf ]; then
     echo "nameserver 8.8.8.8" > /etc/resolv.conf
 fi
 
-
-export PS1="\[\e[38;5;46m\]\u\[\033[39m\]@reterm \[\033[39m\]\w \[\033[0m\]\\$ "
+if [ "$HEADLESS_MODE" = "1" ]; then
+    export PS1=""
+    unset PROMPT_COMMAND
+    export PAGER=cat
+    export GIT_PAGER=cat
+else
+    export PS1="\[\e[38;5;46m\]\u\[\033[39m\]@reterm \[\033[39m\]\w \[\033[0m\]\\$ "
+fi
 # shellcheck disable=SC2034
 export PIP_BREAK_SYSTEM_PACKAGES=1
 required_packages="bash gcompat glib nano"
@@ -18,7 +25,7 @@ for pkg in $required_packages; do
         missing_packages="$missing_packages $pkg"
     fi
 done
-if [ -n "$missing_packages" ]; then
+if [ -n "$missing_packages" ] && [ "$HEADLESS_MODE" != "1" ]; then
     echo -e "\e[34;1m[*] \e[0mInstalling Important packages\e[0m"
     apk update && apk upgrade
     apk add $missing_packages
@@ -35,6 +42,11 @@ if [[ ! -f /linkerconfig/ld.config.txt ]];then
 fi
 
 if [ "$#" -eq 0 ]; then
+    if [ "$HEADLESS_MODE" = "1" ]; then
+        stty -echo -echoctl 2>/dev/null || true
+        cd "${OMNIBOT_SESSION_CWD:-$HOME}"
+        exec /bin/ash
+    fi
     source /etc/profile
     export PS1="\[\e[38;5;46m\]\u\[\033[39m\]@reterm \[\033[39m\]\w \[\033[0m\]\\$ "
     cd $HOME

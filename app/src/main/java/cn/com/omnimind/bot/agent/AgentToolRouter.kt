@@ -8,6 +8,7 @@ import cn.com.omnimind.bot.mcp.RemoteMcpClient
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.mcp.RemoteMcpToolDescriptor
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
+import cn.com.omnimind.bot.terminal.EmbeddedTerminalSessionRegistry
 import com.ai.assistance.operit.terminal.TerminalManager
 import com.ai.assistance.operit.terminal.data.TerminalSessionData
 import com.ai.assistance.operit.terminal.provider.type.TerminalType
@@ -71,10 +72,10 @@ class AgentToolRouter(
     private val calendarToolService = AgentCalendarToolService(context)
     private val skillIndexService = SkillIndexService(context, workspaceManager)
     private val skillLoader = SkillLoader(workspaceManager)
+    private val terminalSessionRegistry = EmbeddedTerminalSessionRegistry(context)
     private val terminalEnvKeyPattern = Regex("^[A-Za-z_][A-Za-z0-9_]*$")
-    private val terminalSessionOwnershipLock = Any()
-    private val ownedTerminalSessionIds = mutableSetOf<String>()
     companion object {
+        private const val DIRECT_TERMINAL_WORKSPACE_ID = "__direct_terminal__"
         private const val DEFAULT_CONTEXT_QUERY_LIMIT = 20
         private const val DEFAULT_FILE_READ_MAX_CHARS = 8000
         private const val DEFAULT_FILE_LIST_LIMIT = 200
@@ -278,7 +279,7 @@ class AgentToolRouter(
     }
 
     override suspend fun dispose() {
-        closeOwnedTerminalSessions()
+        closeOwnedDirectTerminalSessions()
         LiveAgentBrowserSessionManager.releaseRunOwnership()
     }
 
@@ -608,14 +609,19 @@ class AgentToolRouter(
             reportToolProgress(callback, toolName, "正在启动内嵌终端会话")
             val parsedArgs = parseTerminalSessionStartArgs(args)
             val workingDirectory = resolveShellWorkingDirectory(parsedArgs.workingDirectory, workspace)
-            val sessionId = sanitizeTerminalSessionId(parsedArgs.sessionName)
             val result = EmbeddedTerminalRuntime.startSession(
                 context = context,
-                requestedSessionId = sessionId,
+                requestedSessionId = null,
+                sessionTitle = parsedArgs.sessionName,
                 workingDirectory = workingDirectory,
                 environment = terminalEnvironment
             )
-            rememberOwnedTerminalSession(sessionId)
+            val sessionId = result.sessionId
+            rememberOwnedTerminalSession(
+                workspaceId = workspace.id,
+                sessionId = sessionId,
+                sessionName = parsedArgs.sessionName
+            )
             terminalSessionDirectory(workspace, sessionId).mkdirs()
             val logArtifact = persistTerminalSessionTranscript(workspace, sessionId, result.transcript, toolName)
             val payload = linkedMapOf<String, Any?>(
@@ -623,7 +629,7 @@ class AgentToolRouter(
                 "workingDirectory" to workingDirectory,
                 "currentDirectory" to result.currentDirectory,
                 "success" to true,
-                "terminalOutput" to truncateText(result.transcript, 2000),
+                "terminalOutput" to truncateTerminalTail(result.transcript, 2000),
                 "logPath" to logArtifact.androidPath,
                 "logUri" to logArtifact.uri
             )
@@ -670,7 +676,11 @@ class AgentToolRouter(
             requireWorkspaceStorageAccess(callback)?.let { return it }
             val parsedArgs = parseTerminalSessionExecArgs(args)
             val sessionId = parsedArgs.sessionId.trim()
-            require(isOwnedTerminalSession(sessionId)) { "终端会话不存在或不属于当前 agent：$sessionId" }
+            require(isOwnedTerminalSession(workspace.id, sessionId)) { "终端会话不存在或不属于当前 workspace：$sessionId" }
+            require(EmbeddedTerminalRuntime.hasSession(context, sessionId)) {
+                forgetOwnedTerminalSession(sessionId)
+                "终端会话不存在或已结束：$sessionId"
+            }
             val shellWorkingDirectory = parsedArgs.workingDirectory?.let {
                 resolveShellWorkingDirectory(it, workspace)
             }
@@ -699,8 +709,8 @@ class AgentToolRouter(
                 "logPath" to logArtifact.workspacePath,
                 "androidLogPath" to logArtifact.androidPath,
                 "logUri" to logArtifact.uri,
-                "stdout" to truncateText(result.output, 12000),
-                "terminalOutput" to truncateText(
+                "stdout" to truncateTerminalTail(result.output, 12000),
+                "terminalOutput" to truncateTerminalTail(
                     if (result.completed) result.output else result.transcript,
                     12000
                 ),
@@ -744,10 +754,14 @@ class AgentToolRouter(
             requireWorkspaceStorageAccess(callback)?.let { return it }
             val parsedArgs = parseTerminalSessionReadArgs(args)
             val sessionId = parsedArgs.sessionId.trim()
-            require(isOwnedTerminalSession(sessionId)) { "终端会话不存在或不属于当前 agent：$sessionId" }
+            require(isOwnedTerminalSession(workspace.id, sessionId)) { "终端会话不存在或不属于当前 workspace：$sessionId" }
+            require(EmbeddedTerminalRuntime.hasSession(context, sessionId)) {
+                forgetOwnedTerminalSession(sessionId)
+                "终端会话不存在或已结束：$sessionId"
+            }
             val readResult = EmbeddedTerminalRuntime.readSession(context, sessionId)
             val artifact = persistTerminalSessionTranscript(workspace, sessionId, readResult.transcript, toolName)
-            val content = truncateText(
+            val content = truncateTerminalTail(
                 EmbeddedTerminalRuntime.trimTerminalOutput(
                     EmbeddedTerminalRuntime.sanitizeTerminalNoise(readResult.transcript)
                 ),
@@ -794,7 +808,7 @@ class AgentToolRouter(
             reportToolProgress(callback, toolName, "正在结束终端会话")
             val sessionId = args["sessionId"]?.jsonPrimitive?.content?.trim().orEmpty()
             require(sessionId.isNotEmpty()) { "缺少 sessionId" }
-            val owned = isOwnedTerminalSession(sessionId)
+            val owned = isOwnedTerminalSession(workspace.id, sessionId)
             val result = if (owned) {
                 EmbeddedTerminalRuntime.stopSession(context, sessionId)
             } else {
@@ -2043,38 +2057,48 @@ class AgentToolRouter(
         return rawLimit?.coerceIn(1, 100) ?: DEFAULT_CONTEXT_QUERY_LIMIT
     }
 
+    private fun rememberOwnedTerminalSession(
+        workspaceId: String,
+        sessionId: String,
+        sessionName: String?
+    ) {
+        terminalSessionRegistry.rememberSession(
+            workspaceId = workspaceId,
+            sessionId = sessionId,
+            sessionName = sessionName
+        )
+    }
+
+    private fun isOwnedTerminalSession(workspaceId: String, sessionId: String): Boolean {
+        return terminalSessionRegistry.ownsSession(
+            workspaceId = workspaceId,
+            sessionId = sessionId
+        )
+    }
+
     private fun rememberOwnedTerminalSession(sessionId: String) {
-        synchronized(terminalSessionOwnershipLock) {
-            ownedTerminalSessionIds.add(sessionId)
-        }
+        rememberOwnedTerminalSession(
+            workspaceId = DIRECT_TERMINAL_WORKSPACE_ID,
+            sessionId = sessionId,
+            sessionName = null
+        )
     }
 
     private fun isOwnedTerminalSession(sessionId: String): Boolean {
-        return synchronized(terminalSessionOwnershipLock) {
-            ownedTerminalSessionIds.contains(sessionId)
-        }
+        return isOwnedTerminalSession(
+            workspaceId = DIRECT_TERMINAL_WORKSPACE_ID,
+            sessionId = sessionId
+        )
     }
 
     private fun forgetOwnedTerminalSession(sessionId: String) {
-        synchronized(terminalSessionOwnershipLock) {
-            ownedTerminalSessionIds.remove(sessionId)
-        }
+        terminalSessionRegistry.forgetSession(sessionId)
     }
 
-    private fun snapshotOwnedTerminalSessions(): List<String> {
-        return synchronized(terminalSessionOwnershipLock) {
-            ownedTerminalSessionIds.toList()
-        }
-    }
-
-    private suspend fun closeOwnedTerminalSessions() {
-        val sessionIds = snapshotOwnedTerminalSessions()
-        if (sessionIds.isEmpty()) {
-            return
-        }
-        sessionIds.forEach { sessionId ->
+    private suspend fun closeOwnedDirectTerminalSessions() {
+        terminalSessionRegistry.listSessionIds(DIRECT_TERMINAL_WORKSPACE_ID).forEach { sessionId ->
             runCatching {
-                EmbeddedTerminalRuntime.stopSession(context, sessionId)
+                stopDirectTerminalSession(sessionId)
             }
             forgetOwnedTerminalSession(sessionId)
         }
@@ -2712,6 +2736,11 @@ class AgentToolRouter(
     private fun truncateText(text: String, limit: Int): String {
         if (text.length <= limit) return text
         return text.take(limit) + "\n...[truncated]"
+    }
+
+    private fun truncateTerminalTail(text: String, limit: Int): String {
+        if (text.length <= limit) return text
+        return "...[earlier output truncated]\n" + text.takeLast(limit)
     }
 
     private fun firstUsefulLine(text: String): String? {

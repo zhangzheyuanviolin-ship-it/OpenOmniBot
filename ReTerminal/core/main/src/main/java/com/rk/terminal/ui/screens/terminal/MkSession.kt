@@ -30,7 +30,8 @@ object MkSession {
         context: Context,
         sessionClient: TerminalSessionClient,
         session_id: String,
-        workingMode: Int
+        workingMode: Int,
+        extraEnv: Map<String, String> = emptyMap()
     ): TerminalSession {
         with(context) {
             val hostWorkspaceDir = File(applicationInfo.dataDir, "workspace").also { directory ->
@@ -123,6 +124,28 @@ object MkSession {
 
             pendingCommand?.env?.let {
                 env.addAll(it)
+            }
+
+            if (extraEnv.isNotEmpty()) {
+                val overriddenKeys = extraEnv.keys.map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .toSet()
+                if (overriddenKeys.isNotEmpty()) {
+                    env.removeAll { item ->
+                        val separatorIndex = item.indexOf('=')
+                        if (separatorIndex <= 0) {
+                            return@removeAll false
+                        }
+                        item.substring(0, separatorIndex) in overriddenKeys
+                    }
+                }
+                extraEnv.forEach { (key, value) ->
+                    val normalizedKey = key.trim()
+                    if (normalizedKey.isEmpty()) {
+                        return@forEach
+                    }
+                    env.add("$normalizedKey=$value")
+                }
             }
 
             val args: Array<String>

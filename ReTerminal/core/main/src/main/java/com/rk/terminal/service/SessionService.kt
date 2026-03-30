@@ -25,7 +25,14 @@ class SessionService : Service() {
         private const val DEFAULT_ROWS = 40
         private const val DEFAULT_CELL_WIDTH = 10
         private const val DEFAULT_CELL_HEIGHT = 20
+        private const val AGENT_SESSION_ID_PREFIX = "session_"
     }
+
+    data class HeadlessSessionAccess(
+        val sessionId: String,
+        val session: TerminalSession,
+        val created: Boolean
+    )
 
     private val sessions = hashMapOf<String, TerminalSession>()
     val sessionList = mutableStateMapOf<String,Int>()
@@ -66,18 +73,66 @@ class SessionService : Service() {
             }
         }
 
-        fun createHeadlessSession(id: String, context: android.content.Context, workingMode: Int): TerminalSession {
-            val session = createSession(id = id, context = context, workingMode = workingMode)
-            session.updateTerminalSessionClient(HeadlessTerminalSessionClient)
-            if (session.emulator == null) {
-                session.updateSize(
-                    DEFAULT_COLUMNS,
-                    DEFAULT_ROWS,
-                    DEFAULT_CELL_WIDTH,
-                    DEFAULT_CELL_HEIGHT
+        fun createHeadlessSession(
+            requestedId: String?,
+            context: android.content.Context,
+            workingMode: Int,
+            sessionTitle: String? = null,
+            extraEnv: Map<String, String> = emptyMap()
+        ): HeadlessSessionAccess {
+            val sessionId = resolveSessionId(requestedId)
+            val existing = sessions[sessionId]
+            if (existing != null) {
+                existing.mSessionName = sessionTitle?.trim().takeUnless { it.isNullOrEmpty() }
+                    ?: existing.mSessionName
+                sessionList[sessionId] = workingMode
+                currentSession.value = Pair(sessionId, workingMode)
+                updateNotification()
+                return HeadlessSessionAccess(
+                    sessionId = sessionId,
+                    session = existing,
+                    created = false
                 )
             }
-            return session
+
+            val mergedEnv = linkedMapOf(
+                "OMNIBOT_HEADLESS" to "1",
+                "HOME" to "/root",
+                "PAGER" to "cat",
+                "GIT_PAGER" to "cat"
+            ).apply {
+                putAll(extraEnv)
+            }
+
+            val session = MkSession.createSession(
+                context = context,
+                sessionClient = HeadlessTerminalSessionClient,
+                session_id = sessionId,
+                workingMode = workingMode,
+                extraEnv = mergedEnv
+            ).also { created ->
+                created.mSessionName = sessionTitle?.trim().takeUnless { it.isNullOrEmpty() }
+                    ?: "Agent Session"
+                created.updateTerminalSessionClient(HeadlessTerminalSessionClient)
+                if (created.emulator == null) {
+                    created.updateSize(
+                        DEFAULT_COLUMNS,
+                        DEFAULT_ROWS,
+                        DEFAULT_CELL_WIDTH,
+                        DEFAULT_CELL_HEIGHT
+                    )
+                }
+                sessions[sessionId] = created
+                sessionList[sessionId] = workingMode
+                currentSession.value = Pair(sessionId, workingMode)
+                updateNotification()
+            }
+
+            return HeadlessSessionAccess(
+                sessionId = sessionId,
+                session = session,
+                created = true
+            )
         }
 
         fun getSession(id: String): TerminalSession? {
@@ -144,9 +199,10 @@ class SessionService : Service() {
             "ACTION_EXIT" -> {
                 sessions.forEach { s -> s.value.finishIfRunning() }
                 stopSelf()
+                return START_NOT_STICKY
             }
         }
-        return super.onStartCommand(intent, flags, startId)
+        return START_STICKY
     }
 
     private fun createNotification(): Notification {
@@ -202,5 +258,29 @@ class SessionService : Service() {
             return "1 session running"
         }
         return "$count sessions running"
+    }
+
+    private fun resolveSessionId(requestedId: String?): String {
+        val sanitizedRequestedId = sanitizeSessionId(requestedId)
+        if (!sanitizedRequestedId.isNullOrEmpty()) {
+            return sanitizedRequestedId
+        }
+        var candidate: String
+        do {
+            candidate = AGENT_SESSION_ID_PREFIX + java.util.UUID.randomUUID().toString().take(8)
+        } while (sessions.containsKey(candidate))
+        return candidate
+    }
+
+    private fun sanitizeSessionId(raw: String?): String? {
+        val normalized = raw?.trim().orEmpty()
+        if (normalized.isEmpty()) {
+            return null
+        }
+        return normalized
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .trim('_')
+            .take(48)
+            .takeIf { it.isNotEmpty() }
     }
 }

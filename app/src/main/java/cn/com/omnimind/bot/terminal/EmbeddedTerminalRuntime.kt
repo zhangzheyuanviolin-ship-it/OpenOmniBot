@@ -145,6 +145,7 @@ object EmbeddedTerminalRuntime {
         Regex("""^Warning: CPU doesn't support 32-bit instructions, some software may not work\.$"""),
         Regex("""^proot warning: can't sanitize binding "/proc/self/fd/\d+": No such file or directory$""")
     )
+    private val shellPromptRegex = Regex("""^[^\r\n]*[#$] ?$""")
 
     private val basePackageBootstrapCommand = """
         export PATH="${'$'}HOME/.local/bin:${'$'}PATH"
@@ -586,46 +587,59 @@ object EmbeddedTerminalRuntime {
 
     suspend fun startSession(
         context: Context,
-        requestedSessionId: String,
+        requestedSessionId: String? = null,
+        sessionTitle: String? = null,
         workingDirectory: String?,
         environment: Map<String, String> = emptyMap()
     ): SessionStartResult {
         val status = ensureCommandEnvironmentReady(context)
         require(status.success) { status.message }
 
-        val handle = sessionHandles.computeIfAbsent(requestedSessionId) {
-            SessionHandle(externalSessionId = requestedSessionId)
-        }
         val sessionAccess = ReTerminalSessionBridge.ensureHeadlessSession(
             context = context,
-            sessionId = requestedSessionId
+            sessionId = requestedSessionId,
+            sessionTitle = sessionTitle
         )
+        val actualSessionId = sessionAccess.sessionId
+        val handle = sessionHandles.computeIfAbsent(actualSessionId) {
+            SessionHandle(externalSessionId = actualSessionId)
+        }
         if (sessionAccess.created) {
             handle.activeCommandToken = null
         }
 
-        val targetWorkingDirectory = workingDirectory?.trim().takeUnless { it.isNullOrBlank() }
-            ?: AgentWorkspaceManager.SHELL_ROOT_PATH
-        if (sessionAccess.created) {
-            val cwdResult = executeSessionCommand(
-                context = context,
-                sessionId = requestedSessionId,
-                command = "cd ${TermuxCommandBuilder.quoteForShell(targetWorkingDirectory)}",
-                workingDirectory = null,
-                timeoutSeconds = 30,
-                environment = environment
-            )
-            require(cwdResult.completed && cwdResult.success) {
-                cwdResult.errorMessage ?: "无法切换到工作目录：$targetWorkingDirectory"
+        try {
+            val targetWorkingDirectory = workingDirectory?.trim().takeUnless { it.isNullOrBlank() }
+                ?: AgentWorkspaceManager.SHELL_ROOT_PATH
+            if (sessionAccess.created) {
+                val cwdResult = executeSessionCommand(
+                    context = context,
+                    sessionId = actualSessionId,
+                    command = "cd ${TermuxCommandBuilder.quoteForShell(targetWorkingDirectory)}",
+                    workingDirectory = null,
+                    timeoutSeconds = 30,
+                    environment = environment
+                )
+                require(cwdResult.completed && cwdResult.success) {
+                    cwdResult.errorMessage ?: "无法切换到工作目录：$targetWorkingDirectory"
+                }
             }
-        }
 
-        val snapshot = readSession(context, requestedSessionId)
-        return SessionStartResult(
-            sessionId = requestedSessionId,
-            currentDirectory = snapshot.currentDirectory,
-            transcript = snapshot.transcript
-        )
+            val snapshot = readSession(context, actualSessionId)
+            return SessionStartResult(
+                sessionId = actualSessionId,
+                currentDirectory = snapshot.currentDirectory,
+                transcript = snapshot.transcript
+            )
+        } catch (error: Throwable) {
+            if (sessionAccess.created) {
+                sessionHandles.remove(actualSessionId)
+                runCatching {
+                    ReTerminalSessionBridge.stopSession(context, actualSessionId)
+                }
+            }
+            throw error
+        }
     }
 
     suspend fun executeSessionCommand(
@@ -748,6 +762,14 @@ object EmbeddedTerminalRuntime {
         return runCatching {
             ReTerminalSessionBridge.stopSession(context, sessionId)
         }.getOrDefault(false)
+    }
+
+    suspend fun hasSession(context: Context, sessionId: String): Boolean {
+        val normalizedSessionId = sessionId.trim()
+        if (normalizedSessionId.isEmpty()) {
+            return false
+        }
+        return ReTerminalSessionBridge.getSession(context, normalizedSessionId) != null
     }
 
     suspend fun launchBackgroundServiceSession(
@@ -1251,11 +1273,19 @@ object EmbeddedTerminalRuntime {
         rawOutput: String,
         token: String
     ): ParsedSessionCommandOutput {
-        val regex = Regex("""(?:^|\n)${Regex.escape(SESSION_DONE_PREFIX)}:${Regex.escape(token)}:(-?\d+)\s*$""")
+        val regex = Regex("""(?:^|\n)${Regex.escape(SESSION_DONE_PREFIX)}:${Regex.escape(token)}:(-?\d+)(?=\r?\n|$)""")
         val match = regex.find(rawOutput)
         val exitCode = match?.groupValues?.getOrNull(1)?.toIntOrNull()
         val cleaned = if (match != null) {
-            rawOutput.removeRange(match.range).trim('\n', '\r')
+            val beforeMarker = rawOutput.substring(0, match.range.first).trimEnd('\n', '\r')
+            val afterMarker = rawOutput
+                .substring(match.range.last + 1)
+                .trimStart('\n', '\r')
+                .removeLeadingPromptLine()
+            listOf(beforeMarker, afterMarker)
+                .filter { it.isNotBlank() }
+                .joinToString("\n")
+                .trim('\n', '\r')
         } else {
             rawOutput.trim('\n', '\r')
         }
@@ -1530,5 +1560,17 @@ object EmbeddedTerminalRuntime {
         if (startIndex <= 0) return this
         if (startIndex >= length) return ""
         return substring(startIndex)
+    }
+
+    private fun String.removeLeadingPromptLine(): String {
+        if (isBlank()) {
+            return trim('\n', '\r')
+        }
+        val firstLine = lineSequence().firstOrNull()?.trimEnd().orEmpty()
+        if (!shellPromptRegex.matches(firstLine)) {
+            return trim('\n', '\r')
+        }
+        val dropped = lines().drop(1).joinToString("\n")
+        return dropped.trim('\n', '\r')
     }
 }

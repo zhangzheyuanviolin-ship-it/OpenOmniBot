@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.withLock
 
 object ReTerminalSessionBridge {
     data class SessionAccessResult(
+        val sessionId: String,
         val session: TerminalSession,
         val created: Boolean
     )
@@ -34,27 +35,38 @@ object ReTerminalSessionBridge {
 
     suspend fun ensureHeadlessSession(
         context: Context,
-        sessionId: String,
+        sessionId: String? = null,
+        sessionTitle: String? = null,
+        extraEnv: Map<String, String> = emptyMap(),
         workingMode: Int = WorkingMode.ALPINE
     ): SessionAccessResult = withContext(Dispatchers.Main.immediate) {
         val sessionBinder = awaitBinder(context)
-        val existing = sessionBinder.getSession(sessionId)?.takeIf { it.isRunning }
+        val requestedSessionId = sessionId?.trim()?.takeIf { it.isNotEmpty() }
+        val existing = requestedSessionId
+            ?.let { existingId -> sessionBinder.getSession(existingId)?.takeIf { it.isRunning } }
         if (existing != null) {
             return@withContext SessionAccessResult(
+                sessionId = requestedSessionId,
                 session = existing,
                 created = false
             )
         }
-        sessionBinder.getSession(sessionId)?.let {
-            sessionBinder.terminateSession(sessionId)
+        requestedSessionId?.let { existingId ->
+            sessionBinder.getSession(existingId)
+        }?.let {
+            sessionBinder.terminateSession(requestedSessionId)
         }
+        val access = sessionBinder.createHeadlessSession(
+            requestedId = requestedSessionId,
+            context = context.applicationContext,
+            workingMode = workingMode,
+            sessionTitle = sessionTitle,
+            extraEnv = extraEnv
+        )
         SessionAccessResult(
-            session = sessionBinder.createHeadlessSession(
-                id = sessionId,
-                context = context.applicationContext,
-                workingMode = workingMode
-            ),
-            created = true
+            sessionId = access.sessionId,
+            session = access.session,
+            created = access.created
         )
     }
 
