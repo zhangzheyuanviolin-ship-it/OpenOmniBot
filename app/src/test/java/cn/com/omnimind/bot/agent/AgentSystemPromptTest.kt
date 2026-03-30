@@ -1,6 +1,9 @@
 package cn.com.omnimind.bot.agent
 
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AgentSystemPromptTest {
@@ -28,5 +31,19 @@ class AgentSystemPromptTest {
         assertTrue(prompt.contains("uv"))
         assertTrue(prompt.contains("--copies"))
         assertTrue(prompt.contains("--break-system-packages"))
+    }
+
+    @Test
+    fun buildCachedSystemPromptContentAddsEphemeralCacheControl() {
+        val content = OmniAgentExecutor.buildCachedSystemPromptContent("system prompt")
+        val blocks = content as JsonArray
+        val firstBlock = blocks.first() as JsonObject
+
+        assertEquals("\"text\"", firstBlock["type"].toString())
+        assertEquals("\"system prompt\"", firstBlock["text"].toString())
+        assertEquals(
+            "\"ephemeral\"",
+            (firstBlock["cache_control"] as JsonObject)["type"].toString()
+        )
     }
 }

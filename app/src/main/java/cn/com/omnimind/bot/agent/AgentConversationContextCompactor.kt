@@ -32,6 +32,7 @@ open class AgentConversationContextCompactor(
         const val DEFAULT_PROMPT_TOKEN_THRESHOLD = 128_000
         private const val CHAT_COMPACTOR_SCENE = "scene.compactor.context.chat"
         private const val TAG = "AgentConversationContextCompactor"
+        private val EPHEMERAL_CACHE_CONTROL = mapOf("type" to "ephemeral")
         private const val COMPACTION_REQUEST_PROMPT = """
 /no_think
 你是一个用户与Agent对话上下文压缩器。你的职责是把一段多轮聊天历史压缩为一份可持续累积的上下文总结，供后续对话继续参考。\n\n
@@ -50,6 +51,92 @@ open class AgentConversationContextCompactor(
 
 """
         private const val FINAL_USER_PROMPT = "请把以上历史压缩为新的累计总结。"
+
+        internal fun buildCompactionRequestMessages(
+            existingSummary: String?,
+            messagesToCompact: List<ChatCompletionMessage>
+        ): List<Map<String, Any>> {
+            val requestMessages = mutableListOf<Map<String, Any>>()
+            requestMessages += mapOf(
+                "role" to "system",
+                "content" to buildTextContentBlocks(
+                    text = COMPACTION_REQUEST_PROMPT.trim(),
+                    cacheControl = EPHEMERAL_CACHE_CONTROL
+                )
+            )
+            existingSummary?.trim()?.takeIf { it.isNotEmpty() }?.let { summary ->
+                requestMessages += mapOf(
+                    "role" to "system",
+                    "content" to (EXISTING_SUMMARY_PROMPT_PREFIX.trim() + "\n\n" + summary)
+                )
+            }
+            requestMessages += messagesToCompact.map(::toTransportMessage)
+            requestMessages += mapOf(
+                "role" to "user",
+                "content" to FINAL_USER_PROMPT
+            )
+            return requestMessages
+        }
+
+        private fun buildTextContentBlocks(
+            text: String,
+            cacheControl: Map<String, String>? = null
+        ): List<Map<String, Any>> {
+            val block = linkedMapOf<String, Any>(
+                "type" to "text",
+                "text" to text
+            )
+            if (cacheControl != null) {
+                block["cache_control"] = cacheControl
+            }
+            return listOf(block)
+        }
+
+        private fun toTransportMessage(message: ChatCompletionMessage): Map<String, Any> {
+            val payload = linkedMapOf<String, Any>(
+                "role" to message.role
+            )
+            val content = message.content?.let(::jsonElementToTransportValue)
+            if (content != null) {
+                payload["content"] = content
+            }
+            message.toolCalls?.takeIf { it.isNotEmpty() }?.let { toolCalls ->
+                payload["tool_calls"] = toolCalls.map(::toolCallToTransportMap)
+            }
+            message.toolCallId?.takeIf { it.isNotBlank() }?.let { toolCallId ->
+                payload["tool_call_id"] = toolCallId
+            }
+            message.name?.takeIf { it.isNotBlank() }?.let { name ->
+                payload["name"] = name
+            }
+            return payload
+        }
+
+        private fun toolCallToTransportMap(toolCall: AssistantToolCall): Map<String, Any> {
+            return linkedMapOf(
+                "id" to toolCall.id,
+                "type" to toolCall.type,
+                "function" to linkedMapOf(
+                    "name" to toolCall.function.name,
+                    "arguments" to toolCall.function.arguments
+                )
+            )
+        }
+
+        private fun jsonElementToTransportValue(element: JsonElement): Any? {
+            return when (element) {
+                is JsonPrimitive -> {
+                    element.contentOrNull
+                        ?: element.booleanOrNull
+                        ?: element.toString()
+                }
+
+                is JsonArray -> element.mapNotNull(::jsonElementToTransportValue)
+                is JsonObject -> element.entries.associate { (key, value) ->
+                    key to (jsonElementToTransportValue(value) ?: "")
+                }
+            }
+        }
     }
 
     open suspend fun resolvePromptTokenThreshold(conversationId: Long?): Int {
@@ -133,29 +220,6 @@ open class AgentConversationContextCompactor(
         }
     }
 
-    private fun buildCompactionRequestMessages(
-        existingSummary: String?,
-        messagesToCompact: List<ChatCompletionMessage>
-    ): List<Map<String, Any>> {
-        val requestMessages = mutableListOf<Map<String, Any>>()
-        requestMessages += mapOf(
-            "role" to "system",
-            "content" to COMPACTION_REQUEST_PROMPT.trim()
-        )
-        existingSummary?.trim()?.takeIf { it.isNotEmpty() }?.let { summary ->
-            requestMessages += mapOf(
-                "role" to "system",
-                "content" to (EXISTING_SUMMARY_PROMPT_PREFIX.trim() + "\n\n" + summary)
-            )
-        }
-        requestMessages += messagesToCompact.map(::toTransportMessage)
-        requestMessages += mapOf(
-            "role" to "user",
-            "content" to FINAL_USER_PROMPT
-        )
-        return requestMessages
-    }
-
     private suspend fun requestCompactedSummary(
         messages: List<Map<String, Any>>
     ): String = withContext(Dispatchers.IO) {
@@ -229,49 +293,4 @@ open class AgentConversationContextCompactor(
         }
     }
 
-    private fun toTransportMessage(message: ChatCompletionMessage): Map<String, Any> {
-        val payload = linkedMapOf<String, Any>(
-            "role" to message.role
-        )
-        val content = message.content?.let(::jsonElementToTransportValue)
-        if (content != null) {
-            payload["content"] = content
-        }
-        message.toolCalls?.takeIf { it.isNotEmpty() }?.let { toolCalls ->
-            payload["tool_calls"] = toolCalls.map(::toolCallToTransportMap)
-        }
-        message.toolCallId?.takeIf { it.isNotBlank() }?.let { toolCallId ->
-            payload["tool_call_id"] = toolCallId
-        }
-        message.name?.takeIf { it.isNotBlank() }?.let { name ->
-            payload["name"] = name
-        }
-        return payload
-    }
-
-    private fun toolCallToTransportMap(toolCall: AssistantToolCall): Map<String, Any> {
-        return linkedMapOf(
-            "id" to toolCall.id,
-            "type" to toolCall.type,
-            "function" to linkedMapOf(
-                "name" to toolCall.function.name,
-                "arguments" to toolCall.function.arguments
-            )
-        )
-    }
-
-    private fun jsonElementToTransportValue(element: JsonElement): Any? {
-        return when (element) {
-            is JsonPrimitive -> {
-                element.contentOrNull
-                    ?: element.booleanOrNull
-                    ?: element.toString()
-            }
-
-            is JsonArray -> element.mapNotNull(::jsonElementToTransportValue)
-            is JsonObject -> element.entries.associate { (key, value) ->
-                key to (jsonElementToTransportValue(value) ?: "")
-            }
-        }
-    }
 }
