@@ -228,7 +228,7 @@ OpenOmniBot/
 <table align="center">
   <tr>
     <td align="center">
-      <img src="docs/pic/wechat_2026-3-23.jpg" alt="WeChat Group" width="220"/><br/>
+      <img src="docs/pic/wechat_2026-3-31.png" alt="WeChat Group" width="220"/><br/>
       <b>WeChat Group</b>
     </td>
   </tr>
