@@ -453,6 +453,9 @@ object HttpController {
                                     buildJsonObject {
                                         put("type", JsonPrimitive("text"))
                                         put("text", JsonPrimitive(text))
+                                        parseAnyToJsonElement(item["cache_control"])?.let {
+                                            put("cache_control", it)
+                                        }
                                     }
                                 )
                             }
@@ -470,6 +473,30 @@ object HttpController {
             }
         }
         return KxJsonArray(blocks)
+    }
+
+    private fun parseAnyToJsonElement(raw: Any?): JsonElement? {
+        return when (raw) {
+            null -> null
+            is JsonElement -> raw
+            is String -> JsonPrimitive(raw)
+            is Number -> JsonPrimitive(raw)
+            is Boolean -> JsonPrimitive(raw)
+            is Map<*, *> -> buildJsonObject {
+                raw.forEach { (key, value) ->
+                    val normalizedKey = key?.toString()?.trim().orEmpty()
+                    if (normalizedKey.isNotEmpty()) {
+                        parseAnyToJsonElement(value)?.let { put(normalizedKey, it) }
+                    }
+                }
+            }
+            is List<*> -> buildJsonArray {
+                raw.forEach { item ->
+                    parseAnyToJsonElement(item)?.let { add(it) }
+                }
+            }
+            else -> JsonPrimitive(raw.toString())
+        }
     }
 
     private fun parseImageUrlFromAny(raw: Any?): String {

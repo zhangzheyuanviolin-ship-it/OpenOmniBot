@@ -18,6 +18,24 @@ class OmniAgentExecutor(
     private val scope: CoroutineScope,
     private val scheduleToolBridge: AgentScheduleToolBridge
 ) {
+    companion object {
+        private const val EPHEMERAL_CACHE_TYPE = "ephemeral"
+
+        internal fun buildCachedSystemPromptContent(prompt: String): JsonElement {
+            return buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("type", "text")
+                        put("text", prompt)
+                        put("cache_control", buildJsonObject {
+                            put("type", EPHEMERAL_CACHE_TYPE)
+                        })
+                    }
+                )
+            }
+        }
+    }
+
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -155,19 +173,18 @@ class OmniAgentExecutor(
             historyMessages.removeAt(historyMessages.lastIndex)
         }
         val messages = mutableListOf<cn.com.omnimind.baselib.llm.ChatCompletionMessage>()
+        val systemPrompt = AgentSystemPrompt.build(
+            workspace = workspaceDescriptor,
+            installedSkills = installedSkills,
+            skillsRootShellPath = skillsRootShellPath,
+            skillsRootAndroidPath = skillsRootAndroidPath,
+            resolvedSkills = resolvedSkills,
+            memoryContext = memoryContext
+        )
         messages.add(
             cn.com.omnimind.baselib.llm.ChatCompletionMessage(
                 role = "system",
-                content = JsonPrimitive(
-                    AgentSystemPrompt.build(
-                        workspace = workspaceDescriptor,
-                        installedSkills = installedSkills,
-                        skillsRootShellPath = skillsRootShellPath,
-                        skillsRootAndroidPath = skillsRootAndroidPath,
-                        resolvedSkills = resolvedSkills,
-                        memoryContext = memoryContext
-                    )
-                )
+                content = buildCachedSystemPromptContent(systemPrompt)
             )
         )
         messages.addAll(historyMessages)
