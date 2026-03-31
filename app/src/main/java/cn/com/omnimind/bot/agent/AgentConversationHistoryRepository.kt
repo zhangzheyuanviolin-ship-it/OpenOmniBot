@@ -174,7 +174,8 @@ class AgentConversationHistoryRepository(
     ) = withContext(Dispatchers.IO) {
         DatabaseHelper.deleteAgentConversationThread(conversationId, conversationMode)
         resetContextSummary(conversationId)
-        messages.sortedBy { parseCreatedAtMillis(it) }.forEach { message ->
+        ConversationSnapshotOrdering.prepareForStorage(messages).forEach { prepared ->
+            val message = prepared.payload
             val entryId = message["id"]?.toString()?.trim().orEmpty().ifEmpty {
                 "entry_${System.currentTimeMillis()}"
             }
@@ -185,7 +186,6 @@ class AgentConversationHistoryRepository(
             }
             val status = if (message["isError"] == true) STATUS_ERROR else STATUS_SUCCESS
             val summary = extractSummaryFromMessagePayload(message)
-            val createdAt = parseCreatedAtMillis(message)
             upsertEntry(
                 AgentConversationEntry(
                     conversationId = conversationId,
@@ -195,8 +195,8 @@ class AgentConversationHistoryRepository(
                     status = status,
                     summary = summary,
                     payloadJson = gson.toJson(message),
-                    createdAt = createdAt,
-                    updatedAt = createdAt
+                    createdAt = prepared.createdAt,
+                    updatedAt = prepared.createdAt
                 )
             )
         }
@@ -210,7 +210,8 @@ class AgentConversationHistoryRepository(
         val normalized = normalizeInterruptedToolEntries(
             DatabaseHelper.getAgentConversationEntriesDesc(conversationId, conversationMode)
         )
-        normalized.mapNotNull { entry -> entryToMessagePayload(entry) }
+        val messagePayloads = normalized.mapNotNull { entry -> entryToMessagePayload(entry) }
+        ConversationSnapshotOrdering.sortForDisplay(messagePayloads)
     }
 
     suspend fun clearConversationMessages(
@@ -512,13 +513,6 @@ class AgentConversationHistoryRepository(
         if (text.isNotEmpty()) return text
         val cardData = toStringAnyMap(content["cardData"])
         return cardData["summary"]?.toString()?.trim().orEmpty()
-    }
-
-    private fun parseCreatedAtMillis(message: Map<String, Any?>): Long {
-        val raw = message["createAt"]?.toString()?.trim().orEmpty()
-        return runCatching { Instant.parse(raw).toEpochMilli() }.getOrElse {
-            System.currentTimeMillis()
-        }
     }
 
     private fun readMap(json: String): Map<String, Any?> {
