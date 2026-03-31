@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// 应用状态服务 - 处理与Android应用状态相关的通信
@@ -10,16 +11,16 @@ class AppStateService {
   /// 应在主Flutter页面加载完成后调用
   static Future<bool> initHalfScreenEngine() async {
     final initStart = DateTime.now();
-    print('📱 [FlutterStartup] Calling native to init half screen engine');
+    debugPrint('📱 [FlutterStartup] Calling native to init half screen engine');
 
     try {
       final result = await _channel.invokeMethod('initHalfScreenEngine');
-      print(
+      debugPrint(
         '✅ [FlutterStartup] Half screen engine init requested, cost: ${DateTime.now().difference(initStart).inMilliseconds}ms',
       );
       return result == true;
     } catch (e) {
-      print('⚠️  [FlutterStartup] Failed to init half screen engine: $e');
+      debugPrint('⚠️  [FlutterStartup] Failed to init half screen engine: $e');
       return false;
     }
   }
@@ -30,6 +31,17 @@ class AppStateService {
       return result == true;
     } catch (e) {
       return false;
+    }
+  }
+
+  static Future<Map<dynamic, dynamic>?> consumePendingShareDraft() async {
+    try {
+      return await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'consumePendingShareDraft',
+      );
+    } catch (e) {
+      debugPrint('⚠️ Failed to consume pending share draft: $e');
+      return null;
     }
   }
 }

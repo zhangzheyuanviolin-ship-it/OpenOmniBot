@@ -4,11 +4,14 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.McpFileInbox
+import cn.com.omnimind.bot.share.SharedOpenDraftStore
+import cn.com.omnimind.bot.util.TaskCompletionNavigator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,16 +38,75 @@ class McpFileReceiverActivity : ComponentActivity() {
             return
         }
 
+        val sharedText = extractSharedText(intent)
         val uris = extractUris(intent)
-        if (uris.isEmpty()) {
-            OmniLog.w(TAG, "No uri found in intent: ${intent.action}")
-            Toast.makeText(this, "No file found", Toast.LENGTH_SHORT).show()
+        val mimeTypeHint = intent.type
+        if (uris.isEmpty() && sharedText.isNullOrBlank()) {
+            OmniLog.w(TAG, "No share content found in intent: ${intent.action}")
+            Toast.makeText(this, "未找到可分享的内容", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        val mimeTypeHint = intent.type
+        val allPhotos = uris.isNotEmpty() && uris.all { uri ->
+            isImageUri(uri, mimeTypeHint)
+        }
 
+        val shouldOpenAsDraft =
+            (!sharedText.isNullOrBlank() && uris.isEmpty()) ||
+                (uris.isNotEmpty() && allPhotos)
+
+        if (shouldOpenAsDraft) {
+            handleDraftShare(
+                sharedText = sharedText,
+                imageUris = if (allPhotos) uris else emptyList(),
+                mimeTypeHint = mimeTypeHint,
+            )
+            return
+        }
+
+        handleFileTransfer(uris, mimeTypeHint)
+    }
+
+    private fun handleDraftShare(
+        sharedText: String?,
+        imageUris: List<Uri>,
+        mimeTypeHint: String?,
+    ) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val draft = SharedOpenDraftStore.store(
+                context = this@McpFileReceiverActivity,
+                text = sharedText,
+                imageUris = imageUris,
+                mimeTypeHint = mimeTypeHint,
+            )
+            withContext(Dispatchers.Main) {
+                if (draft != null) {
+                    val route =
+                        "/home/chat?conversationId=new&mode=normal&requestKey=${Uri.encode(draft.requestKey)}"
+                    TaskCompletionNavigator.navigateToMainRoute(
+                        context = this@McpFileReceiverActivity,
+                        route = route,
+                        needClear = false,
+                    )
+                    Toast.makeText(
+                        this@McpFileReceiverActivity,
+                        "已填入新对话，请确认后发送",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        this@McpFileReceiverActivity,
+                        "分享内容处理失败",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                finish()
+            }
+        }
+    }
+
+    private fun handleFileTransfer(uris: List<Uri>, mimeTypeHint: String?) {
         lifecycleScope.launch(Dispatchers.IO) {
             val records = uris.mapNotNull { uri ->
                 McpFileInbox.storeFromUri(this@McpFileReceiverActivity, uri, mimeTypeHint)
@@ -86,13 +148,13 @@ class McpFileReceiverActivity : ComponentActivity() {
             withContext(Dispatchers.Main) {
                 if (records.isNotEmpty()) {
                     val message = if (records.size == 1) {
-                        "File received"
+                        "文件接收成功"
                     } else {
-                        "${records.size} files received"
+                        "已接收 ${records.size} 个文件"
                     }
                     Toast.makeText(this@McpFileReceiverActivity, message, Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this@McpFileReceiverActivity, "Failed to receive file", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@McpFileReceiverActivity, "文件接收失败", Toast.LENGTH_SHORT).show()
                 }
                 finish()
             }
@@ -133,5 +195,28 @@ class McpFileReceiverActivity : ComponentActivity() {
             clipData.getItemAt(index)?.uri?.let { uris.add(it) }
         }
         return uris
+    }
+
+    private fun extractSharedText(intent: Intent): String? {
+        return intent.getCharSequenceExtra(Intent.EXTRA_TEXT)
+            ?.toString()
+            ?.trim()
+            ?.ifEmpty { null }
+    }
+
+    private fun isImageUri(uri: Uri, mimeTypeHint: String?): Boolean {
+        val resolvedMimeType = contentResolver.getType(uri)
+            ?: mimeTypeHint?.takeIf { !it.equals("*/*", ignoreCase = true) }
+            ?: guessMimeTypeFromUri(uri)
+        return resolvedMimeType?.startsWith("image/", ignoreCase = true) == true
+    }
+
+    private fun guessMimeTypeFromUri(uri: Uri): String? {
+        val lastSegment = uri.lastPathSegment ?: return null
+        val extension = MimeTypeMap.getFileExtensionFromUrl(lastSegment)
+            ?.lowercase()
+            ?.ifEmpty { null }
+            ?: return null
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
     }
 }

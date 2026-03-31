@@ -170,6 +170,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     _vlmAnswerController.clear();
     _applyDraftForConversationMode(targetMode);
     await initializeConversation();
+    await _consumePendingSharedDraftIfNeeded(target);
     await _persistVisibleThreadTargetIfNeeded();
     if (syncPage) {
       _jumpToCurrentModePage(animate: false);
@@ -695,6 +696,45 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       text: draft,
       selection: TextSelection.collapsed(offset: draft.length),
     );
+  }
+
+  Future<void> _consumePendingSharedDraftIfNeeded(
+    ConversationThreadTarget target,
+  ) async {
+    if (!target.fromNativeRoute ||
+        !target.isNewConversation ||
+        target.mode != ConversationMode.normal ||
+        (target.requestKey?.trim().isEmpty ?? true)) {
+      return;
+    }
+
+    final payload = await SharedOpenDraftService.consumePendingDraft();
+    if (!mounted || payload == null) {
+      return;
+    }
+
+    final attachments = payload.attachments
+        .map(
+          (item) => ChatInputAttachment(
+            id: item.id.isNotEmpty ? item.id : item.path,
+            name: item.name.isNotEmpty ? item.name : item.path.split('/').last,
+            path: item.path,
+            size: item.size,
+            mimeType: item.mimeType,
+            isImage: item.isImage,
+          ),
+        )
+        .toList();
+
+    setState(() {
+      _draftMessageByMode[ChatPageMode.normal] = payload.text ?? '';
+      _pendingAttachmentsByMode[ChatPageMode.normal]!
+        ..clear()
+        ..addAll(attachments);
+    });
+    if (_activeConversationMode == ChatPageMode.normal) {
+      _applyDraftForConversationMode(ChatPageMode.normal);
+    }
   }
 
   @override

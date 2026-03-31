@@ -3,6 +3,7 @@ package cn.com.omnimind.bot.ui.channel
 import android.content.Context
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.activity.MainActivity
+import cn.com.omnimind.bot.share.SharedOpenDraftStore
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -59,6 +60,14 @@ class AppStateChannel {
                     OmniLog.e(TAG, "Context is not MainActivity, cannot exit app")
                     result.error("INVALID_CONTEXT", "Context is not MainActivity", null)
                 }
+            }
+            "consumePendingShareDraft" -> {
+                val appContext = context?.applicationContext
+                if (appContext == null) {
+                    result.error("INVALID_CONTEXT", "Context is null", null)
+                    return
+                }
+                result.success(SharedOpenDraftStore.consume(appContext))
             }
             else -> {
                 result.notImplemented()
