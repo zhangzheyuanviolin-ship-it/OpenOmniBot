@@ -744,7 +744,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return;
     }
 
-    final action = await _showUserMessageQuickMenu(details.globalPosition);
+    final action = await _showUserMessageQuickMenu(
+      details.globalPosition,
+      showRetryAction: _canRetryUserMessage(message),
+    );
     if (!mounted || action == null) return;
 
     switch (action) {
@@ -758,12 +761,14 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   }
 
   Future<_UserMessageQuickAction?> _showUserMessageQuickMenu(
-    Offset globalPosition,
-  ) {
+    Offset globalPosition, {
+    required bool showRetryAction,
+  }) {
+    final estimatedMenuHeight = showRetryAction ? 116.0 : 60.0;
     final position = PopupMenuAnchorPosition.fromGlobalOffset(
       context: context,
       globalOffset: globalPosition,
-      estimatedMenuHeight: 116,
+      estimatedMenuHeight: estimatedMenuHeight,
       verticalGap: 10,
       reservedBottom: MediaQuery.of(context).viewInsets.bottom,
     );
@@ -776,9 +781,52 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       elevation: 0,
       menuPadding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 188, maxWidth: 188),
-      items: const [
-        _UserMessageQuickMenuEntry(width: 188, estimatedHeight: 116),
+      items: [
+        _UserMessageQuickMenuEntry(
+          width: 188,
+          estimatedHeight: estimatedMenuHeight,
+          showRetryAction: showRetryAction,
+        ),
       ],
+    );
+  }
+
+  bool _canRetryUserMessage(ChatMessageModel message) {
+    if (message.user != 1) return false;
+    for (final item in _messages) {
+      if (item.user != 1) continue;
+      return item.id == message.id;
+    }
+    return false;
+  }
+
+  int _retryMessageRoundLength(ChatMessageModel message) {
+    if (!_canRetryUserMessage(message)) return 0;
+    final targetIndex = _messages.indexWhere((item) => item.id == message.id);
+    if (targetIndex == -1) return 0;
+    return targetIndex + 1;
+  }
+
+  Future<void> _clearRetriedMessageRound(ChatMessageModel message) async {
+    if (_isAiResponding) {
+      _onCancelTask();
+      if (!mounted) return;
+    }
+
+    final removeCount = _retryMessageRoundLength(message);
+    if (removeCount <= 0) return;
+
+    setState(() {
+      _messages.removeRange(0, removeCount);
+    });
+
+    final conversationId = _currentConversationId;
+    if (conversationId == null) return;
+
+    await ConversationHistoryService.saveConversationMessages(
+      conversationId,
+      List<ChatMessageModel>.from(_messages),
+      mode: activeConversationModeValue,
     );
   }
 
@@ -797,17 +845,19 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       showToast('这条用户消息没有可重试的文本', type: ToastType.warning);
       return;
     }
+    if (!_canRetryUserMessage(message)) {
+      showToast('只有最新一条用户消息支持重试', type: ToastType.warning);
+      return;
+    }
 
     final copied = await AssistsMessageService.copyToClipboard(text);
     if (!mounted) return;
 
-    await _retryUserMessageText(text);
+    await _clearRetriedMessageRound(message);
     if (!mounted) return;
 
-    showToast(
-      copied ? '已复制并重新启动 Agent' : '已重新启动 Agent',
-      type: ToastType.success,
-    );
+    await _retryUserMessageText(text);
+    if (!mounted) return;
   }
 
   String _formatThresholdLabel(int threshold) {
@@ -845,10 +895,12 @@ class _UserMessageQuickMenuEntry
   const _UserMessageQuickMenuEntry({
     required this.width,
     required this.estimatedHeight,
+    required this.showRetryAction,
   });
 
   final double width;
   final double estimatedHeight;
+  final bool showRetryAction;
 
   @override
   double get height => estimatedHeight;
@@ -924,12 +976,18 @@ class _UserMessageQuickMenuEntryState
                 label: '复制',
                 onTap: () => _select(_UserMessageQuickAction.copy),
               ),
-              const Divider(height: 1, thickness: 1, color: Color(0x14000000)),
-              _buildAction(
-                icon: Icons.refresh_rounded,
-                label: '重试这条消息',
-                onTap: () => _select(_UserMessageQuickAction.retry),
-              ),
+              if (widget.showRetryAction) ...[
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0x14000000),
+                ),
+                _buildAction(
+                  icon: Icons.refresh_rounded,
+                  label: '重试这条消息',
+                  onTap: () => _select(_UserMessageQuickAction.retry),
+                ),
+              ],
             ],
           ),
         ),
