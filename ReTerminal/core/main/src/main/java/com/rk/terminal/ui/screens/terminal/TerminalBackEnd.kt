@@ -12,6 +12,7 @@ import com.blankj.utilcode.util.KeyboardUtils
 import com.rk.libcommons.child
 import com.rk.libcommons.createFileIfNot
 import com.rk.libcommons.dpToPx
+import com.rk.libcommons.isOmnibotSetupSessionId
 import com.rk.settings.Settings
 import com.rk.terminal.ui.activities.terminal.MainActivity
 import com.rk.terminal.ui.screens.terminal.virtualkeys.SpecialButton
@@ -37,7 +38,24 @@ class TerminalBackEnd(val terminal: TerminalView,val activity: MainActivity) : T
     }
     
     override fun onSessionFinished(finishedSession: TerminalSession) {
+        activity.runOnUiThread {
+            val binder = activity.sessionBinder ?: return@runOnUiThread
+            val service = binder.getService()
+            val currentId = service.currentSession.value.first
+            if (!isOmnibotSetupSessionId(currentId)) {
+                return@runOnUiThread
+            }
+            if (binder.getSession(currentId) !== finishedSession) {
+                return@runOnUiThread
+            }
 
+            binder.terminateSession(currentId)
+            if (service.sessionList.isEmpty()) {
+                activity.finish()
+            } else {
+                changeSession(activity, service.sessionList.keys.first())
+            }
+        }
     }
     
     override fun onCopyTextToClipboard(session: TerminalSession, text: String) {

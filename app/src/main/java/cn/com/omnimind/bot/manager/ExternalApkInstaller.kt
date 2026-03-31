@@ -30,7 +30,7 @@ data class ExternalApkInstallResult(
 
 object ExternalApkInstaller {
     private const val TAG = "ExternalApkInstaller"
-    private const val FILE_PROVIDER_AUTHORITY = "cn.com.omnimind.bot.fileprovider"
+    private const val FILE_PROVIDER_AUTHORITY_SUFFIX = ".fileprovider"
     private const val DOWNLOAD_DIR_NAME = "external_apk"
     private const val DOWNLOAD_NOTIFICATION_CHANNEL_ID = "app_update_download"
     private const val DOWNLOAD_NOTIFICATION_CHANNEL_NAME = "应用更新下载"
@@ -40,6 +40,10 @@ object ExternalApkInstaller {
     const val STATUS_INSTALL_PERMISSION_REQUIRED = "install_permission_required"
     const val STATUS_DOWNLOAD_FAILED = "download_failed"
     const val STATUS_INSTALL_FAILED = "install_failed"
+
+    private fun fileProviderAuthority(context: Context): String {
+        return "${context.packageName}$FILE_PROVIDER_AUTHORITY_SUFFIX"
+    }
 
     fun canInstallPackages(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -209,7 +213,7 @@ object ExternalApkInstaller {
                 false
             } else {
                 val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, apkFile)
+                    FileProvider.getUriForFile(context, fileProviderAuthority(context), apkFile)
                 } else {
                     Uri.fromFile(apkFile)
                 }

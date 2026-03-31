@@ -4,6 +4,7 @@
         <activity
             android:name="com.rk.terminal.ui.activities.terminal.MainActivity"
             android:exported="false"
+            android:theme="@style/Theme.Karbon"
             android:windowSoftInputMode="adjustResize" />
 
         <service

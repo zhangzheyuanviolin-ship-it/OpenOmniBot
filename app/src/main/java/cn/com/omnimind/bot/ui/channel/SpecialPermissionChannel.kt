@@ -114,6 +114,14 @@ class SpecialPermissionChannel {
                         .startEmbeddedTerminalSetupSession(call, result)
                     "dismissEmbeddedTerminalSetupSession" -> specialPermissionManager!!
                         .dismissEmbeddedTerminalSetupSession(result)
+                    "getEmbeddedTerminalAutoStartTasks" -> specialPermissionManager!!
+                        .getEmbeddedTerminalAutoStartTasks(result)
+                    "saveEmbeddedTerminalAutoStartTask" -> specialPermissionManager!!
+                        .saveEmbeddedTerminalAutoStartTask(call, result)
+                    "deleteEmbeddedTerminalAutoStartTask" -> specialPermissionManager!!
+                        .deleteEmbeddedTerminalAutoStartTask(call, result)
+                    "runEmbeddedTerminalAutoStartTask" -> specialPermissionManager!!
+                        .runEmbeddedTerminalAutoStartTask(call, result)
                     "openNativeTerminal" -> specialPermissionManager!!
                         .openNativeTerminal(call, result)
                     "prepareTermuxLiveWrapper" -> specialPermissionManager!!

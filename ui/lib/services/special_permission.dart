@@ -235,6 +235,91 @@ class EmbeddedTerminalSetupSessionSnapshot {
   }
 }
 
+class EmbeddedTerminalAutoStartTask {
+  const EmbeddedTerminalAutoStartTask({
+    required this.id,
+    required this.name,
+    required this.command,
+    required this.workingDirectory,
+    required this.enabled,
+    required this.running,
+    required this.sessionId,
+  });
+
+  final String id;
+  final String name;
+  final String command;
+  final String? workingDirectory;
+  final bool enabled;
+  final bool running;
+  final String sessionId;
+
+  factory EmbeddedTerminalAutoStartTask.fromMap(Map<dynamic, dynamic>? map) {
+    return EmbeddedTerminalAutoStartTask(
+      id: (map?['id'] as String? ?? '').trim(),
+      name: (map?['name'] as String? ?? '').trim(),
+      command: (map?['command'] as String? ?? '').trim(),
+      workingDirectory: (map?['workingDirectory'] as String?)?.trim(),
+      enabled: map?['enabled'] != false,
+      running: map?['running'] == true,
+      sessionId: (map?['sessionId'] as String? ?? '').trim(),
+    );
+  }
+}
+
+class EmbeddedTerminalAutoStartTaskList {
+  const EmbeddedTerminalAutoStartTaskList({required this.tasks});
+
+  final List<EmbeddedTerminalAutoStartTask> tasks;
+
+  factory EmbeddedTerminalAutoStartTaskList.fromMap(
+    Map<dynamic, dynamic>? map,
+  ) {
+    final rawTasks = map?['tasks'];
+    return EmbeddedTerminalAutoStartTaskList(
+      tasks: rawTasks is List
+          ? rawTasks
+                .map(
+                  (item) => EmbeddedTerminalAutoStartTask.fromMap(
+                    item is Map
+                        ? Map<dynamic, dynamic>.from(item)
+                        : const <dynamic, dynamic>{},
+                  ),
+                )
+                .toList(growable: false)
+          : const <EmbeddedTerminalAutoStartTask>[],
+    );
+  }
+}
+
+class EmbeddedTerminalAutoStartTaskRunResult {
+  const EmbeddedTerminalAutoStartTaskRunResult({
+    required this.taskId,
+    required this.started,
+    required this.alreadyRunning,
+    required this.message,
+    required this.sessionId,
+  });
+
+  final String taskId;
+  final bool started;
+  final bool alreadyRunning;
+  final String message;
+  final String sessionId;
+
+  factory EmbeddedTerminalAutoStartTaskRunResult.fromMap(
+    Map<dynamic, dynamic>? map,
+  ) {
+    return EmbeddedTerminalAutoStartTaskRunResult(
+      taskId: (map?['taskId'] as String? ?? '').trim(),
+      started: map?['started'] == true,
+      alreadyRunning: map?['alreadyRunning'] == true,
+      message: (map?['message'] as String? ?? '').trim(),
+      sessionId: (map?['sessionId'] as String? ?? '').trim(),
+    );
+  }
+}
+
 Stream<EmbeddedTerminalInitProgress> get embeddedTerminalInitProgressStream {
   return _specialPermissionEvents.receiveBroadcastStream().map((event) {
     final payload = event is Map
@@ -303,6 +388,51 @@ Future<EmbeddedTerminalSetupSessionSnapshot> startEmbeddedTerminalSetupSession(
 
 Future<void> dismissEmbeddedTerminalSetupSession() async {
   await spePermission.invokeMethod<void>('dismissEmbeddedTerminalSetupSession');
+}
+
+Future<EmbeddedTerminalAutoStartTaskList>
+getEmbeddedTerminalAutoStartTasks() async {
+  final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
+    'getEmbeddedTerminalAutoStartTasks',
+  );
+  return EmbeddedTerminalAutoStartTaskList.fromMap(result ?? const {});
+}
+
+Future<EmbeddedTerminalAutoStartTask> saveEmbeddedTerminalAutoStartTask({
+  String? id,
+  required String name,
+  required String command,
+  String? workingDirectory,
+  required bool enabled,
+}) async {
+  final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
+    'saveEmbeddedTerminalAutoStartTask',
+    <String, dynamic>{
+      'id': id,
+      'name': name,
+      'command': command,
+      'workingDirectory': workingDirectory,
+      'enabled': enabled,
+    },
+  );
+  return EmbeddedTerminalAutoStartTask.fromMap(result ?? const {});
+}
+
+Future<void> deleteEmbeddedTerminalAutoStartTask(String id) async {
+  await spePermission.invokeMethod<void>(
+    'deleteEmbeddedTerminalAutoStartTask',
+    {'id': id},
+  );
+}
+
+Future<EmbeddedTerminalAutoStartTaskRunResult> runEmbeddedTerminalAutoStartTask(
+  String id,
+) async {
+  final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
+    'runEmbeddedTerminalAutoStartTask',
+    <String, dynamic>{'id': id},
+  );
+  return EmbeddedTerminalAutoStartTaskRunResult.fromMap(result ?? const {});
 }
 
 Future<void> openNativeTerminal({

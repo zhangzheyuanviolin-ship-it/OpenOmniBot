@@ -259,7 +259,7 @@ object AgentToolDefinitions {
             put("name", "terminal_session_start")
             put("displayName", "启动终端会话")
             put("toolType", "terminal")
-            put("description", "启动一个可复用的 Alpine 终端会话，仅用于确实需要在后续多轮中保留 cwd、shell 环境、中间文件状态或后台进程的任务。不要为了运行单条命令、检查工具是否存在、读取单个文件或执行一次性脚本而使用它，这些场景应优先用 terminal_execute。")
+            put("description", "启动一个可复用的 Alpine 终端会话，仅用于确实需要在后续多轮中保留 cwd、shell 环境、中间文件状态或后台进程的任务。返回的 sessionId 由底层 ReTerminal 原生生成并持久托管，后续必须显式传给 terminal_session_exec/read/stop。不要为了运行单条命令、检查工具是否存在、读取单个文件或执行一次性脚本而使用它，这些场景应优先用 terminal_execute。")
             put("postToolRule", "启动后等待工具结果，再决定是否继续向该 session 发送命令。")
             putJsonObject("parameters") {
                 put("type", "object")
@@ -283,7 +283,7 @@ object AgentToolDefinitions {
             put("name", "terminal_session_exec")
             put("displayName", "执行会话命令")
             put("toolType", "terminal")
-            put("description", "向已有终端 session 发送一条非交互命令，并等待该命令完成。只在你明确想复用同一个 session 的 cwd、环境变量、后台任务或中间状态时使用。")
+            put("description", "向已有终端 session 发送一条非交互命令，并等待该命令完成。只在你明确想复用同一个 session 的 cwd、环境变量、后台任务或中间状态时使用。若命令会持续运行很久（例如启动 node/python 服务），应设置较短 timeoutSeconds，让工具尽快返回，再用 terminal_session_read 追踪输出，并在不再需要时调用 terminal_session_stop。")
             put("postToolRule", "执行后等待结果，再判断是否继续读取日志、再次执行或结束 session。")
             putJsonObject("parameters") {
                 put("type", "object")
@@ -319,7 +319,7 @@ object AgentToolDefinitions {
             put("name", "terminal_session_read")
             put("displayName", "读取会话输出")
             put("toolType", "terminal")
-            put("description", "读取终端 session 最近一次命令日志或最近的终端输出。只在已经启动并复用了 terminal_session_* 的前提下使用。")
+            put("description", "读取终端 session 最近一次命令日志或最近的终端输出。默认应把它视为读取该 session 最新尾部输出，而不是重新查看最早的历史。只在已经启动并复用了 terminal_session_* 的前提下使用。")
             put("postToolRule", "读取结果后再决定是否继续执行命令。")
             putJsonObject("parameters") {
                 put("type", "object")

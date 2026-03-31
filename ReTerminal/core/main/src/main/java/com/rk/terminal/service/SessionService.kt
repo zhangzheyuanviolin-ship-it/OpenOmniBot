@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.app.NotificationCompat
+import com.rk.libcommons.TerminalCommand
 import com.rk.resources.drawables
 import com.rk.resources.strings
 import com.rk.terminal.ui.activities.terminal.MainActivity
@@ -20,6 +21,20 @@ import com.rk.terminal.ui.screens.terminal.MkSession
 import com.termux.terminal.TerminalSession
 
 class SessionService : Service() {
+    companion object {
+        private const val DEFAULT_COLUMNS = 120
+        private const val DEFAULT_ROWS = 40
+        private const val DEFAULT_CELL_WIDTH = 10
+        private const val DEFAULT_CELL_HEIGHT = 20
+        private const val AGENT_SESSION_ID_PREFIX = "session_"
+    }
+
+    data class HeadlessSessionAccess(
+        val sessionId: String,
+        val session: TerminalSession,
+        val created: Boolean
+    )
+
     private val sessions = hashMapOf<String, TerminalSession>()
     val sessionList = mutableStateMapOf<String,Int>()
     var currentSession = mutableStateOf(Pair("main",com.rk.settings.Settings.working_Mode))
@@ -37,18 +52,97 @@ class SessionService : Service() {
             currentSession.value = Pair("main", com.rk.settings.Settings.working_Mode)
             updateNotification()
         }
-        fun createSession(id: String, activity: MainActivity, workingMode:Int): TerminalSession {
+
+        fun createSession(
+            id: String,
+            context: android.content.Context,
+            workingMode:Int,
+            launchCommand: TerminalCommand? = null
+        ): TerminalSession {
+            val existing = sessions[id]
+            if (existing != null) {
+                sessionList[id] = workingMode
+                currentSession.value = Pair(id, workingMode)
+                updateNotification()
+                return existing
+            }
             return MkSession.createSession(
-                activity,
+                context,
                 HeadlessTerminalSessionClient,
                 id,
-                workingMode = workingMode
+                workingMode = workingMode,
+                launchCommand = launchCommand
             ).also {
                 sessions[id] = it
                 sessionList[id] = workingMode
+                currentSession.value = Pair(id, workingMode)
                 updateNotification()
             }
         }
+
+        fun createHeadlessSession(
+            requestedId: String?,
+            context: android.content.Context,
+            workingMode: Int,
+            sessionTitle: String? = null,
+            extraEnv: Map<String, String> = emptyMap()
+        ): HeadlessSessionAccess {
+            val sessionId = resolveSessionId(requestedId)
+            val existing = sessions[sessionId]
+            if (existing != null) {
+                existing.mSessionName = sessionTitle?.trim().takeUnless { it.isNullOrEmpty() }
+                    ?: existing.mSessionName
+                sessionList[sessionId] = workingMode
+                currentSession.value = Pair(sessionId, workingMode)
+                updateNotification()
+                return HeadlessSessionAccess(
+                    sessionId = sessionId,
+                    session = existing,
+                    created = false
+                )
+            }
+
+            val mergedEnv = linkedMapOf(
+                "OMNIBOT_HEADLESS" to "1",
+                "HOME" to "/root",
+                "PAGER" to "cat",
+                "GIT_PAGER" to "cat"
+            ).apply {
+                putAll(extraEnv)
+            }
+
+            val session = MkSession.createSession(
+                context = context,
+                sessionClient = HeadlessTerminalSessionClient,
+                session_id = sessionId,
+                workingMode = workingMode,
+                extraEnv = mergedEnv,
+                launchCommand = null
+            ).also { created ->
+                created.mSessionName = sessionTitle?.trim().takeUnless { it.isNullOrEmpty() }
+                    ?: "Agent Session"
+                created.updateTerminalSessionClient(HeadlessTerminalSessionClient)
+                if (created.emulator == null) {
+                    created.updateSize(
+                        DEFAULT_COLUMNS,
+                        DEFAULT_ROWS,
+                        DEFAULT_CELL_WIDTH,
+                        DEFAULT_CELL_HEIGHT
+                    )
+                }
+                sessions[sessionId] = created
+                sessionList[sessionId] = workingMode
+                currentSession.value = Pair(sessionId, workingMode)
+                updateNotification()
+            }
+
+            return HeadlessSessionAccess(
+                sessionId = sessionId,
+                session = session,
+                created = true
+            )
+        }
+
         fun getSession(id: String): TerminalSession? {
             return sessions[id]
         }
@@ -113,9 +207,10 @@ class SessionService : Service() {
             "ACTION_EXIT" -> {
                 sessions.forEach { s -> s.value.finishIfRunning() }
                 stopSelf()
+                return START_NOT_STICKY
             }
         }
-        return super.onStartCommand(intent, flags, startId)
+        return START_STICKY
     }
 
     private fun createNotification(): Notification {
@@ -171,5 +266,29 @@ class SessionService : Service() {
             return "1 session running"
         }
         return "$count sessions running"
+    }
+
+    private fun resolveSessionId(requestedId: String?): String {
+        val sanitizedRequestedId = sanitizeSessionId(requestedId)
+        if (!sanitizedRequestedId.isNullOrEmpty()) {
+            return sanitizedRequestedId
+        }
+        var candidate: String
+        do {
+            candidate = AGENT_SESSION_ID_PREFIX + java.util.UUID.randomUUID().toString().take(8)
+        } while (sessions.containsKey(candidate))
+        return candidate
+    }
+
+    private fun sanitizeSessionId(raw: String?): String? {
+        val normalized = raw?.trim().orEmpty()
+        if (normalized.isEmpty()) {
+            return null
+        }
+        return normalized
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .trim('_')
+            .take(48)
+            .takeIf { it.isNotEmpty() }
     }
 }

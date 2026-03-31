@@ -11,7 +11,8 @@ import androidx.core.content.ContextCompat
 import cn.com.omnimind.baselib.permission.PermissionRequest
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
-import cn.com.omnimind.bot.activity.TerminalActivity
+import cn.com.omnimind.bot.terminal.EmbeddedTerminalAutoStartManager
+import cn.com.omnimind.bot.terminal.EmbeddedTerminalLaunchHelper
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalSetupManager
 import cn.com.omnimind.bot.termux.TermuxCommandRunner
@@ -65,6 +66,7 @@ class SpecialPermissionManager(private val context: Context) {
     private val embeddedTerminalInitLock = Any()
     private var embeddedTerminalInitState = EmbeddedTerminalInitState()
     private val embeddedTerminalSetupManager = EmbeddedTerminalSetupManager(context)
+    private val embeddedTerminalAutoStartManager = EmbeddedTerminalAutoStartManager(context)
     var onEmbeddedTerminalInitProgress: ((Map<String, Any?>) -> Unit)? = null
 
     fun isAccessibilityServiceEnabled(result: MethodChannel.Result) {
@@ -209,10 +211,7 @@ class SpecialPermissionManager(private val context: Context) {
                 result.success(false)
                 return
             }
-            val intent = Intent(context, TerminalActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            ContextCompat.startActivity(context, intent, null)
+            EmbeddedTerminalLaunchHelper.launch(context = context)
             result.success(true)
         } catch (e: Exception) {
             OmniLog.e(TAG, "请求打开内嵌终端时发生异常。", e)
@@ -518,6 +517,100 @@ class SpecialPermissionManager(private val context: Context) {
         }
     }
 
+    fun getEmbeddedTerminalAutoStartTasks(result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val tasks = embeddedTerminalAutoStartManager.listTasks()
+                withContext(Dispatchers.Main) {
+                    result.success(
+                        mapOf(
+                            "tasks" to tasks.map { it.toMap() }
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error reading embedded terminal auto-start tasks", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "READ_AUTO_START_TASKS_FAILED",
+                        "Failed to read embedded terminal auto-start tasks.",
+                        e.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun saveEmbeddedTerminalAutoStartTask(call: MethodCall, result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val snapshot = embeddedTerminalAutoStartManager.saveTask(
+                    id = call.argument<String>("id"),
+                    name = call.argument<String>("name").orEmpty(),
+                    command = call.argument<String>("command").orEmpty(),
+                    workingDirectory = call.argument<String>("workingDirectory"),
+                    enabled = call.argument<Boolean>("enabled") != false
+                )
+                withContext(Dispatchers.Main) {
+                    result.success(snapshot.toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error saving embedded terminal auto-start task", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "SAVE_AUTO_START_TASK_FAILED",
+                        "Failed to save embedded terminal auto-start task.",
+                        e.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun deleteEmbeddedTerminalAutoStartTask(call: MethodCall, result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                embeddedTerminalAutoStartManager.deleteTask(
+                    taskId = call.argument<String>("id").orEmpty()
+                )
+                withContext(Dispatchers.Main) {
+                    result.success(null)
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error deleting embedded terminal auto-start task", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "DELETE_AUTO_START_TASK_FAILED",
+                        "Failed to delete embedded terminal auto-start task.",
+                        e.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun runEmbeddedTerminalAutoStartTask(call: MethodCall, result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val runResult = embeddedTerminalAutoStartManager.runTaskNow(
+                    taskId = call.argument<String>("id").orEmpty()
+                )
+                withContext(Dispatchers.Main) {
+                    result.success(runResult.toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Error running embedded terminal auto-start task", e)
+                withContext(Dispatchers.Main) {
+                    result.error(
+                        "RUN_AUTO_START_TASK_FAILED",
+                        "Failed to run embedded terminal auto-start task.",
+                        e.message
+                    )
+                }
+            }
+        }
+    }
+
     fun openNativeTerminal(call: MethodCall, result: MethodChannel.Result) {
         try {
             val openSetup = call.argument<Boolean>("openSetup") == true
@@ -526,15 +619,11 @@ class SpecialPermissionManager(private val context: Context) {
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .distinct()
-            val intent = Intent(context, TerminalActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                putExtra(TerminalActivity.EXTRA_OPEN_SETUP, openSetup)
-                putStringArrayListExtra(
-                    TerminalActivity.EXTRA_SETUP_PACKAGE_IDS,
-                    ArrayList(setupPackageIds)
-                )
-            }
-            ContextCompat.startActivity(context, intent, null)
+            EmbeddedTerminalLaunchHelper.launch(
+                context = context,
+                openSetup = openSetup,
+                setupPackageIds = setupPackageIds
+            )
             result.success(true)
         } catch (e: Exception) {
             OmniLog.e(TAG, "Error opening native terminal", e)

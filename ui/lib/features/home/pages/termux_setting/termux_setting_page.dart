@@ -102,10 +102,15 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     with WidgetsBindingObserver {
   bool _isOpeningSetup = false;
   bool _isDetecting = true;
+  bool _isAutoStartLoading = true;
+  bool _isAutoStartBusy = false;
   bool _hasInitializedSelection = false;
   String? _detectError;
+  String? _autoStartError;
   Map<String, EmbeddedTerminalSetupInventoryItem> _inventory =
       const <String, EmbeddedTerminalSetupInventoryItem>{};
+  List<EmbeddedTerminalAutoStartTask> _autoStartTasks =
+      const <EmbeddedTerminalAutoStartTask>[];
   Set<String> _selectedPackageIds = <String>{};
 
   List<_EnvironmentViewModel> get _items {
@@ -137,6 +142,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_refreshInventory(selectMissingByDefault: true));
+    unawaited(_refreshAutoStartTasks());
   }
 
   @override
@@ -149,6 +155,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshInventory());
+      unawaited(_refreshAutoStartTasks());
     }
   }
 
@@ -213,6 +220,43 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     }
   }
 
+  Future<void> _refreshAutoStartTasks() async {
+    if (mounted) {
+      setState(() {
+        _isAutoStartLoading = true;
+        _autoStartError = null;
+      });
+    }
+    try {
+      final tasks = await getEmbeddedTerminalAutoStartTasks();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _autoStartTasks = tasks.tasks;
+        _isAutoStartLoading = false;
+      });
+    } on PlatformException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _autoStartTasks = const <EmbeddedTerminalAutoStartTask>[];
+        _isAutoStartLoading = false;
+        _autoStartError = e.message ?? '读取自启动任务失败';
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _autoStartTasks = const <EmbeddedTerminalAutoStartTask>[];
+        _isAutoStartLoading = false;
+        _autoStartError = '读取自启动任务失败';
+      });
+    }
+  }
+
   Future<void> _handleOpenSetupPage() async {
     if (_isOpeningSetup || !_canStartSetup) {
       return;
@@ -233,6 +277,137 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       if (mounted) {
         setState(() {
           _isOpeningSetup = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openAutoStartTaskDialog({
+    EmbeddedTerminalAutoStartTask? task,
+  }) async {
+    final formResult = await showDialog<_AutoStartTaskFormResult>(
+      context: context,
+      builder: (dialogContext) => _AutoStartTaskDialog(task: task),
+    );
+    if (formResult == null || _isAutoStartBusy) {
+      return;
+    }
+    setState(() {
+      _isAutoStartBusy = true;
+    });
+    try {
+      await saveEmbeddedTerminalAutoStartTask(
+        id: task?.id,
+        name: formResult.name,
+        command: formResult.command,
+        workingDirectory: formResult.workingDirectory,
+        enabled: formResult.enabled,
+      );
+      await _refreshAutoStartTasks();
+      if (!mounted) return;
+      showToast(task == null ? '已新增自启动任务' : '已更新自启动任务');
+    } on PlatformException catch (e) {
+      showToast(e.message ?? '保存自启动任务失败', type: ToastType.error);
+    } catch (_) {
+      showToast('保存自启动任务失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAutoStartBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleAutoStartTask(
+    EmbeddedTerminalAutoStartTask task,
+    bool enabled,
+  ) async {
+    if (_isAutoStartBusy) {
+      return;
+    }
+    setState(() {
+      _isAutoStartBusy = true;
+    });
+    try {
+      await saveEmbeddedTerminalAutoStartTask(
+        id: task.id,
+        name: task.name,
+        command: task.command,
+        workingDirectory: task.workingDirectory,
+        enabled: enabled,
+      );
+      await _refreshAutoStartTasks();
+      if (!mounted) return;
+      showToast(enabled ? '已开启应用启动时自启动' : '已关闭自动启动');
+    } on PlatformException catch (e) {
+      showToast(e.message ?? '更新任务失败', type: ToastType.error);
+    } catch (_) {
+      showToast('更新任务失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAutoStartBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteAutoStartTask(EmbeddedTerminalAutoStartTask task) async {
+    if (_isAutoStartBusy) {
+      return;
+    }
+    final confirmed = await AppDialog.confirm(
+      context,
+      title: '删除自启动任务',
+      content: '确认删除“${task.name}”吗？',
+      cancelText: '取消',
+      confirmText: '删除',
+    );
+    if (confirmed != true || _isAutoStartBusy) {
+      return;
+    }
+    setState(() {
+      _isAutoStartBusy = true;
+    });
+    try {
+      await deleteEmbeddedTerminalAutoStartTask(task.id);
+      await _refreshAutoStartTasks();
+      if (!mounted) return;
+      showToast('已删除自启动任务');
+    } on PlatformException catch (e) {
+      showToast(e.message ?? '删除任务失败', type: ToastType.error);
+    } catch (_) {
+      showToast('删除任务失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAutoStartBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _runAutoStartTask(EmbeddedTerminalAutoStartTask task) async {
+    if (_isAutoStartBusy) {
+      return;
+    }
+    setState(() {
+      _isAutoStartBusy = true;
+    });
+    try {
+      final result = await runEmbeddedTerminalAutoStartTask(task.id);
+      await _refreshAutoStartTasks();
+      if (!mounted) return;
+      showToast(result.message.isNotEmpty ? result.message : '启动命令已发送');
+    } on PlatformException catch (e) {
+      showToast(e.message ?? '启动任务失败', type: ToastType.error);
+    } catch (_) {
+      showToast('启动任务失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAutoStartBusy = false;
         });
       }
     }
@@ -267,7 +442,10 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       body: SafeArea(
         top: false,
         child: RefreshIndicator(
-          onRefresh: () => _refreshInventory(),
+          onRefresh: () async {
+            await _refreshInventory();
+            await _refreshAutoStartTasks();
+          },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
@@ -331,6 +509,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                   height: 1.6,
                 ),
               ),
+              const SizedBox(height: 14),
+              _buildAutoStartSection(),
             ],
           ),
         ),
@@ -395,6 +575,209 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
           height: 1.5,
         ),
       ),
+    );
+  }
+
+  Widget _buildAutoStartSection() {
+    return _buildSectionCard(
+      title: '自启动任务',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '打开 Omnibot 时会在后台检查已启用的任务，并在对应 ReTerminal 会话内启动命令，适合常驻服务。',
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isAutoStartBusy
+                      ? null
+                      : () => _openAutoStartTaskDialog(),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('新增任务'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isAutoStartBusy
+                      ? null
+                      : () => openNativeTerminal(),
+                  icon: const Icon(Icons.terminal_rounded),
+                  label: const Text('打开 ReTerminal'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (_autoStartError != null) ...[
+            _buildErrorCard(_autoStartError!),
+          ] else if (_isAutoStartLoading) ...[
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              ),
+            ),
+          ] else if (_autoStartTasks.isEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: const Text(
+                '暂无任务。你可以添加例如 `python app.py`、`node server.js`、`./start.sh` 之类的常驻命令。',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.6,
+                ),
+              ),
+            ),
+          ] else ...[
+            for (int index = 0; index < _autoStartTasks.length; index++) ...[
+              _buildAutoStartTaskTile(_autoStartTasks[index]),
+              if (index != _autoStartTasks.length - 1)
+                const Divider(height: 20, thickness: 0.6),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAutoStartTaskTile(EmbeddedTerminalAutoStartTask task) {
+    final workingDirectory = task.workingDirectory?.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task.name,
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildLegendTag(
+                        label: task.enabled ? '开机打开 app 后启动' : '未启用',
+                        backgroundColor: task.enabled
+                            ? const Color(0xFFEAF2FF)
+                            : const Color(0xFFF1F5F9),
+                        foregroundColor: task.enabled
+                            ? const Color(0xFF2563EB)
+                            : const Color(0xFF64748B),
+                      ),
+                      _buildLegendTag(
+                        label: task.running ? 'running' : 'idle',
+                        backgroundColor: task.running
+                            ? const Color(0xFFE8F7EE)
+                            : const Color(0xFFFFF7ED),
+                        foregroundColor: task.running
+                            ? const Color(0xFF17803D)
+                            : const Color(0xFFC2410C),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Switch.adaptive(
+              value: task.enabled,
+              onChanged: _isAutoStartBusy
+                  ? null
+                  : (value) => _toggleAutoStartTask(task, value),
+              activeTrackColor: const Color(0xFF93C5FD),
+              activeThumbColor: const Color(0xFF2563EB),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                task.command,
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.6,
+                ),
+              ),
+              if (workingDirectory != null && workingDirectory.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '工作目录：$workingDirectory',
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: _isAutoStartBusy
+                  ? null
+                  : () => _runAutoStartTask(task),
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: Text(task.running ? '已在运行' : '立即启动'),
+            ),
+            TextButton.icon(
+              onPressed: _isAutoStartBusy
+                  ? null
+                  : () => _openAutoStartTaskDialog(task: task),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('编辑'),
+            ),
+            TextButton.icon(
+              onPressed: _isAutoStartBusy
+                  ? null
+                  : () => _deleteAutoStartTask(task),
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              label: const Text('删除'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -534,6 +917,140 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
           child,
         ],
       ),
+    );
+  }
+}
+
+class _AutoStartTaskFormResult {
+  const _AutoStartTaskFormResult({
+    required this.name,
+    required this.command,
+    required this.workingDirectory,
+    required this.enabled,
+  });
+
+  final String name;
+  final String command;
+  final String? workingDirectory;
+  final bool enabled;
+}
+
+class _AutoStartTaskDialog extends StatefulWidget {
+  const _AutoStartTaskDialog({this.task});
+
+  final EmbeddedTerminalAutoStartTask? task;
+
+  @override
+  State<_AutoStartTaskDialog> createState() => _AutoStartTaskDialogState();
+}
+
+class _AutoStartTaskDialogState extends State<_AutoStartTaskDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _commandController;
+  late final TextEditingController _workingDirectoryController;
+  late bool _enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.task?.name ?? '');
+    _commandController = TextEditingController(
+      text: widget.task?.command ?? '',
+    );
+    _workingDirectoryController = TextEditingController(
+      text: widget.task?.workingDirectory ?? '/workspace',
+    );
+    _enabled = widget.task?.enabled ?? true;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _commandController.dispose();
+    _workingDirectoryController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _nameController.text.trim();
+    final command = _commandController.text.trim();
+    final workingDirectory = _workingDirectoryController.text.trim();
+    if (name.isEmpty) {
+      showToast('请输入任务名称', type: ToastType.error);
+      return;
+    }
+    if (command.isEmpty) {
+      showToast('请输入启动命令', type: ToastType.error);
+      return;
+    }
+    Navigator.of(context).pop(
+      _AutoStartTaskFormResult(
+        name: name,
+        command: command,
+        workingDirectory: workingDirectory.isEmpty ? null : workingDirectory,
+        enabled: _enabled,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editing = widget.task != null;
+    return AlertDialog(
+      title: Text(editing ? '编辑自启动任务' : '新增自启动任务'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _nameController,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: '任务名称',
+                hintText: '例如：本地 API 服务',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _commandController,
+              minLines: 3,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: '启动命令',
+                hintText: '例如：python app.py 或 pnpm start',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _workingDirectoryController,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: '工作目录',
+                hintText: '/workspace',
+              ),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: _enabled,
+              onChanged: (value) {
+                setState(() {
+                  _enabled = value;
+                });
+              },
+              title: const Text('打开 Omnibot 时自动启动'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(onPressed: _submit, child: Text(editing ? '保存' : '创建')),
+      ],
     );
   }
 }
