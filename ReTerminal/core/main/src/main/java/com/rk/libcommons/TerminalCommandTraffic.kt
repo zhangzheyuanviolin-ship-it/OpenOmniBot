@@ -1,6 +1,11 @@
 package com.rk.libcommons
 
 var pendingCommand: TerminalCommand? = null
+const val OMNIBOT_SETUP_SESSION_ID = "setup"
+
+fun isOmnibotSetupSessionId(sessionId: String?): Boolean {
+    return sessionId?.trim() == OMNIBOT_SETUP_SESSION_ID
+}
 
 data class TerminalCommand(
     val alpine: Boolean = true,

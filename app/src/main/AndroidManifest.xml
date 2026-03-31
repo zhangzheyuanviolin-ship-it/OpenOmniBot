@@ -205,7 +205,7 @@
         <!-- FileProvider用于APK安装 -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="cn.com.omnimind.bot.fileprovider"
+            android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

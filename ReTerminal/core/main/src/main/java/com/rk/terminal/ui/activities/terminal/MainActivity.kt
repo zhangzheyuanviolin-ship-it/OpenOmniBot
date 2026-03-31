@@ -32,6 +32,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.rk.terminal.service.SessionService
+import com.rk.libcommons.OMNIBOT_SETUP_SESSION_ID
 import com.rk.terminal.ui.navHosts.MainActivityNavHost
 import com.rk.terminal.ui.routes.MainActivityRoutes
 import com.rk.terminal.ui.screens.terminal.TerminalScreen
@@ -105,6 +106,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        if (isFinishing && !isChangingConfigurations) {
+            cleanupSetupSessionIfNeeded()
+        }
         super.onStop()
         if (isBound) {
             unbindService(serviceConnection)
@@ -169,6 +173,16 @@ class MainActivity : ComponentActivity() {
                 val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.showSoftInput(it, InputMethodManager.SHOW_IMPLICIT)
             }
+        }
+    }
+
+    private fun cleanupSetupSessionIfNeeded() {
+        val binder = sessionBinder ?: return
+        if (binder.getSession(OMNIBOT_SETUP_SESSION_ID) == null) {
+            return
+        }
+        runCatching {
+            binder.terminateSession(OMNIBOT_SETUP_SESSION_ID)
         }
     }
 }

@@ -86,6 +86,7 @@ import com.rk.libcommons.child
 import com.rk.libcommons.dpToPx
 import com.rk.libcommons.localDir
 import com.rk.libcommons.pendingCommand
+import com.rk.libcommons.isOmnibotSetupSessionId
 import com.rk.settings.Settings
 import com.rk.terminal.ui.activities.terminal.MainActivity
 import com.rk.terminal.ui.routes.MainActivityRoutes
@@ -451,17 +452,34 @@ fun TerminalScreen(
                                             )
                                             val client = TerminalBackEnd(this, mainActivityActivity)
 
-                                            val session = if (pendingCommand != null) {
-                                                mainActivityActivity.sessionBinder!!.getService().currentSession.value = Pair(
-                                                    pendingCommand!!.id, pendingCommand!!.workingMode)
-                                                mainActivityActivity.sessionBinder!!.getSession(
-                                                    pendingCommand!!.id
-                                                )
-                                                    ?: mainActivityActivity.sessionBinder!!.createSession(
-                                                        pendingCommand!!.id,
-                                                        mainActivityActivity,
-                                                        workingMode = pendingCommand!!.workingMode
+                                            val launchCommand = pendingCommand
+                                            if (pendingCommand === launchCommand) {
+                                                pendingCommand = null
+                                            }
+                                            val session = if (launchCommand != null) {
+                                                if (
+                                                    launchCommand.terminatePreviousSession &&
+                                                    isOmnibotSetupSessionId(launchCommand.id)
+                                                ) {
+                                                    mainActivityActivity.sessionBinder!!.terminateSession(
+                                                        launchCommand.id
                                                     )
+                                                }
+                                                mainActivityActivity.sessionBinder!!.getService().currentSession.value = Pair(
+                                                    launchCommand.id,
+                                                    launchCommand.workingMode
+                                                )
+                                                val resolvedSession =
+                                                    mainActivityActivity.sessionBinder!!.getSession(
+                                                        launchCommand.id
+                                                    )
+                                                        ?: mainActivityActivity.sessionBinder!!.createSession(
+                                                            launchCommand.id,
+                                                            mainActivityActivity,
+                                                            workingMode = launchCommand.workingMode,
+                                                            launchCommand = launchCommand
+                                                        )
+                                                resolvedSession
                                             } else {
                                                 mainActivityActivity.sessionBinder!!.getSession(
                                                     mainActivityActivity.sessionBinder!!.getService().currentSession.value.first

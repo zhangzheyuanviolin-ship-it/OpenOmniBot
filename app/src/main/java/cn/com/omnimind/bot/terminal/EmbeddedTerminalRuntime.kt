@@ -6,12 +6,11 @@ import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.termux.TermuxCommandBuilder
 import cn.com.omnimind.bot.termux.TermuxLiveUpdate
 import com.ai.assistance.operit.terminal.TerminalManager
-import com.ai.assistance.operit.terminal.data.TerminalSessionData
 import com.ai.assistance.operit.terminal.provider.type.HiddenExecResult
+import com.rk.terminal.App
+import com.termux.terminal.TerminalSession
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -86,10 +85,19 @@ object EmbeddedTerminalRuntime {
         val commandRunning: Boolean
     )
 
+    data class BackgroundServiceLaunchResult(
+        val sessionId: String,
+        val started: Boolean,
+        val alreadyRunning: Boolean,
+        val currentDirectory: String,
+        val transcript: String,
+        val message: String
+    )
+
     private data class SessionHandle(
         val externalSessionId: String,
-        val terminalSessionId: String,
-        val mutex: Mutex = Mutex()
+        val mutex: Mutex = Mutex(),
+        @Volatile var activeCommandToken: String? = null
     )
 
     private data class BasePackageProbeResult(
@@ -113,6 +121,7 @@ object EmbeddedTerminalRuntime {
     private const val BASE_PACKAGE_PNPM_VERSION_MARKER = "__OMNIBOT_PNPM_VERSION__"
     private const val NODE_MIN_MAJOR = 22
     private val terminalEnvKeyPattern = Regex("^[A-Za-z_][A-Za-z0-9_]*$")
+    private const val SESSION_HELPER_SCRIPT_NAME = "omnibot-session-lib.sh"
 
     private val sessionHandles = ConcurrentHashMap<String, SessionHandle>()
     private val packageInstallMutex = Mutex()
@@ -138,6 +147,7 @@ object EmbeddedTerminalRuntime {
         Regex("""^Warning: CPU doesn't support 32-bit instructions, some software may not work\.$"""),
         Regex("""^proot warning: can't sanitize binding "/proc/self/fd/\d+": No such file or directory$""")
     )
+    private val shellPromptRegex = Regex("""^[^\r\n]*[#$] ?$""")
 
     private val basePackageBootstrapCommand = """
         export PATH="${'$'}HOME/.local/bin:${'$'}PATH"
@@ -579,57 +589,59 @@ object EmbeddedTerminalRuntime {
 
     suspend fun startSession(
         context: Context,
-        requestedSessionId: String,
+        requestedSessionId: String? = null,
+        sessionTitle: String? = null,
         workingDirectory: String?,
         environment: Map<String, String> = emptyMap()
     ): SessionStartResult {
         val status = ensureCommandEnvironmentReady(context)
         require(status.success) { status.message }
 
-        val manager = terminalManager(context)
-        val existingHandle = sessionHandles[requestedSessionId]
-        val activeHandle = existingHandle?.takeIf { getTerminalSession(context, it) != null }
-        val createdNewSession: Boolean
+        val sessionAccess = ReTerminalSessionBridge.ensureHeadlessSession(
+            context = context,
+            sessionId = requestedSessionId,
+            sessionTitle = sessionTitle
+        )
+        val actualSessionId = sessionAccess.sessionId
+        val handle = sessionHandles.computeIfAbsent(actualSessionId) {
+            SessionHandle(externalSessionId = actualSessionId)
+        }
+        if (sessionAccess.created) {
+            handle.activeCommandToken = null
+        }
 
-        if (activeHandle != null) {
-            createdNewSession = false
-        } else {
-            if (existingHandle != null) {
-                sessionHandles.remove(requestedSessionId, existingHandle)
-                runCatching {
-                    manager.closeSession(existingHandle.terminalSessionId)
+        try {
+            val targetWorkingDirectory = workingDirectory?.trim().takeUnless { it.isNullOrBlank() }
+                ?: AgentWorkspaceManager.SHELL_ROOT_PATH
+            if (sessionAccess.created) {
+                val cwdResult = executeSessionCommand(
+                    context = context,
+                    sessionId = actualSessionId,
+                    command = "cd ${TermuxCommandBuilder.quoteForShell(targetWorkingDirectory)}",
+                    workingDirectory = null,
+                    timeoutSeconds = 30,
+                    environment = environment
+                )
+                require(cwdResult.completed && cwdResult.success) {
+                    cwdResult.errorMessage ?: "无法切换到工作目录：$targetWorkingDirectory"
                 }
             }
-            val created = manager.createNewSession(requestedSessionId)
-            sessionHandles[requestedSessionId] = SessionHandle(
-                externalSessionId = requestedSessionId,
-                terminalSessionId = created.id
-            )
-            createdNewSession = true
-        }
 
-        val targetWorkingDirectory = workingDirectory?.trim().takeUnless { it.isNullOrBlank() }
-            ?: AgentWorkspaceManager.SHELL_ROOT_PATH
-        if (createdNewSession) {
-            val cwdResult = executeSessionCommand(
-                context = context,
-                sessionId = requestedSessionId,
-                command = "cd ${TermuxCommandBuilder.quoteForShell(targetWorkingDirectory)}",
-                workingDirectory = null,
-                timeoutSeconds = 30,
-                environment = environment
+            val snapshot = readSession(context, actualSessionId)
+            return SessionStartResult(
+                sessionId = actualSessionId,
+                currentDirectory = snapshot.currentDirectory,
+                transcript = snapshot.transcript
             )
-            require(cwdResult.completed && cwdResult.success) {
-                cwdResult.errorMessage ?: "无法切换到工作目录：$targetWorkingDirectory"
+        } catch (error: Throwable) {
+            if (sessionAccess.created) {
+                sessionHandles.remove(actualSessionId)
+                runCatching {
+                    ReTerminalSessionBridge.stopSession(context, actualSessionId)
+                }
             }
+            throw error
         }
-
-        val snapshot = readSession(context, requestedSessionId)
-        return SessionStartResult(
-            sessionId = requestedSessionId,
-            currentDirectory = snapshot.currentDirectory,
-            transcript = snapshot.transcript
-        )
     }
 
     suspend fun executeSessionCommand(
@@ -716,7 +728,7 @@ object EmbeddedTerminalRuntime {
                 commandRunning = false
             )
 
-        val session = getTerminalSession(context, handle) ?: run {
+        val session = ReTerminalSessionBridge.getSession(context, sessionId) ?: run {
             sessionHandles.remove(sessionId)
             return SessionReadResult(
                 sessionId = sessionId,
@@ -725,19 +737,103 @@ object EmbeddedTerminalRuntime {
                 commandRunning = false
             )
         }
+        val rawTranscript = session.getTranscriptText().trim('\n')
+        val activeToken = handle.activeCommandToken
+        val commandRunning = if (activeToken.isNullOrBlank()) {
+            false
+        } else {
+            val parsed = parsePersistentCommandOutput(rawTranscript, activeToken)
+            if (parsed.exitCode != null) {
+                handle.activeCommandToken = null
+                false
+            } else {
+                session.isRunning
+            }
+        }
 
         return SessionReadResult(
             sessionId = sessionId,
-            transcript = buildTranscript(session),
-            currentDirectory = normalizeCurrentDirectory(session.currentDirectory),
-            commandRunning = session.currentExecutingCommand?.isExecuting == true
+            transcript = buildTranscript(rawTranscript),
+            currentDirectory = normalizeCurrentDirectory(session.getCwd().orEmpty()),
+            commandRunning = commandRunning
         )
     }
 
-    fun stopSession(context: Context, sessionId: String): Boolean {
-        val handle = sessionHandles.remove(sessionId) ?: return false
-        terminalManager(context).closeSession(handle.terminalSessionId)
-        return true
+    suspend fun stopSession(context: Context, sessionId: String): Boolean {
+        sessionHandles.remove(sessionId)
+        return runCatching {
+            ReTerminalSessionBridge.stopSession(context, sessionId)
+        }.getOrDefault(false)
+    }
+
+    suspend fun hasSession(context: Context, sessionId: String): Boolean {
+        val normalizedSessionId = sessionId.trim()
+        if (normalizedSessionId.isEmpty()) {
+            return false
+        }
+        return ReTerminalSessionBridge.getSession(context, normalizedSessionId) != null
+    }
+
+    suspend fun launchBackgroundServiceSession(
+        context: Context,
+        sessionId: String,
+        command: String,
+        workingDirectory: String?,
+        environment: Map<String, String> = emptyMap()
+    ): BackgroundServiceLaunchResult {
+        val status = ensureCommandEnvironmentReady(context)
+        if (!status.success) {
+            return BackgroundServiceLaunchResult(
+                sessionId = sessionId,
+                started = false,
+                alreadyRunning = false,
+                currentDirectory = DEFAULT_CURRENT_DIRECTORY,
+                transcript = "",
+                message = status.message
+            )
+        }
+
+        val existingSession = ReTerminalSessionBridge.getSession(context, sessionId)
+        if (existingSession?.isRunning == true) {
+            return BackgroundServiceLaunchResult(
+                sessionId = sessionId,
+                started = false,
+                alreadyRunning = true,
+                currentDirectory = normalizeCurrentDirectory(existingSession.getCwd().orEmpty()),
+                transcript = buildTranscript(existingSession.getTranscriptText().trim('\n')),
+                message = "后台服务已在运行。"
+            )
+        }
+
+        if (existingSession != null) {
+            runCatching { ReTerminalSessionBridge.stopSession(context, sessionId) }
+        }
+
+        sessionHandles.remove(sessionId)
+        ReTerminalSessionBridge.ensureHeadlessSession(
+            context = context,
+            sessionId = sessionId
+        )
+        ReTerminalSessionBridge.sendCommand(
+            context = context,
+            sessionId = sessionId,
+            command = buildServiceSessionCommand(
+                context = context,
+                command = command,
+                workingDirectory = workingDirectory,
+                environment = environment
+            )
+        )
+        delay(150)
+        val session = ReTerminalSessionBridge.getSession(context, sessionId)
+        return BackgroundServiceLaunchResult(
+            sessionId = sessionId,
+            started = true,
+            alreadyRunning = false,
+            currentDirectory = normalizeCurrentDirectory(session?.getCwd().orEmpty()),
+            transcript = buildTranscript(session?.getTranscriptText()?.trim('\n').orEmpty()),
+            message = "后台服务启动命令已发送。"
+        )
     }
 
     private suspend fun sendSessionCommandAndAwait(
@@ -746,30 +842,49 @@ object EmbeddedTerminalRuntime {
         command: String,
         timeoutSeconds: Int,
         environment: Map<String, String> = emptyMap()
-    ): SessionCommandResult = coroutineScope {
-        val manager = terminalManager(context)
-        val commandId = UUID.randomUUID().toString()
+    ): SessionCommandResult {
         val token = UUID.randomUUID().toString()
-        val awaited = async {
-            withTimeoutOrNull(timeoutSeconds * 1000L) {
-                manager.commandExecutionEvents.first { event ->
-                    event.sessionId == handle.terminalSessionId &&
-                        event.commandId == commandId &&
-                        event.isCompleted
-                }
-            }
+        val sessionAccess = ReTerminalSessionBridge.ensureHeadlessSession(
+            context = context,
+            sessionId = handle.externalSessionId
+        )
+        if (sessionAccess.created) {
+            handle.activeCommandToken = null
         }
-
-        manager.sendCommandToSession(
-            sessionId = handle.terminalSessionId,
-            command = wrapPersistentSessionCommand(command, token, environment),
-            commandId = commandId
+        val transcriptStart = sessionAccess.session.getTranscriptText().length
+        handle.activeCommandToken = token
+        ReTerminalSessionBridge.sendCommand(
+            context = context,
+            sessionId = handle.externalSessionId,
+            command = buildPersistentSessionCommand(
+                context = context,
+                command = command,
+                token = token,
+                environment = environment
+            )
         )
 
-        val completion = awaited.await()
+        var completionTranscript: String? = null
+        withTimeoutOrNull(timeoutSeconds * 1000L) {
+            while (completionTranscript == null) {
+                val currentTranscript = ReTerminalSessionBridge.getSession(
+                    context = context,
+                    sessionId = handle.externalSessionId
+                )?.getTranscriptText().orEmpty()
+                val parsed = parsePersistentCommandOutput(
+                    rawOutput = currentTranscript.safeSubstring(transcriptStart),
+                    token = token
+                )
+                if (parsed.exitCode != null) {
+                    completionTranscript = currentTranscript
+                    continue
+                }
+                delay(150)
+            }
+        }
         val snapshot = readSession(context, handle.externalSessionId)
-        if (completion == null) {
-            return@coroutineScope SessionCommandResult(
+        if (completionTranscript == null) {
+            return SessionCommandResult(
                 sessionId = handle.externalSessionId,
                 completed = false,
                 success = false,
@@ -781,9 +896,18 @@ object EmbeddedTerminalRuntime {
             )
         }
 
-        val parsed = parsePersistentCommandOutput(completion.outputChunk, token)
+        val completionOutput = if (completionTranscript.length <= transcriptStart) {
+            ""
+        } else {
+            completionTranscript.substring(transcriptStart)
+        }
+        val parsed = parsePersistentCommandOutput(
+            rawOutput = completionOutput,
+            token = token
+        )
+        handle.activeCommandToken = null
         val cleanedOutput = trimTerminalOutput(sanitizeTerminalNoise(parsed.output))
-        SessionCommandResult(
+        return SessionCommandResult(
             sessionId = handle.externalSessionId,
             completed = true,
             success = parsed.exitCode == 0,
@@ -818,44 +942,67 @@ object EmbeddedTerminalRuntime {
         }
     }
 
-    private fun wrapPersistentSessionCommand(
+    private suspend fun buildPersistentSessionCommand(
+        context: Context,
         command: String,
         token: String,
         environment: Map<String, String>
-    ): String {
-        val normalizedCommand = command.replace("\r\n", "\n").replace("\r", "\n")
+    ): String = withContext(Dispatchers.IO) {
+        val normalizedCommand = command.replace("\r\n", "\n").replace("\r", "\n").trimEnd()
         val tokenSuffix = token.replace("-", "")
-        val heredocMarker = "__OMNIBOT_SESSION_${tokenSuffix}__"
-        val environmentExports = buildCommandEnvironmentExports(environment)
-        return buildString {
-            append("__omnibot_session_script=\"\${TMPDIR:-/tmp}/omni_session_")
-            append(tokenSuffix)
-            append(".sh\"\n")
-            append("cat >\"\$__omnibot_session_script\" <<'")
-            append(heredocMarker)
-            append("'\n")
-            append(buildPythonEnvironmentPrelude())
-            append("\n")
-            append("__omni_prepare_python_env 0 || return $?\n")
-            if (environmentExports.isNotBlank()) {
-                append(environmentExports)
-                append('\n')
+        val sessionScript = writeSessionTempScript(
+            context = context,
+            fileName = "omni_session_$tokenSuffix.sh",
+            content = buildString {
+                appendLine(". ${TermuxCommandBuilder.quoteForShell(ensureSessionHelperScript(context).absolutePath)} || return $?")
+                appendLine("__omni_prepare_python_env 0 || return $?")
+                val environmentExports = buildCommandEnvironmentExports(environment)
+                if (environmentExports.isNotBlank()) {
+                    appendLine(environmentExports)
+                }
+                append(normalizedCommand)
+                if (!normalizedCommand.endsWith("\n")) {
+                    append('\n')
+                }
             }
-            append(normalizedCommand)
-            if (!normalizedCommand.endsWith("\n")) {
-                append('\n')
+        )
+        val quotedScriptPath = TermuxCommandBuilder.quoteForShell(sessionScript.absolutePath)
+        ". $quotedScriptPath; __omnibot_session_rc=$?; rm -f $quotedScriptPath; printf '\\n$SESSION_DONE_PREFIX:$token:%s\\n' \"\$__omnibot_session_rc\""
+    }
+
+    private suspend fun buildServiceSessionCommand(
+        context: Context,
+        command: String,
+        workingDirectory: String?,
+        environment: Map<String, String>
+    ): String = withContext(Dispatchers.IO) {
+        val normalizedCommand = command.replace("\r\n", "\n").replace("\r", "\n").trim()
+        require(normalizedCommand.isNotEmpty()) { "command 不能为空" }
+        val scriptId = UUID.randomUUID().toString().replace("-", "")
+        val normalizedWorkingDirectory = workingDirectory?.trim().orEmpty()
+        val serviceScript = writeSessionTempScript(
+            context = context,
+            fileName = "omni_service_$scriptId.sh",
+            content = buildString {
+                appendLine("trap 'rm -f \"\$0\"' EXIT")
+                appendLine(". ${TermuxCommandBuilder.quoteForShell(ensureSessionHelperScript(context).absolutePath)} || exit $?")
+                if (normalizedWorkingDirectory.isNotBlank()) {
+                    append("cd ")
+                    append(TermuxCommandBuilder.quoteForShell(normalizedWorkingDirectory))
+                    appendLine(" || exit $?")
+                }
+                appendLine("__omni_prepare_python_env 0 || exit $?")
+                val environmentExports = buildCommandEnvironmentExports(environment)
+                if (environmentExports.isNotBlank()) {
+                    appendLine(environmentExports)
+                }
+                append(normalizedCommand)
+                if (!normalizedCommand.endsWith("\n")) {
+                    append('\n')
+                }
             }
-            append(heredocMarker)
-            append("\n")
-            append(". \"\$__omnibot_session_script\"\n")
-            append("__omnibot_session_rc=\$?\n")
-            append("rm -f \"\$__omnibot_session_script\"\n")
-            append("printf '\\n")
-            append(SESSION_DONE_PREFIX)
-            append(":")
-            append(token)
-            append(":%s\\n' \"\$__omnibot_session_rc\"\n")
-        }
+        )
+        "exec /bin/sh ${TermuxCommandBuilder.quoteForShell(serviceScript.absolutePath)}"
     }
 
     internal fun buildCommandEnvironmentExports(environment: Map<String, String>): String {
@@ -875,6 +1022,32 @@ object EmbeddedTerminalRuntime {
                 append('\n')
             }
         }.trimEnd()
+    }
+
+    private fun ensureSessionHelperScript(context: Context): File {
+        val scriptFile = File(context.filesDir.parentFile, "local/bin/$SESSION_HELPER_SCRIPT_NAME")
+        scriptFile.parentFile?.mkdirs()
+        val content = buildPythonEnvironmentPrelude().trimEnd() + "\n"
+        if (!scriptFile.exists() || scriptFile.readText() != content) {
+            scriptFile.writeText(content)
+        }
+        scriptFile.setReadable(true, false)
+        scriptFile.setExecutable(false, false)
+        return scriptFile
+    }
+
+    private fun writeSessionTempScript(
+        context: Context,
+        fileName: String,
+        content: String
+    ): File {
+        val directory = App.getTempDir().resolve("agent-session-scripts").apply { mkdirs() }
+        return directory.resolve(fileName).apply {
+            parentFile?.mkdirs()
+            writeText(content)
+            setReadable(true, false)
+            setExecutable(true, false)
+        }
     }
 
     internal fun buildPythonEnvironmentPrelude(): String = """
@@ -1115,11 +1288,19 @@ object EmbeddedTerminalRuntime {
         rawOutput: String,
         token: String
     ): ParsedSessionCommandOutput {
-        val regex = Regex("""(?:^|\n)${Regex.escape(SESSION_DONE_PREFIX)}:${Regex.escape(token)}:(-?\d+)\s*$""")
+        val regex = Regex("""(?:^|\n)${Regex.escape(SESSION_DONE_PREFIX)}:${Regex.escape(token)}:(-?\d+)(?=\r?\n|$)""")
         val match = regex.find(rawOutput)
         val exitCode = match?.groupValues?.getOrNull(1)?.toIntOrNull()
         val cleaned = if (match != null) {
-            rawOutput.removeRange(match.range).trim('\n', '\r')
+            val beforeMarker = rawOutput.substring(0, match.range.first).trimEnd('\n', '\r')
+            val afterMarker = rawOutput
+                .substring(match.range.last + 1)
+                .trimStart('\n', '\r')
+                .removeLeadingPromptLine()
+            listOf(beforeMarker, afterMarker)
+                .filter { it.isNotBlank() }
+                .joinToString("\n")
+                .trim('\n', '\r')
         } else {
             rawOutput.trim('\n', '\r')
         }
@@ -1142,18 +1323,9 @@ object EmbeddedTerminalRuntime {
         return TerminalManager.getInstance(context.applicationContext)
     }
 
-    private fun getTerminalSession(
-        context: Context,
-        handle: SessionHandle
-    ): TerminalSessionData? {
-        return terminalManager(context).terminalState.value.sessions.find { session ->
-            session.id == handle.terminalSessionId
-        }
-    }
-
-    private fun buildTranscript(session: TerminalSessionData): String {
+    private fun buildTranscript(sessionTranscript: String): String {
         return trimTerminalOutput(
-            sanitizeTerminalNoise(session.transcript.trim('\n'))
+            sanitizeTerminalNoise(sessionTranscript)
         )
     }
 
@@ -1398,4 +1570,22 @@ object EmbeddedTerminalRuntime {
         val output: String,
         val exitCode: Int?
     )
+
+    private fun String.safeSubstring(startIndex: Int): String {
+        if (startIndex <= 0) return this
+        if (startIndex >= length) return ""
+        return substring(startIndex)
+    }
+
+    private fun String.removeLeadingPromptLine(): String {
+        if (isBlank()) {
+            return trim('\n', '\r')
+        }
+        val firstLine = lineSequence().firstOrNull()?.trimEnd().orEmpty()
+        if (!shellPromptRegex.matches(firstLine)) {
+            return trim('\n', '\r')
+        }
+        val dropped = lines().drop(1).joinToString("\n")
+        return dropped.trim('\n', '\r')
+    }
 }
