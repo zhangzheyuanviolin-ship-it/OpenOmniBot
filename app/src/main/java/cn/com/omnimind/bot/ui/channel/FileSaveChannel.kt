@@ -25,7 +25,6 @@ class FileSaveChannel {
         private const val TAG = "FileSaveChannel"
         private const val CHANNEL = "cn.com.omnimind.bot/file_save"
         private const val REQUEST_CODE_CREATE_DOCUMENT = 39121
-        private const val FILE_PROVIDER_AUTHORITY = "cn.com.omnimind.bot.fileprovider"
         private const val SHARED_EXPORT_DIR = "shared_exports"
         private const val MAX_SHARED_EXPORT_FILES = 24
         private const val SHARED_EXPORT_RETENTION_MS = 2L * 24L * 60L * 60L * 1000L
@@ -92,6 +91,10 @@ class FileSaveChannel {
                     input.copyTo(output)
                 }
             } ?: error("Cannot open output stream for target uri")
+        }
+
+        private fun fileProviderAuthority(context: Context): String {
+            return "${context.packageName}.fileprovider"
         }
     }
 
@@ -339,10 +342,10 @@ class FileSaveChannel {
 
     private fun buildShareableContentUri(context: Context, sourceFile: File): Uri {
         return try {
-            FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, sourceFile)
+            FileProvider.getUriForFile(context, fileProviderAuthority(context), sourceFile)
         } catch (_: IllegalArgumentException) {
             val stagedFile = stageFileInCache(context, sourceFile)
-            FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, stagedFile)
+            FileProvider.getUriForFile(context, fileProviderAuthority(context), stagedFile)
         }
     }
 
