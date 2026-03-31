@@ -223,7 +223,8 @@ OpenOmniBot/
 ```
 
 ## 其他
-感谢 linux.do 等社区的开发者的支持
+感谢 linux.do 等社区的开发者的支持；
+感谢优秀的开源项目：https://github.com/RohitKushvaha01/ReTerminal
 
 <table align="center">
   <tr>
