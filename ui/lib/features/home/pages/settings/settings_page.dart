@@ -418,6 +418,14 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           _SettingItem(
+            icon: Icons.wallpaper_outlined,
+            title: '背景设置',
+            subtitle: '为聊天页和 Workspace 页面设置共享背景图',
+            onTap: () {
+              GoRouterManager.push('/home/background_setting');
+            },
+          ),
+          _SettingItem(
             icon: Icons.vibration,
             iconSvg: 'assets/home/vibration_icon.svg',
             title: '振动反馈',

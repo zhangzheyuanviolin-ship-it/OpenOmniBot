@@ -17,6 +17,7 @@ import cn.com.omnimind.bot.termux.TermuxCommandSpec
 import cn.com.omnimind.bot.termux.TermuxCommandBuilder
 import cn.com.omnimind.bot.termux.TermuxCommandRunner
 import cn.com.omnimind.bot.util.AssistsUtil
+import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -847,9 +848,14 @@ class AgentToolRouter(
         val toolName = "file_read"
         return try {
             requireWorkspaceStorageAccess(callback)?.let { return it }
+            requirePublicStorageAccessIfNeeded(
+                callback,
+                args["path"]?.jsonPrimitive?.contentOrNull
+            )?.let { return it }
             val file = workspaceManager.resolvePath(
                 inputPath = args["path"]?.jsonPrimitive?.content?.trim().orEmpty(),
-                workspace = workspace
+                workspace = workspace,
+                allowPublicStorage = true
             )
             require(file.exists()) { "文件不存在：${file.absolutePath}" }
             require(file.isFile) { "目标不是文件：${file.absolutePath}" }
@@ -908,10 +914,15 @@ class AgentToolRouter(
         val toolName = "file_write"
         return try {
             requireWorkspaceStorageAccess(callback)?.let { return it }
+            requirePublicStorageAccessIfNeeded(
+                callback,
+                args["path"]?.jsonPrimitive?.contentOrNull
+            )?.let { return it }
             reportToolProgress(callback, toolName, "正在写入文件")
             val file = workspaceManager.resolvePath(
                 inputPath = args["path"]?.jsonPrimitive?.content?.trim().orEmpty(),
-                workspace = workspace
+                workspace = workspace,
+                allowPublicStorage = true
             )
             val content = args["content"]?.jsonPrimitive?.content ?: throw IllegalArgumentException("缺少 content")
             val append = args["append"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
@@ -954,10 +965,15 @@ class AgentToolRouter(
         val toolName = "file_edit"
         return try {
             requireWorkspaceStorageAccess(callback)?.let { return it }
+            requirePublicStorageAccessIfNeeded(
+                callback,
+                args["path"]?.jsonPrimitive?.contentOrNull
+            )?.let { return it }
             reportToolProgress(callback, toolName, "正在编辑文件")
             val file = workspaceManager.resolvePath(
                 inputPath = args["path"]?.jsonPrimitive?.content?.trim().orEmpty(),
-                workspace = workspace
+                workspace = workspace,
+                allowPublicStorage = true
             )
             require(file.exists() && file.isFile) { "目标文件不存在：${file.absolutePath}" }
             val oldText = args["oldText"]?.jsonPrimitive?.content ?: throw IllegalArgumentException("缺少 oldText")
@@ -1004,10 +1020,11 @@ class AgentToolRouter(
         return try {
             requireWorkspaceStorageAccess(callback)?.let { return it }
             val pathArg = args["path"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            requirePublicStorageAccessIfNeeded(callback, pathArg)?.let { return it }
             val directory = if (pathArg.isBlank()) {
                 File(workspace.androidRootPath)
             } else {
-                workspaceManager.resolvePath(pathArg, workspace)
+                workspaceManager.resolvePath(pathArg, workspace, allowPublicStorage = true)
             }
             require(directory.exists() && directory.isDirectory) { "目录不存在：${directory.absolutePath}" }
             val recursive = args["recursive"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
@@ -1040,15 +1057,10 @@ class AgentToolRouter(
                 success = true,
                 workspaceId = workspace.id,
                 actions = listOf(
-                    ArtifactAction(
-                        type = "workspace",
-                        label = "打开工作区",
-                        target = workspace.uriRoot,
-                        payload = mapOf(
-                            "workspaceId" to workspace.id,
-                            "workspacePath" to directory.absolutePath,
-                            "workspaceShellPath" to (workspaceManager.shellPathForAndroid(directory) ?: workspace.rootPath)
-                        )
+                    buildOpenDirectoryAction(
+                        workspace = workspace,
+                        directory = directory,
+                        label = "打开目录"
                     )
                 )
             )
@@ -1071,7 +1083,12 @@ class AgentToolRouter(
             val query = args["query"]?.jsonPrimitive?.content?.trim().orEmpty()
             require(query.isNotEmpty()) { "缺少 query" }
             val pathArg = args["path"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-            val directory = if (pathArg.isBlank()) File(workspace.androidRootPath) else workspaceManager.resolvePath(pathArg, workspace)
+            requirePublicStorageAccessIfNeeded(callback, pathArg)?.let { return it }
+            val directory = if (pathArg.isBlank()) {
+                File(workspace.androidRootPath)
+            } else {
+                workspaceManager.resolvePath(pathArg, workspace, allowPublicStorage = true)
+            }
             require(directory.exists() && directory.isDirectory) { "目录不存在：${directory.absolutePath}" }
             val caseSensitive = args["caseSensitive"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
             val maxResults = args["maxResults"]?.jsonPrimitive?.intOrNull?.coerceIn(1, 200) ?: DEFAULT_FILE_SEARCH_LIMIT
@@ -1140,10 +1157,15 @@ class AgentToolRouter(
         val toolName = "file_stat"
         return try {
             requireWorkspaceStorageAccess(callback)?.let { return it }
+            requirePublicStorageAccessIfNeeded(
+                callback,
+                args["path"]?.jsonPrimitive?.contentOrNull
+            )?.let { return it }
             val file = workspaceManager.resolvePath(
                 args["path"]?.jsonPrimitive?.content?.trim().orEmpty(),
                 workspace,
-                allowRootDirectories = true
+                allowRootDirectories = true,
+                allowPublicStorage = true
             )
             require(file.exists()) { "路径不存在：${file.absolutePath}" }
             val artifact = file.takeIf { it.isFile }?.let { workspaceManager.buildArtifactForFile(it, toolName) }
@@ -1166,7 +1188,12 @@ class AgentToolRouter(
                 rawResultJson = json.encodeToString(mapToJsonElement(payload)),
                 success = true,
                 artifacts = artifact?.let { listOf(it) } ?: emptyList(),
-                workspaceId = workspace.id
+                workspaceId = workspace.id,
+                actions = if (file.isDirectory) {
+                    listOf(buildOpenDirectoryAction(workspace, file))
+                } else {
+                    emptyList()
+                }
             )
         } catch (e: CancellationException) {
             throw e
@@ -1184,14 +1211,21 @@ class AgentToolRouter(
         val toolName = "file_move"
         return try {
             requireWorkspaceStorageAccess(callback)?.let { return it }
+            requirePublicStorageAccessIfNeeded(
+                callback,
+                args["sourcePath"]?.jsonPrimitive?.contentOrNull,
+                args["targetPath"]?.jsonPrimitive?.contentOrNull
+            )?.let { return it }
             reportToolProgress(callback, toolName, "正在移动文件")
             val source = workspaceManager.resolvePath(
                 args["sourcePath"]?.jsonPrimitive?.content?.trim().orEmpty(),
-                workspace
+                workspace,
+                allowPublicStorage = true
             )
             val target = workspaceManager.resolvePath(
                 args["targetPath"]?.jsonPrimitive?.content?.trim().orEmpty(),
-                workspace
+                workspace,
+                allowPublicStorage = true
             )
             require(source.exists()) { "源文件不存在：${source.absolutePath}" }
             val overwrite = args["overwrite"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
@@ -2568,6 +2602,38 @@ class AgentToolRouter(
         val missing = WorkspaceStorageAccess.requiredPermissionNames()
         callback.onPermissionRequired(missing)
         return ToolExecutionResult.PermissionRequired(missing)
+    }
+
+    private suspend fun requirePublicStorageAccessIfNeeded(
+        callback: AgentCallback,
+        vararg inputPaths: String?
+    ): ToolExecutionResult.PermissionRequired? {
+        val needsPublicStorage = inputPaths.any { PublicStorageAccess.isPublicStorageInput(it) }
+        if (!needsPublicStorage || PublicStorageAccess.isGranted()) {
+            return null
+        }
+        val missing = PublicStorageAccess.requiredPermissionNames()
+        callback.onPermissionRequired(missing)
+        return ToolExecutionResult.PermissionRequired(missing)
+    }
+
+    private fun buildOpenDirectoryAction(
+        workspace: AgentWorkspaceDescriptor,
+        directory: File,
+        label: String = "打开目录"
+    ): ArtifactAction {
+        val target = workspaceManager.uriForFile(directory) ?: directory.absolutePath
+        return ArtifactAction(
+            type = "workspace",
+            label = label,
+            target = target,
+            payload = mapOf(
+                "workspaceId" to workspace.id,
+                "workspacePath" to directory.absolutePath,
+                "workspaceShellPath" to (workspaceManager.shellPathForAndroid(directory)
+                    ?: directory.absolutePath)
+            )
+        )
     }
 
     private suspend fun workspacePermissionResult(

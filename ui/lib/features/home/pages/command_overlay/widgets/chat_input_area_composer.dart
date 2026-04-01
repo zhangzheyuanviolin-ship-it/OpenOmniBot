@@ -275,6 +275,7 @@ mixin _ChatInputAreaComposerMixin
 
   Widget _buildLargeComposerShell(ThemeData theme) {
     final content = RepaintBoundary(child: _buildLargeComposer(theme));
+    final useFrostedGlass = widget.useFrostedGlass;
     return MouseRegion(
       onEnter: (_) {
         if (_isComposerHovered) return;
@@ -289,6 +290,9 @@ mixin _ChatInputAreaComposerMixin
         child: content,
         builder: (context, focused, child) {
           const inputSurfaceColor = Color(0xFFF9FCFF);
+          final shellSurfaceColor = useFrostedGlass
+              ? Colors.white.withValues(alpha: 0.76)
+              : inputSurfaceColor;
           final hovered = _isComposerHovered;
           const minShellHeight = 72.0;
           const shellRadius = 20.0;
@@ -325,29 +329,35 @@ mixin _ChatInputAreaComposerMixin
                   padding: EdgeInsets.all(borderInset),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(innerRadius),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      padding: contentPadding,
-                      decoration: BoxDecoration(
-                        color: inputSurfaceColor,
-                        borderRadius: BorderRadius.circular(innerRadius),
-                        border: Border.all(
-                          color: Colors.white.withValues(
-                            alpha: focused
-                                ? 0.32
-                                : hovered
-                                ? 0.2
-                                : 0.1,
-                          ),
-                          width: 1,
-                        ),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: useFrostedGlass ? 8 : 0,
+                        sigmaY: useFrostedGlass ? 8 : 0,
                       ),
-                      child: AnimatedSize(
+                      child: AnimatedContainer(
                         duration: const Duration(milliseconds: 220),
                         curve: Curves.easeOutCubic,
-                        alignment: Alignment.topCenter,
-                        child: child ?? const SizedBox.shrink(),
+                        padding: contentPadding,
+                        decoration: BoxDecoration(
+                          color: shellSurfaceColor,
+                          borderRadius: BorderRadius.circular(innerRadius),
+                          border: Border.all(
+                            color: Colors.white.withValues(
+                              alpha: focused
+                                  ? 0.32
+                                  : hovered
+                                  ? 0.2
+                                  : 0.1,
+                            ),
+                            width: 1,
+                          ),
+                        ),
+                        child: AnimatedSize(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          alignment: Alignment.topCenter,
+                          child: child ?? const SizedBox.shrink(),
+                        ),
                       ),
                     ),
                   ),
@@ -803,4 +813,3 @@ class _ComposerFlowBorderPainter extends CustomPainter {
         oldDelegate.strokeWidth != strokeWidth;
   }
 }
-

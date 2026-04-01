@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/app_background_widgets.dart';
 
 enum _WorkspaceEntryAction { edit, rename, delete }
 
@@ -22,6 +23,7 @@ class OmnibotWorkspaceBrowser extends StatefulWidget {
   final String workspacePath;
   final String? workspaceShellPath;
   final bool enableSystemBackHandler;
+  final bool translucentSurfaces;
   final ValueChanged<bool>? onCanGoUpChanged;
 
   const OmnibotWorkspaceBrowser({
@@ -29,6 +31,7 @@ class OmnibotWorkspaceBrowser extends StatefulWidget {
     required this.workspacePath,
     this.workspaceShellPath,
     this.enableSystemBackHandler = true,
+    this.translucentSurfaces = false,
     this.onCanGoUpChanged,
   });
 
@@ -73,6 +76,19 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   final Map<String, List<FileSystemEntity>> _directoryChildrenCache =
       <String, List<FileSystemEntity>>{};
   String? _dragHoverTargetPath;
+
+  Color _surfaceColor({double opacity = 0.8}) {
+    return backgroundSurfaceColor(
+      translucent: widget.translucentSurfaces,
+      opacity: opacity,
+    );
+  }
+
+  Color _secondarySurfaceColor({double opacity = 0.64}) {
+    return widget.translucentSurfaces
+        ? Colors.white.withValues(alpha: opacity)
+        : const Color(0xFFF7F8FA);
+  }
 
   @override
   void initState() {
@@ -375,7 +391,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         constraints: const BoxConstraints(maxWidth: 220),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _surfaceColor(opacity: 0.9),
             borderRadius: BorderRadius.circular(8),
             boxShadow: [AppColors.boxShadow],
           ),
@@ -547,7 +563,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     final editable = _canEditEntry(entry);
     final action = await showModalBottomSheet<_WorkspaceEntryAction>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: _surfaceColor(opacity: 0.92),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -593,7 +609,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    tileColor: const Color(0xFFF7F8FA),
+                    tileColor: _secondarySurfaceColor(),
                     leading: const Icon(
                       Icons.edit_outlined,
                       color: AppColors.text,
@@ -616,7 +632,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  tileColor: const Color(0xFFF7F8FA),
+                  tileColor: _secondarySurfaceColor(),
                   leading: const Icon(
                     Icons.drive_file_rename_outline_rounded,
                     color: AppColors.text,
@@ -638,7 +654,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  tileColor: const Color(0xFFF7F8FA),
+                  tileColor: _secondarySurfaceColor(),
                   leading: const Icon(
                     Icons.delete_outline_rounded,
                     color: Color(0xFFE53935),
@@ -660,7 +676,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  tileColor: const Color(0xFFF7F8FA),
+                  tileColor: _secondarySurfaceColor(),
                   leading: const Icon(
                     Icons.close_rounded,
                     color: AppColors.text,
@@ -906,7 +922,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _surfaceColor(),
           borderRadius: const BorderRadius.all(Radius.circular(4)),
           boxShadow: [AppColors.boxShadow],
         ),
@@ -945,7 +961,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   }) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surfaceColor(),
         borderRadius: borderRadius,
         boxShadow: [AppColors.boxShadow],
       ),

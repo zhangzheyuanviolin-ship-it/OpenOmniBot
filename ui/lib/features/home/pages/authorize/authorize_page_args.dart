@@ -2,6 +2,7 @@ const String kOverlayPermissionId = 'overlay';
 const String kAccessibilityPermissionId = 'accessibility';
 const String kInstalledAppsPermissionId = 'installed_apps';
 const String kWorkspaceStoragePermissionId = 'workspace_storage';
+const String kPublicStoragePermissionId = 'public_storage';
 
 const List<String> kTaskExecutionRequiredPermissionIds = <String>[
   kOverlayPermissionId,

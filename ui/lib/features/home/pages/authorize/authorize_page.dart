@@ -63,7 +63,7 @@ class _AuthorizePageState extends State<AuthorizePage>
         specs,
         context: context,
       );
-      _appendWorkspaceStoragePermissionIfNeeded(loadedPermissions);
+      _appendSpecialPermissionsIfNeeded(loadedPermissions);
 
       await PermissionService.checkPermissions(loadedPermissions);
       if (!mounted) return;
@@ -83,7 +83,7 @@ class _AuthorizePageState extends State<AuthorizePage>
         specs,
         context: context,
       );
-      _appendWorkspaceStoragePermissionIfNeeded(fallbackPermissions);
+      _appendSpecialPermissionsIfNeeded(fallbackPermissions);
 
       await PermissionService.checkPermissions(fallbackPermissions);
       if (!mounted) return;
@@ -113,32 +113,22 @@ class _AuthorizePageState extends State<AuthorizePage>
     );
   }
 
-  void _appendWorkspaceStoragePermissionIfNeeded(
+  void _appendSpecialPermissionsIfNeeded(
     List<PermissionData> permissions,
   ) {
-    if (!_requiredPermissionIds.contains(kWorkspaceStoragePermissionId)) {
-      return;
+    for (final requiredId in _requiredPermissionIds) {
+      final exists = permissions.any((item) => item.id == requiredId);
+      if (exists) {
+        continue;
+      }
+      final special = PermissionService.buildSpecialPermissionData(
+        requiredId,
+        context: context,
+      );
+      if (special != null) {
+        permissions.add(special);
+      }
     }
-    final exists = permissions.any(
-      (item) => item.id == kWorkspaceStoragePermissionId,
-    );
-    if (exists) {
-      return;
-    }
-    permissions.add(
-      PermissionData(
-        id: kWorkspaceStoragePermissionId,
-        iconPath: 'assets/welcome/permission_installed_apps.svg',
-        iconWidth: 32,
-        iconHeight: 32,
-        name: '内置 workspace',
-        description: 'Omnibot 会在应用内部维护 `/workspace`，通常无需再单独授予公共存储权限',
-        onAuthorize: () async {
-          await openWorkspaceStorageSettings();
-        },
-        checkAuthorization: isWorkspaceStorageAccessGranted,
-      ),
-    );
   }
 
   String? _requiredPermissionHint() {

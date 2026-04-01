@@ -371,7 +371,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
               gradient: const LinearGradient(
                 begin: Alignment(-0.17, -0.47),
                 end: Alignment(1.48, 1.69),
-                colors: [Color(0xFF0E7A5F), Color(0xB223B2A1)],
+                colors: [Color(0xFF0056FA), Color(0xB2609CF7)],
               ),
               onTap: () {
                 GoRouterManager.push('/home/skill_store');

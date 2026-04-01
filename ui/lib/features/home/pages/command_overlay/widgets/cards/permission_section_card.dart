@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
 import 'package:ui/features/home/pages/authorize/widgets/permission_section.dart';
+import 'package:ui/services/permission_service.dart';
 import 'package:ui/theme/app_colors.dart';
 
 class PermissionSectionCard extends StatefulWidget {
@@ -23,26 +24,14 @@ class _PermissionSectionCardState extends State<PermissionSectionCard> {
   @override
   void initState() {
     super.initState();
+    final requiredPermissionIds = normalizeRequiredPermissionIds(
+      widget.cardData['requiredPermissionIds'] as List?,
+    );
     _backgroundPermissions = [
-      PermissionData(
-        id: kOverlayPermissionId,
-        iconPath: 'assets/welcome/permission_overlay.svg',
-        iconWidth: 32,
-        iconHeight: 32,
-        name: '悬浮窗权限',
-        description: '桌面悬浮显示，快速唤起小万',
-        onAuthorize: () async {},
-        checkAuthorization: () async => false,
-      ),
-      PermissionData(
-        id: kAccessibilityPermissionId,
-        iconPath: 'assets/welcome/permission_accessibility.svg',
-        iconWidth: 30,
-        iconHeight: 30,
-        name: '无障碍辅助权限',
-        description: '持久化自动操作，轻松完成复杂任务',
-        onAuthorize: () async {},
-        checkAuthorization: () async => false,
+      ...PermissionService.buildDisplayPermissionsForIds(
+        requiredPermissionIds.isEmpty
+            ? kTaskExecutionRequiredPermissionIds
+            : requiredPermissionIds,
       ),
     ];
   }

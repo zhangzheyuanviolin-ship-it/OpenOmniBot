@@ -40,6 +40,28 @@ void main() {
     },
   );
 
+  test('resolveUri maps omnibot public uri to storage path and shell path', () {
+    final metadata = OmnibotResourceService.resolveUri(
+      'omnibot://public/DCIM/Camera/demo.jpg',
+    );
+
+    expect(metadata, isNotNull);
+    expect(metadata!.path, '/storage/DCIM/Camera/demo.jpg');
+    expect(metadata.shellPath, '/storage/DCIM/Camera/demo.jpg');
+    expect(
+      OmnibotResourceService.resolveUriToPath(
+        'omnibot://public/Music/demo.mp3',
+      ),
+      '/storage/Music/demo.mp3',
+    );
+    expect(
+      OmnibotResourceService.resolveUriToShellPath(
+        'omnibot://public/Music/demo.mp3',
+      ),
+      '/storage/Music/demo.mp3',
+    );
+  });
+
   test('describePath derives inline rendering hints from file extension', () {
     final audio = OmnibotResourceService.describePath(
       '/data/user/0/cn.com.omnimind.bot/workspace/audio/demo.mp3',

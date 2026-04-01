@@ -25,6 +25,7 @@ import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/widgets/permission_bottom_sheet.dart';
 import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/app_update_service.dart';
+import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/agent_browser_session_service.dart';
 import 'package:ui/services/chat_terminal_environment_service.dart';
 import 'package:ui/services/conversation_model_override_service.dart';
@@ -57,6 +58,7 @@ import 'widgets/chat_widgets.dart';
 import 'widgets/chat_browser_overlay.dart';
 import 'widgets/chat_tool_activity_strip.dart';
 import 'package:ui/widgets/app_update_dialog.dart';
+import 'package:ui/widgets/app_background_widgets.dart';
 
 part 'chat_page_browser.dart';
 part 'chat_page_lifecycle.dart';

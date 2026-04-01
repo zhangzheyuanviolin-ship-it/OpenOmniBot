@@ -61,6 +61,7 @@ import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
+import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
 import cn.com.omnimind.uikit.UIKit
 import cn.com.omnimind.uikit.loader.ScreenMaskLoader
@@ -635,7 +636,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "无障碍权限" to "accessibility",
             "悬浮窗权限" to "overlay",
             "应用列表读取权限" to "installed_apps",
-            WorkspaceStorageAccess.REQUIRED_PERMISSION_NAME to "workspace_storage"
+            WorkspaceStorageAccess.REQUIRED_PERMISSION_NAME to "workspace_storage",
+            PublicStorageAccess.REQUIRED_PERMISSION_NAME to "public_storage"
         )
         return missing.mapNotNull { raw ->
             nameToId[raw.trim()]

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/scheduled_task_scheduler_service.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/theme/app_theme.dart';
@@ -48,6 +49,7 @@ void main(List<String> args) async {
 
   final container = ProviderContainer();
   await StorageService.init();
+  await AppBackgroundService.load();
   await ScheduledTaskSchedulerService.initialize();
   await OmnibotResourceService.ensureWorkspacePathsLoaded();
 
@@ -89,6 +91,7 @@ void subEngineMain(List<String> args) async {
 
   final container = ProviderContainer();
   await StorageService.init();
+  await AppBackgroundService.load();
   await ScheduledTaskSchedulerService.initialize();
   await OmnibotResourceService.ensureWorkspacePathsLoaded();
 

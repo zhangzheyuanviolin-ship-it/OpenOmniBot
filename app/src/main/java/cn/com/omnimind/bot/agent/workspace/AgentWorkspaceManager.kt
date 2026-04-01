@@ -2,6 +2,7 @@ package cn.com.omnimind.bot.agent
 
 import android.content.Context
 import android.net.Uri
+import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import java.io.File
 import java.nio.charset.Charset
 import java.security.MessageDigest
@@ -15,6 +16,7 @@ class AgentWorkspaceManager(
     companion object {
         const val SHELL_ROOT_PATH = "/workspace"
         const val URI_SCHEME = "omnibot"
+        const val PUBLIC_STORAGE_ROOT_PATH = PublicStorageAccess.PUBLIC_STORAGE_ROOT_PATH
 
         const val LEGACY_EXTERNAL_ROOT_PATH = "/storage/emulated/0/workspace"
 
@@ -23,6 +25,8 @@ class AgentWorkspaceManager(
         private const val WORKSPACE_MIGRATION_MARKER = ".workspace_migrated_v1"
         private const val DIR_ATTACHMENTS = "attachments"
         private const val DIR_WORKSPACE = "workspace"
+        private const val DIR_PUBLIC = "public"
+        private const val PUBLIC_URI_PREFIX = "$URI_SCHEME://$DIR_PUBLIC"
         private const val DIR_SHARED = "shared"
         private const val DIR_OFFLOADS = "offloads"
         private const val DIR_BROWSER = "browser"
@@ -59,6 +63,51 @@ class AgentWorkspaceManager(
                 "internalRootPath" to internalRootPath(context)
             )
         }
+
+        fun isPublicStoragePath(path: String): Boolean {
+            val trimmed = path.trim()
+            return trimmed == PUBLIC_STORAGE_ROOT_PATH ||
+                trimmed.startsWith("$PUBLIC_STORAGE_ROOT_PATH/")
+        }
+
+        fun isPublicUri(uriText: String): Boolean {
+            val trimmed = uriText.trim()
+            return trimmed == PUBLIC_URI_PREFIX || trimmed.startsWith("$PUBLIC_URI_PREFIX/")
+        }
+
+        fun publicUriForStoragePath(path: String): String? {
+            val trimmed = path.trim()
+            if (!isPublicStoragePath(trimmed)) {
+                return null
+            }
+            val relativeSegments = trimmed
+                .removePrefix(PUBLIC_STORAGE_ROOT_PATH)
+                .trimStart('/')
+                .split('/')
+                .filter { it.isNotBlank() }
+            return if (relativeSegments.isEmpty()) {
+                PUBLIC_URI_PREFIX
+            } else {
+                "$PUBLIC_URI_PREFIX/${relativeSegments.joinToString("/")}"
+            }
+        }
+
+        fun storagePathForPublicUri(uriText: String): String? {
+            if (!isPublicUri(uriText)) {
+                return null
+            }
+            val segments = uriText
+                .trim()
+                .removePrefix(PUBLIC_URI_PREFIX)
+                .trimStart('/')
+                .split('/')
+                .filter { it.isNotBlank() && it != ".." }
+            return if (segments.isEmpty()) {
+                PUBLIC_STORAGE_ROOT_PATH
+            } else {
+                "$PUBLIC_STORAGE_ROOT_PATH/${segments.joinToString("/")}"
+            }
+        }
     }
 
     private val rootDir = rootDirectory(context)
@@ -77,6 +126,7 @@ class AgentWorkspaceManager(
     private val memoryIndexDir = File(memoryDir, DIR_MEMORY_INDEX)
     private val migrationMarker = File(internalDir, WORKSPACE_MIGRATION_MARKER)
     private val legacyRootDir = File(LEGACY_EXTERNAL_ROOT_PATH)
+    private val publicStorageRootDir = File(PUBLIC_STORAGE_ROOT_PATH)
 
     fun ensureRuntimeDirectories() {
         migrateLegacyWorkspaceIfNeeded()
@@ -330,7 +380,7 @@ class AgentWorkspaceManager(
     ): ArtifactRef {
         ensureRuntimeDirectories()
         val canonical = file.canonicalFile
-        require(isWithinRoot(canonical)) { "File must stay inside omnibot root" }
+        require(isWithinArtifactRoots(canonical)) { "File must stay inside supported roots" }
         if (canonical.parentFile?.exists() != true) {
             canonical.parentFile?.mkdirs()
         }
@@ -353,7 +403,8 @@ class AgentWorkspaceManager(
     fun resolvePath(
         inputPath: String,
         workspace: AgentWorkspaceDescriptor,
-        allowRootDirectories: Boolean = false
+        allowRootDirectories: Boolean = false,
+        allowPublicStorage: Boolean = false
     ): File {
         ensureRuntimeDirectories()
         val trimmed = inputPath.trim()
@@ -369,7 +420,9 @@ class AgentWorkspaceManager(
             else -> File(workspace.androidCurrentCwd, trimmed)
         }.canonicalFile
 
-        val allowed = if (allowRootDirectories) {
+        val allowed = if (allowPublicStorage && isWithinPublicStorage(resolved)) {
+            true
+        } else if (allowRootDirectories) {
             isWithinRoot(resolved)
         } else {
             isWithinWritableRoots(resolved, workspace)
@@ -380,6 +433,9 @@ class AgentWorkspaceManager(
 
     fun shellPathForAndroid(file: File): String? {
         val canonical = file.canonicalFile
+        if (isWithinPublicStorage(canonical)) {
+            return canonical.absolutePath
+        }
         if (!isWithinRoot(canonical)) return null
         val relative = canonical.absolutePath.removePrefix(rootDir.canonicalPath).trimStart('/')
         return if (relative.isBlank()) {
@@ -391,6 +447,9 @@ class AgentWorkspaceManager(
 
     fun androidPathForShell(shellPath: String): File? {
         val trimmed = shellPath.trim()
+        if (isPublicStoragePath(trimmed)) {
+            return File(trimmed)
+        }
         if (!(trimmed == SHELL_ROOT_PATH || trimmed.startsWith("$SHELL_ROOT_PATH/"))) {
             return null
         }
@@ -405,11 +464,17 @@ class AgentWorkspaceManager(
     fun resolveShellPath(
         inputPath: String,
         workspace: AgentWorkspaceDescriptor,
-        allowRootDirectories: Boolean = false
+        allowRootDirectories: Boolean = false,
+        allowPublicStorage: Boolean = false
     ): String {
         val trimmed = inputPath.trim()
         require(trimmed.isNotEmpty()) { "path 不能为空" }
-        val androidFile = resolvePath(trimmed, workspace, allowRootDirectories)
+        val androidFile = resolvePath(
+            trimmed,
+            workspace,
+            allowRootDirectories = allowRootDirectories,
+            allowPublicStorage = allowPublicStorage
+        )
         return shellPathForAndroid(androidFile)
             ?: throw IllegalArgumentException("无法映射 shell 路径：$inputPath")
     }
@@ -418,6 +483,9 @@ class AgentWorkspaceManager(
         val uri = Uri.parse(uriText)
         require(uri.scheme == URI_SCHEME) { "Unsupported uri scheme: ${uri.scheme}" }
         val authority = uri.authority.orEmpty()
+        if (authority == DIR_PUBLIC) {
+            return File(storagePathForPublicUri(uriText) ?: PUBLIC_STORAGE_ROOT_PATH)
+        }
         val base = when (authority) {
             DIR_ATTACHMENTS -> attachmentsDir
             DIR_WORKSPACE -> rootDir
@@ -451,8 +519,16 @@ class AgentWorkspaceManager(
             isWithin(memoryDir.canonicalFile, file)
     }
 
+    private fun isWithinArtifactRoots(file: File): Boolean {
+        return isWithinRoot(file) || isWithinPublicStorage(file)
+    }
+
     private fun isWithinRoot(file: File): Boolean {
         return isWithin(rootDir.canonicalFile, file)
+    }
+
+    private fun isWithinPublicStorage(file: File): Boolean {
+        return isWithin(publicStorageRootDir.canonicalFile, file)
     }
 
     private fun isWithin(parent: File, file: File): Boolean {
@@ -587,6 +663,9 @@ class AgentWorkspaceManager(
 
     fun uriForFile(file: File): String? {
         val canonical = file.canonicalFile
+        if (isWithinPublicStorage(canonical)) {
+            return publicUriForStoragePath(canonical.absolutePath)
+        }
         if (!isWithinRoot(canonical)) return null
         return when {
             isWithin(attachmentsDir.canonicalFile, canonical) -> buildUriForBase(DIR_ATTACHMENTS, attachmentsDir, canonical)

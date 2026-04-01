@@ -17,6 +17,7 @@ import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalSetupManager
 import cn.com.omnimind.bot.termux.TermuxCommandRunner
 import cn.com.omnimind.bot.util.AssistsUtil
+import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -326,6 +327,19 @@ class SpecialPermissionManager(private val context: Context) {
         }
     }
 
+    fun isPublicStorageAccessGranted(result: MethodChannel.Result) {
+        try {
+            result.success(PublicStorageAccess.isGranted())
+        } catch (e: Exception) {
+            OmniLog.e(TAG, "Error checking public storage access", e)
+            result.error(
+                "CHECK_FAILED",
+                "Failed to check public storage access.",
+                e.message
+            )
+        }
+    }
+
     fun openWorkspaceStorageSettings(result: MethodChannel.Result) {
         try {
             val primaryIntent = WorkspaceStorageAccess.buildSettingsIntent(context)
@@ -340,6 +354,25 @@ class SpecialPermissionManager(private val context: Context) {
             result.error(
                 "INTENT_FAILED",
                 "无法打开公共 workspace 存储设置页，可能没有 Activity 能处理此 Intent。",
+                e.message
+            )
+        }
+    }
+
+    fun openPublicStorageSettings(result: MethodChannel.Result) {
+        try {
+            val primaryIntent = PublicStorageAccess.buildSettingsIntent(context.packageName)
+            runCatching {
+                context.startActivity(primaryIntent)
+            }.recoverCatching {
+                context.startActivity(PublicStorageAccess.buildFallbackSettingsIntent())
+            }.getOrThrow()
+            result.success(true)
+        } catch (e: Exception) {
+            OmniLog.e(TAG, "请求打开公共文件访问设置页时发生异常。", e)
+            result.error(
+                "INTENT_FAILED",
+                "无法打开公共文件访问设置页，可能没有 Activity 能处理此 Intent。",
                 e.message
             )
         }

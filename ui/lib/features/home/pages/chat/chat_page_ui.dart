@@ -383,6 +383,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           key: ValueKey('workspace_surface_$_workspaceSurfaceSeed'),
           workspacePath: paths.rootPath,
           workspaceShellPath: paths.shellRootPath,
+          translucentSurfaces: AppBackgroundService.current.isActive,
           onCanGoUpChanged: (canGoUp) {
             if (_workspaceBrowserCanGoUp == canGoUp || !mounted) return;
             setState(() {
@@ -415,272 +416,327 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         (_popupMenuBottomOffset() + inputBottomPadding + keyboardSpacer + 6)
             .toDouble();
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        if (_isWorkspaceSurface && _workspaceBrowserCanGoUp) {
-          return;
-        }
-        unawaited(saveConversationWithSummary());
-        if (GoRouterManager.canPop()) {
-          GoRouterManager.pop();
-          return;
-        }
-        unawaited(AppStateService.exitApp());
-      },
-      child: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: const Color(0xFFF9FCFF),
-        resizeToAvoidBottomInset: false,
-        drawer: HomeDrawer(
-          key: _drawerKey,
-          newConversationMode: _conversationModeForPageMode(_activeMode),
-        ),
-        onDrawerChanged: (isOpen) {
-          if (isOpen) {
-            _drawerKey.currentState?.reloadConversations();
-          } else {
-            checkAndHandleDeletedConversation();
-          }
-        },
-        body: SafeArea(
-          child: ClipRect(
-            child: Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (event) {
-                _handlePagePointerDown(event);
-                _interruptCompanionAutoHomeIfNeeded();
-                unawaited(_handleOutsideTap(event.position));
-              },
-              onPointerMove: _handlePagePointerMove,
-              onPointerUp: _handlePagePointerUp,
-              onPointerCancel: _handlePagePointerCancel,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final toolActivityCards = !_isWorkspaceSurface
-                      ? extractAgentToolCards(_messages)
-                      : const <Map<String, dynamic>>[];
-                  final newConversationPullIndicatorTopOffset =
-                      _resolveNewConversationPullIndicatorTop(
-                        layoutContext: context,
-                        constraints: constraints,
-                        inputBottomPadding: inputBottomPadding,
-                        keyboardSpacer: keyboardSpacer,
-                      );
-                  final toolActivityAnchor = toolActivityCards.isEmpty
-                      ? null
-                      : _resolveToolActivityAnchorGeometry(
-                          layoutContext: context,
-                          constraints: constraints,
-                          inputBottomPadding: inputBottomPadding,
-                          keyboardSpacer: keyboardSpacer,
-                          inputAreaHeight: _inputAreaHeight,
-                        );
-                  if (toolActivityCards.isEmpty &&
-                      _toolActivityOccupiedHeight > 0) {
-                    _scheduleToolActivityInsetSync(0);
-                  }
-                  final showAppUpdateIndicator =
-                      !_isWorkspaceSurface &&
-                      AppUpdateService.shouldShowBanner(_appUpdateStatus);
-                  final appUpdateTooltip = _appUpdateStatus == null
-                      ? '发现新版本'
-                      : '发现新版本 ${_appUpdateStatus!.latestVersionLabel}';
-                  return Stack(
-                    clipBehavior: Clip.hardEdge,
-                    children: [
-                      Column(
-                        children: [
-                          ChatAppBar(
-                            onMenuTap: () =>
-                                _scaffoldKey.currentState?.openDrawer(),
-                            onCompanionTap: () {
-                              unawaited(_toggleCompanionMode());
-                            },
-                            activeMode: _activeSurfaceMode,
-                            onModeChanged: (value) {
-                              unawaited(_switchChatMode(value, syncPage: true));
-                            },
-                            activeModelId:
-                                _activeSurfaceMode == ChatSurfaceMode.normal
-                                ? _activeNormalChatModelId
-                                : null,
-                            onModelTap:
-                                _activeSurfaceMode == ChatSurfaceMode.normal
-                                ? (anchorContext) {
-                                    unawaited(
-                                      _openConversationModelSelector(
-                                        anchorContext,
-                                      ),
-                                    );
-                                  }
-                                : null,
-                            displayLayer:
-                                _activeSurfaceMode == ChatSurfaceMode.normal
-                                ? _chatIslandDisplayLayer
-                                : ChatIslandDisplayLayer.mode,
-                            onInteracted: _cancelNormalSurfaceModelReveal,
-                            onDisplayLayerChanged:
-                                _handleChatIslandDisplayLayerChanged,
-                            onTerminalEnvironmentTap: (anchorContext) {
-                              unawaited(
-                                _openTerminalEnvironmentEditor(anchorContext),
+    return ValueListenableBuilder<AppBackgroundConfig>(
+      valueListenable: AppBackgroundService.notifier,
+      builder: (context, backgroundConfig, _) {
+        final backgroundActive = backgroundConfig.isActive;
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
+            if (_isWorkspaceSurface && _workspaceBrowserCanGoUp) {
+              return;
+            }
+            unawaited(saveConversationWithSummary());
+            if (GoRouterManager.canPop()) {
+              GoRouterManager.pop();
+              return;
+            }
+            unawaited(AppStateService.exitApp());
+          },
+          child: Scaffold(
+            key: _scaffoldKey,
+            backgroundColor: Colors.transparent,
+            resizeToAvoidBottomInset: false,
+            drawer: HomeDrawer(
+              key: _drawerKey,
+              newConversationMode: _conversationModeForPageMode(_activeMode),
+            ),
+            onDrawerChanged: (isOpen) {
+              if (isOpen) {
+                _drawerKey.currentState?.reloadConversations();
+              } else {
+                checkAndHandleDeletedConversation();
+              }
+            },
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                Positioned.fill(
+                  child: AppBackgroundLayer(
+                    config: backgroundConfig,
+                    fallbackColor: const Color(0xFFF9FCFF),
+                    layerKey: const ValueKey('chat-page-background'),
+                  ),
+                ),
+                SafeArea(
+                  child: ClipRect(
+                    child: Listener(
+                      behavior: HitTestBehavior.translucent,
+                      onPointerDown: (event) {
+                        _handlePagePointerDown(event);
+                        _interruptCompanionAutoHomeIfNeeded();
+                        unawaited(_handleOutsideTap(event.position));
+                      },
+                      onPointerMove: _handlePagePointerMove,
+                      onPointerUp: _handlePagePointerUp,
+                      onPointerCancel: _handlePagePointerCancel,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final toolActivityCards = !_isWorkspaceSurface
+                              ? extractAgentToolCards(_messages)
+                              : const <Map<String, dynamic>>[];
+                          final newConversationPullIndicatorTopOffset =
+                              _resolveNewConversationPullIndicatorTop(
+                                layoutContext: context,
+                                constraints: constraints,
+                                inputBottomPadding: inputBottomPadding,
+                                keyboardSpacer: keyboardSpacer,
                               );
-                            },
-                            onTerminalTap: _handleTerminalToolTap,
-                            onBrowserTap: _handleBrowserToolTap,
-                            hasTerminalEnvironment:
-                                _terminalEnvironmentVariables.isNotEmpty,
-                            isBrowserEnabled: _isBrowserSessionAvailable,
-                            activeToolType: _lastAgentToolType,
-                            isCompanionModeEnabled: _isCompanionModeEnabled,
-                            isCompanionToggleLoading: _isCompanionToggleLoading,
-                            showAppUpdateIndicator: showAppUpdateIndicator,
-                            appUpdateTooltip: appUpdateTooltip,
-                            onAppUpdateTap: showAppUpdateIndicator
-                                ? () {
-                                    unawaited(_handleAppUpdateBannerTap());
-                                  }
-                                : null,
-                          ),
-                          if (_isCompanionModeEnabled &&
-                              _showCompanionCountdown)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Text(
-                                '$_companionCountdown秒后自动回到桌面',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF617390),
-                                  fontWeight: FontWeight.w500,
+                          final toolActivityAnchor = toolActivityCards.isEmpty
+                              ? null
+                              : _resolveToolActivityAnchorGeometry(
+                                  layoutContext: context,
+                                  constraints: constraints,
+                                  inputBottomPadding: inputBottomPadding,
+                                  keyboardSpacer: keyboardSpacer,
+                                  inputAreaHeight: _inputAreaHeight,
+                                );
+                          if (toolActivityCards.isEmpty &&
+                              _toolActivityOccupiedHeight > 0) {
+                            _scheduleToolActivityInsetSync(0);
+                          }
+                          final showAppUpdateIndicator =
+                              !_isWorkspaceSurface &&
+                              AppUpdateService.shouldShowBanner(
+                                _appUpdateStatus,
+                              );
+                          final appUpdateTooltip = _appUpdateStatus == null
+                              ? '发现新版本'
+                              : '发现新版本 ${_appUpdateStatus!.latestVersionLabel}';
+                          return Stack(
+                            clipBehavior: Clip.hardEdge,
+                            children: [
+                              Column(
+                                children: [
+                                  ChatAppBar(
+                                    onMenuTap: () =>
+                                        _scaffoldKey.currentState?.openDrawer(),
+                                    onCompanionTap: () {
+                                      unawaited(_toggleCompanionMode());
+                                    },
+                                    activeMode: _activeSurfaceMode,
+                                    onModeChanged: (value) {
+                                      unawaited(
+                                        _switchChatMode(value, syncPage: true),
+                                      );
+                                    },
+                                    activeModelId:
+                                        _activeSurfaceMode ==
+                                            ChatSurfaceMode.normal
+                                        ? _activeNormalChatModelId
+                                        : null,
+                                    onModelTap:
+                                        _activeSurfaceMode ==
+                                            ChatSurfaceMode.normal
+                                        ? (anchorContext) {
+                                            unawaited(
+                                              _openConversationModelSelector(
+                                                anchorContext,
+                                              ),
+                                            );
+                                          }
+                                        : null,
+                                    displayLayer:
+                                        _activeSurfaceMode ==
+                                            ChatSurfaceMode.normal
+                                        ? _chatIslandDisplayLayer
+                                        : ChatIslandDisplayLayer.mode,
+                                    onInteracted:
+                                        _cancelNormalSurfaceModelReveal,
+                                    onDisplayLayerChanged:
+                                        _handleChatIslandDisplayLayerChanged,
+                                    onTerminalEnvironmentTap: (anchorContext) {
+                                      unawaited(
+                                        _openTerminalEnvironmentEditor(
+                                          anchorContext,
+                                        ),
+                                      );
+                                    },
+                                    onTerminalTap: _handleTerminalToolTap,
+                                    onBrowserTap: _handleBrowserToolTap,
+                                    hasTerminalEnvironment:
+                                        _terminalEnvironmentVariables
+                                            .isNotEmpty,
+                                    isBrowserEnabled:
+                                        _isBrowserSessionAvailable,
+                                    activeToolType: _lastAgentToolType,
+                                    isCompanionModeEnabled:
+                                        _isCompanionModeEnabled,
+                                    isCompanionToggleLoading:
+                                        _isCompanionToggleLoading,
+                                    showAppUpdateIndicator:
+                                        showAppUpdateIndicator,
+                                    appUpdateTooltip: appUpdateTooltip,
+                                    onAppUpdateTap: showAppUpdateIndicator
+                                        ? () {
+                                            unawaited(
+                                              _handleAppUpdateBannerTap(),
+                                            );
+                                          }
+                                        : null,
+                                    translucent: backgroundActive,
+                                  ),
+                                  if (_isCompanionModeEnabled &&
+                                      _showCompanionCountdown)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 12,
+                                      ),
+                                      child: Text(
+                                        '$_companionCountdown秒后自动回到桌面',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFF617390),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: ClipRect(
+                                      child:
+                                          NotificationListener<
+                                            ScrollNotification
+                                          >(
+                                            onNotification:
+                                                _handleModePageScrollNotification,
+                                            child: PageView(
+                                              controller: _modePageController,
+                                              onPageChanged:
+                                                  _handleModePageChanged,
+                                              children: [
+                                                _buildWorkspaceSurfacePage(),
+                                                _buildModeMessagePage(
+                                                  ChatPageMode.normal,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                    ),
+                                  ),
+                                  if (!_isWorkspaceSurface &&
+                                      _vlmInfoQuestion != null)
+                                    VlmInfoPrompt(
+                                      question: _vlmInfoQuestion!,
+                                      controller: _vlmAnswerController,
+                                      isSubmitting: _isSubmittingVlmReply,
+                                      onSubmit: onSubmitVlmInfo,
+                                      onDismiss: dismissVlmInfo,
+                                    ),
+                                  if (_isInputAreaVisible &&
+                                      !_isWorkspaceSurface)
+                                    Container(
+                                      key: _inputAreaKey,
+                                      child: ChatInputWrapper(
+                                        inputAreaKey: _chatInputAreaKey,
+                                        controller: _messageController,
+                                        focusNode: _inputFocusNode,
+                                        isProcessing: _isAiResponding,
+                                        onSendMessage: _sendMessage,
+                                        onCancelTask: _onCancelTask,
+                                        onPopupVisibilityChanged:
+                                            _onPopupVisibilityChanged,
+                                        useLargeComposerStyle: true,
+                                        useAttachmentPickerForPlus: true,
+                                        onPickAttachment: _pickAttachments,
+                                        attachments: _pendingAttachments,
+                                        onRemoveAttachment:
+                                            _removePendingAttachment,
+                                        selectedModelOverrideId:
+                                            _activeMode ==
+                                                    ChatPageMode.normal &&
+                                                _showConversationModelMentionChip
+                                            ? _activeConversationModelOverrideSelection
+                                                  ?.modelId
+                                            : null,
+                                        contextUsageRatio:
+                                            _activeMode == ChatPageMode.normal
+                                            ? _currentConversation
+                                                  ?.contextUsageRatio
+                                            : null,
+                                        contextUsageTooltipMessage:
+                                            _activeMode == ChatPageMode.normal
+                                            ? _buildContextUsageTooltipMessage()
+                                            : null,
+                                        onLongPressContextUsageRing:
+                                            _activeMode == ChatPageMode.normal
+                                            ? _handleContextUsageRingLongPress
+                                            : null,
+                                        onInputHeightChanged:
+                                            _handleInputAreaHeightChanged,
+                                        onClearSelectedModelOverride:
+                                            _activeMode ==
+                                                    ChatPageMode.normal &&
+                                                _activeConversationModelOverrideSelection !=
+                                                    null
+                                            ? () {
+                                                unawaited(
+                                                  _clearConversationModelOverride(),
+                                                );
+                                              }
+                                            : null,
+                                        translucent: backgroundActive,
+                                      ),
+                                    ),
+                                  SizedBox(
+                                    height: inputBottomPadding + keyboardSpacer,
+                                  ),
+                                ],
+                              ),
+                              if (!_isWorkspaceSurface &&
+                                  _isInputAreaVisible &&
+                                  toolActivityCards.isNotEmpty)
+                                Positioned(
+                                  left: toolActivityAnchor?.rect.left ?? 24,
+                                  width:
+                                      toolActivityAnchor?.rect.width ??
+                                      math.max(0.0, constraints.maxWidth - 48),
+                                  bottom: toolActivityAnchor?.bottom ?? 0,
+                                  child: ChatToolActivityStrip(
+                                    messages: _messages,
+                                    anchorRect: toolActivityAnchor?.rect,
+                                    onOccupiedHeightChanged:
+                                        _scheduleToolActivityInsetSync,
+                                  ),
                                 ),
-                              ),
-                            ),
-                          Expanded(
-                            child: ClipRect(
-                              child: NotificationListener<ScrollNotification>(
-                                onNotification:
-                                    _handleModePageScrollNotification,
-                                child: PageView(
-                                  controller: _modePageController,
-                                  onPageChanged: _handleModePageChanged,
-                                  children: [
-                                    _buildWorkspaceSurfacePage(),
-                                    _buildModeMessagePage(ChatPageMode.normal),
-                                  ],
+                              if (!_isWorkspaceSurface)
+                                Positioned(
+                                  left: 24,
+                                  right: 24,
+                                  bottom: commandPanelBottomOffset,
+                                  child: _buildSlashCommandPanel(),
                                 ),
-                              ),
-                            ),
-                          ),
-                          if (!_isWorkspaceSurface && _vlmInfoQuestion != null)
-                            VlmInfoPrompt(
-                              question: _vlmInfoQuestion!,
-                              controller: _vlmAnswerController,
-                              isSubmitting: _isSubmittingVlmReply,
-                              onSubmit: onSubmitVlmInfo,
-                              onDismiss: dismissVlmInfo,
-                            ),
-                          if (_isInputAreaVisible && !_isWorkspaceSurface)
-                            Container(
-                              key: _inputAreaKey,
-                              child: ChatInputWrapper(
-                                inputAreaKey: _chatInputAreaKey,
-                                controller: _messageController,
-                                focusNode: _inputFocusNode,
-                                isProcessing: _isAiResponding,
-                                onSendMessage: _sendMessage,
-                                onCancelTask: _onCancelTask,
-                                onPopupVisibilityChanged:
-                                    _onPopupVisibilityChanged,
-                                useLargeComposerStyle: true,
-                                useAttachmentPickerForPlus: true,
-                                onPickAttachment: _pickAttachments,
-                                attachments: _pendingAttachments,
-                                onRemoveAttachment: _removePendingAttachment,
-                                selectedModelOverrideId:
-                                    _activeMode == ChatPageMode.normal &&
-                                        _showConversationModelMentionChip
-                                    ? _activeConversationModelOverrideSelection
-                                          ?.modelId
-                                    : null,
-                                contextUsageRatio:
-                                    _activeMode == ChatPageMode.normal
-                                    ? _currentConversation?.contextUsageRatio
-                                    : null,
-                                contextUsageTooltipMessage:
-                                    _activeMode == ChatPageMode.normal
-                                    ? _buildContextUsageTooltipMessage()
-                                    : null,
-                                onLongPressContextUsageRing:
-                                    _activeMode == ChatPageMode.normal
-                                    ? _handleContextUsageRingLongPress
-                                    : null,
-                                onInputHeightChanged:
-                                    _handleInputAreaHeightChanged,
-                                onClearSelectedModelOverride:
-                                    _activeMode == ChatPageMode.normal &&
-                                        _activeConversationModelOverrideSelection !=
-                                            null
-                                    ? () {
-                                        unawaited(
-                                          _clearConversationModelOverride(),
-                                        );
-                                      }
-                                    : null,
-                              ),
-                            ),
-                          SizedBox(height: inputBottomPadding + keyboardSpacer),
-                        ],
+                              if (!_isWorkspaceSurface &&
+                                  _showNewConversationPullIndicator)
+                                _buildNewConversationPullIndicator(
+                                  newConversationPullIndicatorTopOffset,
+                                ),
+                              if (!_isWorkspaceSurface && _isContextCompressing)
+                                Positioned.fill(
+                                  child: _buildContextCompressingHint(),
+                                ),
+                              if (_isPopupVisible && !_isWorkspaceSurface)
+                                Positioned(
+                                  right: 24,
+                                  bottom: _popupMenuBottomOffset(),
+                                  child:
+                                      _chatInputAreaKey.currentState
+                                          ?.buildPopupMenu() ??
+                                      const SizedBox.shrink(),
+                                ),
+                              _buildBrowserOverlay(constraints),
+                            ],
+                          );
+                        },
                       ),
-                      if (!_isWorkspaceSurface &&
-                          _isInputAreaVisible &&
-                          toolActivityCards.isNotEmpty)
-                        Positioned(
-                          left: toolActivityAnchor?.rect.left ?? 24,
-                          width:
-                              toolActivityAnchor?.rect.width ??
-                              math.max(0.0, constraints.maxWidth - 48),
-                          bottom: toolActivityAnchor?.bottom ?? 0,
-                          child: ChatToolActivityStrip(
-                            messages: _messages,
-                            anchorRect: toolActivityAnchor?.rect,
-                            onOccupiedHeightChanged:
-                                _scheduleToolActivityInsetSync,
-                          ),
-                        ),
-                      if (!_isWorkspaceSurface)
-                        Positioned(
-                          left: 24,
-                          right: 24,
-                          bottom: commandPanelBottomOffset,
-                          child: _buildSlashCommandPanel(),
-                        ),
-                      if (!_isWorkspaceSurface &&
-                          _showNewConversationPullIndicator)
-                        _buildNewConversationPullIndicator(
-                          newConversationPullIndicatorTopOffset,
-                        ),
-                      if (!_isWorkspaceSurface && _isContextCompressing)
-                        Positioned.fill(child: _buildContextCompressingHint()),
-                      if (_isPopupVisible && !_isWorkspaceSurface)
-                        Positioned(
-                          right: 24,
-                          bottom: _popupMenuBottomOffset(),
-                          child:
-                              _chatInputAreaKey.currentState
-                                  ?.buildPopupMenu() ??
-                              const SizedBox.shrink(),
-                        ),
-                      _buildBrowserOverlay(constraints),
-                    ],
-                  );
-                },
-              ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -699,7 +755,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
 
     final usedTokens = conversation.latestPromptTokens;
     final thresholdTokens = conversation.promptTokenThreshold;
-    final usageRatio = usedTokens / thresholdTokens;
     return '${_formatTokenCount(usedTokens)} / '
         '${_formatTokenCount(thresholdTokens)} tokens'
         '\n长按可调整阈值';
@@ -868,7 +923,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return;
     }
 
-    final copied = await AssistsMessageService.copyToClipboard(text);
+    await AssistsMessageService.copyToClipboard(text);
     if (!mounted) return;
 
     await _clearRetriedMessageRound(message);
@@ -894,17 +949,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       RegExp(r'\B(?=(\d{3})+(?!\d))'),
       (_) => ',',
     );
-  }
-
-  String _formatUsagePercent(double ratio) {
-    if (!ratio.isFinite) {
-      return '0%';
-    }
-    final percent = ratio * 100;
-    final rounded = percent >= 100 || percent % 1 == 0
-        ? percent.toStringAsFixed(0)
-        : percent.toStringAsFixed(1);
-    return '$rounded%';
   }
 }
 

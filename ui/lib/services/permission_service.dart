@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
 import 'package:ui/features/home/pages/authorize/widgets/permission_section.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/permission_registry.dart';
@@ -8,6 +9,25 @@ import 'package:ui/services/special_permission.dart';
 /// 提供统一的权限检查、状态管理和转换方法
 class PermissionService {
   PermissionService._();
+
+  static const Map<String, _PermissionDisplaySpec> _specialDisplaySpecs = {
+    kWorkspaceStoragePermissionId: _PermissionDisplaySpec(
+      id: kWorkspaceStoragePermissionId,
+      iconPath: 'assets/welcome/permission_installed_apps.svg',
+      iconWidth: 32,
+      iconHeight: 32,
+      name: '内置 workspace',
+      description: 'Omnibot 会在应用内部维护 `/workspace`，通常无需再单独授予公共存储权限',
+    ),
+    kPublicStoragePermissionId: _PermissionDisplaySpec(
+      id: kPublicStoragePermissionId,
+      iconPath: 'assets/welcome/permission_installed_apps.svg',
+      iconWidth: 32,
+      iconHeight: 32,
+      name: '公共文件访问',
+      description: '允许 agent 读取和操作安卓公共存储中的文件与文件夹',
+    ),
+  };
 
   /// 根据品牌加载权限规格列表
   static List<PermissionSpec> loadSpecs({required String brand}) {
@@ -173,6 +193,117 @@ class PermissionService {
     final missing = await getMissingByLevel(brand: brand, level: level);
     return missing.isEmpty;
   }
+
+  static PermissionData? buildSpecialPermissionData(
+    String id, {
+    required BuildContext context,
+  }) {
+    final spec = _specialDisplaySpecs[id];
+    if (spec == null) {
+      return null;
+    }
+    switch (id) {
+      case kWorkspaceStoragePermissionId:
+        return _buildDisplayPermissionData(
+          spec,
+          onAuthorize: openWorkspaceStorageSettings,
+          checkAuthorization: isWorkspaceStorageAccessGranted,
+        );
+      case kPublicStoragePermissionId:
+        return _buildDisplayPermissionData(
+          spec,
+          onAuthorize: openPublicStorageSettings,
+          checkAuthorization: isPublicStorageAccessGranted,
+        );
+    }
+    return null;
+  }
+
+  static List<PermissionData> buildDisplayPermissionsForIds(
+    Iterable<String> ids,
+  ) {
+    return ids
+        .map((id) {
+          final special = _specialDisplaySpecs[id];
+          if (special != null) {
+            return _buildDisplayPermissionData(
+              special,
+              onAuthorize: () async {},
+              checkAuthorization: () async => false,
+            );
+          }
+          return switch (id) {
+            kOverlayPermissionId => PermissionData(
+              id: kOverlayPermissionId,
+              iconPath: 'assets/welcome/permission_overlay.svg',
+              iconWidth: 32,
+              iconHeight: 32,
+              name: '悬浮窗权限',
+              description: '桌面悬浮显示，快速唤起小万',
+              onAuthorize: () async {},
+              checkAuthorization: () async => false,
+            ),
+            kAccessibilityPermissionId => PermissionData(
+              id: kAccessibilityPermissionId,
+              iconPath: 'assets/welcome/permission_accessibility.svg',
+              iconWidth: 30,
+              iconHeight: 30,
+              name: '无障碍辅助权限',
+              description: '持久化自动操作，轻松完成复杂任务',
+              onAuthorize: () async {},
+              checkAuthorization: () async => false,
+            ),
+            kInstalledAppsPermissionId => PermissionData(
+              id: kInstalledAppsPermissionId,
+              iconPath: 'assets/welcome/permission_installed_apps.svg',
+              iconWidth: 32,
+              iconHeight: 32,
+              name: '应用列表读取',
+              description: '支持跨应用自动操作',
+              onAuthorize: () async {},
+              checkAuthorization: () async => false,
+            ),
+            _ => null,
+          };
+        })
+        .whereType<PermissionData>()
+        .toList(growable: false);
+  }
+
+  static PermissionData _buildDisplayPermissionData(
+    _PermissionDisplaySpec spec, {
+    required Future<void> Function() onAuthorize,
+    required Future<bool> Function() checkAuthorization,
+  }) {
+    return PermissionData(
+      id: spec.id,
+      iconPath: spec.iconPath,
+      iconWidth: spec.iconWidth,
+      iconHeight: spec.iconHeight,
+      name: spec.name,
+      description: spec.description,
+      onAuthorize: onAuthorize,
+      checkAuthorization: checkAuthorization,
+    );
+  }
+}
+
+class _PermissionDisplaySpec {
+  final String id;
+  final String iconPath;
+  final double iconWidth;
+  final double iconHeight;
+  final String name;
+  final String description;
+
+  const _PermissionDisplaySpec({
+    required this.id,
+    required this.iconPath,
+    required this.iconWidth,
+    required this.iconHeight,
+    required this.name,
+    required this.description,
+  });
 }
 
 /// 快速检查缺失权限数量的辅助函数

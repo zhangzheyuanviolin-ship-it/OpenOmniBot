@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../../models/chat_message_model.dart';
+import '../../../../../widgets/app_background_widgets.dart';
 import '../chat_page_models.dart';
 import '../../command_overlay/widgets/message_bubble.dart';
 import '../../command_overlay/widgets/chat_input_area.dart';
@@ -48,6 +49,7 @@ class ChatAppBar extends StatelessWidget {
   final bool showAppUpdateIndicator;
   final VoidCallback? onAppUpdateTap;
   final String? appUpdateTooltip;
+  final bool translucent;
 
   const ChatAppBar({
     super.key,
@@ -71,6 +73,7 @@ class ChatAppBar extends StatelessWidget {
     this.showAppUpdateIndicator = false,
     this.onAppUpdateTap,
     this.appUpdateTooltip,
+    this.translucent = false,
   });
 
   @override
@@ -78,7 +81,9 @@ class ChatAppBar extends StatelessWidget {
     final iconTint = Colors.grey[800]!;
     const updateTint = Color(0xFFD4A017);
     return ColoredBox(
-      color: const Color(0xFFF9FCFF),
+      color: translucent
+          ? backgroundSurfaceColor(translucent: true, opacity: 0.48)
+          : const Color(0xFFF9FCFF),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: SizedBox(
@@ -119,6 +124,7 @@ class ChatAppBar extends StatelessWidget {
                     hasTerminalEnvironment: hasTerminalEnvironment,
                     isBrowserEnabled: isBrowserEnabled,
                     activeToolType: activeToolType,
+                    translucent: translucent,
                   ),
                 ),
               ),
@@ -205,6 +211,7 @@ class _ChatModeModelSwitcher extends StatefulWidget {
     required this.hasTerminalEnvironment,
     required this.isBrowserEnabled,
     this.activeToolType,
+    this.translucent = false,
   });
 
   final ChatSurfaceMode activeMode;
@@ -220,6 +227,7 @@ class _ChatModeModelSwitcher extends StatefulWidget {
   final bool hasTerminalEnvironment;
   final bool isBrowserEnabled;
   final String? activeToolType;
+  final bool translucent;
 
   @override
   State<_ChatModeModelSwitcher> createState() => _ChatModeModelSwitcherState();
@@ -419,7 +427,10 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: backgroundSurfaceColor(
+          translucent: widget.translucent,
+          opacity: 0.78,
+        ),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: const Color(0xFFD9E6FB), width: 1),
       ),
@@ -1072,6 +1083,7 @@ class ChatInputWrapper extends StatelessWidget {
   final String? contextUsageTooltipMessage;
   final VoidCallback? onLongPressContextUsageRing;
   final ValueChanged<double>? onInputHeightChanged;
+  final bool translucent;
 
   const ChatInputWrapper({
     super.key,
@@ -1097,6 +1109,7 @@ class ChatInputWrapper extends StatelessWidget {
     this.contextUsageTooltipMessage,
     this.onLongPressContextUsageRing,
     this.onInputHeightChanged,
+    this.translucent = false,
   });
 
   @override
@@ -1119,6 +1132,7 @@ class ChatInputWrapper extends StatelessWidget {
             openClawEnabled: openClawEnabled,
             onToggleOpenClaw: onToggleOpenClaw,
             onLongPressOpenClaw: onLongPressOpenClaw,
+            useFrostedGlass: translucent,
             useLargeComposerStyle: useLargeComposerStyle,
             useAttachmentPickerForPlus: useAttachmentPickerForPlus,
             onPickAttachment: onPickAttachment,

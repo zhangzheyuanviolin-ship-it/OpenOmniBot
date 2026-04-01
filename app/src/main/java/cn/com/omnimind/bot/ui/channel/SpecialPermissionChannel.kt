@@ -98,6 +98,10 @@ class SpecialPermissionChannel {
                         .isWorkspaceStorageAccessGranted(result)
                     "openWorkspaceStorageSettings" -> specialPermissionManager!!
                         .openWorkspaceStorageSettings(result)
+                    "isPublicStorageAccessGranted" -> specialPermissionManager!!
+                        .isPublicStorageAccessGranted(result)
+                    "openPublicStorageSettings" -> specialPermissionManager!!
+                        .openPublicStorageSettings(result)
                     "getWorkspacePathSnapshot" -> specialPermissionManager!!
                         .getWorkspacePathSnapshot(result)
                     "getEmbeddedTerminalRuntimeStatus" -> specialPermissionManager!!

@@ -610,6 +610,22 @@ Future<void> openWorkspaceStorageSettings() async {
   await spePermission.invokeMethod('openWorkspaceStorageSettings');
 }
 
+Future<bool> isPublicStorageAccessGranted() async {
+  try {
+    return await spePermission.invokeMethod<bool>(
+          'isPublicStorageAccessGranted',
+        ) ??
+        false;
+  } catch (e) {
+    debugPrint('检查公共文件访问权限失败: $e');
+    return false;
+  }
+}
+
+Future<void> openPublicStorageSettings() async {
+  await spePermission.invokeMethod('openPublicStorageSettings');
+}
+
 Future<Map<String, dynamic>> prepareTermuxLiveWrapper() async {
   final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
     'prepareTermuxLiveWrapper',
