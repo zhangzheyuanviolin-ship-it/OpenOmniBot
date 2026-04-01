@@ -9,6 +9,7 @@ import android.provider.Settings
 object PublicStorageAccess {
     const val REQUIRED_PERMISSION_NAME = "公共文件访问"
     const val PUBLIC_STORAGE_ROOT_PATH = "/storage"
+    private const val SDCARD_ROOT_PATH = "/sdcard"
     private const val PUBLIC_URI_PREFIX = "omnibot://public"
 
     fun isGranted(): Boolean {
@@ -83,7 +84,9 @@ object PublicStorageAccess {
     fun isPublicStoragePath(path: String): Boolean {
         val trimmed = path.trim()
         return trimmed == PUBLIC_STORAGE_ROOT_PATH ||
-            trimmed.startsWith("$PUBLIC_STORAGE_ROOT_PATH/")
+            trimmed.startsWith("$PUBLIC_STORAGE_ROOT_PATH/") ||
+            trimmed == SDCARD_ROOT_PATH ||
+            trimmed.startsWith("$SDCARD_ROOT_PATH/")
     }
 
     fun isPublicStorageUri(uriText: String): Boolean {

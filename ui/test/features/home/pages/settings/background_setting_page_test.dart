@@ -114,4 +114,44 @@ void main() {
 
     expect(AppBackgroundService.current.enabled, isFalse);
   });
+
+  testWidgets('flushes pending appearance changes when leaving immediately', (
+    tester,
+  ) async {
+    AppBackgroundService.notifier.value = const AppBackgroundConfig(
+      enabled: true,
+      sourceType: AppBackgroundSourceType.remote,
+      localImagePath: '',
+      remoteImageUrl: 'https://example.com/existing-background.png',
+      blurSigma: 10,
+      frostOpacity: 0.2,
+      brightness: 1,
+      focalX: 0.1,
+      focalY: -0.1,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: _SvgTestAssetBundle(),
+          child: const BackgroundSettingPage(),
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('appearance-text-color-field')),
+      '#1D3E7B',
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+
+    expect(
+      AppBackgroundService.current.chatTextColorMode,
+      AppBackgroundTextColorMode.custom,
+    );
+    expect(AppBackgroundService.current.chatTextHexColor, '#1D3E7B');
+  });
 }

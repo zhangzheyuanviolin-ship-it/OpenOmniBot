@@ -60,6 +60,14 @@ void main() {
       ),
       '/storage/Music/demo.mp3',
     );
+    expect(
+      OmnibotResourceService.shellPathForAndroidPath('/sdcard/Download/demo.txt'),
+      '/sdcard/Download/demo.txt',
+    );
+    expect(
+      OmnibotResourceService.androidPathForShellPath('/sdcard/Download/demo.txt'),
+      '/sdcard/Download/demo.txt',
+    );
   });
 
   test('describePath derives inline rendering hints from file extension', () {

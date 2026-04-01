@@ -11,6 +11,8 @@ class PublicStorageAccessTest {
     fun detectsPublicStoragePathsAndUris() {
         assertTrue(PublicStorageAccess.isPublicStoragePath("/storage"))
         assertTrue(PublicStorageAccess.isPublicStoragePath("/storage/DCIM/Camera"))
+        assertTrue(PublicStorageAccess.isPublicStoragePath("/sdcard"))
+        assertTrue(PublicStorageAccess.isPublicStorageInput("/sdcard/Download/demo.txt"))
         assertTrue(PublicStorageAccess.isPublicStorageInput(" omnibot://public/DCIM/Camera "))
         assertTrue(PublicStorageAccess.isPublicStorageUri("omnibot://public/Music/demo.mp3"))
         assertFalse(PublicStorageAccess.isPublicStoragePath("/workspace/demo"))

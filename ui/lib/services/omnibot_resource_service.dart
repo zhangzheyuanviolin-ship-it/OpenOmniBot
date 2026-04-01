@@ -63,6 +63,10 @@ class OmnibotResourceService {
   static const MethodChannel _fileChannel = MethodChannel(
     'cn.com.omnimind.bot/file_save',
   );
+  static const List<String> _publicStoragePathPrefixes = <String>[
+    '/storage',
+    '/sdcard',
+  ];
   static const OmnibotWorkspacePaths _defaultWorkspacePaths =
       OmnibotWorkspacePaths(
         rootPath: '/data/user/0/cn.com.omnimind.bot/workspace',
@@ -584,11 +588,15 @@ class OmnibotResourceService {
 
   static bool _isPublicAndroidPath(String path) {
     final normalized = path.trim();
-    return normalized == '/storage' || normalized.startsWith('/storage/');
+    return _publicStoragePathPrefixes.any(
+      (prefix) => normalized == prefix || normalized.startsWith('$prefix/'),
+    );
   }
 
   static bool _isPublicShellPath(String shellPath) {
     final normalized = shellPath.trim();
-    return normalized == '/storage' || normalized.startsWith('/storage/');
+    return _publicStoragePathPrefixes.any(
+      (prefix) => normalized == prefix || normalized.startsWith('$prefix/'),
+    );
   }
 }
