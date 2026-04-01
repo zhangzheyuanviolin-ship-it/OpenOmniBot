@@ -240,9 +240,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
   }
 
-  static const double _conversationItemHeight = 54.0;
-  static const int _maxVisibleConversations = 4;
-
   @override
   Widget build(BuildContext context) {
     return Drawer(
@@ -252,42 +249,31 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 13),
-                    _buildUserHeader(),
+            const SizedBox(height: 13),
+            _buildUserHeader(),
 
-                    const SizedBox(height: 24),
+            const SizedBox(height: 24),
 
-                    _buildQuickAccessCards(context),
+            _buildQuickAccessCards(context),
 
-                    const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-                    _buildMenuItem(
-                      icon: 'assets/home/task_record_icon.svg',
-                      title: '任务记录',
-                      onTap: () =>
-                          GoRouterManager.push('/task/execution_history'),
-                    ),
-
-                    _buildMenuItem(
-                      icon: 'assets/common/schedule_icon.svg',
-                      title: '定时',
-                      onTap: () =>
-                          GoRouterManager.push('/task/scheduled_tasks'),
-                    ),
-                    const SizedBox(height: 16),
-
-                    _buildConversationSection(),
-
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
+            _buildMenuItem(
+              icon: 'assets/home/task_record_icon.svg',
+              title: '任务记录',
+              onTap: () => GoRouterManager.push('/task/execution_history'),
             ),
+
+            _buildMenuItem(
+              icon: 'assets/common/schedule_icon.svg',
+              title: '定时',
+              onTap: () => GoRouterManager.push('/task/scheduled_tasks'),
+            ),
+            const SizedBox(height: 16),
+
+            Expanded(child: _buildConversationSection()),
+
+            const SizedBox(height: 16),
             _buildMenuSection([
               _DrawerMenuItem(
                 icon: 'assets/home/setting_icon.svg',
@@ -533,61 +519,63 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 
   Widget _buildConversationSection() {
-    final itemHeight = _conversationItemHeight;
-    final listHeight = itemHeight * _maxVisibleConversations;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '聊天记录',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.text.withOpacity(0.6),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [AppColors.boxShadow],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '聊天记录',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.text,
+                  ),
                 ),
-              ),
-              Row(
-                children: [
-                  _buildIconActionButton(
-                    iconPath: 'assets/home/chat_history_icon.svg',
-                    onTap: () {
-                      Navigator.pop(context);
-                      GoRouterManager.push('/home/chat_history');
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  _buildIconActionButton(
-                    iconPath: 'assets/home/chat_add_icon.svg',
-                    onTap: _openNewConversation,
-                  ),
-                ],
-              ),
-            ],
+                Row(
+                  children: [
+                    _buildIconActionButton(
+                      iconPath: 'assets/home/chat_history_icon.svg',
+                      onTap: () {
+                        Navigator.pop(context);
+                        GoRouterManager.push('/home/chat_history');
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    _buildIconActionButton(
+                      iconPath: 'assets/home/chat_add_icon.svg',
+                      onTap: _openNewConversation,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: listHeight,
+        Expanded(
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             child: isLoadingConversations
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 32),
-                    child: Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            AppColors.text,
-                          ),
+                ? Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.text,
                         ),
                       ),
                     ),
@@ -762,7 +750,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       child: IgnorePointer(
         ignoring: isDeleting,
         child: AnimatedOpacity(
@@ -814,20 +802,19 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                 ),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    boxShadow: [AppColors.boxShadow],
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Material(
                     color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(8),
                     child: InkWell(
                       onTap: () => _openConversationFromDrawer(conversation),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(8),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
-                          vertical: 13,
+                          vertical: 9,
                         ),
                         child: Row(
                           children: [
@@ -880,15 +867,14 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
   Widget _buildConversationItem(ConversationModel conversation) {
     return Container(
-      margin: EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(4),
-        boxShadow: [AppColors.boxShadow],
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: () {
             Navigator.pop(context);
@@ -902,9 +888,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             );
           },
           onLongPress: () => _showDeleteDialog(conversation),
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(
               children: [
                 Expanded(
