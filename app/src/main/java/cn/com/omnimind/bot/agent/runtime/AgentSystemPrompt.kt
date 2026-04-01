@@ -9,19 +9,17 @@ object AgentSystemPrompt {
         resolvedSkills: List<ResolvedSkillContext>,
         memoryContext: WorkspaceMemoryPromptContext?
     ): String {
-        val visibleInstalledSkills = installedSkills.filter { it.installed && it.enabled }
+        val visibleInstalledSkills = installedSkills.filter { skill ->
+            skill.installed &&
+                skill.enabled &&
+                SkillCompatibilityChecker.evaluate(skill).available
+        }
         val installedSkillSection = if (visibleInstalledSkills.isEmpty()) {
             "当前未安装额外 skills。"
         } else {
             buildString {
                 appendLine("已安装 skills 索引：")
                 visibleInstalledSkills.forEach { skill ->
-                    val compatibility = SkillCompatibilityChecker.evaluate(skill)
-                    val status = if (compatibility.available) {
-                        "available"
-                    } else {
-                        "unavailable: ${compatibility.reason}"
-                    }
                     val description = skill.description
                         .replace(Regex("\\s+"), " ")
                         .trim()
@@ -36,7 +34,7 @@ object AgentSystemPrompt {
                         if (skill.hasEvals) add("evals")
                     }.joinToString(", ").ifBlank { "metadata-only" }
                     appendLine(
-                        "- id=${skill.id} | name=${skill.name} | status=$status | path=${skill.shellSkillFilePath} | capabilities=$capabilities | description=$description"
+                        "- id=${skill.id} | name=${skill.name} | path=${skill.shellSkillFilePath} | capabilities=$capabilities | description=$description"
                     )
                 }
             }.trim()

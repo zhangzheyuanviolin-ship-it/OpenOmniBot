@@ -228,13 +228,22 @@ class SkillIndexService(
     }
 
     fun listInstalledSkills(): List<SkillIndexEntry> {
-        return listSkillsForManagement().filter { it.installed }
+        return listSkillsForManagement().filter { it.installed && it.enabled }
     }
 
     fun findInstalledSkill(identifier: String): SkillIndexEntry? {
+        return findManagedInstalledSkill(identifier, includeDisabled = false)
+    }
+
+    private fun findManagedInstalledSkill(
+        identifier: String,
+        includeDisabled: Boolean
+    ): SkillIndexEntry? {
         val normalizedIdentifier = normalizeSkillLookup(identifier)
         if (normalizedIdentifier.isBlank()) return null
-        val entries = listInstalledSkills()
+        val entries = listSkillsForManagement().filter { entry ->
+            entry.installed && (includeDisabled || entry.enabled)
+        }
         return entries.firstOrNull { normalizeSkillLookup(it.id) == normalizedIdentifier }
             ?: entries.firstOrNull { normalizeSkillLookup(it.name) == normalizedIdentifier }
             ?: entries.firstOrNull { normalizeSkillLookup(it.shellSkillFilePath) == normalizedIdentifier }
@@ -267,7 +276,7 @@ class SkillIndexService(
     }
 
     fun setSkillEnabled(skillId: String, enabled: Boolean): SkillIndexEntry {
-        val entry = findInstalledSkill(skillId)
+        val entry = findManagedInstalledSkill(skillId, includeDisabled = true)
             ?: throw IllegalArgumentException("未找到已安装 skill：$skillId")
         registryStore().set(
             entry.id,

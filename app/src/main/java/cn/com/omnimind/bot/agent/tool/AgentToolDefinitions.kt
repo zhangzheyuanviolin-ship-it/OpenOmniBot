@@ -716,7 +716,7 @@ object AgentToolDefinitions {
             put("name", "skills_list")
             put("displayName", "列出 Skills")
             put("toolType", "skill")
-            put("description", "列出当前已安装的 skills 索引，包括 id、名称、可用性、路径和能力目录。用户询问有哪些 skills、某类 skill 是否已安装，或你想先查目录再决定读取 SKILL.md 时优先调用。")
+            put("description", "列出当前可用的 skills 索引，包括 id、名称、路径和能力目录。用户询问有哪些 skills、某类 skill 是否已安装，或你想先查目录再决定读取 SKILL.md 时优先调用。")
             putJsonObject("parameters") {
                 put("type", "object")
                 putJsonObject("properties") {
@@ -727,10 +727,6 @@ object AgentToolDefinitions {
                     putJsonObject("limit") {
                         put("type", "integer")
                         put("description", "返回数量上限，默认 50，范围 1-200。")
-                    }
-                    putJsonObject("availableOnly") {
-                        put("type", "boolean")
-                        put("description", "是否只返回当前环境可用的 skills。默认 false。")
                     }
                 }
             }

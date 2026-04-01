@@ -1273,13 +1273,11 @@ class AgentToolRouter(
             val query = args["query"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
             val limit = args["limit"]?.jsonPrimitive?.intOrNull?.coerceIn(1, 200)
                 ?: DEFAULT_SKILLS_LIST_LIMIT
-            val availableOnly = args["availableOnly"]?.jsonPrimitive?.contentOrNull
-                ?.toBooleanStrictOrNull() ?: false
             val normalizedQuery = query.lowercase()
             val entries = skillIndexService.listInstalledSkills()
                 .filter { entry ->
                     val compatibility = SkillCompatibilityChecker.evaluate(entry)
-                    if (availableOnly && !compatibility.available) {
+                    if (!compatibility.available) {
                         return@filter false
                     }
                     if (normalizedQuery.isBlank()) {
@@ -1299,7 +1297,6 @@ class AgentToolRouter(
                 .take(limit)
 
             val items = entries.map { entry ->
-                val compatibility = SkillCompatibilityChecker.evaluate(entry)
                 mapOf(
                     "id" to entry.id,
                     "name" to entry.name,
@@ -1307,8 +1304,6 @@ class AgentToolRouter(
                     "enabled" to entry.enabled,
                     "source" to entry.source,
                     "installed" to entry.installed,
-                    "available" to compatibility.available,
-                    "unavailableReason" to compatibility.reason,
                     "rootPath" to entry.shellRootPath,
                     "androidRootPath" to entry.rootPath,
                     "skillFilePath" to entry.shellSkillFilePath,
@@ -1325,7 +1320,6 @@ class AgentToolRouter(
 
             val payload = linkedMapOf<String, Any?>(
                 "query" to query,
-                "availableOnly" to availableOnly,
                 "count" to items.size,
                 "skillsRoot" to workspaceManager.shellPathForAndroid(workspaceManager.skillsRoot()),
                 "androidSkillsRoot" to workspaceManager.skillsRoot().absolutePath,
@@ -1366,6 +1360,9 @@ class AgentToolRouter(
             val entry = skillIndexService.findInstalledSkill(skillId)
                 ?: throw IllegalArgumentException("未找到 skill：$skillId")
             val compatibility = SkillCompatibilityChecker.evaluate(entry)
+            require(compatibility.available) {
+                compatibility.reason ?: "当前环境不可用"
+            }
             val resolved = skillLoader.load(entry, "agent 主动读取 skill")
                 ?: throw IllegalStateException("读取 SKILL.md 失败：${entry.shellSkillFilePath}")
             val skillFile = File(entry.skillFilePath)
@@ -1377,8 +1374,6 @@ class AgentToolRouter(
                 "enabled" to entry.enabled,
                 "source" to entry.source,
                 "installed" to entry.installed,
-                "available" to compatibility.available,
-                "unavailableReason" to compatibility.reason,
                 "rootPath" to entry.shellRootPath,
                 "androidRootPath" to entry.rootPath,
                 "skillFilePath" to entry.shellSkillFilePath,
