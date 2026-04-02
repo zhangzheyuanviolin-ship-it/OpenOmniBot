@@ -3,6 +3,7 @@ package cn.com.omnimind.bot.mcp
 import android.content.Context
 import android.util.Base64
 import cn.com.omnimind.baselib.util.OmniLog
+import cn.com.omnimind.bot.utg.UtgBridge
 import cn.com.omnimind.bot.util.AssistsUtil
 import com.tencent.mmkv.MMKV
 import io.ktor.http.ContentDisposition
@@ -42,6 +43,7 @@ import java.util.UUID
  */
 object McpServerManager {
     private const val TAG = "[McpServerManager]"
+    private const val LOCALHOST_HOST = "127.0.0.1"
     private const val PREF_ENABLE = "mcp_server_enabled"
     private const val PREF_HOST = "mcp_server_host"
     private const val PREF_TOKEN = "mcp_server_token"
@@ -103,6 +105,14 @@ object McpServerManager {
         )
     }
 
+    fun ensureRunning(context: Context): McpServerState {
+        if (isRunning) {
+            return currentState()
+        }
+        val port = mmkv.decodeInt(PREF_PORT, DEFAULT_PORT).takeIf { it > 0 } ?: DEFAULT_PORT
+        return startServer(context, port)
+    }
+
     fun stopServer() {
         synchronized(serverLock) {
             stopServerLocked()
@@ -126,8 +136,7 @@ object McpServerManager {
     private fun startServer(context: Context, port: Int): McpServerState {
         synchronized(serverLock) {
             try {
-                val lanIp = resolveLanIp()
-                    ?: throw IllegalStateException("未检测到可用的局域网 IPv4 地址，请确认设备已连接可访问局域网的网络")
+                val lanIp = resolveLanIp() ?: LOCALHOST_HOST
                 if (isRunning) {
                     val currentPort = mmkv.decodeInt(PREF_PORT, DEFAULT_PORT).takeIf { it > 0 } ?: DEFAULT_PORT
                     if (currentPort == port) {
@@ -185,6 +194,40 @@ object McpServerManager {
                     // 服务状态
                     get("/mcp/state") {
                         call.respond(currentState().toMap())
+                    }
+
+                    post("/utg/observe") {
+                        val params = call.receive<Map<String, Any?>>() ?: emptyMap()
+                        val result = UtgBridge.captureObservation(
+                            UtgBridge.ObservationRequest(
+                                xml = params["xml"] == true,
+                                appInfo = params["app_info"] == true,
+                                screenshot = params["screenshot"] == true,
+                                waitToStabilize = params["wait_to_stabilize"] == true,
+                            )
+                        )
+                        call.respond(result)
+                    }
+
+                    post("/utg/act") {
+                        val params = call.receive<Map<String, Any?>>() ?: emptyMap()
+                        val action = params["action"] as? Map<String, Any?> ?: emptyMap()
+                        val result = UtgBridge.executeAction(
+                            UtgBridge.ActRequest(
+                                action = UtgBridge.ActionEnvelope(
+                                    type = action["type"]?.toString().orEmpty(),
+                                    params = (action["params"] as? Map<String, Any?>) ?: emptyMap(),
+                                )
+                            )
+                        )
+                        call.respond(result)
+                    }
+
+                    post("/utg/confirm") {
+                        val params = call.receive<Map<String, Any?>>() ?: emptyMap()
+                        val prompt = params["prompt"]?.toString().orEmpty()
+                        val result = UtgBridge.requestConfirmation(prompt)
+                        call.respond(result)
                     }
                     
                     // MCP JSON-RPC 端点

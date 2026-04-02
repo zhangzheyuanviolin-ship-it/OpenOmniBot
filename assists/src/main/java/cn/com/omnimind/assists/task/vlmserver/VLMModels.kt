@@ -65,6 +65,14 @@ data class OpenAppAction(
 ) : UIAction()
 
 @Serializable
+@SerialName("run_compiled_path")
+data class RunCompiledPathAction(
+    override val name: String = "run_compiled_path",
+    @SerialName("path_id")
+    val pathId: String
+) : UIAction()
+
+@Serializable
 @SerialName("press_home")
 data class PressHomeAction(
     override val name: String = "press_home"
@@ -152,7 +160,15 @@ data class UIStep(
     val thought: String,
     val action: UIAction,
     val result: String? = null,
-    val summary: String = ""  // 添加summary字段用于历史总结
+    val summary: String = "",  // 添加summary字段用于历史总结
+    @SerialName("observation_xml")
+    val observationXml: String? = null,
+    @SerialName("package_name")
+    val packageName: String? = null,
+    @SerialName("started_at_ms")
+    val startedAtMs: Long? = null,
+    @SerialName("finished_at_ms")
+    val finishedAtMs: Long? = null
 )
 
 @Serializable

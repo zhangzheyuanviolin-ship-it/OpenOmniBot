@@ -12,6 +12,7 @@ import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.mcp.McpServerManager
 import cn.com.omnimind.bot.mnnlocal.MnnLocalInitializer
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
+import cn.com.omnimind.bot.utg.UtgBridge
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
 import com.rk.resources.Res
@@ -167,6 +168,9 @@ class App : BaseApplication() {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
                 EmbeddedTerminalRuntime.warmup(this@App)
+            }
+            runCatching {
+                UtgBridge.restoreProviderIfEnabled(this@App)
             }
         }
         OmniLog.d(

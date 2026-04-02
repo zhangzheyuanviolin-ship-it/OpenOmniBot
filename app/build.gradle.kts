@@ -5,7 +5,23 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-fun prop(name: String): String = (project.findProperty(name) as String?)?.trim() ?: ""
+fun prop(name: String): String {
+    val fromProject = (project.findProperty(name) as String?)?.trim().orEmpty()
+    if (fromProject.isNotEmpty()) {
+        return fromProject
+    }
+    val fromEnv = System.getenv(name)?.trim().orEmpty()
+    if (fromEnv.isNotEmpty()) {
+        return fromEnv
+    }
+    return when (name) {
+        "OMNIBOT_DEFAULT_MODEL_PROVIDER_BASE_URL" ->
+            "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        "OMNIBOT_DEFAULT_MODEL_PROVIDER_API_KEY" ->
+            System.getenv("DASHSCOPE_API_KEY")?.trim().orEmpty()
+        else -> ""
+    }
+}
 
 android {
     namespace = "cn.com.omnimind.bot"
@@ -30,12 +46,16 @@ android {
         create("develop") {
             dimension = "version"
             buildConfigField("String", "BASE_URL", "\"${prop("OMNIBOT_BASE_URL")}\"")
+            buildConfigField("String", "DEFAULT_MODEL_PROVIDER_BASE_URL", "\"${prop("OMNIBOT_DEFAULT_MODEL_PROVIDER_BASE_URL")}\"")
+            buildConfigField("String", "DEFAULT_MODEL_PROVIDER_API_KEY", "\"${prop("OMNIBOT_DEFAULT_MODEL_PROVIDER_API_KEY")}\"")
             resValue("bool", "is_accessibility_tool", "true")
         }
 
         create("production") {
             dimension = "version"
             buildConfigField("String", "BASE_URL", "\"${prop("OMNIBOT_BASE_URL")}\"")
+            buildConfigField("String", "DEFAULT_MODEL_PROVIDER_BASE_URL", "\"${prop("OMNIBOT_DEFAULT_MODEL_PROVIDER_BASE_URL")}\"")
+            buildConfigField("String", "DEFAULT_MODEL_PROVIDER_API_KEY", "\"${prop("OMNIBOT_DEFAULT_MODEL_PROVIDER_API_KEY")}\"")
             resValue("bool", "is_accessibility_tool", "true")
         }
     }

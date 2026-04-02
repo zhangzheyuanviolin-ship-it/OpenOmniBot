@@ -1595,6 +1595,12 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       'summary': summary.isNotEmpty
           ? summary
           : (existingCardData['summary'] ?? '').toString(),
+      'compileStatus': event.compileStatus.isNotEmpty
+          ? event.compileStatus
+          : (existingCardData['compileStatus'] ?? '').toString(),
+      'executionRoute': event.executionRoute.isNotEmpty
+          ? event.executionRoute
+          : (existingCardData['executionRoute'] ?? '').toString(),
       'progress': progress.isNotEmpty
           ? progress
           : (existingCardData['progress'] ?? '').toString(),

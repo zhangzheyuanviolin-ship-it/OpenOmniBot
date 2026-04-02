@@ -62,6 +62,7 @@ import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.mnnlocal.MnnLocalModelsManager
+import cn.com.omnimind.bot.utg.UtgBridge
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
 import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
@@ -114,6 +115,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
         @Volatile
         private var mainEngineChannel: MethodChannel? = null
+        @Volatile
+        private var activeInstance: AssistsCoreManager? = null
 
         fun bindMainEngineChannel(channel: MethodChannel) {
             mainEngineChannel = channel
@@ -130,6 +133,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 OmniLog.w("[AssistsCoreManager]", "dispatchAgentAiConfigChanged failed: ${it.message}")
             }
         }
+
+        fun currentInstance(): AssistsCoreManager? = activeInstance
 
         private fun isSummaryTask(taskId: String): Boolean {
             return taskId.startsWith(SUMMARY_TASK_PREFIX_VLM) ||
@@ -166,6 +171,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     // 当前活跃的对话ID
     private var currentConversationId: Long? = null
     private var currentConversationMode: String = "normal"
+
+    init {
+        activeInstance = this
+    }
 
     private fun registerActiveAgentJob(taskId: String, job: Job) {
         synchronized(activeAgentLock) {
@@ -380,6 +389,37 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
+    /**
+     * Ask the current Flutter host to confirm one UTG-side human gate request.
+     *
+     * Args:
+     *     prompt: Human-readable confirmation prompt forwarded to Flutter.
+     *
+     * Returns:
+     *     `true` when Flutter confirms execution should continue.
+     */
+    suspend fun requestUtgConfirmation(prompt: String): Boolean {
+        val response = invokeFlutterMethodForAgent(
+            "agentUtgConfirm",
+            mapOf("prompt" to prompt)
+        )
+        return when (response) {
+            is Boolean -> response
+            is Number -> response.toInt() != 0
+            is String -> response.trim().lowercase() in setOf("1", "true", "yes", "y", "ok", "confirm")
+            is Map<*, *> -> {
+                val confirmed = response["confirmed"]
+                when (confirmed) {
+                    is Boolean -> confirmed
+                    is Number -> confirmed.toInt() != 0
+                    is String -> confirmed.trim().lowercase() in setOf("1", "true", "yes", "y", "ok", "confirm")
+                    else -> false
+                }
+            }
+            else -> false
+        }
+    }
+
     private fun toStringAnyMap(value: Any?): Map<String, Any?> {
         return (value as? Map<*, *>)?.entries?.associate { (key, rawValue) ->
             key.toString() to normalizeChannelValue(rawValue)
@@ -408,6 +448,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         return when (toolName) {
             "context_apps_query" -> AgentToolMeta("builtin", "查询已安装应用")
             "context_time_now" -> AgentToolMeta("builtin", "查询当前时间")
+            "utg_compile" -> AgentToolMeta("builtin", "UTG Compile")
+            "utg_run_path" -> AgentToolMeta("builtin", "UTG Path 执行")
             "vlm_task" -> AgentToolMeta("builtin", "视觉执行")
             "browser_use" -> AgentToolMeta("browser", "浏览器操作")
             "terminal_execute" -> AgentToolMeta("terminal", "终端执行")
@@ -448,6 +490,134 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     AgentToolMeta("mcp", rawToolName, serverName)
                 } else {
                     AgentToolMeta("builtin", toolName)
+                }
+            }
+        }
+    }
+
+    /**
+     * Return the current UTG bridge configuration for Flutter settings pages.
+     *
+     * Args:
+     *     call: Unused method-call payload.
+     *     result: Flutter result callback receiving one config snapshot map.
+     */
+    fun getUtgBridgeConfig(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        mainJob.launch {
+            try {
+                val config = withContext(Dispatchers.IO) {
+                    UtgBridge.snapshotConfig(context)
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(config)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("GET_UTG_BRIDGE_CONFIG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * Persist one UTG bridge configuration patch from Flutter.
+     *
+     * Args:
+     *     call: Method-call payload carrying optional UTG config fields.
+     *     result: Flutter result callback receiving the updated config snapshot.
+     */
+    fun saveUtgBridgeConfig(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        mainJob.launch {
+            try {
+                call.argument<Boolean>("utgEnabled")?.let {
+                    UtgBridge.setUtgEnabled(it)
+                }
+                call.argument<Boolean>("providerAutoStartEnabled")?.let {
+                    UtgBridge.setProviderAutoStartEnabled(it)
+                }
+                call.argument<Boolean>("fallbackToVlmOnFailureEnabled")?.let {
+                    UtgBridge.setFallbackToVlmOnFailureEnabled(it)
+                }
+                call.argument<Boolean>("runLogRecordingEnabled")?.let {
+                    UtgBridge.setRunLogRecordingEnabled(it)
+                }
+                if (call.hasArgument("omnicloudBaseUrl")) {
+                    UtgBridge.setOmniCloudBaseUrl(call.argument<String>("omnicloudBaseUrl"))
+                }
+                if (call.hasArgument("providerStartCommand")) {
+                    UtgBridge.setProviderStartCommand(call.argument<String>("providerStartCommand"))
+                }
+                if (call.hasArgument("providerWorkingDirectory")) {
+                    UtgBridge.setProviderWorkingDirectory(
+                        call.argument<String>("providerWorkingDirectory")
+                    )
+                }
+                val config = withContext(Dispatchers.IO) {
+                    UtgBridge.snapshotConfig(context)
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(config)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("SAVE_UTG_BRIDGE_CONFIG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * Return the current local bridge execution context required by provider RPCs.
+     *
+     * Args:
+     *     call: Unused method-call payload.
+     *     result: Flutter result callback receiving bridge URL/token details.
+     */
+    fun getUtgBridgeExecutionContext(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        mainJob.launch {
+            try {
+                val snapshot = withContext(Dispatchers.IO) {
+                    UtgBridge.snapshotManualRunContext(context)
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(snapshot)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("GET_UTG_BRIDGE_EXECUTION_CONTEXT_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * Start/stop/restart the local UTG provider from Flutter settings.
+     *
+     * Args:
+     *     call: Method-call payload carrying `action` such as `start` or `stop`.
+     *     result: Flutter result callback receiving the latest config snapshot.
+     */
+    fun controlUtgProvider(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        mainJob.launch {
+            try {
+                val action = call.argument<String>("action")?.trim().orEmpty()
+                val payload = withContext(Dispatchers.IO) {
+                    UtgBridge.controlProvider(context, action)
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(payload)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("CONTROL_UTG_PROVIDER_ERROR", e.message, null)
                 }
             }
         }

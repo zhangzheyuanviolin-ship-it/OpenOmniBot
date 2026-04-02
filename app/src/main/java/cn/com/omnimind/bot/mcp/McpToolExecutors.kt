@@ -31,7 +31,6 @@ object McpToolExecutors {
 
         val needSummaryArg = args?.get("needSummary") as? Boolean
         val shouldSummary = shouldEnableSummary(goal, needSummaryArg)
-
         val request = VlmTaskRequest(
             goal = goal,
             model = args["model"] as? String,

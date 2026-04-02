@@ -9,6 +9,7 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.graphics.Point
 import android.view.Display
 import android.view.WindowManager
@@ -42,6 +43,12 @@ class OmniScreenshotAction(
     companion object {
         const val TAG = "CaptureServer"
         private val screenshotMutex = Mutex()
+        private const val FAST_SCREENSHOT_INTERVAL_MS = 200L
+        private const val SAFE_SCREENSHOT_INTERVAL_MS = 420L
+        @Volatile
+        private var lastScreenshotCompletedAtMs: Long = 0L
+        @Volatile
+        private var currentScreenshotIntervalMs: Long = FAST_SCREENSHOT_INTERVAL_MS
     }
 
     private val mainThreadExecutor: Executor = Executor { command ->
@@ -65,48 +72,60 @@ class OmniScreenshotAction(
      * Android 14+ 的截屏实现：窗口合成方式
      */
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-     suspend fun captureExcludingOverlaysV14(): Bitmap? {
+    suspend fun captureExcludingOverlaysV14(): Bitmap? {
         screenshotMutex.lock()
         var delayUnlock = false // 成功时延迟解锁，失败时立即解锁
         try {
-            val windows = service.windows ?: return null
+            var lastError: Exception? = null
+            for (attemptIndex in 0..1) {
+                val elapsedSinceLastShot =
+                    SystemClock.elapsedRealtime() - lastScreenshotCompletedAtMs
+                if (elapsedSinceLastShot in 0 until currentScreenshotIntervalMs) {
+                    delay(currentScreenshotIntervalMs - elapsedSinceLastShot)
+                }
+                try {
+                    val windows = service.windows ?: return null
 
-            // 获取屏幕实际尺寸（包括状态栏和导航栏）
-            // 使用 getRealSize() 而不是 displayMetrics，因为 displayMetrics 不包括系统UI
-            val windowManager = service.getSystemService(WindowManager::class.java)
-            val screenSize = Point()
-            windowManager.defaultDisplay.getRealSize(screenSize)
-            val screenWidth = screenSize.x
-            val screenHeight = screenSize.y
-            
-            OmniLog.d(TAG, "Screen size: width=$screenWidth, height=$screenHeight")
-            
-            val validWindows = filterValidWindows(windows)
-            if (validWindows.isEmpty()) {
-                // 立即解锁（不延迟）
-                return null
+                    // 获取屏幕实际尺寸（包括状态栏和导航栏）
+                    // 使用 getRealSize() 而不是 displayMetrics，因为 displayMetrics 不包括系统UI
+                    val windowManager = service.getSystemService(WindowManager::class.java)
+                    val screenSize = Point()
+                    windowManager.defaultDisplay.getRealSize(screenSize)
+                    val screenWidth = screenSize.x
+                    val screenHeight = screenSize.y
+
+                    OmniLog.d(TAG, "Screen size: width=$screenWidth, height=$screenHeight")
+
+                    val validWindows = filterValidWindows(windows)
+                    if (validWindows.isEmpty()) {
+                        return null
+                    }
+                    val result = captureAndMergeWindows(validWindows, screenWidth, screenHeight)
+                    if (result != null) {
+                        delayUnlock = true
+                        return result
+                    }
+                } catch (e: Exception) {
+                    lastError = e
+                }
+                currentScreenshotIntervalMs = SAFE_SCREENSHOT_INTERVAL_MS
+                lastScreenshotCompletedAtMs = SystemClock.elapsedRealtime()
+                if (attemptIndex == 0) {
+                    OmniLog.w(TAG, "captureExcludingOverlaysV14 retrying once with safe interval")
+                }
             }
-            val result = captureAndMergeWindows(validWindows, screenWidth, screenHeight)
-            // 成功时标记为延迟解锁
-            delayUnlock = true
-            return result
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "Failed to capture screenshot excluding overlays", e)
-            // 失败时立即解锁（delayUnlock = false）
+            currentScreenshotIntervalMs = SAFE_SCREENSHOT_INTERVAL_MS
+            lastError?.let { OmniLog.e(TAG, "Failed to capture screenshot excluding overlays", it) }
             return null
         } finally {
+            lastScreenshotCompletedAtMs = SystemClock.elapsedRealtime()
             // 统一在 finally 中解锁
             if (delayUnlock) {
-                // 成功时延迟解锁，避免频繁截图
-                CoroutineScope(Dispatchers.Default).launch {
-                    // 系统对截图有节流限制，间隔至少333ms，为了保守设置334ms释放互斥锁
-                    delay(334)
-                    try {
-                        screenshotMutex.unlock()
-                    } catch (e: IllegalStateException) {
-                        // Mutex 可能已经被解锁（例如被取消），忽略此异常
-                        OmniLog.d(TAG, "Mutex already unlocked, ignoring")
-                    }
+                try {
+                    screenshotMutex.unlock()
+                } catch (e: IllegalStateException) {
+                    // Mutex 可能已经被解锁（例如被取消），忽略此异常
+                    OmniLog.d(TAG, "Mutex already unlocked, ignoring")
                 }
             } else {
                 // 失败时立即解锁
@@ -131,84 +150,96 @@ class OmniScreenshotAction(
         screenshotMutex.lock()
         var delayUnlock = false // 成功时延迟解锁，失败时立即解锁
         try {
-            // 先同步执行隐藏悬浮框的操作，等待完成后再截屏
-            hintOverlay?.let {
-                withContext(Dispatchers.Main) {
-                    it.invoke()
+            var lastError: Exception? = null
+            for (attemptIndex in 0..1) {
+                val elapsedSinceLastShot =
+                    SystemClock.elapsedRealtime() - lastScreenshotCompletedAtMs
+                if (elapsedSinceLastShot in 0 until currentScreenshotIntervalMs) {
+                    delay(currentScreenshotIntervalMs - elapsedSinceLastShot)
                 }
-                // 等待一小段时间，确保UI更新完成
-                delay(100)
-            }
+                try {
+                    // 先同步执行隐藏悬浮框的操作，等待完成后再截屏
+                    hintOverlay?.let {
+                        withContext(Dispatchers.Main) {
+                            it.invoke()
+                        }
+                    }
 
-            // 添加超时机制，避免永远阻塞（2秒超时）
-            val result = withTimeoutOrNull(2000L) {
-                suspendCancellableCoroutine<Bitmap?> { cont ->
-                    service.takeScreenshot(
-                        Display.DEFAULT_DISPLAY,
-                        mainThreadExecutor,
-                        object : AccessibilityService.TakeScreenshotCallback {
-                            override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
-                                showOverlay?.invoke()
+                    // 添加超时机制，避免永远阻塞（2秒超时）
+                    val result = withTimeoutOrNull(2000L) {
+                        suspendCancellableCoroutine<Bitmap?> { cont ->
+                            service.takeScreenshot(
+                                Display.DEFAULT_DISPLAY,
+                                mainThreadExecutor,
+                                object : AccessibilityService.TakeScreenshotCallback {
+                                    override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                                        showOverlay?.invoke()
 
-                                CoroutineScope(Dispatchers.Default).launch {
-                                    screenshot.hardwareBuffer.use { hardwareBuffer ->
-                                        try {
-                                            val bitmap = Bitmap.wrapHardwareBuffer(
-                                                hardwareBuffer,
-                                                screenshot.colorSpace,
-                                            )
-                                                ?: throw RuntimeException("Failed to wrap hardware buffer into Bitmap")
+                                        CoroutineScope(Dispatchers.Default).launch {
+                                            screenshot.hardwareBuffer.use { hardwareBuffer ->
+                                                try {
+                                                    val bitmap = Bitmap.wrapHardwareBuffer(
+                                                        hardwareBuffer,
+                                                        screenshot.colorSpace,
+                                                    )
+                                                        ?: throw RuntimeException("Failed to wrap hardware buffer into Bitmap")
 
-                                            // 转换为软件 Bitmap 以便进行像素操作
-                                            val softwareBitmap = convertToSoftwareBitmap(bitmap)
+                                                    // 转换为软件 Bitmap 以便进行像素操作
+                                                    val softwareBitmap = convertToSoftwareBitmap(bitmap)
 
-                                            cont.resume(softwareBitmap)
-                                        } catch (e: Exception) {
-                                            cont.resumeWithException(e)
+                                                    cont.resume(softwareBitmap)
+                                                } catch (e: Exception) {
+                                                    cont.resumeWithException(e)
+                                                }
+                                            }
                                         }
                                     }
-                                }
-                            }
 
-                            override fun onFailure(errorCode: Int) {
-                                // 截图失败时也要恢复显示悬浮框
-                                CoroutineScope(Dispatchers.Main).launch {
-                                    showOverlay?.invoke()
-                                }
-                                cont.resumeWithException(
-                                    RuntimeException("Screenshot failed with error code: $errorCode")
-                                )
-                            }
-                        },
-                    )
+                                    override fun onFailure(errorCode: Int) {
+                                        currentScreenshotIntervalMs = SAFE_SCREENSHOT_INTERVAL_MS
+                                        // 截图失败时也要恢复显示悬浮框
+                                        CoroutineScope(Dispatchers.Main).launch {
+                                            showOverlay?.invoke()
+                                        }
+                                        cont.resumeWithException(
+                                            RuntimeException("Screenshot failed with error code: $errorCode")
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    } ?: run {
+                        currentScreenshotIntervalMs = SAFE_SCREENSHOT_INTERVAL_MS
+                        // 超时处理
+                        OmniLog.e(TAG, "captureDefaultScreenshot timeout after 10 seconds")
+                        showOverlay?.invoke() // 恢复显示悬浮框
+                        null
+                    }
+                    if (result != null) {
+                        delayUnlock = true
+                        return result
+                    }
+                } catch (e: Exception) {
+                    lastError = e
                 }
-            } ?: run {
-                // 超时处理
-                OmniLog.e(TAG, "captureDefaultScreenshot timeout after 10 seconds")
-                showOverlay?.invoke() // 恢复显示悬浮框
-                null
+                currentScreenshotIntervalMs = SAFE_SCREENSHOT_INTERVAL_MS
+                lastScreenshotCompletedAtMs = SystemClock.elapsedRealtime()
+                if (attemptIndex == 0) {
+                    OmniLog.w(TAG, "captureDefaultScreenshot retrying once with safe interval")
+                }
             }
-
-            // 成功时标记为延迟解锁
-            delayUnlock = true
-            return result
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "Failed to capture default screenshot", e)
-            // 失败时立即解锁（delayUnlock = false）
+            currentScreenshotIntervalMs = SAFE_SCREENSHOT_INTERVAL_MS
+            lastError?.let { OmniLog.e(TAG, "Failed to capture default screenshot", it) }
             return null
         } finally {
+            lastScreenshotCompletedAtMs = SystemClock.elapsedRealtime()
             // 统一在 finally 中解锁
             if (delayUnlock) {
-                // 成功时延迟解锁，避免频繁截图
-                CoroutineScope(Dispatchers.Default).launch {
-                    // 系统对截图有节流限制，间隔至少333ms，为了保守设置334ms释放互斥锁
-                    delay(334)
-                    try {
-                        screenshotMutex.unlock()
-                    } catch (e: IllegalStateException) {
-                        // Mutex 可能已经被解锁（例如被取消），忽略此异常
-                        OmniLog.d(TAG, "Mutex already unlocked, ignoring")
-                    }
+                try {
+                    screenshotMutex.unlock()
+                } catch (e: IllegalStateException) {
+                    // Mutex 可能已经被解锁（例如被取消），忽略此异常
+                    OmniLog.d(TAG, "Mutex already unlocked, ignoring")
                 }
             } else {
                 // 失败时立即解锁

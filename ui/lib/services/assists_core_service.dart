@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:ui/services/agent_schedule_bridge_service.dart';
 import 'package:ui/services/app_state_service.dart';
 
@@ -71,6 +73,7 @@ typedef AgentCompleteCallback =
 typedef AgentErrorCallback = void Function(String taskId, String error);
 typedef AgentPermissionRequiredCallback =
     void Function(String taskId, List<String> missing);
+typedef AgentUtgConfirmCallback = Future<bool> Function(String prompt);
 typedef ScheduledTaskCancelledCallBack = void Function(String taskId);
 typedef ScheduledTaskExecuteNowCallBack = void Function(String taskId);
 
@@ -110,6 +113,504 @@ class ModelAvailabilityCheckResult {
   }
 }
 
+class UtgBridgeConfig {
+  final bool utgEnabled;
+  final String omnicloudBaseUrl;
+  final bool providerAutoStartEnabled;
+  final bool fallbackToVlmOnFailureEnabled;
+  final String providerStartCommand;
+  final String? providerWorkingDirectory;
+  final String providerStdoutPath;
+  final bool runLogRecordingEnabled;
+  final String runLogPath;
+  final bool providerHealthy;
+  final String providerHealthStatus;
+  final String providerRunLogPath;
+  final String canonicalRunLogPath;
+
+  const UtgBridgeConfig({
+    required this.utgEnabled,
+    required this.omnicloudBaseUrl,
+    required this.providerAutoStartEnabled,
+    required this.fallbackToVlmOnFailureEnabled,
+    required this.providerStartCommand,
+    required this.providerWorkingDirectory,
+    required this.providerStdoutPath,
+    required this.runLogRecordingEnabled,
+    required this.runLogPath,
+    required this.providerHealthy,
+    required this.providerHealthStatus,
+    required this.providerRunLogPath,
+    required this.canonicalRunLogPath,
+  });
+
+  factory UtgBridgeConfig.fromMap(Map<dynamic, dynamic>? map) {
+    final raw = map ?? const {};
+    final health = (raw['providerHealth'] as Map?) ?? const {};
+    return UtgBridgeConfig(
+      utgEnabled: raw['utgEnabled'] != false,
+      omnicloudBaseUrl: (raw['omnicloudBaseUrl'] ?? '').toString(),
+      providerAutoStartEnabled: raw['providerAutoStartEnabled'] == true,
+      fallbackToVlmOnFailureEnabled:
+          raw['fallbackToVlmOnFailureEnabled'] != false,
+      providerStartCommand: (raw['providerStartCommand'] ?? '').toString(),
+      providerWorkingDirectory: raw['providerWorkingDirectory']?.toString(),
+      providerStdoutPath: (raw['providerStdoutPath'] ?? '').toString(),
+      runLogRecordingEnabled: raw['runLogRecordingEnabled'] == true,
+      runLogPath: (raw['runLogPath'] ?? '').toString(),
+      providerHealthy: raw['providerHealthy'] == true,
+      providerHealthStatus: (health['status'] ?? '').toString(),
+      providerRunLogPath: (raw['providerRunLogPath'] ?? '').toString(),
+      canonicalRunLogPath: (raw['canonicalRunLogPath'] ?? '').toString(),
+    );
+  }
+}
+
+class UtgPathSummary {
+  final String pathId;
+  final String description;
+  final int stepCount;
+  final List<String> slotNames;
+  final Map<String, String> slotExamples;
+  final String startNodeId;
+  final String endNodeId;
+  final String startNodeDescription;
+  final String endNodeDescription;
+  final String packageName;
+  final String appName;
+  final String groupName;
+  final String source;
+  final String createdAt;
+  final String updatedAt;
+  final String syncStatus;
+  final String syncOrigin;
+  final String cloudBaseUrl;
+  final String lastSyncedAt;
+  final int runCount;
+  final int successCount;
+  final int failCount;
+  final Map<String, dynamic> lastRun;
+
+  const UtgPathSummary({
+    required this.pathId,
+    required this.description,
+    required this.stepCount,
+    required this.slotNames,
+    required this.slotExamples,
+    required this.startNodeId,
+    required this.endNodeId,
+    required this.startNodeDescription,
+    required this.endNodeDescription,
+    required this.packageName,
+    required this.appName,
+    required this.groupName,
+    required this.source,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.syncStatus,
+    required this.syncOrigin,
+    required this.cloudBaseUrl,
+    required this.lastSyncedAt,
+    required this.runCount,
+    required this.successCount,
+    required this.failCount,
+    required this.lastRun,
+  });
+
+  factory UtgPathSummary.fromMap(Map<dynamic, dynamic>? map) {
+    final raw = map ?? const {};
+    return UtgPathSummary(
+      pathId: (raw['path_id'] ?? '').toString(),
+      description: (raw['description'] ?? '').toString(),
+      stepCount: raw['step_count'] is num
+          ? (raw['step_count'] as num).toInt()
+          : int.tryParse((raw['step_count'] ?? '0').toString()) ?? 0,
+      slotNames:
+          (raw['slot_names'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const <String>[],
+      slotExamples:
+          (raw['slot_examples'] as Map<dynamic, dynamic>?)?.map(
+            (k, v) => MapEntry(k.toString(), v.toString()),
+          ) ??
+          const <String, String>{},
+      startNodeId: (raw['start_node_id'] ?? '').toString(),
+      endNodeId: (raw['end_node_id'] ?? '').toString(),
+      startNodeDescription: (raw['start_node_description'] ?? '').toString(),
+      endNodeDescription: (raw['end_node_description'] ?? '').toString(),
+      packageName: (raw['package_name'] ?? '').toString(),
+      appName: (raw['app_name'] ?? '').toString(),
+      groupName: (raw['group_name'] ?? '').toString(),
+      source: (raw['source'] ?? '').toString(),
+      createdAt: (raw['created_at'] ?? '').toString(),
+      updatedAt: (raw['updated_at'] ?? '').toString(),
+      syncStatus: (raw['sync_status'] ?? '').toString(),
+      syncOrigin: (raw['sync_origin'] ?? '').toString(),
+      cloudBaseUrl: (raw['cloud_base_url'] ?? '').toString(),
+      lastSyncedAt: (raw['last_synced_at'] ?? '').toString(),
+      runCount: ((raw['run_stats'] as Map?)?['run_count'] is num)
+          ? (((raw['run_stats'] as Map?)?['run_count'] as num).toInt())
+          : int.tryParse(
+                  (((raw['run_stats'] as Map?)?['run_count']) ?? '0')
+                      .toString(),
+                ) ??
+                0,
+      successCount: ((raw['run_stats'] as Map?)?['success_count'] is num)
+          ? (((raw['run_stats'] as Map?)?['success_count'] as num).toInt())
+          : int.tryParse(
+                  (((raw['run_stats'] as Map?)?['success_count']) ?? '0')
+                      .toString(),
+                ) ??
+                0,
+      failCount: ((raw['run_stats'] as Map?)?['fail_count'] is num)
+          ? (((raw['run_stats'] as Map?)?['fail_count'] as num).toInt())
+          : int.tryParse(
+                  (((raw['run_stats'] as Map?)?['fail_count']) ?? '0')
+                      .toString(),
+                ) ??
+                0,
+      lastRun:
+          (raw['last_run'] as Map<dynamic, dynamic>?)?.map(
+            (k, v) => MapEntry(k.toString(), v),
+          ) ??
+          const <String, dynamic>{},
+    );
+  }
+}
+
+class UtgPathsSnapshot {
+  final bool success;
+  final int count;
+  final List<UtgPathSummary> paths;
+  final String provider;
+
+  const UtgPathsSnapshot({
+    required this.success,
+    required this.count,
+    required this.paths,
+    required this.provider,
+  });
+
+  factory UtgPathsSnapshot.fromMap(Map<String, dynamic> map) {
+    return UtgPathsSnapshot(
+      success: map['success'] == true,
+      count: map['count'] is num
+          ? (map['count'] as num).toInt()
+          : int.tryParse((map['count'] ?? '0').toString()) ?? 0,
+      paths:
+          (map['paths'] as List<dynamic>?)
+              ?.map((e) => UtgPathSummary.fromMap(e as Map?))
+              .toList() ??
+          const <UtgPathSummary>[],
+      provider: (map['provider'] ?? '').toString(),
+    );
+  }
+}
+
+class UtgBridgeExecutionContext {
+  final String bridgeBaseUrl;
+  final String bridgeToken;
+  final bool providerHealthy;
+  final String providerMessage;
+
+  const UtgBridgeExecutionContext({
+    required this.bridgeBaseUrl,
+    required this.bridgeToken,
+    required this.providerHealthy,
+    required this.providerMessage,
+  });
+
+  factory UtgBridgeExecutionContext.fromMap(Map<dynamic, dynamic>? map) {
+    final raw = map ?? const {};
+    return UtgBridgeExecutionContext(
+      bridgeBaseUrl: (raw['bridgeBaseUrl'] ?? '').toString(),
+      bridgeToken: (raw['bridgeToken'] ?? '').toString(),
+      providerHealthy: raw['providerHealthy'] == true,
+      providerMessage: (raw['providerMessage'] ?? '').toString(),
+    );
+  }
+}
+
+class UtgManualRunResult {
+  final bool success;
+  final String goal;
+  final String pathId;
+  final String? errorCode;
+  final String? errorMessage;
+  final Map<String, dynamic> terminalState;
+  final String providerRunLogPath;
+  final String canonicalRunLogPath;
+  final Map<String, dynamic> rawJson;
+
+  const UtgManualRunResult({
+    required this.success,
+    required this.goal,
+    required this.pathId,
+    required this.errorCode,
+    required this.errorMessage,
+    required this.terminalState,
+    required this.providerRunLogPath,
+    required this.canonicalRunLogPath,
+    required this.rawJson,
+  });
+
+  factory UtgManualRunResult.fromMap(Map<String, dynamic> map) {
+    return UtgManualRunResult(
+      success: map['success'] == true,
+      goal: (map['goal'] ?? '').toString(),
+      pathId: (map['path_id'] ?? '').toString(),
+      errorCode: map['error_code']?.toString(),
+      errorMessage: map['error_message']?.toString(),
+      terminalState:
+          (map['terminal_state'] as Map<dynamic, dynamic>?)?.map(
+            (k, v) => MapEntry(k.toString(), v),
+          ) ??
+          const <String, dynamic>{},
+      providerRunLogPath: (map['provider_run_log_path'] ?? '').toString(),
+      canonicalRunLogPath: (map['canonical_run_log_path'] ?? '').toString(),
+      rawJson: Map<String, dynamic>.from(map),
+    );
+  }
+}
+
+class UtgPathMutationResult {
+  final bool success;
+  final String pathId;
+  final String? errorCode;
+  final String? errorMessage;
+  final bool deleted;
+  final bool imported;
+  final int count;
+  final String? cloudBaseUrl;
+  final Map<String, dynamic> rawJson;
+
+  const UtgPathMutationResult({
+    required this.success,
+    required this.pathId,
+    required this.errorCode,
+    required this.errorMessage,
+    required this.deleted,
+    required this.imported,
+    required this.count,
+    required this.cloudBaseUrl,
+    required this.rawJson,
+  });
+
+  factory UtgPathMutationResult.fromMap(Map<String, dynamic> map) {
+    return UtgPathMutationResult(
+      success: map['success'] == true,
+      pathId: (map['path_id'] ?? '').toString(),
+      errorCode: map['error_code']?.toString(),
+      errorMessage: map['error_message']?.toString(),
+      deleted: map['deleted'] == true,
+      imported: map['imported'] == true,
+      count: map['count'] is num
+          ? (map['count'] as num).toInt()
+          : int.tryParse((map['count'] ?? '0').toString()) ?? 0,
+      cloudBaseUrl: map['cloud_base_url']?.toString(),
+      rawJson: Map<String, dynamic>.from(map),
+    );
+  }
+}
+
+class UtgProviderControlResult {
+  final bool success;
+  final String action;
+  final String message;
+  final UtgBridgeConfig config;
+  final Map<String, dynamic> rawJson;
+
+  const UtgProviderControlResult({
+    required this.success,
+    required this.action,
+    required this.message,
+    required this.config,
+    required this.rawJson,
+  });
+
+  factory UtgProviderControlResult.fromMap(Map<dynamic, dynamic>? map) {
+    final raw = map ?? const {};
+    return UtgProviderControlResult(
+      success: raw['success'] == true,
+      action: (raw['action'] ?? '').toString(),
+      message: (raw['message'] ?? '').toString(),
+      config: UtgBridgeConfig.fromMap(raw),
+      rawJson: Map<String, dynamic>.from(
+        raw.map((key, value) => MapEntry(key.toString(), value)),
+      ),
+    );
+  }
+}
+
+class UtgRunLogSummary {
+  final String runId;
+  final String goal;
+  final bool success;
+  final String doneReason;
+  final int stepCount;
+  final String startedAt;
+  final String finishedAt;
+  final num? durationMs;
+  final String toolName;
+  final String compileStatus;
+  final String compilePathId;
+  final String compileMode;
+  final String actPathId;
+
+  const UtgRunLogSummary({
+    required this.runId,
+    required this.goal,
+    required this.success,
+    required this.doneReason,
+    required this.stepCount,
+    required this.startedAt,
+    required this.finishedAt,
+    required this.durationMs,
+    required this.toolName,
+    required this.compileStatus,
+    required this.compilePathId,
+    required this.compileMode,
+    required this.actPathId,
+  });
+
+  factory UtgRunLogSummary.fromMap(Map<dynamic, dynamic>? map) {
+    final raw = map ?? const {};
+    return UtgRunLogSummary(
+      runId: (raw['run_id'] ?? '').toString(),
+      goal: (raw['goal'] ?? '').toString(),
+      success: raw['success'] == true,
+      doneReason: (raw['done_reason'] ?? '').toString(),
+      stepCount: raw['step_count'] is num
+          ? (raw['step_count'] as num).toInt()
+          : int.tryParse((raw['step_count'] ?? '0').toString()) ?? 0,
+      startedAt: (raw['started_at'] ?? '').toString(),
+      finishedAt: (raw['finished_at'] ?? '').toString(),
+      durationMs: raw['duration_ms'] as num?,
+      toolName: (raw['tool_name'] ?? '').toString(),
+      compileStatus: (raw['compile_status'] ?? '').toString(),
+      compilePathId: (raw['compile_path_id'] ?? '').toString(),
+      compileMode: (raw['compile_mode'] ?? '').toString(),
+      actPathId: (raw['act_path_id'] ?? '').toString(),
+    );
+  }
+}
+
+class UtgRunLogsSnapshot {
+  final bool success;
+  final int count;
+  final List<UtgRunLogSummary> runs;
+  final String runLogPath;
+  final String provider;
+
+  const UtgRunLogsSnapshot({
+    required this.success,
+    required this.count,
+    required this.runs,
+    required this.runLogPath,
+    required this.provider,
+  });
+
+  factory UtgRunLogsSnapshot.fromMap(Map<String, dynamic> map) {
+    return UtgRunLogsSnapshot(
+      success: map['success'] == true,
+      count: map['count'] is num
+          ? (map['count'] as num).toInt()
+          : int.tryParse((map['count'] ?? '0').toString()) ?? 0,
+      runs:
+          (map['runs'] as List<dynamic>?)
+              ?.map((e) => UtgRunLogSummary.fromMap(e as Map?))
+              .toList() ??
+          const <UtgRunLogSummary>[],
+      runLogPath: (map['run_log_path'] ?? '').toString(),
+      provider: (map['provider'] ?? '').toString(),
+    );
+  }
+}
+
+class UtgRunLogImportResult {
+  final bool success;
+  final bool requiresConfirmation;
+  final String runId;
+  final String? errorCode;
+  final String? errorMessage;
+  final String? pendingReason;
+  final Map<String, dynamic> pendingNotes;
+  final List<UtgPathSummary> previewPaths;
+  final int pathsCreated;
+  final List<String> createdPathIds;
+  final int nodesCreated;
+  final int nodesUpdated;
+  final int sequencesCreated;
+  final List<String> warnings;
+  final String runLogPath;
+  final Map<String, dynamic> rawJson;
+
+  const UtgRunLogImportResult({
+    required this.success,
+    required this.requiresConfirmation,
+    required this.runId,
+    required this.errorCode,
+    required this.errorMessage,
+    required this.pendingReason,
+    required this.pendingNotes,
+    required this.previewPaths,
+    required this.pathsCreated,
+    required this.createdPathIds,
+    required this.nodesCreated,
+    required this.nodesUpdated,
+    required this.sequencesCreated,
+    required this.warnings,
+    required this.runLogPath,
+    required this.rawJson,
+  });
+
+  factory UtgRunLogImportResult.fromMap(Map<String, dynamic> map) {
+    return UtgRunLogImportResult(
+      success: map['success'] == true,
+      requiresConfirmation: map['requires_confirmation'] == true,
+      runId: (map['run_id'] ?? '').toString(),
+      errorCode: map['error_code']?.toString(),
+      errorMessage: map['error_message']?.toString(),
+      pendingReason: map['pending_reason']?.toString(),
+      pendingNotes:
+          (map['pending_notes'] as Map<dynamic, dynamic>?)?.map(
+            (k, v) => MapEntry(k.toString(), v),
+          ) ??
+          const <String, dynamic>{},
+      previewPaths:
+          (map['preview_paths'] as List<dynamic>?)
+              ?.map((e) => UtgPathSummary.fromMap(e as Map?))
+              .toList() ??
+          const <UtgPathSummary>[],
+      pathsCreated: map['paths_created'] is num
+          ? (map['paths_created'] as num).toInt()
+          : int.tryParse((map['paths_created'] ?? '0').toString()) ?? 0,
+      createdPathIds:
+          (map['created_path_ids'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const <String>[],
+      nodesCreated: map['nodes_created'] is num
+          ? (map['nodes_created'] as num).toInt()
+          : int.tryParse((map['nodes_created'] ?? '0').toString()) ?? 0,
+      nodesUpdated: map['nodes_updated'] is num
+          ? (map['nodes_updated'] as num).toInt()
+          : int.tryParse((map['nodes_updated'] ?? '0').toString()) ?? 0,
+      sequencesCreated: map['sequences_created'] is num
+          ? (map['sequences_created'] as num).toInt()
+          : int.tryParse((map['sequences_created'] ?? '0').toString()) ?? 0,
+      warnings:
+          (map['warnings'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const <String>[],
+      runLogPath: (map['run_log_path'] ?? '').toString(),
+      rawJson: Map<String, dynamic>.from(map),
+    );
+  }
+}
+
 class AgentToolEventData {
   final String taskId;
   final String toolName;
@@ -121,6 +622,8 @@ class AgentToolEventData {
   final String argsJson;
   final String progress;
   final String summary;
+  final String compileStatus;
+  final String executionRoute;
   final String resultPreviewJson;
   final String rawResultJson;
   final String terminalOutput;
@@ -143,6 +646,8 @@ class AgentToolEventData {
     this.argsJson = '',
     this.progress = '',
     this.summary = '',
+    this.compileStatus = '',
+    this.executionRoute = '',
     this.resultPreviewJson = '',
     this.rawResultJson = '',
     this.terminalOutput = '',
@@ -168,6 +673,8 @@ class AgentToolEventData {
       argsJson: (raw['argsJson'] ?? raw['args'] ?? '').toString(),
       progress: (raw['progress'] ?? '').toString(),
       summary: (raw['summary'] ?? '').toString(),
+      compileStatus: (raw['compileStatus'] ?? '').toString(),
+      executionRoute: (raw['executionRoute'] ?? '').toString(),
       resultPreviewJson: (raw['resultPreviewJson'] ?? '').toString(),
       rawResultJson: (raw['rawResultJson'] ?? '').toString(),
       terminalOutput: (raw['terminalOutput'] ?? '').toString(),
@@ -231,6 +738,7 @@ class AssistsMessageService {
   static AgentCompleteCallback? _onAgentCompleteCallback;
   static AgentErrorCallback? _onAgentErrorCallback;
   static AgentPermissionRequiredCallback? _onAgentPermissionRequiredCallback;
+  static AgentUtgConfirmCallback? _onAgentUtgConfirmCallback;
 
   static ScheduledTaskCancelledCallBack? _onScheduledTaskCancelledCallBack;
   static ScheduledTaskExecuteNowCallBack? _onScheduledTaskExecuteNowCallBack;
@@ -492,6 +1000,16 @@ class AssistsMessageService {
           return await AgentScheduleBridgeService.deleteTask(
             Map<String, dynamic>.from(call.arguments as Map),
           );
+        case 'agentUtgConfirm':
+          final Map<String, dynamic> data = Map<String, dynamic>.from(
+            call.arguments as Map,
+          );
+          final prompt = (data['prompt'] ?? '').toString();
+          final callback = _onAgentUtgConfirmCallback;
+          if (callback == null) {
+            return false;
+          }
+          return await callback(prompt);
 
         default:
           print('未处理的方法: ${call.method}');
@@ -656,6 +1174,10 @@ class AssistsMessageService {
     _onAgentPermissionRequiredCallback = callback;
   }
 
+  static void setOnAgentUtgConfirmCallback(AgentUtgConfirmCallback? callback) {
+    _onAgentUtgConfirmCallback = callback;
+  }
+
   // 发送按钮点击事件到Android端
   static Future<bool> clickButton(
     String taskID,
@@ -733,6 +1255,291 @@ class AssistsMessageService {
       taskId == null ? null : {'taskId': taskId},
     );
     return result == "SUCCESS";
+  }
+
+  static Future<UtgBridgeConfig> getUtgBridgeConfig() async {
+    final result = await assistCore.invokeMethod('getUtgBridgeConfig');
+    return UtgBridgeConfig.fromMap(result as Map?);
+  }
+
+  static Future<UtgBridgeConfig> saveUtgBridgeConfig({
+    bool? utgEnabled,
+    bool? providerAutoStartEnabled,
+    bool? fallbackToVlmOnFailureEnabled,
+    bool? runLogRecordingEnabled,
+    String? omnicloudBaseUrl,
+    String? providerStartCommand,
+    String? providerWorkingDirectory,
+  }) async {
+    final result = await assistCore.invokeMethod('saveUtgBridgeConfig', {
+      if (utgEnabled != null) 'utgEnabled': utgEnabled,
+      if (providerAutoStartEnabled != null)
+        'providerAutoStartEnabled': providerAutoStartEnabled,
+      if (fallbackToVlmOnFailureEnabled != null)
+        'fallbackToVlmOnFailureEnabled': fallbackToVlmOnFailureEnabled,
+      if (runLogRecordingEnabled != null)
+        'runLogRecordingEnabled': runLogRecordingEnabled,
+      if (omnicloudBaseUrl != null) 'omnicloudBaseUrl': omnicloudBaseUrl,
+      if (providerStartCommand != null)
+        'providerStartCommand': providerStartCommand,
+      if (providerWorkingDirectory != null)
+        'providerWorkingDirectory': providerWorkingDirectory,
+    });
+    return UtgBridgeConfig.fromMap(result as Map?);
+  }
+
+  static Future<UtgProviderControlResult> controlUtgProvider({
+    required String action,
+  }) async {
+    final result = await assistCore.invokeMethod('controlUtgProvider', {
+      'action': action.trim(),
+    });
+    return UtgProviderControlResult.fromMap(result as Map?);
+  }
+
+  static Future<UtgBridgeExecutionContext>
+  getUtgBridgeExecutionContext() async {
+    final result = await assistCore.invokeMethod(
+      'getUtgBridgeExecutionContext',
+    );
+    return UtgBridgeExecutionContext.fromMap(result as Map?);
+  }
+
+  static Future<UtgRunLogsSnapshot> getUtgRunLogs({
+    String? baseUrl,
+    int limit = 20,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final config = await getUtgBridgeConfig();
+    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
+    if (resolvedBaseUrl.isEmpty) {
+      throw Exception('OmniCloud Base URL 未设置');
+    }
+    final uri = Uri.parse(
+      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/run_logs?limit=$limit',
+    );
+    final response = await http.get(uri).timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('UTG run_logs 请求失败: HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('UTG run_logs 响应格式错误');
+    }
+    return UtgRunLogsSnapshot.fromMap(decoded);
+  }
+
+  static Future<UtgRunLogImportResult> importUtgRunLog({
+    required String runId,
+    bool confirm = false,
+    String? baseUrl,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final config = await getUtgBridgeConfig();
+    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
+    if (resolvedBaseUrl.isEmpty) {
+      throw Exception('OmniCloud Base URL 未设置');
+    }
+    final uri = Uri.parse(
+      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/run_logs/import',
+    );
+    final response = await http
+        .post(
+          uri,
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({'run_id': runId.trim(), 'confirm': confirm}),
+        )
+        .timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('保存 run_log 为 path 失败: HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('保存 run_log 为 path 响应格式错误');
+    }
+    return UtgRunLogImportResult.fromMap(decoded);
+  }
+
+  static Future<UtgPathsSnapshot> getUtgPaths({
+    String? baseUrl,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final config = await getUtgBridgeConfig();
+    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
+    if (resolvedBaseUrl.isEmpty) {
+      throw Exception('OmniCloud Base URL 未设置');
+    }
+    final uri = Uri.parse(
+      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/paths',
+    );
+    final response = await http.get(uri).timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('UTG paths 请求失败: HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('UTG paths 响应格式错误');
+    }
+    return UtgPathsSnapshot.fromMap(decoded);
+  }
+
+  static Future<Map<String, dynamic>> getUtgPathBundle({
+    required String pathId,
+    String? baseUrl,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final config = await getUtgBridgeConfig();
+    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
+    if (resolvedBaseUrl.isEmpty) {
+      throw Exception('OmniCloud Base URL 未设置');
+    }
+    final uri = Uri.parse(
+      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/paths/$pathId/bundle',
+    );
+    final response = await http.get(uri).timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('UTG path bundle 请求失败: HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('UTG path bundle 响应格式错误');
+    }
+    return decoded;
+  }
+
+  static Future<UtgPathMutationResult> deleteUtgPath({
+    required String pathId,
+    String? baseUrl,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final config = await getUtgBridgeConfig();
+    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
+    if (resolvedBaseUrl.isEmpty) {
+      throw Exception('OmniCloud Base URL 未设置');
+    }
+    final uri = Uri.parse(
+      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/paths/$pathId',
+    );
+    final response = await http.delete(uri).timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('UTG path 删除失败: HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('UTG path 删除响应格式错误');
+    }
+    return UtgPathMutationResult.fromMap(decoded);
+  }
+
+  static Future<UtgPathMutationResult> downloadCloudUtgPath({
+    required String pathId,
+    required String cloudBaseUrl,
+    String? baseUrl,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final config = await getUtgBridgeConfig();
+    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
+    if (resolvedBaseUrl.isEmpty) {
+      throw Exception('OmniCloud Base URL 未设置');
+    }
+    final uri = Uri.parse(
+      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/cloud_paths/download',
+    );
+    final response = await http
+        .post(
+          uri,
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'cloud_base_url': cloudBaseUrl.trim(),
+            'path_id': pathId.trim(),
+          }),
+        )
+        .timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('下载云端 path 失败: HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('下载云端 path 响应格式错误');
+    }
+    return UtgPathMutationResult.fromMap(decoded);
+  }
+
+  static Future<UtgPathMutationResult> uploadCloudUtgPath({
+    required String pathId,
+    required String cloudBaseUrl,
+    String? baseUrl,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final config = await getUtgBridgeConfig();
+    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
+    if (resolvedBaseUrl.isEmpty) {
+      throw Exception('OmniCloud Base URL 未设置');
+    }
+    final uri = Uri.parse(
+      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/cloud_paths/upload',
+    );
+    final response = await http
+        .post(
+          uri,
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'cloud_base_url': cloudBaseUrl.trim(),
+            'path_id': pathId.trim(),
+          }),
+        )
+        .timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('上传本地 path 失败: HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('上传本地 path 响应格式错误');
+    }
+    return UtgPathMutationResult.fromMap(decoded);
+  }
+
+  static Future<UtgManualRunResult> runUtgPath({
+    required String pathId,
+    Map<String, String> slots = const {},
+    String? baseUrl,
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
+    final config = await getUtgBridgeConfig();
+    final executionContext = await getUtgBridgeExecutionContext();
+    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
+    if (resolvedBaseUrl.isEmpty) {
+      throw Exception('OmniCloud Base URL 未设置');
+    }
+    if (executionContext.bridgeBaseUrl.trim().isEmpty ||
+        executionContext.bridgeToken.trim().isEmpty) {
+      throw Exception('UTG bridge 上下文不可用');
+    }
+    final uri = Uri.parse(
+      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/run_compiled_path',
+    );
+    final response = await http
+        .post(
+          uri,
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'goal': 'manual_utg_path_run:$pathId',
+            'path_id': pathId,
+            'slots': slots,
+            'bridge_base_url': executionContext.bridgeBaseUrl,
+            'bridge_token': executionContext.bridgeToken,
+            'context': {'source': 'utg_manual_dashboard'},
+          }),
+        )
+        .timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('UTG path 执行失败: HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('UTG path 执行响应格式错误');
+    }
+    return UtgManualRunResult.fromMap(decoded);
   }
 
   static Future<bool> copyToClipboard(String text) async {

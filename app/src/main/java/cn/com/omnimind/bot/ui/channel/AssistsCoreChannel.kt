@@ -177,6 +177,18 @@ class AssistsCoreChannel {
                 "pressHome" -> {
                     assistsCoreManager!!.pressHome(call, result)
                 }
+                "getUtgBridgeConfig" -> {
+                    assistsCoreManager!!.getUtgBridgeConfig(call, result)
+                }
+                "saveUtgBridgeConfig" -> {
+                    assistsCoreManager!!.saveUtgBridgeConfig(call, result)
+                }
+                "getUtgBridgeExecutionContext" -> {
+                    assistsCoreManager!!.getUtgBridgeExecutionContext(call, result)
+                }
+                "controlUtgProvider" -> {
+                    assistsCoreManager!!.controlUtgProvider(call, result)
+                }
 
                 "getInstalledApplications" -> {
                     assistsCoreManager!!.getInstalledApplications( call, result)

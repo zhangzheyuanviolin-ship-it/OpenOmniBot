@@ -13,7 +13,10 @@ import android.util.Log
 import androidx.core.net.toUri
 import cn.com.omnimind.assists.AssistsCore
 import cn.com.omnimind.assists.api.bean.TaskParams
+import cn.com.omnimind.assists.api.bean.VLMTaskPreHookResult
+import cn.com.omnimind.assists.api.bean.VLMTaskRunLogPayload
 import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
+import cn.com.omnimind.assists.task.vlmserver.OperationResult
 import cn.com.omnimind.assists.task.scheduled.worker.ScheduledParams
 import cn.com.omnimind.assists.task.scheduled.worker.ScheduledStates
 import cn.com.omnimind.baselib.util.APPPackageUtil
@@ -188,7 +191,11 @@ class AssistsUtil {
             onMessagePushListener: OnMessagePushListener,
             needSummary: Boolean = false,
             skipGoHome: Boolean = false,  // 是否跳过回到主页，从当前页面开始执行
-            stepSkillGuidance: String = ""
+            stepSkillGuidance: String = "",
+            onRunCompiledPath: (suspend (String) -> OperationResult)? = null,
+            onPrepareExecution: (suspend () -> VLMTaskPreHookResult)? = null,
+            onCompileGateResolved: (suspend (VLMTaskPreHookResult) -> Unit)? = null,
+            onTaskRunLogReady: (suspend (VLMTaskRunLogPayload) -> Unit)? = null
         ) {
 
             if (!AssistsCore.isAccessibilityServiceEnabled()) {
@@ -218,7 +225,11 @@ class AssistsUtil {
                     needSummary,
                     onMessagePushListener,
                     skipGoHome,
-                    stepSkillGuidance
+                    stepSkillGuidance,
+                    onRunCompiledPath,
+                    onPrepareExecution,
+                    onCompileGateResolved,
+                    onTaskRunLogReady
                 )
             )
         }

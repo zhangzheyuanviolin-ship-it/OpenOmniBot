@@ -31,7 +31,7 @@ class VLMClient {
 
     fun buildUIOperationRequest(
         context: UIContext,
-        screenshot: String,
+        screenshot: String?,
         conversationState: VLMConversationState,
         model: String = "scene.vlm.operation.primary",
         retryState: VLMToolCallRetryState? = null
@@ -50,7 +50,7 @@ class VLMClient {
 
         OmniLog.i(
             TAG,
-            "buildUIOperationRequest scene=$model historyRounds=${conversationState.roundCount()} historyMessages=${historyMessages.size} totalMessages=${messages.size} currentImages=1 retry=${retryState?.retryIndex ?: 0}"
+            "buildUIOperationRequest scene=$model historyRounds=${conversationState.roundCount()} historyMessages=${historyMessages.size} totalMessages=${messages.size} currentImages=${if (screenshot.isNullOrBlank()) 0 else 1} retry=${retryState?.retryIndex ?: 0}"
         )
 
         return VLMRequestEnvelope(
@@ -171,7 +171,7 @@ class VLMClient {
         systemPrompt: String,
         historyMessages: List<ChatCompletionMessage>,
         currentUserText: String,
-        screenshot: String,
+        screenshot: String?,
         context: UIContext,
         retryState: VLMToolCallRetryState?
     ): List<ChatCompletionMessage> {
@@ -200,7 +200,7 @@ class VLMClient {
 
     private fun buildCurrentUserMessage(
         currentUserText: String,
-        screenshot: String
+        screenshot: String?
     ): ChatCompletionMessage {
         return ChatCompletionMessage(
             role = "user",
@@ -211,7 +211,9 @@ class VLMClient {
                         put("text", JsonPrimitive(currentUserText))
                     }
                 )
-                add(buildImageContent(screenshot))
+                if (!screenshot.isNullOrBlank()) {
+                    add(buildImageContent(screenshot))
+                }
             }
         )
     }
@@ -312,6 +314,9 @@ class VLMClient {
             )
             "open_app" -> OpenAppAction(
                 packageName = requireString(args, "package_name")
+            )
+            "run_compiled_path" -> RunCompiledPathAction(
+                pathId = requireString(args, "path_id")
             )
             "press_home" -> PressHomeAction()
             "press_back" -> PressBackAction()

@@ -25,10 +25,24 @@ class AgentToolSummaryCard extends StatelessWidget {
     final preview = resolveAgentToolPreview(cardData);
     final typeLabel = resolveAgentToolTypeLabel(cardData);
     final statusColor = _resolvedStatusColor(status);
+    final compileStatus = (cardData['compileStatus'] ?? '').toString();
+    final executionRoute = (cardData['executionRoute'] ?? '').toString();
+    final routeLabel = _resolvedRouteLabel(
+      executionRoute: executionRoute,
+      compileStatus: compileStatus,
+    );
+    final backgroundColor = _resolvedCardBackground(
+      executionRoute: executionRoute,
+      compileStatus: compileStatus,
+      fallback: statusColor.withValues(alpha: 0.08),
+    );
 
     final tooltipLines = <String>[title];
     if (preview.isNotEmpty && preview != title) {
       tooltipLines.add(preview);
+    }
+    if (routeLabel != null) {
+      tooltipLines.add(routeLabel);
     }
 
     return Tooltip(
@@ -40,16 +54,16 @@ class AgentToolSummaryCard extends StatelessWidget {
             maxWidth: MediaQuery.of(context).size.width * 0.78,
             minHeight: 34,
           ),
-          child: Container(
-            margin: const EdgeInsets.only(top: 6, bottom: 2),
-            padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+            child: Container(
+              margin: const EdgeInsets.only(top: 6, bottom: 2),
+              padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 _StatusIcon(status: status, toolType: cardData['toolType']),
                 const SizedBox(width: 8),
                 Flexible(
@@ -65,6 +79,34 @@ class AgentToolSummaryCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (routeLabel != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _resolvedRouteColor(
+                        executionRoute: executionRoute,
+                        compileStatus: compileStatus,
+                      ).withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      routeLabel,
+                      style: TextStyle(
+                        color: _resolvedRouteColor(
+                          executionRoute: executionRoute,
+                          compileStatus: compileStatus,
+                        ),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -92,6 +134,43 @@ class AgentToolSummaryCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _resolvedRouteLabel({
+  required String executionRoute,
+  required String compileStatus,
+}) {
+  if (executionRoute == 'utg' || compileStatus == 'hit') {
+    return 'UTG';
+  }
+  if (executionRoute == 'vlm' && compileStatus == 'miss') {
+    return 'VLM';
+  }
+  return null;
+}
+
+Color _resolvedRouteColor({
+  required String executionRoute,
+  required String compileStatus,
+}) {
+  if (executionRoute == 'utg' || compileStatus == 'hit') {
+    return const Color(0xFF2F8F4E);
+  }
+  return AppColors.primaryBlue;
+}
+
+Color _resolvedCardBackground({
+  required String executionRoute,
+  required String compileStatus,
+  required Color fallback,
+}) {
+  if (executionRoute == 'utg' || compileStatus == 'hit') {
+    return const Color(0xFFEAF7EE);
+  }
+  if (executionRoute == 'vlm' && compileStatus == 'miss') {
+    return const Color(0xFFEAF2FF);
+  }
+  return fallback;
 }
 
 class _StatusIcon extends StatelessWidget {

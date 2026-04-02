@@ -207,6 +207,11 @@ class VLMOperationService(
         resetConversationState()
         ensureTaskActive("execute_task_start")
 
+        var requireObservationStabilization = false
+        var expectedForegroundPackage: String? = null
+        var totalStabilizationWaitMs = 0L
+        var lastScreenshotErrorCode: Int? = null
+
         // 任务开始执行时，先回到手机首页Home（除非 skipGoHome = true）
         if (!skipGoHome) {
             if (packageName != null && packageName.isNotEmpty()) {
@@ -215,13 +220,12 @@ class VLMOperationService(
                     val launchResult = deviceOperator.launchApplication(packageName)
                     if (launchResult.success) {
                         OmniLog.d(Tag, "成功拉起应用: $packageName")
-                        delay(2000L)
-                        ensureTaskActive("after_launch_application_delay")
+                        requireObservationStabilization = true
+                        expectedForegroundPackage = packageName
                     } else {
                         OmniLog.e(Tag, "拉起应用失败: ${launchResult.message}")
                     }
                 } catch (e: PrivacyBlockedException) {
-                    // 隐私限制异常，继续抛出异常
                     OmniLog.e(Tag, "应用因隐私设置被阻止: ${e.message}")
                     throw e
                 } catch (e: CancellationException) {
@@ -319,7 +323,17 @@ class VLMOperationService(
             }
             // === Context Compactor Logic (End) ===
 
-            val result = executeSingleStepWithTimeOut(context, useModel, summary)
+            val result = executeSingleStepWithTimeOut(
+                context = context,
+                useModel = useModel,
+                summary = summary,
+                requireObservationStabilization = requireObservationStabilization,
+                expectedForegroundPackage = expectedForegroundPackage,
+            )
+            totalStabilizationWaitMs += result.stabilizationWaitMs
+            if (result.screenshotErrorCode != null) {
+                lastScreenshotErrorCode = result.screenshotErrorCode
+            }
             ensureTaskActive("after_single_step_$stepIndex")
 
             if (result.feedback != null) {
@@ -336,7 +350,9 @@ class VLMOperationService(
                     finalContext = context,
                     error = "VLM反馈: ${result.feedback}",
                     summaryScreenshotList = summaryScreenshotList,
-                    feedback = result.feedback
+                    feedback = result.feedback,
+                    screenshotErrorCode = lastScreenshotErrorCode,
+                    stabilizationWaitMs = totalStabilizationWaitMs,
                 )
             }
 
@@ -367,7 +383,9 @@ class VLMOperationService(
                         totalSteps = stepIndex + 1,
                         executionTrace = executionTrace,
                         finalContext = context,
-                        error = "VLM解析失败次数超过限制(${maxParseFailures}次)，任务终止"
+                        error = "VLM解析失败次数超过限制(${maxParseFailures}次)，任务终止",
+                        screenshotErrorCode = lastScreenshotErrorCode,
+                        stabilizationWaitMs = totalStabilizationWaitMs,
                     )
                 }
 
@@ -414,6 +432,17 @@ class VLMOperationService(
                 }
             }
 
+            requireObservationStabilization = when (step.action) {
+                is OpenAppAction,
+                is PressHomeAction,
+                is PressBackAction -> true
+                else -> false
+            }
+            expectedForegroundPackage = when (val action = step.action) {
+                is OpenAppAction -> action.packageName
+                else -> null
+            }
+
             if (step.action is FinishedAction) {
                 return TaskExecutionReport(
                     success = true,
@@ -422,7 +451,9 @@ class VLMOperationService(
                     executionTrace = executionTrace,
                     finalContext = context,
                     error = null,
-                    summaryScreenshotList = summaryScreenshotList
+                    summaryScreenshotList = summaryScreenshotList,
+                    screenshotErrorCode = lastScreenshotErrorCode,
+                    stabilizationWaitMs = totalStabilizationWaitMs,
                 )
             }
             if (step.action is InfoAction) {
@@ -451,7 +482,9 @@ class VLMOperationService(
                         totalSteps = stepIndex + 1,
                         executionTrace = executionTrace,
                         finalContext = context,
-                        error = "INFO动作处理失败: ${e.message}"
+                        error = "INFO动作处理失败: ${e.message}",
+                        screenshotErrorCode = lastScreenshotErrorCode,
+                        stabilizationWaitMs = totalStabilizationWaitMs,
                     )
                 }
             }
@@ -494,7 +527,9 @@ class VLMOperationService(
                         totalSteps = stepIndex + 1,
                         executionTrace = executionTrace,
                         finalContext = context,
-                        error = "用户交互动作处理失败: ${e.message}"
+                        error = "用户交互动作处理失败: ${e.message}",
+                        screenshotErrorCode = lastScreenshotErrorCode,
+                        stabilizationWaitMs = totalStabilizationWaitMs,
                     )
                 }
             }
@@ -505,7 +540,9 @@ class VLMOperationService(
                     totalSteps = stepIndex + 1,
                     executionTrace = executionTrace,
                     finalContext = context,
-                    error = "任务终止: ${(step.action as AbortAction).value}"
+                    error = "任务终止: ${(step.action as AbortAction).value}",
+                    screenshotErrorCode = lastScreenshotErrorCode,
+                    stabilizationWaitMs = totalStabilizationWaitMs,
                 )
             }
             stepIndex++
@@ -518,7 +555,9 @@ class VLMOperationService(
             executionTrace = executionTrace,
             finalContext = context,
             error = lastError ?: "任务未完成",
-            summaryScreenshotList = summaryScreenshotList
+            summaryScreenshotList = summaryScreenshotList,
+            screenshotErrorCode = lastScreenshotErrorCode,
+            stabilizationWaitMs = totalStabilizationWaitMs,
         )
     }
 
@@ -538,10 +577,18 @@ class VLMOperationService(
     suspend fun executeSingleStepWithTimeOut(
         context: UIContext,
         useModel: String = "scene.vlm.operation.primary",
-        summary: Boolean
+        summary: Boolean,
+        requireObservationStabilization: Boolean = false,
+        expectedForegroundPackage: String? = null,
     ): VLMOperationResult {
         return try {
-            executeSingleStep(context, useModel, summary)
+            executeSingleStep(
+                context = context,
+                model = useModel,
+                summary = summary,
+                requireObservationStabilization = requireObservationStabilization,
+                expectedForegroundPackage = expectedForegroundPackage,
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: PrivacyBlockedException) {
@@ -552,7 +599,8 @@ class VLMOperationService(
                 success = false,
                 error = "执行单步任务异常: ${e.message}",
                 step = null,
-                context = context
+                context = context,
+                screenshotErrorCode = extractScreenshotErrorCode(e.message),
             )
         }
     }
@@ -569,7 +617,9 @@ class VLMOperationService(
     suspend fun executeSingleStep(
         context: UIContext,
         model: String = "scene.vlm.operation.primary",
-        summary: Boolean
+        summary: Boolean,
+        requireObservationStabilization: Boolean = false,
+        expectedForegroundPackage: String? = null,
     ): VLMOperationResult {
         // 内部传递都用 scene.xxx 格式，只在需要判断模型类型或发送请求时才解析
 
@@ -579,6 +629,7 @@ class VLMOperationService(
 
         var stabilityAttempt = 0
         while (stabilityAttempt < maxRetries) {
+            var stabilizationWaitMs = 0L
             try {
                 safePauseCheck("before_attempt_$stabilityAttempt")
 
@@ -587,10 +638,50 @@ class VLMOperationService(
                     "executeSingleStep: stabilityAttempt=$stabilityAttempt, overallTask=${_context.overallTask}, currentStepGoal=${_context.activeGoal()}"
                 )
                 println("executeSingleStep: stabilityAttempt=$stabilityAttempt, overallTask=${_context.overallTask}, currentStepGoal=${_context.activeGoal()}")
+                var beforePackageName = AccessibilityController.getPackageName()
+                var beforeXml = captureCurrentXml()
+                if (requireObservationStabilization) {
+                    val stabilizedObservation = waitForStableObservation(
+                        previousPackageName = beforePackageName,
+                        expectedForegroundPackage = expectedForegroundPackage,
+                    )
+                    stabilizationWaitMs = stabilizedObservation.waitedMs
+                    beforePackageName = stabilizedObservation.packageName ?: beforePackageName
+                    beforeXml = stabilizedObservation.xml ?: beforeXml
+                }
                 ensureTaskActive("before_screenshot_$stabilityAttempt")
-                val screenshot = deviceOperator.captureScreenshot()
+                var screenshot: String? = null
+                try {
+                    screenshot = deviceOperator.captureScreenshot()
+                } catch (e: Exception) {
+                    val screenshotErrorCode = extractScreenshotErrorCode(e.message)
+                    if (screenshotErrorCode == 1) {
+                        OmniLog.w(
+                            Tag,
+                            "首轮截图命中 error code: 1，先等待 XML/前台稳定后重试截图"
+                        )
+                        val stabilizedObservation = waitForStableObservation(
+                            previousPackageName = beforePackageName,
+                            expectedForegroundPackage = expectedForegroundPackage,
+                        )
+                        stabilizationWaitMs += stabilizedObservation.waitedMs
+                        beforePackageName = stabilizedObservation.packageName ?: beforePackageName
+                        beforeXml = stabilizedObservation.xml ?: beforeXml
+                        ensureTaskActive("before_retry_screenshot_$stabilityAttempt")
+                        screenshot = try {
+                            deviceOperator.captureScreenshot()
+                        } catch (retryError: Exception) {
+                            OmniLog.w(
+                                Tag,
+                                "重试截图仍失败，继续走 XML-only 观察: ${retryError.message}"
+                            )
+                            null
+                        }
+                    } else {
+                        OmniLog.w(Tag, "截图失败，继续走 XML-only 观察: ${e.message}")
+                    }
+                }
                 safePauseCheck("after_screenshot_$stabilityAttempt")
-                val beforeXml = captureCurrentXml()
                 safePauseCheck("after_capture_xml_$stabilityAttempt")
 
                 // Note: Compactor 已移至 executeTask 主循环，在超时计时之外执行
@@ -638,13 +729,16 @@ class VLMOperationService(
                             observation = "STREAM_ERROR",
                             thought = "VLM流式请求失败,忽略后面的action字段",
                             action = RecordAction(content = streamError),
-                            result = "VLM流式请求失败"
+                            result = "VLM流式请求失败",
+                            observationXml = beforeXml,
+                            packageName = beforePackageName,
                         )
                         return VLMOperationResult(
                             success = false,
                             error = streamError,
                             step = failureStep,
-                            context = _context
+                            context = _context,
+                            stabilizationWaitMs = stabilizationWaitMs,
                         )
                     }
                     sceneTurn = streamedTurn
@@ -717,14 +811,17 @@ class VLMOperationService(
                             ?: "VLM响应解析失败",
                         thought = buildParseFailureThought(vlmResult),
                         action = RecordAction(content = "解析失败: $resolvedError"),
-                        result = "解析失败，第${parseFailureCount}次失败"
+                        result = "解析失败，第${parseFailureCount}次失败",
+                        observationXml = beforeXml,
+                        packageName = beforePackageName,
                     )
 
                     return VLMOperationResult(
                         success = false,
                         error = resolvedError,
                         step = failureStep,
-                        context = _context
+                        context = _context,
+                        stabilizationWaitMs = stabilizationWaitMs,
                     )
                 }
 
@@ -739,7 +836,11 @@ class VLMOperationService(
                         thought = processedStep.thought,
                         action = feedbackAction,
                         result = feedbackAction.value,
-                        summary = processedStep.summary
+                        summary = processedStep.summary,
+                        observationXml = beforeXml,
+                        packageName = beforePackageName,
+                        startedAtMs = System.currentTimeMillis(),
+                        finishedAtMs = System.currentTimeMillis(),
                     )
                     sceneTurn?.let { completedTurn ->
                         conversationState.appendRound(
@@ -756,7 +857,8 @@ class VLMOperationService(
                         context = _context,
                         error = null,
                         screenshot = if (summary) screenshot else null,
-                        feedback = feedbackAction.value
+                        feedback = feedbackAction.value,
+                        stabilizationWaitMs = stabilizationWaitMs,
                     )
                 }
 
@@ -803,6 +905,7 @@ class VLMOperationService(
 
                 safePauseCheck("before_action_${processedStep.action.name}_${stabilityAttempt}")
                 ensureTaskActive("before_action_dispatch_${processedStep.action.name}_$stabilityAttempt")
+                val actionStartedAtMs = System.currentTimeMillis()
 
                 val executedStep = actionExecutor.act(
                     VLMStep(
@@ -813,7 +916,13 @@ class VLMOperationService(
                     )
                 )
                 safePauseCheck("after_action_${processedStep.action.name}_${stabilityAttempt}")
-                val finalStep = executedStep.copy(summary = processedStep.summary)
+                val finalStep = executedStep.copy(
+                    summary = processedStep.summary,
+                    observationXml = beforeXml,
+                    packageName = beforePackageName,
+                    startedAtMs = actionStartedAtMs,
+                    finishedAtMs = System.currentTimeMillis(),
+                )
 
                 OmniLog.d(
                     Tag,
@@ -828,7 +937,8 @@ class VLMOperationService(
                         success = false,
                         error = "不支持的操作类型: ${finalStep.result}",
                         step = finalStep,
-                        context = _context
+                        context = _context,
+                        stabilizationWaitMs = stabilizationWaitMs,
                     )
                 }
 
@@ -848,7 +958,8 @@ class VLMOperationService(
                     step = finalStep,
                     context = _context,
                     error = null,
-                    screenshot = if (summary) screenshot else null
+                    screenshot = if (summary) screenshot else null,
+                    stabilizationWaitMs = stabilizationWaitMs,
                 )
 
             } catch (e: Http429Exception) {
@@ -856,13 +967,16 @@ class VLMOperationService(
                     observation = "429",
                     thought = "服务端请求失败,忽略后面的action字段",
                     action = RecordAction(content = "服务端请求失败"),
-                    result = "服务端请求失败"
+                    result = "服务端请求失败",
+                    observationXml = null,
+                    packageName = AccessibilityController.getPackageName(),
                 )
                 return VLMOperationResult(
                     success = false,
                     error = "!200",
                     step = failureStep,
-                    context = _context
+                    context = _context,
+                    stabilizationWaitMs = 0L,
                 )
             } catch (e: PrivacyBlockedException) {
                 // 隐私限制异常，继续抛出异常
@@ -877,7 +991,9 @@ class VLMOperationService(
                         success = false,
                         error = "操作执行异常: ${e.message}",
                         step = null,
-                        context = _context
+                        context = _context,
+                        screenshotErrorCode = extractScreenshotErrorCode(e.message),
+                        stabilizationWaitMs = stabilizationWaitMs,
                     )
                 }
                 stabilityAttempt++  // 执行异常，增加重试计数
@@ -889,7 +1005,8 @@ class VLMOperationService(
             success = false,
             error = "页面稳定性检测失败，达到最大重试次数",
             step = null,
-            context = _context
+            context = _context,
+            stabilizationWaitMs = 0L,
         )
     }
 
@@ -899,6 +1016,76 @@ class VLMOperationService(
         if (primary.isBlank()) return ""
         return normalizeOverlayText(primary, maxLen = 320)
     }
+
+    private data class StableObservation(
+        val packageName: String?,
+        val xml: String?,
+        val waitedMs: Long,
+    )
+
+    private suspend fun waitForStableObservation(
+        previousPackageName: String?,
+        expectedForegroundPackage: String?,
+    ): StableObservation {
+        val startedAt = System.currentTimeMillis()
+        var lastStablePackage: String? = null
+        var stableHits = 0
+        var lastPackageName = previousPackageName
+        var lastXml: String? = null
+        if (!isSubTask) {
+            deviceOperator.showInfo("等待页面稳定后继续观察")
+        }
+        while (System.currentTimeMillis() - startedAt < 3500L) {
+            safePauseCheck("wait_for_stable_observation")
+            val currentPackageName = AccessibilityController.getPackageName()
+            val currentXml = captureCurrentXml()
+            val elapsedMs = System.currentTimeMillis() - startedAt
+            val packageReady = when {
+                !expectedForegroundPackage.isNullOrBlank() -> currentPackageName == expectedForegroundPackage
+                !previousPackageName.isNullOrBlank() -> {
+                    currentPackageName != previousPackageName || !currentXml.isNullOrBlank()
+                }
+                else -> !currentPackageName.isNullOrBlank()
+            }
+            val xmlReady = !currentXml.isNullOrBlank()
+            val cooldownReady = elapsedMs >= 450L
+            lastPackageName = currentPackageName ?: lastPackageName
+            lastXml = currentXml ?: lastXml
+            if (packageReady && xmlReady && cooldownReady) {
+                if (currentPackageName == lastStablePackage) {
+                    stableHits += 1
+                } else {
+                    lastStablePackage = currentPackageName
+                    stableHits = 1
+                }
+                if (stableHits >= 2) {
+                    return StableObservation(
+                        packageName = currentPackageName,
+                        xml = currentXml,
+                        waitedMs = elapsedMs,
+                    )
+                }
+            } else {
+                stableHits = 0
+            }
+            delay(250L)
+        }
+        return StableObservation(
+            packageName = lastPackageName,
+            xml = lastXml,
+            waitedMs = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L),
+        )
+    }
+
+    private fun extractScreenshotErrorCode(message: String?): Int? {
+        if (message.isNullOrBlank()) return null
+        return Regex("error code:?\\s*(\\d+)", RegexOption.IGNORE_CASE)
+            .find(message)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+    }
+
 
     private suspend fun emitReasoningOverlay(reasoning: String) {
         if (isSubTask) return
@@ -1201,7 +1388,9 @@ data class VLMOperationResult(
     val context: UIContext,
     val error: String?,
     val screenshot: String? = null,
-    val feedback: String? = null
+    val feedback: String? = null,
+    val screenshotErrorCode: Int? = null,
+    val stabilizationWaitMs: Long = 0L,
 )
 
 data class TaskExecutionReport(
@@ -1212,5 +1401,12 @@ data class TaskExecutionReport(
     val finalContext: UIContext,
     val error: String?,
     val summaryScreenshotList: List<String>? = null,
-    val feedback: String? = null
+    val feedback: String? = null,
+    val compileGateKind: String? = null,
+    val fallbackUsed: Boolean = false,
+    val screenshotErrorCode: Int? = null,
+    val stabilizationWaitMs: Long = 0L,
+    val providerRunLogJson: String? = null,
+    val providerRunLogPath: String? = null,
+    val canonicalRunLogPath: String? = null,
 )

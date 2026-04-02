@@ -21,7 +21,7 @@ object ModelProviderConfigStore {
     internal const val LEGACY_DEFAULT_PROFILE_ID = "legacy-default"
 
     private const val DEFAULT_PROFILE_ID = "profile-1"
-    private const val DEFAULT_PROFILE_NAME = "Provider 1"
+    private const val DEFAULT_PROFILE_NAME = "DashScope"
 
     private val gson = Gson()
 
@@ -30,6 +30,21 @@ object ModelProviderConfigStore {
         val mmkv = MMKV.defaultMMKV() ?: return withBuiltin(defaultProfiles())
         val current = readProfiles(mmkv)
         if (current.isNotEmpty()) {
+            if (current.size == 1 && current.first().id == DEFAULT_PROFILE_ID) {
+                val buildDefault = defaultProfiles().first()
+                val existing = current.first()
+                val hydrated = existing.copy(
+                    name = existing.name.ifEmpty { buildDefault.name },
+                    baseUrl = if (existing.baseUrl.isBlank()) buildDefault.baseUrl else existing.baseUrl,
+                    apiKey = if (existing.apiKey.isBlank()) buildDefault.apiKey else existing.apiKey
+                )
+                if (hydrated != existing) {
+                    writeProfiles(mmkv, listOf(hydrated))
+                    mmkv.encode(KEY_EDITING_PROFILE_ID, hydrated.id)
+                    syncLegacyFlatConfig(mmkv, hydrated)
+                    return listOf(hydrated)
+                }
+            }
             ensureEditingProfile(mmkv, withBuiltin(current))
             return withBuiltin(current)
         }
@@ -321,10 +336,23 @@ object ModelProviderConfigStore {
     }
 
     private fun defaultProfiles(): List<ModelProviderProfile> {
+        val defaultBaseUrl = runCatching {
+            val appBuildConfig = Class.forName("cn.com.omnimind.bot.BuildConfig")
+            val value = appBuildConfig.getField("DEFAULT_MODEL_PROVIDER_BASE_URL").get(null) as? String
+            normalizeBaseUrl(value.orEmpty()).orEmpty()
+        }.getOrDefault("")
+        val defaultApiKey = runCatching {
+            val appBuildConfig = Class.forName("cn.com.omnimind.bot.BuildConfig")
+            (appBuildConfig.getField("DEFAULT_MODEL_PROVIDER_API_KEY").get(null) as? String)
+                ?.trim()
+                .orEmpty()
+        }.getOrDefault("")
         return listOf(
             ModelProviderProfile(
                 id = DEFAULT_PROFILE_ID,
-                name = DEFAULT_PROFILE_NAME
+                name = DEFAULT_PROFILE_NAME,
+                baseUrl = defaultBaseUrl,
+                apiKey = defaultApiKey
             )
         )
     }

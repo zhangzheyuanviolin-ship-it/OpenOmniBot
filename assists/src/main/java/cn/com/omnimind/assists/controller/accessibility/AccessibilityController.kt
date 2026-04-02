@@ -270,7 +270,10 @@ class AccessibilityController() {
             isCheckSideRegionMostlySingleColor: Boolean = false,
             compressQuality: ImageQuality? = null    // null = 不压缩
         ): CaptureData {
-            val image = if (isFilterOverlay) {
+            if (service == null || screenshotAction == null) {
+                initController()
+            }
+            var image = if (isFilterOverlay) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     screenshotAction?.captureExcludingOverlaysV14()
 
@@ -286,7 +289,6 @@ class AccessibilityController() {
                             AssistsCore.screenshotImageEventApi?.onScreenShotHideOverlay()
 
                         }
-                        delay(100)
                         val bitmap = ScreenCaptureManager.getInstance().captureOnce()
                         withContext(Dispatchers.Main) {
                             AssistsCore.screenshotImageEventApi?.onScreenShotShowOverlay()
@@ -298,6 +300,50 @@ class AccessibilityController() {
             } else {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     screenshotAction?.captureDefaultScreenshot()
+                } else {
+                    ScreenCaptureManager.getInstance().captureOnce()
+                }
+            }
+            if (image == null && !ScreenCaptureManager.getInstance().hasPermission()) {
+                val hasProjectionPermission = try {
+                    ScreenCaptureManager.getInstance().requestScreenCapturePermission()
+                } catch (e: Exception) {
+                    OmniLog.w("Assists", "Request MediaProjection permission failed: ${e.message}")
+                    false
+                }
+                if (hasProjectionPermission) {
+                    image = if (isFilterOverlay) {
+                        withContext(Dispatchers.Main) {
+                            AssistsCore.screenshotImageEventApi?.onScreenShotHideOverlay()
+                        }
+                        try {
+                            ScreenCaptureManager.getInstance().captureOnce()
+                        } finally {
+                            withContext(Dispatchers.Main) {
+                                AssistsCore.screenshotImageEventApi?.onScreenShotShowOverlay()
+                            }
+                        }
+                    } else {
+                        ScreenCaptureManager.getInstance().captureOnce()
+                    }
+                }
+            }
+            if (image == null && ScreenCaptureManager.getInstance().hasPermission()) {
+                OmniLog.w(
+                    "Assists",
+                    "Accessibility screenshot returned null, fallback to MediaProjection capture"
+                )
+                image = if (isFilterOverlay) {
+                    withContext(Dispatchers.Main) {
+                        AssistsCore.screenshotImageEventApi?.onScreenShotHideOverlay()
+                    }
+                    try {
+                        ScreenCaptureManager.getInstance().captureOnce()
+                    } finally {
+                        withContext(Dispatchers.Main) {
+                            AssistsCore.screenshotImageEventApi?.onScreenShotShowOverlay()
+                        }
+                    }
                 } else {
                     ScreenCaptureManager.getInstance().captureOnce()
                 }

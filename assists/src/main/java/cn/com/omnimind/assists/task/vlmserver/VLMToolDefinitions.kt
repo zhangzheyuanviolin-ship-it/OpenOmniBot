@@ -91,6 +91,17 @@ object VLMToolDefinitions {
             promptGuide = "- open_app(package_name): 打开指定应用。"
         ),
         ToolSpec(
+            name = "run_compiled_path",
+            description = "执行一个已经存在的 UTG compiled path。",
+            parameters = objectSchema(
+                properties = linkedMapOf(
+                    "path_id" to stringSchema("要执行的 compiled path id。")
+                ),
+                required = listOf("path_id")
+            ),
+            promptGuide = "- run_compiled_path(path_id): 仅当 step_skill_guidance 明确给出可用 path_id 时调用。"
+        ),
+        ToolSpec(
             name = "press_home",
             description = "回到桌面。",
             parameters = objectSchema(),
