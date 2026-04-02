@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import cn.com.omnimind.accessibility.util.ScreenStateUtil
 import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
-import cn.com.omnimind.assists.task.vlmserver.OperationResult
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.utg.UtgBridge
 import cn.com.omnimind.bot.util.AssistsUtil
@@ -424,54 +423,10 @@ object McpToolExecutors {
                         packageName = payload.packageName,
                         onMessagePushListener = buildListener(taskId, taskState, scope),
                         needSummary = payload.needSummary ?: false,
-                        onPrepareExecution = {
-                            UtgBridge.prepareVlmTaskExecution(
-                                context = context,
-                                goal = payload.goal,
-                                currentPackageName = payload.packageName,
-                            )
-                        },
                         onCompileGateResolved = { gateResult ->
                             if (gateResult.summary.isNotBlank()) {
                                 taskState.addChatMessage(gateResult.summary)
                             }
-                        },
-                        onTaskRunLogReady = { payload ->
-                            val gateKind = payload.compileGateResult?.kind
-                            if (gateKind == "hit") {
-                                return@createVLMOperationTask
-                            }
-                            val response = UtgBridge.appendCanonicalRunLog(payload)
-                            if (response == null) {
-                                OmniLog.w(TAG, "appendCanonicalRunLog returned null")
-                            }
-                        },
-                        onRunCompiledPath = { pathId ->
-                            val bridgeState =
-                                McpServerManager.ensureRunning(context)
-                            val response = UtgBridge.runCompiledPath(
-                                UtgBridge.RunCompiledPathRequest(
-                                    goal = payload.goal,
-                                    pathId = pathId,
-                                    slots = emptyMap(),
-                                    bridgeBaseUrl = UtgBridge.localBridgeBaseUrl(bridgeState),
-                                    bridgeToken = bridgeState.token,
-                                    context = mapOf("source" to "oob_vlm_task"),
-                                    skipTerminalVerify = true,
-                                )
-                            )
-                            if (response == null) {
-                                return@createVLMOperationTask OperationResult(
-                                    false,
-                                    "UTG compiled path request failed",
-                                    null
-                                )
-                            }
-                            OperationResult(
-                                response.success,
-                                response.summaryText(payload.goal),
-                                null
-                            )
                         },
                     )
                     deferred.complete(Result.success(Unit))

@@ -388,8 +388,18 @@ class AndroidDeviceOperator(
 
             finalBase64
         } catch (e: Exception) {
-            OmniLog.e("Assists", "captureScreenshot failed: ${e.message}", e)
-            throw RuntimeException("截图失败: ${e.message}")
+            val rawMessage = e.message.orEmpty()
+            val errorCode = Regex("error code:?\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                .find(rawMessage)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
+            val normalizedMessage = when (errorCode) {
+                1 -> "系统截图内部错误(error code: 1)，通常发生在切换前台应用后窗口尚未稳定"
+                else -> rawMessage.ifBlank { "unknown screenshot error" }
+            }
+            OmniLog.e("Assists", "captureScreenshot failed: $normalizedMessage", e)
+            throw RuntimeException("截图失败: $normalizedMessage")
         }
     }
 

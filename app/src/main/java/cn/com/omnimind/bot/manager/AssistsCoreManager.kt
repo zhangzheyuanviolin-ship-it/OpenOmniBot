@@ -564,6 +564,33 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     }
 
     /**
+     * Return the locally cached canonical run_log for one finished vlm_task.
+     *
+     * Args:
+     *     call: Method-call payload carrying the originating `taskId`.
+     *     result: Flutter result callback receiving `{success, run_log, ...}`.
+     */
+    fun getVlmTaskRunLog(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        val taskId = call.argument<String>("taskId")?.trim().orEmpty()
+        mainJob.launch {
+            try {
+                val snapshot = withContext(Dispatchers.IO) {
+                    UtgBridge.getCachedVlmTaskRunLog(taskId)
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(snapshot)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("GET_VLM_TASK_RUN_LOG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
      * Start/stop/restart the local UTG provider from Flutter settings.
      *
      * Args:
@@ -585,6 +612,43 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     result.error("CONTROL_UTG_PROVIDER_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * Proxy one UTG JSON request through the native bridge so Flutter pages and native pre-hook
+     * share the same provider connection strategy.
+     *
+     * Args:
+     *     call: Method-call payload carrying HTTP-like `method`, `path`, optional `payload`,
+     *         and optional `baseUrl`.
+     *     result: Flutter result callback receiving the decoded JSON map.
+     */
+    fun requestUtgJson(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        mainJob.launch {
+            try {
+                val method = call.argument<String>("method")?.trim().orEmpty()
+                val path = call.argument<String>("path")?.trim().orEmpty()
+                val payload = call.argument<Any>("payload")
+                val baseUrl = call.argument<String>("baseUrl")?.trim()
+                val response = withContext(Dispatchers.IO) {
+                    UtgBridge.requestJson(
+                        method = method,
+                        path = path,
+                        payload = payload,
+                        baseUrl = baseUrl,
+                    )
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(response)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("REQUEST_UTG_JSON_ERROR", e.message, null)
                 }
             }
         }

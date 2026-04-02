@@ -32,4 +32,13 @@ class AppStateService {
       return false;
     }
   }
+
+  static Future<bool> navigateBackToChat() async {
+    try {
+      final result = await _channel.invokeMethod('navigateBackToChat');
+      return result == true;
+    } catch (e) {
+      return false;
+    }
+  }
 }

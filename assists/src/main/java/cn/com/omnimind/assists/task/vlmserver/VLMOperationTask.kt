@@ -242,11 +242,12 @@ open class VLMOperationTask(
             AccessibilityController.Companion.hideKeyboard()
             val currentPackageName = packageName ?: (AccessibilityController.Companion.getPackageName() ?: "")
             val shouldSummary = (needSummary || hasSummaryIntent(goal))
+            var resolvedStepSkillGuidance = stepSkillGuidance
+            var compileGateResult: VLMTaskPreHookResult? = null
+            var fallbackUsed = false
             OmniLog.d(Tag, "VLM Operation Task Is Running ! skipGoHome=$skipGoHome")
             try {
                 taskStartTime = System.currentTimeMillis()
-                var resolvedStepSkillGuidance = stepSkillGuidance
-                var compileGateResult: VLMTaskPreHookResult? = null
                 if (!isSubTask && onPrepareExecution != null) {
                     executionTaskEventApi?.updateShowStepText("正在尝试 UTG compile")
                     val preparedResult = onPrepareExecution()
@@ -283,7 +284,6 @@ open class VLMOperationTask(
                         (needSummary || hasSummaryIntent(goal))
                     }"
                 )
-                var installedApps: Map<String, String>? = null
                 val taskExecutionReport = if (!isSubTask) {
                     when {
                         compileGateResult?.kind == "hard_fail" -> {
@@ -299,7 +299,8 @@ open class VLMOperationTask(
                                     installedApplications = emptyMap()
                                 ),
                                 error = compileGateResult.summary.ifBlank { "UTG compile 失败" },
-                                feedback = compileGateResult.summary
+                                feedback = compileGateResult.summary,
+                                compileGateKind = compileGateResult.kind,
                             )
                         }
 
@@ -321,22 +322,21 @@ open class VLMOperationTask(
                                         installedApplications = emptyMap()
                                     ),
                                     error = null,
-                                    feedback = compiledResult.message
+                                    feedback = compiledResult.message,
+                                    compileGateKind = compileGateResult.kind,
+                                    providerRunLogJson = compiledResult.providerRunLogJson,
+                                    providerRunLogPath = compiledResult.providerRunLogPath,
+                                    canonicalRunLogPath = compiledResult.canonicalRunLogPath,
                                 )
                             } else if (compileGateResult.fallbackAllowed) {
+                                fallbackUsed = true
                                 executionTaskEventApi?.updateShowStepText(
-                                    "UTG 执行失败，回退视觉执行"
+                                    "UTG 执行失败，回退 VLM 推理"
                                 )
-                                if (installedApps == null) {
-                                    installedApps = AccessibilityController.Companion.mapInstalledApplications()
-                                }
-                                executeOpenAppFastPath(
+                                val installedApps = AccessibilityController.Companion.mapInstalledApplications()
+                                vlmOperationService.executeTask(
                                     goal = goal,
-                                    installedApps = installedApps!!,
-                                    packageName = packageName
-                                ) ?: vlmOperationService.executeTask(
-                                    goal = goal,
-                                    installedApps = installedApps!!,
+                                    installedApps = installedApps,
                                     model = model ?: "scene.vlm.operation.primary",
                                     maxSteps = maxSteps,
                                     packageName = packageName,
@@ -344,6 +344,9 @@ open class VLMOperationTask(
                                     summary = shouldSummary,
                                     currentStepGoal = goal,
                                     stepSkillGuidance = resolvedStepSkillGuidance
+                                ).copy(
+                                    compileGateKind = compileGateResult.kind,
+                                    fallbackUsed = true,
                                 )
                             } else {
                                 TaskExecutionReport(
@@ -358,22 +361,19 @@ open class VLMOperationTask(
                                         installedApplications = emptyMap()
                                     ),
                                     error = compiledResult.message,
-                                    feedback = compiledResult.message
+                                    feedback = compiledResult.message,
+                                    compileGateKind = compileGateResult.kind,
                                 )
                             }
                         }
 
                         else -> {
-                            if (installedApps == null) {
-                                installedApps = AccessibilityController.Companion.mapInstalledApplications()
-                            }
-                            executeOpenAppFastPath(
+                            fallbackUsed = compileGateResult?.kind == "miss" ||
+                                compileGateResult?.kind == "disabled_or_fallback"
+                            val installedApps = AccessibilityController.Companion.mapInstalledApplications()
+                            vlmOperationService.executeTask(
                                 goal = goal,
-                                installedApps = installedApps!!,
-                                packageName = packageName
-                            ) ?: vlmOperationService.executeTask(
-                                goal = goal,
-                                installedApps = installedApps!!,
+                                installedApps = installedApps,
                                 model = model ?: "scene.vlm.operation.primary",
                                 maxSteps = maxSteps,
                                 packageName = packageName,
@@ -381,6 +381,9 @@ open class VLMOperationTask(
                                 summary = shouldSummary,
                                 currentStepGoal = goal,
                                 stepSkillGuidance = resolvedStepSkillGuidance
+                            ).copy(
+                                compileGateKind = compileGateResult?.kind,
+                                fallbackUsed = fallbackUsed,
                             )
                         }
                     }
@@ -446,7 +449,46 @@ open class VLMOperationTask(
                 onTaskStop(TaskFinishType.ERROR, e.message)
                 onTaskDestroy()
             } catch (e: CancellationException) {
-                OmniLog.i(Tag, "VLM Operation Task cancelled")
+                val cancelMessage = e.message?.takeIf { it.isNotBlank() }
+                    ?: if (isCancellationRequested) "Task cancelled by user" else "Task cancelled"
+                OmniLog.i(Tag, "VLM Operation Task cancelled: $cancelMessage")
+                if (!isSubTask && onTaskRunLogReady != null) {
+                    runCatching {
+                        onTaskRunLogReady(
+                            VLMTaskRunLogPayload(
+                                goal = goal,
+                                compileGateResult = compileGateResult,
+                                taskReport = TaskExecutionReport(
+                                    success = false,
+                                    goal = goal,
+                                    totalSteps = 0,
+                                    executionTrace = emptyList(),
+                                    finalContext = UIContext(
+                                        overallTask = goal,
+                                        currentStepGoal = goal,
+                                        stepSkillGuidance = resolvedStepSkillGuidance,
+                                        installedApplications = emptyMap()
+                                    ),
+                                    error = cancelMessage,
+                                    feedback = cancelMessage,
+                                    compileGateKind = compileGateResult?.kind,
+                                    fallbackUsed = fallbackUsed,
+                                ),
+                                startedAtMs = taskStartTime,
+                                finishedAtMs = System.currentTimeMillis(),
+                                finalXml = captureCurrentXml(),
+                                finalPackageName = AccessibilityController.getPackageName()
+                                    ?: currentPackageName,
+                            )
+                        )
+                    }.onFailure {
+                        OmniLog.w(Tag, "onTaskRunLogReady failed after cancellation: ${it.message}")
+                    }
+                }
+                if (isRunning) {
+                    onTaskStop(TaskFinishType.CANCEL, cancelMessage)
+                    onTaskDestroy()
+                }
             } catch (e: Exception) {
                 OmniLog.e(Tag, "VLM Operation Task Error: ${e.message}")
                 onTaskStop(TaskFinishType.ERROR, e.message ?: "任务执行异常")
@@ -538,143 +580,6 @@ open class VLMOperationTask(
             OmniLog.w(Tag, "captureCurrentXml failed: ${e.message}")
             null
         }
-    }
-
-    private suspend fun executeOpenAppFastPath(
-        goal: String,
-        installedApps: Map<String, String>,
-        packageName: String?
-    ): TaskExecutionReport? {
-        if (packageName.isNullOrBlank()) return null
-        if (!shouldUseOpenAppFastPath(goal, packageName, installedApps)) {
-            OmniLog.i(
-                Tag,
-                "Skip open-app fast path: goal requires more than opening app. goal=$goal package=$packageName"
-            )
-            return null
-        }
-
-        val currentPackage = AccessibilityController.getPackageName().orEmpty()
-        if (currentPackage == packageName) {
-            OmniLog.i(Tag, "Open-app fast path hit: already in target package=$packageName")
-            return TaskExecutionReport(
-                success = true,
-                goal = goal,
-                totalSteps = 1,
-                executionTrace = listOf(
-                    UIStep(
-                        observation = "Open-app fast path",
-                        thought = "目标应用已在前台，直接复用当前前台应用",
-                        action = OpenAppAction(packageName = packageName),
-                        result = "目标应用已在前台",
-                        observationXml = captureCurrentXml(),
-                        packageName = currentPackage,
-                        startedAtMs = System.currentTimeMillis(),
-                        finishedAtMs = System.currentTimeMillis(),
-                    )
-                ),
-                finalContext = UIContext(
-                    overallTask = goal,
-                    currentStepGoal = goal,
-                    installedApplications = installedApps
-                ),
-                error = null
-            )
-        }
-
-        val launchResult = androidDeviceOperator.launchApplication(packageName)
-        val afterLaunchPackage = AccessibilityController.getPackageName().orEmpty()
-        if (launchResult.success && afterLaunchPackage == packageName) {
-            OmniLog.i(Tag, "Open-app fast path hit: launched target package=$packageName")
-            return TaskExecutionReport(
-                success = true,
-                goal = goal,
-                totalSteps = 1,
-                executionTrace = listOf(
-                    UIStep(
-                        observation = "Open-app fast path",
-                        thought = "该目标可以直接通过系统启动应用完成",
-                        action = OpenAppAction(packageName = packageName),
-                        result = launchResult.message ?: "应用启动成功",
-                        observationXml = captureCurrentXml(),
-                        packageName = afterLaunchPackage,
-                        startedAtMs = System.currentTimeMillis(),
-                        finishedAtMs = System.currentTimeMillis(),
-                    )
-                ),
-                finalContext = UIContext(
-                    overallTask = goal,
-                    currentStepGoal = goal,
-                    installedApplications = installedApps
-                ),
-                error = null
-            )
-        }
-
-        OmniLog.w(
-            Tag,
-            "Open-app fast path failed: pkg=$packageName, success=${launchResult.success}, current=$afterLaunchPackage"
-        )
-        return null
-    }
-
-    private fun shouldUseOpenAppFastPath(
-        goal: String,
-        packageName: String,
-        installedApps: Map<String, String>
-    ): Boolean {
-        val normalizedGoal = normalizeGoalForIntentMatching(goal)
-        if (normalizedGoal.isBlank()) {
-            return false
-        }
-
-        val openVerbs = listOf("打开", "启动", "进入", "点开").map(::normalizeGoalForIntentMatching)
-        val openVerbCount = openVerbs.sumOf { verb ->
-            Regex(Regex.escape(verb)).findAll(normalizedGoal).count()
-        }
-        if (openVerbCount != 1 || openVerbs.none { normalizedGoal.contains(it) }) {
-            return false
-        }
-
-        val appName = installedApps[packageName].orEmpty()
-        val targetTokens = buildList {
-            normalizeGoalForIntentMatching(appName).takeIf { it.isNotBlank() }?.let(::add)
-            packageName.substringAfterLast('.')
-                .takeIf { it.isNotBlank() }
-                ?.let(::normalizeGoalForIntentMatching)
-                ?.takeIf { it.length >= 3 }
-                ?.let(::add)
-        }.distinct()
-        if (targetTokens.isEmpty() || targetTokens.none { normalizedGoal.contains(it) }) {
-            return false
-        }
-
-        var remainder = normalizedGoal
-        listOf("请帮我", "帮我", "请", "麻烦你", "麻烦", "帮忙").forEach { prefix ->
-            remainder = remainder.removePrefix(normalizeGoalForIntentMatching(prefix))
-        }
-        openVerbs.forEach { verb ->
-            remainder = remainder.replaceFirst(verb, "")
-        }
-        listOf("一下", "下", "app", "应用", "软件", "客户端").forEach { filler ->
-            remainder = remainder.replaceFirst(normalizeGoalForIntentMatching(filler), "")
-        }
-        targetTokens.sortedByDescending { it.length }.forEach { token ->
-            remainder = remainder.replaceFirst(token, "")
-        }
-
-        val trailingPoliteWords = listOf("即可", "就行", "就可以", "就好", "好了", "吧", "呀", "哈", "啦")
-        trailingPoliteWords.forEach { word ->
-            remainder = remainder.removePrefix(normalizeGoalForIntentMatching(word))
-            remainder = remainder.removeSuffix(normalizeGoalForIntentMatching(word))
-        }
-        return remainder.isBlank()
-    }
-
-    private fun normalizeGoalForIntentMatching(text: String): String {
-        if (text.isBlank()) return ""
-        return text.lowercase()
-            .replace(Regex("[\\s\\p{Punct}，。！？；：、“”‘’（）【】《》·`~@#%^&*_+=|<>/\\\\-]+"), "")
     }
 
     private suspend fun pushSummary(goal: String, model: String?, report: TaskExecutionReport) {

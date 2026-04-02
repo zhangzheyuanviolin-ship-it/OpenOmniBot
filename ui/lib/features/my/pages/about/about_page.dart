@@ -3,6 +3,7 @@ import 'package:ui/services/app_update_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_text_styles.dart';
 import 'package:ui/services/device_service.dart';
+import 'package:ui/services/storage_service.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/widgets/app_update_dialog.dart';
 import 'package:ui/widgets/gradient_button.dart';
@@ -16,9 +17,12 @@ class AboutPage extends StatefulWidget {
 }
 
 class _AboutPageState extends State<AboutPage> {
+  static const String _omniFlowDebugUnlockedKey = 'omni_flow_debug_unlocked';
+
   String _version = '';
   AppUpdateStatus? _updateStatus;
   bool _isCheckingUpdate = false;
+  int _versionTapCount = 0;
 
   @override
   void initState() {
@@ -125,6 +129,33 @@ class _AboutPageState extends State<AboutPage> {
     return '检查 GitHub Release 获取最新版本';
   }
 
+  Future<void> _handleVersionTap() async {
+    final alreadyUnlocked =
+        StorageService.getBool(
+          _omniFlowDebugUnlockedKey,
+          defaultValue: false,
+        ) ??
+        false;
+    if (alreadyUnlocked) {
+      showToast('OmniFlow 轨迹执行 [debug] 已解锁，请返回设置页访问');
+      return;
+    }
+    final nextCount = _versionTapCount + 1;
+    if (nextCount >= 5) {
+      await StorageService.setBool(_omniFlowDebugUnlockedKey, true);
+      if (!mounted) return;
+      setState(() {
+        _versionTapCount = 0;
+      });
+      showToast('已解锁 OmniFlow 轨迹执行 [debug]，请返回设置页访问');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _versionTapCount = nextCount;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -135,95 +166,105 @@ class _AboutPageState extends State<AboutPage> {
         child: Container(
           width: double.infinity,
           child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 80),
-                    // Logo
-                    SizedBox(
-                      width: 167,
-                      height: 120,
-                      child: Center(
-                        child: Image.asset(
-                          'assets/my/about_icon.png',
-                          width: 167,
-                          height: 120,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Icon(
-                              Icons.image,
-                              size: 96,
-                              color: AppColors.primaryBlue,
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // 描述文字
-                    Text(
-                      '小万，是一款以智能对话为核心的手机AI助\n手，通过语义理解与持续学习能力，协助用户\n完成信息处理、决策辅助和日常管理。',
-                    textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: AppTextStyles.fontFamily,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        color: AppColors.text70,
-                        letterSpacing: 0.39,
-                        height: 1.5,
-                      ),
-                    ),
-                    
-                    const Spacer(),
-                    
-                    // 版本号
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _version,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                            color: AppColors.text70,
-                            letterSpacing: 0.33,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-                    Text(
-                      _buildUpdateHint(),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontFamily: AppTextStyles.fontFamily,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.text50,
-                        letterSpacing: 0.3,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    GradientButton(
-                      text: _isCheckingUpdate
-                          ? '检查中...'
-                          : (_updateStatus?.hasUpdate == true ? '查看新版本' : '检查更新'),
-                      width: 180,
-                      height: 44,
-                      enabled: !_isCheckingUpdate,
-                      onTap: () {
-                        _handlePrimaryAction();
-                      },
-                    ),
-                    const SizedBox(height: 154),
-                  ],
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 80),
+              // Logo
+              SizedBox(
+                width: 167,
+                height: 120,
+                child: Center(
+                  child: Image.asset(
+                    'assets/my/about_icon.png',
+                    width: 167,
+                    height: 120,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(
+                        Icons.image,
+                        size: 96,
+                        color: AppColors.primaryBlue,
+                      );
+                    },
                   ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // 描述文字
+              Text(
+                '小万，是一款以智能对话为核心的手机AI助\n手，通过语义理解与持续学习能力，协助用户\n完成信息处理、决策辅助和日常管理。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: AppTextStyles.fontFamily,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: AppColors.text70,
+                  letterSpacing: 0.39,
+                  height: 1.5,
+                ),
+              ),
+
+              const Spacer(),
+
+              // 版本号
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _handleVersionTap,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Text(
+                        _version,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: AppTextStyles.fontFamily,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.text70,
+                          letterSpacing: 0.33,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+              Text(
+                _buildUpdateHint(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontFamily: AppTextStyles.fontFamily,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.text50,
+                  letterSpacing: 0.3,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              GradientButton(
+                text: _isCheckingUpdate
+                    ? '检查中...'
+                    : (_updateStatus?.hasUpdate == true ? '查看新版本' : '检查更新'),
+                width: 180,
+                height: 44,
+                enabled: !_isCheckingUpdate,
+                onTap: () {
+                  _handlePrimaryAction();
+                },
+              ),
+              const SizedBox(height: 154),
+            ],
+          ),
         ),
       ),
     );

@@ -8,6 +8,7 @@ import cn.com.omnimind.bot.mcp.RemoteMcpClient
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.mcp.RemoteMcpToolDescriptor
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
+import cn.com.omnimind.bot.utg.UtgBridge
 import com.ai.assistance.operit.terminal.TerminalManager
 import com.ai.assistance.operit.terminal.data.TerminalSessionData
 import com.ai.assistance.operit.terminal.provider.type.TerminalType
@@ -499,7 +500,10 @@ class AgentToolRouter(
                 },
                 needSummary = safeArgs.needSummary,
                 skipGoHome = safeArgs.startFromCurrent,
-                stepSkillGuidance = resolvedSkills.joinToString("\n\n") { it.stepGuidance() }
+                stepSkillGuidance = resolvedSkills.joinToString("\n\n") { it.stepGuidance() },
+                onTaskRunLogReady = { payload ->
+                    UtgBridge.cacheVlmTaskRunLog(taskId, payload)
+                }
             )
 
             ToolExecutionResult.VlmTaskStarted(taskId, safeArgs.goal)
