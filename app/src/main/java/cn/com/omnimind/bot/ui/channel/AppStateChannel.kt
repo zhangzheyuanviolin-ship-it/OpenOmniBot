@@ -4,6 +4,7 @@ import android.content.Context
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.activity.MainActivity
 import cn.com.omnimind.bot.share.SharedOpenDraftStore
+import cn.com.omnimind.bot.util.TaskCompletionNavigator
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -77,6 +78,17 @@ class AppStateChannel {
                 }
                 SharedOpenDraftStore.clearPending(appContext)
                 result.success(true)
+            }
+            "navigateBackToChat" -> {
+                OmniLog.d(TAG, "Received navigateBackToChat call from Flutter")
+                val context = this.context
+                if (context != null) {
+                    TaskCompletionNavigator.navigateBackToChat(context, null, null)
+                    result.success(true)
+                } else {
+                    OmniLog.e(TAG, "Context unavailable, cannot navigate back to chat")
+                    result.error("INVALID_CONTEXT", "Context unavailable", null)
+                }
             }
             else -> {
                 result.notImplemented()

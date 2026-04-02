@@ -64,7 +64,9 @@ object PromptTemplate {
             "暂无历史操作"
         }
         val installedApps = if (context.installedApplications.isNotEmpty()) {
-            context.installedApplications.values.joinToString(", ")
+            context.installedApplications.entries.joinToString("\n") { (packageName, appName) ->
+                "- ${packageName} -> ${appName}"
+            }
         } else {
             "暂无数据"
         }
@@ -112,6 +114,9 @@ object PromptTemplate {
             appendLine("1. 直接从 tools 列表中选择下一步动作，每轮只调用一个工具。")
             appendLine("2. click/long_press 只填 x、y；scroll 只填 x1、y1、x2、y2；每个坐标字段都必须是单个数值。")
             appendLine("3. assistant.content 只写 observation/thought/summary 元信息；只有真正完成任务时才调用 finished。")
+            appendLine("4. 只要返回 package_name 或 open_app.package_name，必须从上面的已安装应用列表中原样选择一个 package name；禁止猜测常见默认包名。")
+            appendLine("5. 如果目标应用有多个候选，优先使用已安装列表里的精确 package；例如联系人若存在 com.google.android.contacts，就必须使用它，不要改成 com.android.contacts。")
+            appendLine("6. 如果当前任务需要打开某个应用，但已安装应用列表里没有明确 package，就不要猜；改用 info/feedback 请求更多信息或先通过界面观察确认。")
         }.trim()
     }
 

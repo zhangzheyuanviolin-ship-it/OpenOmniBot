@@ -638,6 +638,9 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
       final cardData = {
         'type': 'agent_tool_summary',
         'taskId': taskId,
+        'toolTaskId': event.taskId.isNotEmpty
+            ? event.taskId
+            : (existingCardData['toolTaskId'] ?? '').toString(),
         'cardId': cardId,
         'toolName': event.toolName,
         'displayName': event.displayName,

@@ -319,7 +319,10 @@ data class VLMRequestEnvelope(
 data class OperationResult(
     val success: Boolean,
     val message: String,
-    val data: JsonElement? = null
+    val data: JsonElement? = null,
+    val providerRunLogJson: String? = null,
+    val providerRunLogPath: String? = null,
+    val canonicalRunLogPath: String? = null,
 )
 
 @Serializable

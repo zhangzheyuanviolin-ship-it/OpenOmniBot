@@ -1,6 +1,12 @@
 package cn.com.omnimind.bot.utg
 
+import BaseApplication
 import android.content.Context
+import android.content.Intent
+import android.graphics.Rect
+import android.view.accessibility.AccessibilityNodeInfo
+import cn.com.omnimind.accessibility.service.AssistsService
+import cn.com.omnimind.accessibility.util.XmlTreeUtils
 import cn.com.omnimind.assists.api.bean.VLMTaskPreHookResult
 import cn.com.omnimind.assists.api.bean.VLMTaskRunLogPayload
 import cn.com.omnimind.assists.controller.accessibility.AccessibilityController
@@ -42,6 +48,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
+import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -63,6 +70,7 @@ object UtgBridge {
     private const val PREF_OMNICLOUD_START_COMMAND = "utg_omnicloud_start_command"
     private const val PREF_OMNICLOUD_WORKING_DIRECTORY = "utg_omnicloud_working_directory"
     private const val PREF_RUN_LOG_RECORDING_ENABLED = "utg_run_log_recording_enabled"
+    private const val PREF_VLM_TASK_RUN_LOG_PREFIX = "utg_vlm_task_run_log_"
     private const val DEFAULT_OMNICLOUD_BASE_URL = "http://127.0.0.1:19070"
     private const val DEFAULT_OMNICLOUD_START_COMMAND =
         "python -m src.integrations.utg_api --host 127.0.0.1 --port 19070 --utg-store-path src/templates/utg_smoke_test.json"
@@ -78,6 +86,8 @@ object UtgBridge {
     private val gson = Gson()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val mmkv by lazy { MMKV.defaultMMKV() }
+    @Volatile
+    private var lastHealthyBaseUrl: String? = null
     private val httpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(4, TimeUnit.SECONDS)
@@ -100,21 +110,28 @@ object UtgBridge {
         @SerializedName("image_base64") val imageBase64: String? = null,
     )
 
-    data class CompileRequest(
-        @SerializedName("goal") val goal: String,
-        @SerializedName("xml") val xml: String? = null,
+    data class CompileContext(
+        @SerializedName("state_node_id") val stateNodeId: String? = null,
         @SerializedName("package_name") val packageName: String? = null,
         @SerializedName("activity_name") val activityName: String? = null,
+        @SerializedName("recent_path_ids") val recentPathIds: List<String>? = null,
+    )
+
+    data class CompileRequest(
+        @SerializedName("goal") val goal: String,
+        @SerializedName("context") val context: CompileContext? = null,
     )
 
     data class CompileResponse(
         @SerializedName("success") val success: Boolean = false,
+        @SerializedName("decision") val decision: String? = null,
         @SerializedName("path_id") val pathId: String? = null,
         @SerializedName("slots") val slots: Map<String, String> = emptyMap(),
-        @SerializedName("mode") val mode: String? = null,
         @SerializedName("reason") val reason: String? = null,
-        @SerializedName("error_code") val errorCode: String? = null,
         @SerializedName("candidate_path_ids") val candidatePathIds: List<String> = emptyList(),
+        @SerializedName("matched_subgoal") val matchedSubgoal: String? = null,
+        @SerializedName("remaining_goal") val remainingGoal: String? = null,
+        @SerializedName("is_partial") val isPartial: Boolean = false,
     )
 
     data class RunCompiledPathRequest(
@@ -235,7 +252,12 @@ object UtgBridge {
     fun omniCloudBaseUrl(): String {
         val stored = mmkv.decodeString(PREF_OMNICLOUD_BASE_URL)?.trim().orEmpty()
         val raw = if (stored.isNotBlank()) stored else DEFAULT_OMNICLOUD_BASE_URL
-        return raw.removeSuffix("/")
+        return normalizeBaseUrl(raw)
+    }
+
+    fun resolvedOmniCloudBaseUrl(): String {
+        val configured = omniCloudBaseUrl()
+        return buildBaseUrlCandidates(configured).firstOrNull() ?: configured
     }
 
     fun isProviderAutoStartEnabled(): Boolean {
@@ -263,12 +285,13 @@ object UtgBridge {
     }
 
     fun setOmniCloudBaseUrl(baseUrl: String?) {
-        val normalized = baseUrl?.trim().orEmpty().removeSuffix("/")
+        val normalized = normalizeBaseUrl(baseUrl)
         if (normalized.isBlank()) {
             mmkv.removeValueForKey(PREF_OMNICLOUD_BASE_URL)
         } else {
             mmkv.encode(PREF_OMNICLOUD_BASE_URL, normalized)
         }
+        lastHealthyBaseUrl = null
     }
 
     fun setProviderStartCommand(command: String?) {
@@ -295,6 +318,7 @@ object UtgBridge {
         return linkedMapOf(
             "utgEnabled" to isUtgEnabled(),
             "omnicloudBaseUrl" to omniCloudBaseUrl(),
+            "resolvedOmnicloudBaseUrl" to resolvedOmniCloudBaseUrl(),
             "providerAutoStartEnabled" to isProviderAutoStartEnabled(),
             "fallbackToVlmOnFailureEnabled" to isFallbackToVlmOnFailureEnabled(),
             "providerStartCommand" to providerStartCommand(),
@@ -387,6 +411,7 @@ object UtgBridge {
         return linkedMapOf(
             "bridgeBaseUrl" to localBridgeBaseUrl(bridgeState),
             "bridgeToken" to bridgeState.token,
+            "resolvedOmnicloudBaseUrl" to resolvedOmniCloudBaseUrl(),
             "providerHealthy" to providerHealthy,
             "providerMessage" to if (providerHealthy) "ok" else "provider_unreachable",
         )
@@ -421,9 +446,9 @@ object UtgBridge {
         val compile = compile(
             CompileRequest(
                 goal = goal,
-                xml = null,
-                packageName = currentPackageName?.takeIf { it.isNotBlank() },
-                activityName = null,
+                context = CompileContext(
+                    packageName = currentPackageName?.takeIf { it.isNotBlank() },
+                ),
             )
         ) ?: return if (fallbackAllowed) {
             VLMTaskPreHookResult(
@@ -440,11 +465,11 @@ object UtgBridge {
         if (!compile.success || compile.pathId.isNullOrBlank()) {
             return VLMTaskPreHookResult(
                 kind = "miss",
-                summary = FastPathAttempt(
+                summary = "${FastPathAttempt(
                     attempted = true,
                     status = "compile_miss",
                     compile = compile,
-                ).compileSummary(goal),
+                ).compileSummary(goal)}，进入 VLM 推理",
                 plannerGuidance = FastPathAttempt(
                     attempted = true,
                     status = "compile_miss",
@@ -454,7 +479,7 @@ object UtgBridge {
         }
         return VLMTaskPreHookResult(
             kind = "hit",
-            summary = "UTG compile hit: ${compile.pathId}，切换到 UTG 执行",
+            summary = "UTG compile hit: ${compile.pathId}，本轮不进入 VLM 推理，直接执行 UTG path",
             pathId = compile.pathId,
             fallbackAllowed = fallbackAllowed,
         )
@@ -495,9 +520,9 @@ object UtgBridge {
         val compile = compile(
             CompileRequest(
                 goal = goal,
-                xml = null,
-                packageName = currentPackageName?.takeIf { it.isNotBlank() },
-                activityName = null,
+                context = CompileContext(
+                    packageName = currentPackageName?.takeIf { it.isNotBlank() },
+                ),
             )
         ) ?: run {
             val attempt = FastPathAttempt(
@@ -596,18 +621,27 @@ object UtgBridge {
                 OmniLog.w(TAG, "awaitStability failed: ${e.message}")
             }
         }
+        val rootNode = AssistsService.instance?.rootInActiveWindow
         val xml = if (request.xml) {
-            AccessibilityController.getCaptureScreenShotXml(true)
+            try {
+                rootNode?.let { XmlTreeUtils.buildXmlTree(it) }?.let { XmlTreeUtils.serializeXml(it) }
+                    ?: AccessibilityController.getCaptureScreenShotXml(true)
+            } catch (e: Exception) {
+                OmniLog.w(TAG, "captureObservation xml fallback to AccessibilityController: ${e.message}")
+                AccessibilityController.getCaptureScreenShotXml(true)
+            }
         } else {
             null
         }
         val packageName = if (request.appInfo) {
-            AccessibilityController.getPackageName()
+            rootNode?.packageName?.toString()?.takeIf { it.isNotBlank() }
+                ?: AccessibilityController.getPackageName()
         } else {
             null
         }
         val activityName = if (request.appInfo) {
-            AccessibilityController.getCurrentActivity()
+            rootNode?.className?.toString()?.takeIf { it.isNotBlank() }
+                ?: AccessibilityController.getCurrentActivity()
         } else {
             null
         }
@@ -621,7 +655,8 @@ object UtgBridge {
                     isCheckSingleColor = false,
                     compressQuality = ImageQuality.LOW,
                 ).imageBase64
-            } catch (_: Exception) {
+            } catch (t: Throwable) {
+                OmniLog.e(TAG, "captureObservation screenshot failed: ${t.message}")
                 null
             }
         } else {
@@ -646,7 +681,42 @@ object UtgBridge {
                     if (x == null || y == null) {
                         return ActResponse(success = false, message = "missing click coordinates")
                     }
-                    AccessibilityController.clickCoordinate(x, y)
+                    var handledByNodeClick = false
+                    val rootNode = AssistsService.instance?.rootInActiveWindow
+                    if (rootNode != null) {
+                        val pointX = x.toInt()
+                        val pointY = y.toInt()
+                        val bounds = Rect()
+                        val stack = ArrayDeque<AccessibilityNodeInfo>()
+                        stack.add(rootNode)
+                        var bestNode: AccessibilityNodeInfo? = null
+                        var bestArea = Int.MAX_VALUE
+                        while (stack.isNotEmpty()) {
+                            val node = stack.removeLast()
+                            node.getBoundsInScreen(bounds)
+                            if (bounds.contains(pointX, pointY)) {
+                                val supportsClick = node.isClickable ||
+                                    node.actionList?.any { it.id == AccessibilityNodeInfo.ACTION_CLICK } == true
+                                if (supportsClick) {
+                                    val area = bounds.width() * bounds.height()
+                                    if (area in 1 until bestArea) {
+                                        bestNode = node
+                                        bestArea = area
+                                    }
+                                }
+                                for (index in 0 until node.childCount) {
+                                    node.getChild(index)?.let { child ->
+                                        stack.add(child)
+                                    }
+                                }
+                            }
+                        }
+                        handledByNodeClick =
+                            bestNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+                    }
+                    if (!handledByNodeClick) {
+                        AccessibilityController.clickCoordinate(x, y)
+                    }
                     postActionDelay(action.type)
                     ActResponse(success = true, message = "clicked")
                 }
@@ -698,10 +768,29 @@ object UtgBridge {
                     if (packageName.isNullOrBlank()) {
                         return ActResponse(success = false, message = "missing package_name")
                     }
-                    AccessibilityController.launchApplication(packageName) { clickX, clickY ->
-                        AccessibilityController.clickCoordinate(clickX, clickY)
+                    val launchIntent = runCatching {
+                        BaseApplication.instance.packageManager.getLaunchIntentForPackage(packageName)
+                    }.getOrNull()
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                        )
+                        BaseApplication.instance.startActivity(launchIntent)
+                    } else {
+                        AccessibilityController.launchApplication(packageName) { clickX, clickY ->
+                            AccessibilityController.clickCoordinate(clickX, clickY)
+                        }
                     }
-                    ActResponse(success = true, message = "app opened")
+                    postActionDelay(action.type)
+                    ActResponse(
+                        success = true,
+                        message = "app opened",
+                        data = mapOf(
+                            "current_package_name" to packageName,
+                            "current_activity_name" to null,
+                        )
+                    )
                 }
 
                 "press_key" -> {
@@ -783,8 +872,79 @@ object UtgBridge {
         )
     }
 
+    suspend fun cacheVlmTaskRunLog(taskId: String, payload: VLMTaskRunLogPayload) {
+        val normalizedTaskId = taskId.trim()
+        if (normalizedTaskId.isEmpty()) {
+            return
+        }
+        runCatching {
+            val appendResponse = appendCanonicalRunLog(payload)
+            val snapshot = linkedMapOf<String, Any?>(
+                "success" to true,
+                "task_id" to normalizedTaskId,
+                "goal" to payload.goal,
+                "run_id" to appendResponse?.runId,
+                "run_log_path" to appendResponse?.runLogPath,
+                "run_log" to (appendResponse?.runLog ?: buildCanonicalRunLog(payload)),
+            )
+            mmkv.encode(
+                PREF_VLM_TASK_RUN_LOG_PREFIX + normalizedTaskId,
+                gson.toJson(snapshot),
+            )
+        }.onFailure {
+            OmniLog.w(TAG, "cacheVlmTaskRunLog failed: ${it.message}")
+        }
+    }
+
+    fun getCachedVlmTaskRunLog(taskId: String): Map<String, Any?> {
+        val normalizedTaskId = taskId.trim()
+        if (normalizedTaskId.isEmpty()) {
+            return linkedMapOf(
+                "success" to false,
+                "task_id" to normalizedTaskId,
+                "error_message" to "taskId 不能为空",
+            )
+        }
+        val encoded = mmkv.decodeString(PREF_VLM_TASK_RUN_LOG_PREFIX + normalizedTaskId)
+        if (encoded.isNullOrBlank()) {
+            return linkedMapOf(
+                "success" to false,
+                "task_id" to normalizedTaskId,
+                "error_message" to "未找到对应的 run_log",
+            )
+        }
+        @Suppress("UNCHECKED_CAST")
+        val decoded = runCatching {
+            gson.fromJson(encoded, Map::class.java) as? Map<String, Any?>
+        }.getOrNull()
+        if (decoded == null) {
+            return linkedMapOf(
+                "success" to false,
+                "task_id" to normalizedTaskId,
+                "error_message" to "run_log 解析失败",
+            )
+        }
+        return linkedMapOf<String, Any?>("success" to true).apply {
+            putAll(decoded)
+        }
+    }
+
     suspend fun fetchProviderHealth(): Map<String, Any?>? {
         return get("/health")
+    }
+
+    suspend fun requestJson(
+        method: String,
+        path: String,
+        payload: Any? = null,
+        baseUrl: String? = null,
+    ): Map<String, Any?>? {
+        return requestMap(
+            method = method,
+            path = path,
+            payload = payload,
+            baseUrl = baseUrl,
+        )
     }
 
     private suspend fun ensureProviderReady(
@@ -846,16 +1006,9 @@ object UtgBridge {
         return isProviderHealthy()
     }
 
-    private suspend fun isProviderHealthy(): Boolean = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url("${omniCloudBaseUrl()}/health")
-            .get()
-            .build()
-        runCatching {
-            httpClient.newCall(request).execute().use { response ->
-                response.isSuccessful
-            }
-        }.getOrDefault(false)
+    private suspend fun isProviderHealthy(): Boolean {
+        val payload = fetchProviderHealth() ?: return false
+        return payload["success"] == true
     }
 
     private fun providerStartCommand(): String {
@@ -923,89 +1076,329 @@ object UtgBridge {
         }
     }
 
-    private suspend fun get(path: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
-        val baseUrl = omniCloudBaseUrl()
-        val url = "$baseUrl$path"
-        val request = Request.Builder()
-            .url(url)
-            .get()
-            .build()
-        runCatching {
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    OmniLog.w(TAG, "UTG HTTP ${response.code} for $url")
-                    return@use null
-                }
-                val raw = response.body?.string().orEmpty()
-                if (raw.isBlank()) {
-                    return@use null
-                }
-                @Suppress("UNCHECKED_CAST")
-                gson.fromJson(raw, Map::class.java) as? Map<String, Any?>
-            }
-        }.onFailure {
-            OmniLog.w(TAG, "UTG request failed for $url: ${it.message}")
-        }.getOrNull()
+    private suspend fun get(path: String, baseUrl: String? = null): Map<String, Any?>? {
+        return requestMap(
+            method = "GET",
+            path = path,
+            payload = null,
+            baseUrl = baseUrl,
+        )
     }
 
     private suspend fun <T : Any> post(
         path: String,
         payload: Any,
         responseClass: Class<T>,
+        baseUrl: String? = null,
+    ): T? {
+        return requestObject(
+            method = "POST",
+            path = path,
+            payload = payload,
+            responseClass = responseClass,
+            baseUrl = baseUrl,
+        )
+    }
+
+    private suspend fun requestMap(
+        method: String,
+        path: String,
+        payload: Any? = null,
+        baseUrl: String? = null,
+    ): Map<String, Any?>? = withContext(Dispatchers.IO) {
+        val raw = requestRaw(
+            method = method,
+            path = path,
+            payload = payload,
+            baseUrl = baseUrl,
+        ) ?: return@withContext null
+        @Suppress("UNCHECKED_CAST")
+        gson.fromJson(raw, Map::class.java) as? Map<String, Any?>
+    }
+
+    private suspend fun <T : Any> requestObject(
+        method: String,
+        path: String,
+        payload: Any? = null,
+        responseClass: Class<T>,
+        baseUrl: String? = null,
     ): T? = withContext(Dispatchers.IO) {
-        val baseUrl = omniCloudBaseUrl()
-        val url = "$baseUrl$path"
-        val body = gson.toJson(payload).toRequestBody(jsonMediaType)
-        val request = Request.Builder()
-            .url(url)
-            .post(body)
-            .build()
-        runCatching {
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    OmniLog.w(TAG, "UTG HTTP ${response.code} for $url")
-                    return@use null
+        val raw = requestRaw(
+            method = method,
+            path = path,
+            payload = payload,
+            baseUrl = baseUrl,
+        ) ?: return@withContext null
+        gson.fromJson(raw, responseClass)
+    }
+
+    private fun normalizeBaseUrl(baseUrl: String?): String {
+        return baseUrl?.trim().orEmpty().removeSuffix("/")
+    }
+
+    private fun buildBaseUrlCandidates(baseUrl: String?): List<String> {
+        val normalized = normalizeBaseUrl(baseUrl)
+        if (normalized.isBlank()) {
+            return emptyList()
+        }
+        val uri = runCatching { URI(normalized) }.getOrNull() ?: return listOf(normalized)
+        val scheme = uri.scheme ?: return listOf(normalized)
+        val host = uri.host ?: return listOf(normalized)
+        val port = if (uri.port >= 0) uri.port else uri.toURL().defaultPort
+        if (port <= 0) {
+            return listOf(normalized)
+        }
+        val authorityCandidates = when (host.lowercase()) {
+            "127.0.0.1", "localhost" -> listOf("127.0.0.1", "10.0.2.2", "localhost")
+            "10.0.2.2" -> listOf("10.0.2.2", "127.0.0.1", "localhost")
+            else -> listOf(host)
+        }
+        val candidates = mutableListOf<String>()
+        val remembered = normalizeBaseUrl(lastHealthyBaseUrl)
+        if (remembered.isNotBlank()) {
+            candidates += remembered
+        }
+        authorityCandidates.forEach { candidateHost ->
+            candidates += "$scheme://$candidateHost:$port"
+        }
+        candidates += normalized
+        return candidates
+            .map(::normalizeBaseUrl)
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    private fun rememberHealthyBaseUrl(baseUrl: String) {
+        lastHealthyBaseUrl = normalizeBaseUrl(baseUrl)
+    }
+
+    private suspend fun requestRaw(
+        method: String,
+        path: String,
+        payload: Any? = null,
+        baseUrl: String? = null,
+    ): String? = withContext(Dispatchers.IO) {
+        val normalizedMethod = method.trim().uppercase()
+        for (candidateBaseUrl in buildBaseUrlCandidates(baseUrl ?: omniCloudBaseUrl())) {
+            val url = "$candidateBaseUrl$path"
+            val body = payload?.let { gson.toJson(it).toRequestBody(jsonMediaType) }
+            val builder = Request.Builder()
+                .url(url)
+                .header("Connection", "close")
+            val request = when (normalizedMethod) {
+                "GET" -> builder.get().build()
+                "POST" -> builder.post(body ?: "{}".toRequestBody(jsonMediaType)).build()
+                "DELETE" -> {
+                    if (body == null) {
+                        builder.delete().build()
+                    } else {
+                        builder.delete(body).build()
+                    }
                 }
-                val raw = response.body?.string().orEmpty()
-                if (raw.isBlank()) {
-                    return@use null
+                else -> {
+                    OmniLog.w(TAG, "Unsupported UTG HTTP method: $normalizedMethod")
+                    return@withContext null
                 }
-                gson.fromJson(raw, responseClass)
             }
-        }.onFailure {
-            OmniLog.w(TAG, "UTG request failed for $url: ${it.message}")
-        }.getOrNull()
+            val raw = runCatching {
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        OmniLog.w(TAG, "UTG HTTP ${response.code} for $url")
+                        return@use null
+                    }
+                    response.body?.string().orEmpty().takeIf { it.isNotBlank() }
+                }
+            }.onFailure {
+                httpClient.connectionPool.evictAll()
+                OmniLog.w(TAG, "UTG request failed for $url: ${it.message}")
+            }.getOrNull()
+            if (!raw.isNullOrBlank()) {
+                rememberHealthyBaseUrl(candidateBaseUrl)
+                return@withContext raw
+            }
+        }
+        null
     }
 
     private fun buildCanonicalRunLog(
         payload: VLMTaskRunLogPayload,
     ): Map<String, Any?> {
         val compileGate = payload.compileGateResult
-        val steps = payload.taskReport.executionTrace.mapIndexed { index, step ->
-            buildCanonicalStep(
-                index = index,
-                step = step,
-                payload = payload,
-                isLast = index == payload.taskReport.executionTrace.lastIndex,
+        val doneReason = when {
+            payload.taskReport.success -> "completed"
+            payload.taskReport.error.orEmpty().contains("cancel", ignoreCase = true) ||
+                payload.taskReport.error.orEmpty().contains("取消") -> "user_cancelled"
+            else -> "failed"
+        }
+        val toStringKeyedMap: (Any?) -> Map<String, Any?> = { raw ->
+            val source = raw as? Map<*, *>
+            if (source == null) {
+                emptyMap()
+            } else {
+                linkedMapOf<String, Any?>().apply {
+                    source.forEach { (key, value) ->
+                        if (key != null) {
+                            put(key.toString(), value)
+                        }
+                    }
+                }
+            }
+        }
+        val providerRunLog = payload.taskReport.providerRunLogJson
+            ?.takeIf { it.isNotBlank() }
+            ?.let {
+                runCatching {
+                    @Suppress("UNCHECKED_CAST")
+                    gson.fromJson(it, Map::class.java) as? Map<String, Any?>
+                }.getOrNull()
+            }
+        val providerFinalObservation = toStringKeyedMap(
+            providerRunLog?.get("final_observation")
+        )
+        val finalXml = payload.finalXml?.takeIf { it.isNotBlank() }
+            ?: providerFinalObservation["xml"]?.toString()
+        val finalPackageName = payload.finalPackageName?.takeIf { it.isNotBlank() }
+            ?: providerFinalObservation["package_name"]?.toString()
+        val steps = if (payload.taskReport.executionTrace.isNotEmpty()) {
+            payload.taskReport.executionTrace.mapIndexed { index, step ->
+                buildCanonicalStep(
+                    index = index,
+                    step = step,
+                    payload = payload,
+                    isLast = index == payload.taskReport.executionTrace.lastIndex,
+                )
+            }
+        } else if (
+            compileGate?.kind == "hit" &&
+            !compileGate.pathId.isNullOrBlank() &&
+            providerRunLog != null
+        ) {
+            val providerFrames = (providerRunLog["main_action_frames"] as? List<*>)
+                ?.mapNotNull { frame -> frame as? Map<*, *> }
+                ?: emptyList()
+            val providerExecutedActions = buildList<Map<String, Any?>> {
+                providerFrames.forEach { frame ->
+                    val action = toStringKeyedMap(frame["executed_action"] ?: frame["action"])
+                    if (action.isNotEmpty()) {
+                        add(action)
+                    }
+                }
+                if (isEmpty()) {
+                    ((providerRunLog["device_actions"] as? List<*>) ?: emptyList<Any?>()).forEach { item ->
+                        val actionItem = item as? Map<*, *> ?: return@forEach
+                        val kind = actionItem["kind"]?.toString().orEmpty()
+                        val controllerId = actionItem["controller_id"]?.toString().orEmpty()
+                        if (kind == "act" && controllerId in setOf("", "main_action")) {
+                            val action = toStringKeyedMap(actionItem["action"])
+                            if (action.isNotEmpty()) {
+                                add(action)
+                            }
+                        }
+                    }
+                }
+            }
+            val beforeObservation = if (providerFrames.isNotEmpty()) {
+                toStringKeyedMap(providerFrames.first()["before_observation"])
+            } else {
+                emptyMap()
+            }
+            listOf(
+                linkedMapOf(
+                    "step_index" to 0,
+                    "observation_before_act" to linkedMapOf(
+                        "xml" to beforeObservation["xml"],
+                        "package_name" to beforeObservation["package_name"],
+                        "activity_name" to beforeObservation["activity_name"],
+                        "text" to beforeObservation["text"],
+                    ),
+                    "compile_result" to linkedMapOf(
+                        "success" to true,
+                        "path_id" to compileGate.pathId,
+                        "slots" to emptyMap<String, Any?>(),
+                        "mode" to compileGate.kind,
+                        "reason" to compileGate.summary,
+                    ),
+                    "utg_context_summary" to linkedMapOf(
+                        "source" to "oob_vlm_task",
+                    ),
+                    "plan" to linkedMapOf(
+                        "tool_name" to "run_compiled_path",
+                        "tool_args" to linkedMapOf(
+                            "path_id" to compileGate.pathId,
+                            "slots" to emptyMap<String, Any?>(),
+                        ),
+                        "planner_used" to false,
+                        "reason" to "compile_hit",
+                    ),
+                    "act_request" to linkedMapOf(
+                        "tool_name" to "run_compiled_path",
+                        "path_id" to compileGate.pathId,
+                        "slots" to emptyMap<String, Any?>(),
+                    ),
+                    "executed_actions" to providerExecutedActions,
+                    "act_result" to linkedMapOf(
+                        "success" to payload.taskReport.success,
+                        "source" to "oob_vlm_task",
+                        "result_summary" to linkedMapOf(
+                            "message" to payload.taskReport.feedback,
+                            "provider_run_log_path" to payload.taskReport.providerRunLogPath,
+                            "canonical_run_log_path" to payload.taskReport.canonicalRunLogPath,
+                        ),
+                        "error_message" to payload.taskReport.error,
+                    ),
+                    "terminal_state" to linkedMapOf(
+                        "terminal_page_reached" to payload.taskReport.success,
+                        "reason" to "oob_vlm_task",
+                    ),
+                    "provider_detail" to linkedMapOf(
+                        "utg_run_log" to providerRunLog,
+                        "provider_run_log_path" to payload.taskReport.providerRunLogPath,
+                        "canonical_run_log_path" to payload.taskReport.canonicalRunLogPath,
+                        "final_observation" to linkedMapOf(
+                            "xml" to finalXml,
+                            "package_name" to finalPackageName,
+                        ),
+                    ),
+                    "started_at" to (
+                        providerRunLog["started_at"]?.toString()?.takeIf { it.isNotBlank() }
+                            ?: isoFromMs(payload.startedAtMs)
+                        ),
+                    "finished_at" to (
+                        providerRunLog["finished_at"]?.toString()?.takeIf { it.isNotBlank() }
+                            ?: isoFromMs(payload.finishedAtMs)
+                        ),
+                    "duration_ms" to (
+                        (providerRunLog["duration_ms"] as? Number)?.toLong()
+                            ?: (payload.finishedAtMs - payload.startedAtMs).coerceAtLeast(0L)
+                        ),
+                )
             )
+        } else {
+            emptyList()
         }
         return linkedMapOf(
             "goal" to payload.goal,
             "success" to payload.taskReport.success,
-            "done_reason" to if (payload.taskReport.success) "completed" else "failed",
+            "done_reason" to doneReason,
             "started_at" to isoFromMs(payload.startedAtMs),
             "finished_at" to isoFromMs(payload.finishedAtMs),
             "duration_ms" to (payload.finishedAtMs - payload.startedAtMs).coerceAtLeast(0L),
             "step_count" to steps.size,
             "steps" to steps,
             "final_observation" to linkedMapOf(
-                "xml" to payload.finalXml,
-                "package_name" to payload.finalPackageName,
+                "xml" to finalXml,
+                "package_name" to finalPackageName,
             ),
             "extra" to linkedMapOf(
                 "source" to "oob_vlm_task",
                 "compile_kind" to compileGate?.kind,
                 "compile_summary" to compileGate?.summary,
+                "error_message" to payload.taskReport.error,
+                "fallback_used" to payload.taskReport.fallbackUsed,
+                "screenshot_error_code" to payload.taskReport.screenshotErrorCode,
+                "stabilization_wait_ms" to payload.taskReport.stabilizationWaitMs,
+                "provider_run_log_path" to payload.taskReport.providerRunLogPath,
+                "canonical_run_log_path" to payload.taskReport.canonicalRunLogPath,
             ),
         )
     }
@@ -1201,18 +1594,8 @@ object UtgBridge {
         return value?.let { Instant.ofEpochMilli(it).toString() }
     }
 
-    private suspend fun postActionDelay(actionType: String) {
-        val needsDelay = actionType in setOf(
-            "click",
-            "long_press",
-            "swipe",
-            "open_app",
-            "press_key",
-        )
-        if (needsDelay) {
-            delay(DEFAULT_ACTION_DELAY_MS)
-        }
-    }
+    @Suppress("UNUSED_PARAMETER")
+    private suspend fun postActionDelay(actionType: String) = Unit
 
     private fun Map<String, Any?>.stringValue(key: String): String? {
         return this[key]?.toString()

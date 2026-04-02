@@ -186,8 +186,14 @@ class AssistsCoreChannel {
                 "getUtgBridgeExecutionContext" -> {
                     assistsCoreManager!!.getUtgBridgeExecutionContext(call, result)
                 }
+                "getVlmTaskRunLog" -> {
+                    assistsCoreManager!!.getVlmTaskRunLog(call, result)
+                }
                 "controlUtgProvider" -> {
                     assistsCoreManager!!.controlUtgProvider(call, result)
+                }
+                "requestUtgJson" -> {
+                    assistsCoreManager!!.requestUtgJson(call, result)
                 }
 
                 "getInstalledApplications" -> {

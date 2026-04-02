@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
@@ -34,14 +35,21 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   bool _runLogRecordingEnabled = true;
   String? _runningPathId;
   String? _deletingPathId;
+  String? _distillingPathId;
   String? _uploadingPathId;
   String? _expandedPathId;
+  String? _expandedRunId;
   String? _viewingPathId;
   String? _importingRunId;
   String? _providerControlAction;
   String? _highlightedPathId;
+  bool _runLogsExpanded = false;
+  String _runLogFilter = 'all';
   final Map<String, Map<String, dynamic>> _pathBundleCache = {};
   final Map<String, String> _pathBundleErrorById = {};
+  final Map<String, UtgRunLogDetail> _runLogDetailCache = {};
+  final Map<String, String> _runLogDetailErrorById = {};
+  final Set<String> _loadingRunLogDetailIds = <String>{};
   final Set<String> _expandedStepKeys = <String>{};
   final Set<String> _expandedSequenceKeys = <String>{};
 
@@ -74,12 +82,14 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       final config = await AssistsMessageService.getUtgBridgeConfig();
       if (!mounted) return;
       _applyConfig(config);
-      await _loadPaths(baseUrl: config.omnicloudBaseUrl, silent: true);
-      await _loadRunLogs(baseUrl: config.omnicloudBaseUrl, silent: true);
+      await Future.wait([
+        _loadPaths(baseUrl: config.resolvedOmnicloudBaseUrl, silent: true),
+        _loadRunLogs(baseUrl: config.resolvedOmnicloudBaseUrl, silent: true),
+      ]);
     } on PlatformException catch (e) {
-      showToast(e.message ?? '加载 UTG 配置失败', type: ToastType.error);
+      showToast(e.message ?? '加载 OmniFlow 配置失败', type: ToastType.error);
     } catch (e) {
-      showToast('加载 UTG 配置失败', type: ToastType.error);
+      showToast('加载 OmniFlow 配置失败', type: ToastType.error);
       debugPrint('Load UTG config failed: $e');
     } finally {
       if (mounted) {
@@ -119,13 +129,15 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       );
       if (!mounted) return;
       _applyConfig(saved);
-      await _loadPaths(baseUrl: saved.omnicloudBaseUrl, silent: true);
-      await _loadRunLogs(baseUrl: saved.omnicloudBaseUrl, silent: true);
-      showToast('UTG 配置已保存', type: ToastType.success);
+      await Future.wait([
+        _loadPaths(baseUrl: saved.resolvedOmnicloudBaseUrl, silent: true),
+        _loadRunLogs(baseUrl: saved.resolvedOmnicloudBaseUrl, silent: true),
+      ]);
+      showToast('OmniFlow 配置已保存', type: ToastType.success);
     } on PlatformException catch (e) {
-      showToast(e.message ?? '保存 UTG 配置失败', type: ToastType.error);
+      showToast(e.message ?? '保存 OmniFlow 配置失败', type: ToastType.error);
     } catch (e) {
-      showToast('保存 UTG 配置失败', type: ToastType.error);
+      showToast('保存 OmniFlow 配置失败', type: ToastType.error);
       debugPrint('Save UTG config failed: $e');
     } finally {
       if (mounted) {
@@ -154,13 +166,14 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         _pathsError = null;
       });
     } catch (e) {
+      final errorText = e.toString().replaceFirst('Exception: ', '');
       if (!mounted) return;
       setState(() {
         _pathsSnapshot = null;
-        _pathsError = e.toString();
+        _pathsError = errorText;
       });
       if (!silent) {
-        showToast('加载 UTG paths 失败', type: ToastType.error);
+        showToast('加载 OmniFlow paths 失败：$errorText', type: ToastType.error);
       }
     } finally {
       if (mounted) {
@@ -189,21 +202,72 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       setState(() {
         _runLogsSnapshot = snapshot;
         _runLogsError = null;
+        final activeRunIds = snapshot.runs.map((run) => run.runId).toSet();
+        _runLogDetailCache.removeWhere(
+          (runId, _) => !activeRunIds.contains(runId),
+        );
+        _runLogDetailErrorById.removeWhere(
+          (runId, _) => !activeRunIds.contains(runId),
+        );
+        _loadingRunLogDetailIds.removeWhere(
+          (runId) => !activeRunIds.contains(runId),
+        );
       });
     } catch (e) {
+      final errorText = e.toString().replaceFirst('Exception: ', '');
       if (!mounted) return;
       setState(() {
         _runLogsSnapshot = null;
-        _runLogsError = e.toString();
+        _runLogsError = errorText;
       });
       if (!silent) {
-        showToast('加载 UTG run_logs 失败', type: ToastType.error);
+        showToast('加载 OmniFlow run_logs 失败：$errorText', type: ToastType.error);
       }
     } finally {
       if (mounted) {
         setState(() => _loadingRunLogs = false);
       } else {
         _loadingRunLogs = false;
+      }
+    }
+  }
+
+  Future<void> _ensureRunLogDetail(UtgRunLogSummary run) async {
+    final runId = run.runId.trim();
+    if (runId.isEmpty ||
+        _runLogDetailCache.containsKey(runId) ||
+        _loadingRunLogDetailIds.contains(runId)) {
+      return;
+    }
+    setState(() {
+      _loadingRunLogDetailIds.add(runId);
+      _runLogDetailErrorById.remove(runId);
+    });
+    try {
+      final detail = await AssistsMessageService.getUtgRunLogDetail(
+        runId: runId,
+        baseUrl: _config?.resolvedOmnicloudBaseUrl,
+      );
+      if (!mounted) return;
+      setState(() {
+        _runLogDetailCache[runId] = detail;
+        _runLogDetailErrorById.remove(runId);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _runLogDetailErrorById[runId] = e.toString().replaceFirst(
+          'Exception: ',
+          '',
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingRunLogDetailIds.remove(runId);
+        });
+      } else {
+        _loadingRunLogDetailIds.remove(runId);
       }
     }
   }
@@ -226,22 +290,48 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     );
   }
 
-  Widget _buildPill(String text) {
+  Widget _buildPill(
+    String text, {
+    Color backgroundColor = const Color(0xFFF2F5FA),
+    Color textColor = AppColors.text70,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F5FA),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: AppColors.text70,
+          color: textColor,
         ),
       ),
     );
+  }
+
+  Widget _buildRunStatusPill(bool success) {
+    return _buildPill(
+      success ? 'success' : 'failed',
+      backgroundColor: success
+          ? const Color(0xFFE8F7EE)
+          : const Color(0xFFFDECEC),
+      textColor: success ? const Color(0xFF117A37) : const Color(0xFFB42318),
+    );
+  }
+
+  List<UtgRunLogSummary> _filteredRunLogs() {
+    final allRuns = _runLogsSnapshot?.runs ?? const <UtgRunLogSummary>[];
+    switch (_runLogFilter) {
+      case 'success':
+        return allRuns.where((run) => run.success).toList();
+      case 'failed':
+        return allRuns.where((run) => !run.success).toList();
+      default:
+        return allRuns;
+    }
   }
 
   Widget _buildInfoRow(String label, String value) {
@@ -296,10 +386,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         : path.description;
     final running = _runningPathId == path.pathId;
     final deleting = _deletingPathId == path.pathId;
+    final distilling = _distillingPathId == path.pathId;
     final uploading = _uploadingPathId == path.pathId;
     final viewing = _viewingPathId == path.pathId;
     final expanded = _expandedPathId == path.pathId;
     final highlighted = _highlightedPathId == path.pathId;
+    final isTemporary = _isTemporaryPath(path);
+    final isReady = _isReadyPath(path);
     final bundle = _pathBundleCache[path.pathId];
     final bundleError = _pathBundleErrorById[path.pathId];
     final lastRun = path.lastRun;
@@ -348,9 +441,31 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             runSpacing: 8,
             children: [
               if (highlighted) _buildPill('新导入'),
+              _buildPill(
+                _pathKindLabel(path),
+                backgroundColor: isTemporary
+                    ? const Color(0xFFFFF4E5)
+                    : isReady
+                    ? const Color(0xFFE8F7EE)
+                    : const Color(0xFFF2F5FA),
+                textColor: isTemporary
+                    ? const Color(0xFFB54708)
+                    : isReady
+                    ? const Color(0xFF117A37)
+                    : AppColors.text70,
+              ),
               if (path.appName.trim().isNotEmpty) _buildPill(path.appName),
               _buildPill(_syncStatusLabel(path.syncStatus)),
-              if (hasLastRun) _buildPill(lastRunSuccess ? '最近成功' : '最近失败'),
+              if (hasLastRun)
+                _buildPill(
+                  lastRunSuccess ? '最近成功' : '最近失败',
+                  backgroundColor: lastRunSuccess
+                      ? const Color(0xFFE8F7EE)
+                      : const Color(0xFFFDECEC),
+                  textColor: lastRunSuccess
+                      ? const Color(0xFF117A37)
+                      : const Color(0xFFB42318),
+                ),
               _buildPill('${path.stepCount} steps'),
               _buildPill('slots ${path.slotNames.length}'),
               if (path.slotNames.isEmpty) _buildPill('无 slots'),
@@ -366,53 +481,6 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
               path.packageName,
             ].where((e) => e.trim().isNotEmpty).join(' · '),
           ),
-          _buildInfoRow(
-            'start node',
-            [
-              path.startNodeId,
-              path.startNodeDescription,
-            ].where((e) => e.trim().isNotEmpty).join(' · '),
-          ),
-          _buildInfoRow(
-            'end node',
-            [
-              path.endNodeId,
-              path.endNodeDescription,
-            ].where((e) => e.trim().isNotEmpty).join(' · '),
-          ),
-          _buildInfoRow(
-            'source',
-            [
-              path.source,
-              path.syncOrigin,
-            ].where((e) => e.trim().isNotEmpty).join(' · '),
-          ),
-          _buildInfoRow(
-            'time',
-            [
-              if (path.createdAt.trim().isNotEmpty) 'created ${path.createdAt}',
-              if (path.updatedAt.trim().isNotEmpty) 'updated ${path.updatedAt}',
-              if (path.lastSyncedAt.trim().isNotEmpty)
-                'synced ${path.lastSyncedAt}',
-            ].join(' | '),
-          ),
-          _buildInfoRow(
-            'recent run',
-            hasLastRun
-                ? [
-                    (lastRun['success'] == true) ? 'success' : 'failed',
-                    (lastRun['goal'] ?? '').toString(),
-                    (lastRun['started_at'] ?? '').toString(),
-                    (lastRun['error_code'] ?? '').toString(),
-                  ].where((e) => e.trim().isNotEmpty).join(' · ')
-                : '暂无执行记录',
-          ),
-          _buildInfoRow(
-            'run stats',
-            'total ${path.runCount} · success ${path.successCount} · fail ${path.failCount}',
-          ),
-          if (path.cloudBaseUrl.trim().isNotEmpty)
-            _buildInfoRow('cloud', path.cloudBaseUrl),
           if (path.slotExamples.isNotEmpty) ...[
             const SizedBox(height: 10),
             const Text(
@@ -443,6 +511,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   onPressed:
                       _runningPathId != null ||
                           _deletingPathId != null ||
+                          _distillingPathId != null ||
                           _uploadingPathId != null ||
                           _viewingPathId != null
                       ? null
@@ -460,6 +529,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   onPressed:
                       _runningPathId != null ||
                           _deletingPathId != null ||
+                          _distillingPathId != null ||
                           _uploadingPathId != null ||
                           _viewingPathId != null
                       ? null
@@ -475,8 +545,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 ),
                 OutlinedButton.icon(
                   onPressed:
-                      _runningPathId != null ||
+                      isTemporary ||
+                          _runningPathId != null ||
                           _deletingPathId != null ||
+                          _distillingPathId != null ||
                           _uploadingPathId != null ||
                           _viewingPathId != null
                       ? null
@@ -488,12 +560,34 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.cloud_upload_outlined),
-                  label: Text(uploading ? '上传中...' : '上传云端'),
+                  label: Text(
+                    isTemporary ? '仅资产区可上传' : (uploading ? '上传中...' : '上传云端'),
+                  ),
                 ),
+                if (isTemporary)
+                  OutlinedButton.icon(
+                    onPressed:
+                        _runningPathId != null ||
+                            _deletingPathId != null ||
+                            _distillingPathId != null ||
+                            _uploadingPathId != null ||
+                            _viewingPathId != null
+                        ? null
+                        : () => _distillPathFromDashboard(path),
+                    icon: distilling
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_awesome_outlined),
+                    label: Text(distilling ? '沉淀中...' : '沉淀资产'),
+                  ),
                 FilledButton.icon(
                   onPressed:
                       _runningPathId != null ||
                           _deletingPathId != null ||
+                          _distillingPathId != null ||
                           _uploadingPathId != null ||
                           _viewingPathId != null
                       ? null
@@ -968,6 +1062,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
 
   Widget _buildRunLogCard(UtgRunLogSummary run) {
     final importing = _importingRunId == run.runId;
+    final expanded = _expandedRunId == run.runId;
     final compileLabel = run.compileStatus.trim().isEmpty
         ? 'compile unknown'
         : 'compile ${run.compileStatus}';
@@ -989,12 +1084,36 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             run.runId,
             style: const TextStyle(fontSize: 12, color: AppColors.text70),
           ),
+          if (run.operationDescription.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              run.operationDescription.trim(),
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.black87,
+                height: 1.5,
+              ),
+            ),
+          ],
+          if (run.selectorLabel.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              run.selectorReason.trim().isNotEmpty
+                  ? 'selected_by: ${run.selectorLabel} · ${run.selectorReason}'
+                  : 'selected_by: ${run.selectorLabel}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.text70,
+                height: 1.5,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _buildPill(run.success ? 'success' : 'failed'),
+              _buildRunStatusPill(run.success),
               _buildPill('${run.stepCount} steps'),
               _buildPill(compileLabel),
               _buildPill(routeLabel),
@@ -1006,6 +1125,34 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
           ),
           _buildInfoRow('started_at', run.startedAt),
           _buildInfoRow('done_reason', run.doneReason),
+          if (run.errorMessage.trim().isNotEmpty)
+            _buildInfoRow('error', run.errorMessage),
+          if (run.finalPackageName.trim().isNotEmpty)
+            _buildInfoRow('final_package', run.finalPackageName),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              OutlinedButton(
+                onPressed: () async {
+                  if (expanded) {
+                    setState(() {
+                      _expandedRunId = null;
+                    });
+                    return;
+                  }
+                  setState(() {
+                    _expandedRunId = run.runId;
+                  });
+                  await _ensureRunLogDetail(run);
+                },
+                child: Text(expanded ? '收起详情' : '查看详情'),
+              ),
+            ],
+          ),
+          if (expanded) ...[
+            const SizedBox(height: 12),
+            _buildRunLogDetailView(run),
+          ],
           const SizedBox(height: 16),
           Align(
             alignment: Alignment.centerRight,
@@ -1025,12 +1172,323 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           height: 14,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.save_alt_outlined),
-                  label: Text(importing ? '保存中...' : '保存为 Path'),
+                      : const Icon(Icons.psychology_alt_outlined),
+                  label: Text(importing ? '记忆中...' : '记忆'),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRunLogDetailView(UtgRunLogSummary run) {
+    final runId = run.runId.trim();
+    final detail = _runLogDetailCache[runId];
+    final loading = _loadingRunLogDetailIds.contains(runId);
+    final errorText = _runLogDetailErrorById[runId];
+    final raw = detail?.runLog ?? const <String, dynamic>{};
+    final steps = (raw['steps'] as List<dynamic>?) ?? const <dynamic>[];
+    final finalObservation =
+        (raw['final_observation'] as Map<dynamic, dynamic>?) ?? const {};
+    final extra = (raw['extra'] as Map<dynamic, dynamic>?) ?? const {};
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Run Log 详情',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              OutlinedButton(
+                onPressed: raw.isEmpty
+                    ? null
+                    : () => _copyText(
+                        'run log json',
+                        const JsonEncoder.withIndent('  ').convert(raw),
+                      ),
+                child: const Text('复制 JSON'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (run.source.trim().isNotEmpty)
+            Text(
+              'source: ${run.source}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.text70,
+                height: 1.5,
+              ),
+            ),
+          if (loading) ...[
+            const SizedBox(height: 12),
+            const Row(
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  '正在加载 run_log 详情...',
+                  style: TextStyle(color: AppColors.text70),
+                ),
+              ],
+            ),
+          ] else if (errorText != null && errorText.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'run_log 详情加载失败：$errorText',
+              style: const TextStyle(color: Color(0xFFB42318), height: 1.6),
+            ),
+          ] else if (raw.isEmpty) ...[
+            const SizedBox(height: 12),
+            const Text(
+              '当前没有拿到完整 run_log 详情。',
+              style: TextStyle(color: AppColors.text70, height: 1.6),
+            ),
+          ] else ...[
+            if (extra['screenshot_error_code'] != null)
+              Text(
+                'screenshot_error_code: ${extra['screenshot_error_code']}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFFB42318),
+                  height: 1.5,
+                ),
+              ),
+            if (extra['stabilization_wait_ms'] != null)
+              Text(
+                'stabilization_wait_ms: ${extra['stabilization_wait_ms']}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.text70,
+                  height: 1.5,
+                ),
+              ),
+            const SizedBox(height: 12),
+            if (steps.isEmpty)
+              const Text(
+                '这个 run_log 没有记录到 step。常见原因是任务在首轮观察前失败或被中断。',
+                style: TextStyle(color: AppColors.text70, height: 1.6),
+              )
+            else
+              ...steps.asMap().entries.map((entry) {
+                final step = entry.value is Map
+                    ? Map<String, dynamic>.from(entry.value as Map)
+                    : const <String, dynamic>{};
+                final plan =
+                    (step['plan'] as Map<dynamic, dynamic>?) ?? const {};
+                final actRequest =
+                    (step['act_request'] as Map<dynamic, dynamic>?) ?? const {};
+                final actResult =
+                    (step['act_result'] as Map<dynamic, dynamic>?) ?? const {};
+                final resultSummary =
+                    (actResult['result_summary'] as Map<dynamic, dynamic>?) ??
+                    const {};
+                final resultMessage =
+                    ((resultSummary['message'] ?? '').toString()).trim();
+                final resultThought =
+                    ((resultSummary['thought'] ?? '').toString()).trim();
+                final resultTextSummary =
+                    ((resultSummary['summary'] ?? '').toString()).trim();
+                final selectorLabel =
+                    ((step['selector_label'] ?? '').toString()).trim();
+                final selectorReason =
+                    ((step['selector_reason'] ?? '').toString()).trim();
+                final executedActions =
+                    (step['executed_actions'] as List<dynamic>?)
+                        ?.whereType<Map>()
+                        .map(
+                          (item) => _buildActionPreviewText(
+                            Map<String, dynamic>.from(item),
+                          ).trim(),
+                        )
+                        .where((item) => item.isNotEmpty)
+                        .toList() ??
+                    const <String>[];
+                final executedActionDescriptions = executedActions.isNotEmpty
+                    ? executedActions
+                    : (step['executed_action_descriptions'] as List<dynamic>?)
+                              ?.map((item) => item.toString().trim())
+                              .where((item) => item.isNotEmpty)
+                              .toList() ??
+                          const <String>[];
+                final stepSuccess = actResult['success'] != false;
+                final actionMap =
+                    (actRequest['action'] as Map<dynamic, dynamic>?) ??
+                    const {};
+                final operationDescription =
+                    ((step['operation_description'] ??
+                                plan['description'] ??
+                                actRequest['action_description'] ??
+                                '')
+                            .toString())
+                        .trim();
+                final actionPreview = actionMap.isNotEmpty
+                    ? _buildActionPreviewText(
+                        Map<String, dynamic>.from(actionMap),
+                      )
+                    : '';
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE4E8EE)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Step ${(step['step_index'] ?? entry.key) is num ? ((step['step_index'] ?? entry.key) as num).toInt() + 1 : entry.key + 1} · ${(operationDescription.isNotEmpty
+                                  ? operationDescription
+                                  : (plan['tool_name'] ?? '').toString().trim().isEmpty
+                                  ? '未记录动作'
+                                  : plan['tool_name'])}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildRunStatusPill(stepSuccess),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      if (selectorLabel.isNotEmpty)
+                        Text(
+                          'selected_by: $selectorLabel',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.text70,
+                            height: 1.5,
+                          ),
+                        ),
+                      if (selectorReason.isNotEmpty)
+                        Text(
+                          'why: $selectorReason',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.text70,
+                            height: 1.5,
+                          ),
+                        ),
+                      if (executedActionDescriptions.isNotEmpty)
+                        ...executedActionDescriptions.asMap().entries.map(
+                          (actionEntry) => Text(
+                            'action ${actionEntry.key + 1}: ${actionEntry.value}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.text70,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      if (executedActionDescriptions.isEmpty &&
+                          actionPreview.isNotEmpty)
+                        Text(
+                          'action: $actionPreview',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.text70,
+                            height: 1.5,
+                          ),
+                        ),
+                      if (resultMessage.isNotEmpty)
+                        Text(
+                          'result: $resultMessage',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.text70,
+                            height: 1.5,
+                          ),
+                        ),
+                      if (resultThought.isNotEmpty)
+                        Text(
+                          'thought: $resultThought',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.text70,
+                            height: 1.5,
+                          ),
+                        ),
+                      if (resultTextSummary.isNotEmpty)
+                        Text(
+                          'summary: $resultTextSummary',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.text70,
+                            height: 1.5,
+                          ),
+                        ),
+                      if ((actResult['error_message'] ?? '')
+                          .toString()
+                          .trim()
+                          .isNotEmpty)
+                        Text(
+                          'error: ${(actResult['error_message'] ?? '').toString()}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFFB42318),
+                            height: 1.5,
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              }),
+            const SizedBox(height: 8),
+            Text(
+              'final package: ${(finalObservation['package_name'] ?? '').toString().trim().isEmpty ? 'unknown' : (finalObservation['package_name'] ?? '').toString()}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.text70,
+                height: 1.5,
+              ),
+            ),
+            if ((finalObservation['xml'] ?? '')
+                .toString()
+                .trim()
+                .isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE4E8EE)),
+                ),
+                child: SelectableText(
+                  (finalObservation['xml'] ?? '').toString(),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.text70,
+                    height: 1.5,
+                  ),
+                  maxLines: 10,
+                ),
+              ),
+            ],
+          ],
         ],
       ),
     );
@@ -1054,9 +1512,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       case 'open_app':
         return '打开应用';
       case 'click':
-        return '点击';
+        return 'click';
       case 'click_node':
-        return '点击节点';
+        return 'click_node';
       case 'long_press':
         return '长按';
       case 'input_text':
@@ -1077,13 +1535,43 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   String _buildActionPreviewText(Map<String, dynamic> rawAction) {
     final actionType = (rawAction['type'] ?? '').toString().trim();
     final label = _actionDisplayName(actionType);
+    final params = (rawAction['params'] as Map<dynamic, dynamic>?) ?? const {};
     final packageName =
-        (rawAction['packageName'] ?? rawAction['package_name'] ?? '')
+        (rawAction['packageName'] ??
+                rawAction['package_name'] ??
+                params['packageName'] ??
+                params['package_name'] ??
+                '')
             .toString()
             .trim();
-    final textValue = (rawAction['text'] ?? '').toString().trim();
-    final keyValue = (rawAction['key'] ?? '').toString().trim();
-    final directionValue = (rawAction['direction'] ?? '').toString().trim();
+    final textValue = (rawAction['text'] ?? params['text'] ?? '')
+        .toString()
+        .trim();
+    final keyValue = (rawAction['key'] ?? params['key'] ?? '')
+        .toString()
+        .trim();
+    final directionValue = (rawAction['direction'] ?? params['direction'] ?? '')
+        .toString()
+        .trim();
+    final xValue = rawAction['x'] ?? params['x'];
+    final yValue = rawAction['y'] ?? params['y'];
+    final targetDescription =
+        (rawAction['targetDescription'] ??
+                rawAction['target_description'] ??
+                params['targetDescription'] ??
+                params['target_description'] ??
+                '')
+            .toString()
+            .trim();
+    if (actionType == 'click') {
+      if (xValue != null && yValue != null) {
+        return 'click ($xValue, $yValue)';
+      }
+      if (targetDescription.isNotEmpty) {
+        return 'click $targetDescription';
+      }
+      return 'click';
+    }
     if (packageName.isNotEmpty) {
       return '$label($packageName)';
     }
@@ -1114,6 +1602,34 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     }
   }
 
+  bool _isTemporaryPath(UtgPathSummary path) {
+    return path.assetState.trim().toLowerCase() == 'temporary';
+  }
+
+  bool _isReadyPath(UtgPathSummary path) {
+    return path.assetState.trim().toLowerCase() == 'ready';
+  }
+
+  String _pathKindLabel(UtgPathSummary path) {
+    if (_isTemporaryPath(path)) {
+      return '临时区';
+    }
+    if (_isReadyPath(path)) {
+      return '资产区';
+    }
+    return path.assetState.trim().isEmpty ? '未分区' : path.assetState.trim();
+  }
+
+  String _pathCapabilityLabel(UtgPathSummary path) {
+    if (_isTemporaryPath(path)) {
+      return '可回放 · 未沉淀 · 不参与 compile';
+    }
+    if (_isReadyPath(path)) {
+      return '可复用 · 可 compile · 可上传';
+    }
+    return '分区未知';
+  }
+
   Future<void> _controlProvider(String action) async {
     try {
       setState(() => _providerControlAction = action);
@@ -1126,12 +1642,15 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       await _loadRunLogs(baseUrl: result.config.omnicloudBaseUrl, silent: true);
       if (!mounted) return;
       showToast(
-        result.success ? 'provider ${action} 成功' : 'provider ${action} 失败',
+        result.success
+            ? 'provider $action 成功'
+            : 'provider $action 失败：${result.message}',
         type: result.success ? ToastType.success : ToastType.error,
       );
     } catch (e) {
+      final errorText = e.toString().replaceFirst('Exception: ', '');
       if (!mounted) return;
-      showToast('provider ${action} 失败', type: ToastType.error);
+      showToast('provider $action 失败：$errorText', type: ToastType.error);
       debugPrint('Control provider failed: $e');
     } finally {
       if (mounted) {
@@ -1141,105 +1660,74 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   }
 
   Future<void> _importRunLog(UtgRunLogSummary run) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('记忆到 OmniFlow'),
+          content: const Text(
+            '是否确定将这次执行记录记忆到 OmniFlow 临时区？\n\n记忆后可在下方 OmniFlow Path 列表继续沉淀为可 compile 资产。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || confirmed != true) {
+      return;
+    }
+    var loadingShown = false;
     try {
       setState(() => _importingRunId = run.runId);
-      var result = await AssistsMessageService.importUtgRunLog(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return const AlertDialog(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.4),
+                ),
+                SizedBox(width: 12),
+                Expanded(child: Text('正在整理执行记录并写入 OmniFlow 临时区...')),
+              ],
+            ),
+          );
+        },
+      );
+      loadingShown = true;
+      final result = await AssistsMessageService.importUtgRunLog(
         runId: run.runId,
         baseUrl: _baseUrlController.text.trim(),
       );
       if (!mounted) return;
-      if (result.requiresConfirmation) {
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) {
-            final preview = result.previewPaths.isEmpty
-                ? null
-                : result.previewPaths.first;
-            return AlertDialog(
-              title: const Text('保存 run_log 为 Path'),
-              content: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SelectableText('run_id: ${run.runId}'),
-                    const SizedBox(height: 8),
-                    if (preview != null) ...[
-                      SelectableText('path_id: ${preview.pathId}'),
-                      const SizedBox(height: 6),
-                      Text(
-                        preview.description.trim().isEmpty
-                            ? '无描述'
-                            : preview.description,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'steps ${preview.stepCount} · slots ${preview.slotNames.length}',
-                      ),
-                      if (preview.slotExamples.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: preview.slotExamples.entries
-                              .map(
-                                (entry) =>
-                                    _buildPill('${entry.key}=${entry.value}'),
-                              )
-                              .toList(),
-                        ),
-                      ],
-                    ],
-                    if (result.pendingNotes.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      SelectableText(
-                        const JsonEncoder.withIndent(
-                          '  ',
-                        ).convert(result.pendingNotes),
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('确认保存'),
-                ),
-              ],
-            );
-          },
-        );
-        if (!mounted) return;
-        if (confirmed != true) {
-          return;
-        }
-        result = await AssistsMessageService.importUtgRunLog(
-          runId: run.runId,
-          confirm: true,
-          baseUrl: _baseUrlController.text.trim(),
-        );
-        if (!mounted) return;
+      if (loadingShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingShown = false;
       }
       await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
       await _loadRunLogs(baseUrl: _baseUrlController.text.trim(), silent: true);
       if (!mounted) return;
       if (!result.success) {
         showToast(
-          result.errorMessage ?? result.pendingReason ?? '该 run_log 不能保存为 path',
+          result.errorMessage ?? '该 run_log 不能记忆到 OmniFlow',
           type: ToastType.error,
         );
         return;
       }
-      final targetPathId = result.createdPathIds.isEmpty
-          ? null
-          : result.createdPathIds.first;
-      if (targetPathId != null && targetPathId.trim().isNotEmpty) {
+      final targetPathId = result.createdPathId.trim();
+      if (targetPathId.isNotEmpty) {
         setState(() {
           _highlightedPathId = targetPathId;
           _pathSearchController.text = targetPathId;
@@ -1253,14 +1741,23 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         }
         if (!mounted) return;
       }
-      final createdPathText = result.createdPathIds.isEmpty
-          ? ''
-          : '：${result.createdPathIds.join(', ')}';
-      showToast('已保存为 path$createdPathText', type: ToastType.success);
+      final zoneLabel = result.assetState.trim().isEmpty
+          ? '临时区'
+          : result.assetState.trim();
+      showToast(
+        targetPathId.isEmpty
+            ? '已记忆到 OmniFlow $zoneLabel'
+            : '已记忆到 OmniFlow $zoneLabel：$targetPathId',
+        type: ToastType.success,
+      );
     } catch (e) {
+      if (mounted && loadingShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingShown = false;
+      }
       if (!mounted) return;
-      showToast('保存 run_log 为 path 失败', type: ToastType.error);
-      debugPrint('Import run log failed: $e');
+      showToast('记忆到 OmniFlow 失败', type: ToastType.error);
+      debugPrint('Convert run log to UTG failed: $e');
     } finally {
       if (mounted) {
         setState(() => _importingRunId = null);
@@ -1281,7 +1778,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text('执行 UTG Path'),
+            title: const Text('执行 OmniFlow Path'),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1439,7 +1936,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text(result.success ? 'UTG 执行成功' : 'UTG 执行失败'),
+          title: Text(result.success ? 'OmniFlow 执行成功' : 'OmniFlow 执行失败'),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1535,24 +2032,89 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         baseUrl: _baseUrlController.text.trim(),
       );
       if (!mounted) return;
-      await _showRunResult(result);
+      await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
+      await _loadRunLogs(baseUrl: _baseUrlController.text.trim(), silent: true);
       if (!mounted) return;
       showToast(
         result.success
-            ? '已通过 UTG 执行 ${path.pathId}'
-            : 'UTG 执行失败：${path.pathId}',
+            ? '已通过 OmniFlow 执行 ${path.pathId}'
+            : 'OmniFlow 执行失败：${path.pathId}',
         type: result.success ? ToastType.success : ToastType.error,
       );
+      await AppStateService.navigateBackToChat();
     } on PlatformException catch (e) {
       if (!mounted) return;
-      showToast(e.message ?? '获取 UTG bridge 失败', type: ToastType.error);
+      showToast(e.message ?? '获取 OmniFlow bridge 失败', type: ToastType.error);
     } catch (e) {
       if (!mounted) return;
-      showToast('执行 UTG path 失败', type: ToastType.error);
+      showToast('执行 OmniFlow path 失败', type: ToastType.error);
       debugPrint('Run UTG path failed: $e');
     } finally {
       if (mounted) {
         setState(() => _runningPathId = null);
+      }
+    }
+  }
+
+  Future<void> _distillPathFromDashboard(UtgPathSummary path) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('沉淀为资产'),
+          content: Text(
+            '确认将 ${path.pathId} 从 OmniFlow 临时区沉淀到资产区？\n\n沉淀后会生成一个新的 ready path，原 raw replay 会继续保留。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || confirmed != true) {
+      return;
+    }
+    try {
+      setState(() => _distillingPathId = path.pathId);
+      final result = await AssistsMessageService.distillUtgPath(
+        pathId: path.pathId,
+        baseUrl: _baseUrlController.text.trim(),
+      );
+      if (!mounted) return;
+      await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
+      await _loadRunLogs(baseUrl: _baseUrlController.text.trim(), silent: true);
+      if (!mounted) return;
+      if (!result.success) {
+        showToast(result.errorMessage ?? '沉淀资产失败', type: ToastType.error);
+        return;
+      }
+      final createdPathId = result.createdPathId.trim();
+      setState(() {
+        _highlightedPathId = createdPathId.isEmpty
+            ? path.pathId
+            : createdPathId;
+        if (createdPathId.isNotEmpty) {
+          _pathSearchController.text = createdPathId;
+        }
+      });
+      showToast(
+        createdPathId.isEmpty ? '已完成沉淀' : '已沉淀到资产区：$createdPathId',
+        type: ToastType.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showToast('沉淀资产失败', type: ToastType.error);
+      debugPrint('Distill UTG path failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _distillingPathId = null);
       }
     }
   }
@@ -1562,7 +2124,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('删除 UTG Path'),
+          title: const Text('删除 OmniFlow Path'),
           content: SelectableText(
             '确认删除 path_id=${path.pathId}？\n\n删除后会直接从当前本地 provider 的 UTG store 移除。',
           ),
@@ -1611,7 +2173,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       showToast('已删除 ${path.pathId}', type: ToastType.success);
     } catch (e) {
       if (!mounted) return;
-      showToast('删除 UTG path 失败', type: ToastType.error);
+      showToast('删除 OmniFlow path 失败', type: ToastType.error);
       debugPrint('Delete UTG path failed: $e');
     } finally {
       if (mounted) {
@@ -1623,8 +2185,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   Future<void> _downloadCloudPath() async {
     final cloudBaseUrl = _cloudBaseUrlController.text.trim();
     final pathId = _cloudPathIdController.text.trim();
-    if (cloudBaseUrl.isEmpty || pathId.isEmpty) {
-      showToast('请填写云端 Base URL 和 path_id', type: ToastType.error);
+    if (cloudBaseUrl.isEmpty) {
+      showToast('请填写云端 Base URL', type: ToastType.error);
       return;
     }
     try {
@@ -1641,7 +2203,17 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       }
       await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
       if (!mounted) return;
-      showToast('已下载云端 path：$pathId', type: ToastType.success);
+      final importedCount = result.count;
+      if (pathId.isEmpty) {
+        showToast(
+          importedCount > 0
+              ? '已下载全部云端 path：$importedCount 条'
+              : '云端 path 已同步，无新增条目',
+          type: ToastType.success,
+        );
+      } else {
+        showToast('已下载云端 path：$pathId', type: ToastType.success);
+      }
     } catch (e) {
       if (!mounted) return;
       showToast('下载云端 path 失败', type: ToastType.error);
@@ -1657,6 +2229,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   Widget build(BuildContext context) {
     final config = _config;
     final allPaths = _pathsSnapshot?.paths ?? const <UtgPathSummary>[];
+    final allRuns = _runLogsSnapshot?.runs ?? const <UtgRunLogSummary>[];
+    final filteredRuns = _filteredRunLogs();
     final searchQuery = _pathSearchController.text.trim().toLowerCase();
     final filteredPaths = searchQuery.isEmpty
         ? allPaths
@@ -1664,6 +2238,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             final haystack = <String>[
               path.pathId,
               path.description,
+              path.pathKind,
+              path.assetState,
+              path.derivedFromRawPathId,
               path.startNodeId,
               path.endNodeId,
               path.startNodeDescription,
@@ -1672,18 +2249,27 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             ].join(' ').toLowerCase();
             return haystack.contains(searchQuery);
           }).toList();
-    final groupedPaths = <String, List<UtgPathSummary>>{};
-    for (final path in filteredPaths) {
-      final groupName = path.groupName.trim().isEmpty
-          ? 'unknown_app'
-          : path.groupName.trim();
-      groupedPaths.putIfAbsent(groupName, () => <UtgPathSummary>[]).add(path);
+    final temporaryPaths = filteredPaths.where(_isTemporaryPath).toList();
+    final readyPaths = filteredPaths.where(_isReadyPath).toList();
+    final unknownPaths = filteredPaths
+        .where((path) => !_isTemporaryPath(path) && !_isReadyPath(path))
+        .toList();
+
+    Map<String, List<UtgPathSummary>> groupByApp(List<UtgPathSummary> paths) {
+      final grouped = <String, List<UtgPathSummary>>{};
+      for (final path in paths) {
+        final groupName = path.groupName.trim().isEmpty
+            ? 'unknown_app'
+            : path.groupName.trim();
+        grouped.putIfAbsent(groupName, () => <UtgPathSummary>[]).add(path);
+      }
+      return grouped;
     }
-    final groupKeys = groupedPaths.keys.toList()..sort();
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: CommonAppBar(
-        title: 'UTG',
+        title: 'OmniFlow 轨迹执行 [debug]',
         primary: true,
         actions: [
           IconButton(
@@ -1702,7 +2288,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 children: [
                   _buildCard(
                     child: const Text(
-                      '这里统一处理 OmniCloud UTG provider 设置，并展示当前 provider 暴露出来的全部 UTG paths。'
+                      '这里统一处理 OmniCloud provider 的轨迹执行设置，并展示当前 provider 暴露出来的临时 raw replay 与 ready 资产路径。'
                       ' `vlm_task` 的 compile-first pre-hook 也由这里控制。',
                       style: TextStyle(
                         fontSize: 13,
@@ -1717,7 +2303,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'UTG 设置',
+                          'OmniFlow 设置',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -1727,7 +2313,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           value: _utgEnabled,
-                          title: const Text('启用 `vlm_task` 前置 UTG pre-hook'),
+                          title: const Text(
+                            '启用 `vlm_task` 前置 OmniFlow pre-hook',
+                          ),
                           onChanged: _saving
                               ? null
                               : (value) => setState(() => _utgEnabled = value),
@@ -1745,7 +2333,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           value: _fallbackToVlmOnFailureEnabled,
-                          title: const Text('UTG 失败时自动回退到 VLM'),
+                          title: const Text('OmniFlow 失败时自动回退到 VLM'),
                           onChanged: _saving
                               ? null
                               : (value) => setState(
@@ -1755,7 +2343,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           value: _runLogRecordingEnabled,
-                          title: const Text('持续记录 UTG run_log'),
+                          title: const Text('持续记录 OmniFlow run_log'),
                           onChanged: _saving
                               ? null
                               : (value) => setState(
@@ -1807,6 +2395,24 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         _buildInfoRow(
                           'provider stdout',
                           config?.providerStdoutPath ?? '',
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF7E8),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFFD89B)),
+                          ),
+                          child: const Text(
+                            '当前页的启动/重启/停止按钮只控制手机内 provider。若你现在使用的是 Mac + adb reverse 调试模式，请在开发机运行 bash scripts/start_oob_utg_host_bridge.sh <serial>，然后这里再点刷新 paths。',
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.5,
+                              color: Color(0xFF8A5A00),
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Wrap(
@@ -1917,7 +2523,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          '本地 provider 会从另一台 OmniCloud provider 拉取 `/paths/{path_id}/bundle`，再 merge 到当前手机上的本地 UTG store。',
+                          '本地 provider 会从另一台 OmniCloud provider 拉取单条 `/paths/{path_id}/bundle`，或在 path_id 留空时先拉 `/paths` 再全量同步。',
                           style: TextStyle(
                             fontSize: 13,
                             color: AppColors.text70,
@@ -1933,8 +2539,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         const SizedBox(height: 12),
                         _buildInputField(
                           controller: _cloudPathIdController,
-                          label: '云端 path_id',
-                          hint: '例如 global-open-settings',
+                          label: '云端 path_id（可留空）',
+                          hint: '例如 global-open-settings；留空表示下载全部',
                         ),
                         const SizedBox(height: 12),
                         Align(
@@ -1961,34 +2567,67 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Text(
-                        '最近 Run Logs',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _runLogsExpanded = !_runLogsExpanded;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          const Text(
+                            '最近 Run Logs',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (_loadingRunLogs)
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            _buildPill(
+                              filteredRuns.length == allRuns.length
+                                  ? '${allRuns.length}'
+                                  : '${filteredRuns.length}/${allRuns.length}',
+                            ),
+                          const Spacer(),
+                          Icon(
+                            _runLogsExpanded
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                            color: AppColors.text70,
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      if (_loadingRunLogs)
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      else
-                        _buildPill('${_runLogsSnapshot?.count ?? 0}'),
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  if (_runLogsError != null)
+                  if (!_runLogsExpanded)
+                    _buildCard(
+                      child: const Text(
+                        '点击上方标题展开最近 run_log 列表。',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.text70,
+                          height: 1.7,
+                        ),
+                      ),
+                    )
+                  else if (_runLogsError != null)
                     _buildCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'UTG run_log 列表加载失败',
+                            'OmniFlow run_log 列表加载失败',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
@@ -2041,18 +2680,95 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ],
                       ),
                     )
-                  else
-                    ..._runLogsSnapshot!.runs.map(
-                      (run) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildRunLogCard(run),
+                  else ...[
+                    _buildCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '筛选',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ChoiceChip(
+                                label: const Text('全部'),
+                                selected: _runLogFilter == 'all',
+                                onSelected: (_) {
+                                  setState(() {
+                                    _runLogFilter = 'all';
+                                  });
+                                },
+                              ),
+                              ChoiceChip(
+                                label: const Text('成功'),
+                                selected: _runLogFilter == 'success',
+                                selectedColor: const Color(0xFFE8F7EE),
+                                labelStyle: TextStyle(
+                                  color: _runLogFilter == 'success'
+                                      ? const Color(0xFF117A37)
+                                      : AppColors.text70,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                onSelected: (_) {
+                                  setState(() {
+                                    _runLogFilter = 'success';
+                                  });
+                                },
+                              ),
+                              ChoiceChip(
+                                label: const Text('失败'),
+                                selected: _runLogFilter == 'failed',
+                                selectedColor: const Color(0xFFFDECEC),
+                                labelStyle: TextStyle(
+                                  color: _runLogFilter == 'failed'
+                                      ? const Color(0xFFB42318)
+                                      : AppColors.text70,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                onSelected: (_) {
+                                  setState(() {
+                                    _runLogFilter = 'failed';
+                                  });
+                                },
+                              ),
+                              _buildPill('当前 ${filteredRuns.length}'),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    if (filteredRuns.isEmpty)
+                      _buildCard(
+                        child: const Text(
+                          '当前筛选条件下没有 run_log。',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.text70,
+                            height: 1.7,
+                          ),
+                        ),
+                      )
+                    else
+                      ...filteredRuns.map(
+                        (run) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _buildRunLogCard(run),
+                        ),
+                      ),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       const Text(
-                        '已有 UTG Paths',
+                        '已有 OmniFlow Paths',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
@@ -2112,7 +2828,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'UTG path 列表加载失败',
+                            'OmniFlow path 列表加载失败',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
@@ -2133,7 +2849,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   else if (allPaths.isEmpty)
                     _buildCard(
                       child: const Text(
-                        '当前 provider 没有返回可展示的 UTG path。确认 OmniCloud 已启动、Base URL 正确，并且 provider 能访问到 UTG store。',
+                        '当前 provider 没有返回可展示的 OmniFlow path。确认 OmniCloud 已启动、Base URL 正确，并且 provider 能访问到临时区或资产区轨迹数据。',
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.text70,
@@ -2152,36 +2868,175 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ),
                       ),
                     )
-                  else
-                    ...groupKeys.expand((groupName) {
-                      final paths =
-                          groupedPaths[groupName] ?? const <UtgPathSummary>[];
-                      return [
-                        _buildCard(
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  groupName,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
+                  else ...[
+                    if (temporaryPaths.isNotEmpty) ...[
+                      _buildCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    '临时区 Raw Replay',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
+                                _buildPill(
+                                  '${temporaryPaths.length}',
+                                  backgroundColor: const Color(0xFFFFF4E5),
+                                  textColor: const Color(0xFFB54708),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              '这里保存原始回放记忆，可直接回放，但默认不参与 compile；需要手动“沉淀资产”后才会进入资产区。',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.text70,
+                                height: 1.6,
                               ),
-                              _buildPill('${paths.length}'),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        ...paths.map(
-                          (path) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _buildPathCard(path),
-                          ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...(() {
+                        final groupedPaths = groupByApp(temporaryPaths);
+                        final groupKeys = groupedPaths.keys.toList()..sort();
+                        return groupKeys.expand((groupName) {
+                          final paths =
+                              groupedPaths[groupName] ??
+                              const <UtgPathSummary>[];
+                          return [
+                            _buildCard(
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      groupName,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  _buildPill('${paths.length}'),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...paths.map(
+                              (path) => Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _buildPathCard(path),
+                              ),
+                            ),
+                          ];
+                        });
+                      })(),
+                    ],
+                    if (readyPaths.isNotEmpty) ...[
+                      _buildCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    '资产区 Ready Paths',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                _buildPill(
+                                  '${readyPaths.length}',
+                                  backgroundColor: const Color(0xFFE8F7EE),
+                                  textColor: const Color(0xFF117A37),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              '这里的路径已经完成沉淀，可复用、可 compile，也可以继续上传或同步。',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.text70,
+                                height: 1.6,
+                              ),
+                            ),
+                          ],
                         ),
-                      ];
-                    }),
+                      ),
+                      const SizedBox(height: 8),
+                      ...(() {
+                        final groupedPaths = groupByApp(readyPaths);
+                        final groupKeys = groupedPaths.keys.toList()..sort();
+                        return groupKeys.expand((groupName) {
+                          final paths =
+                              groupedPaths[groupName] ??
+                              const <UtgPathSummary>[];
+                          return [
+                            _buildCard(
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      groupName,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  _buildPill('${paths.length}'),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...paths.map(
+                              (path) => Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _buildPathCard(path),
+                              ),
+                            ),
+                          ];
+                        });
+                      })(),
+                    ],
+                    if (unknownPaths.isNotEmpty) ...[
+                      _buildCard(
+                        child: Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                '未分区 Paths',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            _buildPill('${unknownPaths.length}'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...unknownPaths.map(
+                        (path) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _buildPathCard(path),
+                        ),
+                      ),
+                    ],
+                  ],
                 ],
               ),
             ),

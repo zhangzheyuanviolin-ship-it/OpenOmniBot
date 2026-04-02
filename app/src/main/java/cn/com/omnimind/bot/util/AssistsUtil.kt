@@ -15,6 +15,7 @@ import cn.com.omnimind.assists.AssistsCore
 import cn.com.omnimind.assists.api.bean.TaskParams
 import cn.com.omnimind.assists.api.bean.VLMTaskPreHookResult
 import cn.com.omnimind.assists.api.bean.VLMTaskRunLogPayload
+import cn.com.omnimind.assists.controller.accessibility.AccessibilityController
 import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
 import cn.com.omnimind.assists.task.vlmserver.OperationResult
 import cn.com.omnimind.assists.task.scheduled.worker.ScheduledParams
@@ -23,9 +24,12 @@ import cn.com.omnimind.baselib.util.APPPackageUtil
 import cn.com.omnimind.baselib.util.exception.PermissionException
 import cn.com.omnimind.bot.App
 import cn.com.omnimind.bot.manager.OmniForegroundService
+import cn.com.omnimind.bot.mcp.McpServerManager
+import cn.com.omnimind.bot.utg.UtgBridge
 import cn.com.omnimind.bot.util.AssistsUtil.Core.createCompanionTask
 import cn.com.omnimind.uikit.UIKit
 import cn.com.omnimind.uikit.api.callback.HalfScreenApi
+import com.google.gson.Gson
 import java.util.concurrent.TimeUnit
 
 
@@ -213,6 +217,50 @@ class AssistsUtil {
                     }
                 }
             }
+            val resolvedPrepareExecution = onPrepareExecution ?: {
+                UtgBridge.prepareVlmTaskExecution(
+                    context = context,
+                    goal = goal,
+                    currentPackageName = packageName?.takeIf { it.isNotBlank() }
+                        ?: AccessibilityController.getPackageName()
+                )
+            }
+            val resolvedRunCompiledPath = onRunCompiledPath ?: { pathId ->
+                val bridgeState = McpServerManager.ensureRunning(context)
+                val response = UtgBridge.runCompiledPath(
+                    UtgBridge.RunCompiledPathRequest(
+                        goal = goal,
+                        pathId = pathId,
+                        slots = emptyMap(),
+                        bridgeBaseUrl = UtgBridge.localBridgeBaseUrl(bridgeState),
+                        bridgeToken = bridgeState.token,
+                        context = mapOf("source" to "oob_vlm_task"),
+                        skipTerminalVerify = true,
+                    )
+                )
+                if (response == null) {
+                    OperationResult(false, "UTG compiled path request failed", null)
+                } else {
+                    OperationResult(
+                        success = response.success,
+                        message = response.summaryText(goal),
+                        data = null,
+                        providerRunLogJson = response.runLog?.let { Gson().toJson(it) },
+                        providerRunLogPath = response.providerRunLogPath,
+                        canonicalRunLogPath = response.canonicalRunLogPath,
+                    )
+                }
+            }
+            val resolvedTaskRunLogReady: suspend (VLMTaskRunLogPayload) -> Unit = { payload ->
+                if (onTaskRunLogReady != null) {
+                    onTaskRunLogReady.invoke(payload)
+                } else {
+                    val response = UtgBridge.appendCanonicalRunLog(payload)
+                    if (response == null && UtgBridge.isRunLogRecordingEnabled()) {
+                        Log.w(TAG, "appendCanonicalRunLog returned null")
+                    }
+                }
+            }
             AssistsCore.startTask(
                 TaskParams.VLMOperationTaskParams(
                     goal,
@@ -226,10 +274,10 @@ class AssistsUtil {
                     onMessagePushListener,
                     skipGoHome,
                     stepSkillGuidance,
-                    onRunCompiledPath,
-                    onPrepareExecution,
+                    resolvedRunCompiledPath,
+                    resolvedPrepareExecution,
                     onCompileGateResolved,
-                    onTaskRunLogReady
+                    resolvedTaskRunLogReady
                 )
             )
         }

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:ui/services/agent_schedule_bridge_service.dart';
 import 'package:ui/services/app_state_service.dart';
 
@@ -116,6 +115,7 @@ class ModelAvailabilityCheckResult {
 class UtgBridgeConfig {
   final bool utgEnabled;
   final String omnicloudBaseUrl;
+  final String resolvedOmnicloudBaseUrl;
   final bool providerAutoStartEnabled;
   final bool fallbackToVlmOnFailureEnabled;
   final String providerStartCommand;
@@ -131,6 +131,7 @@ class UtgBridgeConfig {
   const UtgBridgeConfig({
     required this.utgEnabled,
     required this.omnicloudBaseUrl,
+    required this.resolvedOmnicloudBaseUrl,
     required this.providerAutoStartEnabled,
     required this.fallbackToVlmOnFailureEnabled,
     required this.providerStartCommand,
@@ -150,6 +151,8 @@ class UtgBridgeConfig {
     return UtgBridgeConfig(
       utgEnabled: raw['utgEnabled'] != false,
       omnicloudBaseUrl: (raw['omnicloudBaseUrl'] ?? '').toString(),
+      resolvedOmnicloudBaseUrl: (raw['resolvedOmnicloudBaseUrl'] ?? '')
+          .toString(),
       providerAutoStartEnabled: raw['providerAutoStartEnabled'] == true,
       fallbackToVlmOnFailureEnabled:
           raw['fallbackToVlmOnFailureEnabled'] != false,
@@ -186,6 +189,9 @@ class UtgPathSummary {
   final String syncOrigin;
   final String cloudBaseUrl;
   final String lastSyncedAt;
+  final String pathKind;
+  final String assetState;
+  final String derivedFromRawPathId;
   final int runCount;
   final int successCount;
   final int failCount;
@@ -211,6 +217,9 @@ class UtgPathSummary {
     required this.syncOrigin,
     required this.cloudBaseUrl,
     required this.lastSyncedAt,
+    required this.pathKind,
+    required this.assetState,
+    required this.derivedFromRawPathId,
     required this.runCount,
     required this.successCount,
     required this.failCount,
@@ -249,6 +258,9 @@ class UtgPathSummary {
       syncOrigin: (raw['sync_origin'] ?? '').toString(),
       cloudBaseUrl: (raw['cloud_base_url'] ?? '').toString(),
       lastSyncedAt: (raw['last_synced_at'] ?? '').toString(),
+      pathKind: (raw['path_kind'] ?? '').toString(),
+      assetState: (raw['asset_state'] ?? '').toString(),
+      derivedFromRawPathId: (raw['derived_from_raw_path_id'] ?? '').toString(),
       runCount: ((raw['run_stats'] as Map?)?['run_count'] is num)
           ? (((raw['run_stats'] as Map?)?['run_count'] as num).toInt())
           : int.tryParse(
@@ -311,12 +323,14 @@ class UtgPathsSnapshot {
 class UtgBridgeExecutionContext {
   final String bridgeBaseUrl;
   final String bridgeToken;
+  final String resolvedOmnicloudBaseUrl;
   final bool providerHealthy;
   final String providerMessage;
 
   const UtgBridgeExecutionContext({
     required this.bridgeBaseUrl,
     required this.bridgeToken,
+    required this.resolvedOmnicloudBaseUrl,
     required this.providerHealthy,
     required this.providerMessage,
   });
@@ -326,6 +340,8 @@ class UtgBridgeExecutionContext {
     return UtgBridgeExecutionContext(
       bridgeBaseUrl: (raw['bridgeBaseUrl'] ?? '').toString(),
       bridgeToken: (raw['bridgeToken'] ?? '').toString(),
+      resolvedOmnicloudBaseUrl: (raw['resolvedOmnicloudBaseUrl'] ?? '')
+          .toString(),
       providerHealthy: raw['providerHealthy'] == true,
       providerMessage: (raw['providerMessage'] ?? '').toString(),
     );
@@ -377,23 +393,33 @@ class UtgManualRunResult {
 class UtgPathMutationResult {
   final bool success;
   final String pathId;
+  final String createdPathId;
   final String? errorCode;
   final String? errorMessage;
   final bool deleted;
   final bool imported;
+  final bool alreadyExists;
   final int count;
   final String? cloudBaseUrl;
+  final String pathKind;
+  final String assetState;
+  final String derivedFromRawPathId;
   final Map<String, dynamic> rawJson;
 
   const UtgPathMutationResult({
     required this.success,
     required this.pathId,
+    required this.createdPathId,
     required this.errorCode,
     required this.errorMessage,
     required this.deleted,
     required this.imported,
+    required this.alreadyExists,
     required this.count,
     required this.cloudBaseUrl,
+    required this.pathKind,
+    required this.assetState,
+    required this.derivedFromRawPathId,
     required this.rawJson,
   });
 
@@ -401,14 +427,19 @@ class UtgPathMutationResult {
     return UtgPathMutationResult(
       success: map['success'] == true,
       pathId: (map['path_id'] ?? '').toString(),
+      createdPathId: (map['created_path_id'] ?? '').toString(),
       errorCode: map['error_code']?.toString(),
       errorMessage: map['error_message']?.toString(),
       deleted: map['deleted'] == true,
       imported: map['imported'] == true,
+      alreadyExists: map['already_exists'] == true,
       count: map['count'] is num
           ? (map['count'] as num).toInt()
           : int.tryParse((map['count'] ?? '0').toString()) ?? 0,
       cloudBaseUrl: map['cloud_base_url']?.toString(),
+      pathKind: (map['path_kind'] ?? '').toString(),
+      assetState: (map['asset_state'] ?? '').toString(),
+      derivedFromRawPathId: (map['derived_from_raw_path_id'] ?? '').toString(),
       rawJson: Map<String, dynamic>.from(map),
     );
   }
@@ -457,6 +488,14 @@ class UtgRunLogSummary {
   final String compilePathId;
   final String compileMode;
   final String actPathId;
+  final String source;
+  final String compileSummary;
+  final String operationDescription;
+  final String selectorLabel;
+  final String selectorReason;
+  final String errorMessage;
+  final String finalPackageName;
+  final Map<String, dynamic> rawJson;
 
   const UtgRunLogSummary({
     required this.runId,
@@ -472,6 +511,14 @@ class UtgRunLogSummary {
     required this.compilePathId,
     required this.compileMode,
     required this.actPathId,
+    required this.source,
+    required this.compileSummary,
+    required this.operationDescription,
+    required this.selectorLabel,
+    required this.selectorReason,
+    required this.errorMessage,
+    required this.finalPackageName,
+    required this.rawJson,
   });
 
   factory UtgRunLogSummary.fromMap(Map<dynamic, dynamic>? map) {
@@ -492,6 +539,18 @@ class UtgRunLogSummary {
       compilePathId: (raw['compile_path_id'] ?? '').toString(),
       compileMode: (raw['compile_mode'] ?? '').toString(),
       actPathId: (raw['act_path_id'] ?? '').toString(),
+      source: (raw['source'] ?? '').toString(),
+      compileSummary: (raw['compile_summary'] ?? '').toString(),
+      operationDescription: (raw['operation_description'] ?? '').toString(),
+      selectorLabel: (raw['selector_label'] ?? '').toString(),
+      selectorReason: (raw['selector_reason'] ?? '').toString(),
+      errorMessage: (raw['error_message'] ?? '').toString(),
+      finalPackageName: (raw['final_package_name'] ?? '').toString(),
+      rawJson: Map<String, dynamic>.from(
+        (raw['raw_run'] as Map<dynamic, dynamic>? ?? const {}).map(
+          (k, v) => MapEntry(k.toString(), v),
+        ),
+      ),
     );
   }
 }
@@ -528,69 +587,91 @@ class UtgRunLogsSnapshot {
   }
 }
 
+class UtgRunLogDetail {
+  final bool success;
+  final String runId;
+  final String runLogPath;
+  final String provider;
+  final String errorCode;
+  final String errorMessage;
+  final Map<String, dynamic> runLog;
+  final Map<String, dynamic> rawJson;
+
+  const UtgRunLogDetail({
+    required this.success,
+    required this.runId,
+    required this.runLogPath,
+    required this.provider,
+    required this.errorCode,
+    required this.errorMessage,
+    required this.runLog,
+    required this.rawJson,
+  });
+
+  factory UtgRunLogDetail.fromMap(Map<dynamic, dynamic>? map) {
+    final raw = map ?? const {};
+    return UtgRunLogDetail(
+      success: raw['success'] == true,
+      runId: (raw['run_id'] ?? '').toString(),
+      runLogPath: (raw['run_log_path'] ?? '').toString(),
+      provider: (raw['provider'] ?? '').toString(),
+      errorCode: (raw['error_code'] ?? '').toString(),
+      errorMessage: (raw['error_message'] ?? '').toString(),
+      runLog: Map<String, dynamic>.from(
+        (raw['run_log'] as Map<dynamic, dynamic>? ?? const {}).map(
+          (k, v) => MapEntry(k.toString(), v),
+        ),
+      ),
+      rawJson: Map<String, dynamic>.from(
+        raw.map((key, value) => MapEntry(key.toString(), value)),
+      ),
+    );
+  }
+}
+
 class UtgRunLogImportResult {
   final bool success;
-  final bool requiresConfirmation;
   final String runId;
+  final String createdPathId;
   final String? errorCode;
   final String? errorMessage;
-  final String? pendingReason;
-  final Map<String, dynamic> pendingNotes;
-  final List<UtgPathSummary> previewPaths;
   final int pathsCreated;
-  final List<String> createdPathIds;
   final int nodesCreated;
   final int nodesUpdated;
   final int sequencesCreated;
   final List<String> warnings;
   final String runLogPath;
+  final String pathKind;
+  final String assetState;
   final Map<String, dynamic> rawJson;
 
   const UtgRunLogImportResult({
     required this.success,
-    required this.requiresConfirmation,
     required this.runId,
+    required this.createdPathId,
     required this.errorCode,
     required this.errorMessage,
-    required this.pendingReason,
-    required this.pendingNotes,
-    required this.previewPaths,
     required this.pathsCreated,
-    required this.createdPathIds,
     required this.nodesCreated,
     required this.nodesUpdated,
     required this.sequencesCreated,
     required this.warnings,
     required this.runLogPath,
+    required this.pathKind,
+    required this.assetState,
     required this.rawJson,
   });
 
   factory UtgRunLogImportResult.fromMap(Map<String, dynamic> map) {
     return UtgRunLogImportResult(
       success: map['success'] == true,
-      requiresConfirmation: map['requires_confirmation'] == true,
       runId: (map['run_id'] ?? '').toString(),
+      createdPathId: (map['created_path_id'] ?? '').toString(),
       errorCode: map['error_code']?.toString(),
       errorMessage: map['error_message']?.toString(),
-      pendingReason: map['pending_reason']?.toString(),
-      pendingNotes:
-          (map['pending_notes'] as Map<dynamic, dynamic>?)?.map(
-            (k, v) => MapEntry(k.toString(), v),
-          ) ??
-          const <String, dynamic>{},
-      previewPaths:
-          (map['preview_paths'] as List<dynamic>?)
-              ?.map((e) => UtgPathSummary.fromMap(e as Map?))
-              .toList() ??
-          const <UtgPathSummary>[],
       pathsCreated: map['paths_created'] is num
           ? (map['paths_created'] as num).toInt()
           : int.tryParse((map['paths_created'] ?? '0').toString()) ?? 0,
-      createdPathIds:
-          (map['created_path_ids'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const <String>[],
       nodesCreated: map['nodes_created'] is num
           ? (map['nodes_created'] as num).toInt()
           : int.tryParse((map['nodes_created'] ?? '0').toString()) ?? 0,
@@ -606,6 +687,8 @@ class UtgRunLogImportResult {
               .toList() ??
           const <String>[],
       runLogPath: (map['run_log_path'] ?? '').toString(),
+      pathKind: (map['path_kind'] ?? '').toString(),
+      assetState: (map['asset_state'] ?? '').toString(),
       rawJson: Map<String, dynamic>.from(map),
     );
   }
@@ -1305,163 +1388,164 @@ class AssistsMessageService {
     return UtgBridgeExecutionContext.fromMap(result as Map?);
   }
 
+  static String _normalizeUtgPath(String path) {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty) {
+      return '/';
+    }
+    return trimmed.startsWith('/') ? trimmed : '/$trimmed';
+  }
+
+  static Future<Map<String, dynamic>> _requestUtgJson({
+    required String method,
+    required String path,
+    Object? payload,
+    String? baseUrl,
+  }) async {
+    final result = await assistCore.invokeMethod('requestUtgJson', {
+      'method': method.trim().toUpperCase(),
+      'path': _normalizeUtgPath(path),
+      if (payload != null) 'payload': payload,
+      if (baseUrl != null && baseUrl.trim().isNotEmpty)
+        'baseUrl': baseUrl.trim(),
+    });
+    if (result == null) {
+      throw Exception('OmniFlow provider 无响应');
+    }
+    if (result is! Map) {
+      throw Exception('OmniFlow provider 响应格式错误');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<UtgRunLogsSnapshot> getUtgRunLogs({
     String? baseUrl,
     int limit = 20,
-    Duration timeout = const Duration(seconds: 10),
   }) async {
-    final config = await getUtgBridgeConfig();
-    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
-    if (resolvedBaseUrl.isEmpty) {
-      throw Exception('OmniCloud Base URL 未设置');
-    }
-    final uri = Uri.parse(
-      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/run_logs?limit=$limit',
+    final decoded = await _requestUtgJson(
+      method: 'GET',
+      path: '/run_logs?limit=$limit',
+      baseUrl: baseUrl,
     );
-    final response = await http.get(uri).timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('UTG run_logs 请求失败: HTTP ${response.statusCode}');
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('UTG run_logs 响应格式错误');
-    }
     return UtgRunLogsSnapshot.fromMap(decoded);
+  }
+
+  static Future<UtgRunLogDetail> getUtgRunLogDetail({
+    required String runId,
+    String? baseUrl,
+  }) async {
+    final decoded = await _requestUtgJson(
+      method: 'GET',
+      path: '/run_logs/${Uri.encodeComponent(runId.trim())}',
+      baseUrl: baseUrl,
+    );
+    final detail = UtgRunLogDetail.fromMap(decoded);
+    if (!detail.success) {
+      throw Exception(
+        detail.errorMessage.trim().isNotEmpty
+            ? detail.errorMessage
+            : '加载 run_log 详情失败',
+      );
+    }
+    return detail;
+  }
+
+  static Future<Map<String, dynamic>> getVlmTaskRunLog({
+    required String taskId,
+  }) async {
+    final result = await assistCore.invokeMethod<Map<Object?, Object?>>(
+      'getVlmTaskRunLog',
+      {'taskId': taskId.trim()},
+    );
+    if (result == null) {
+      return <String, dynamic>{
+        'success': false,
+        'task_id': taskId.trim(),
+        'error_message': '未找到对应的 run_log',
+      };
+    }
+    return result.map((key, value) => MapEntry(key.toString(), value));
   }
 
   static Future<UtgRunLogImportResult> importUtgRunLog({
     required String runId,
-    bool confirm = false,
     String? baseUrl,
-    Duration timeout = const Duration(seconds: 20),
   }) async {
-    final config = await getUtgBridgeConfig();
-    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
-    if (resolvedBaseUrl.isEmpty) {
-      throw Exception('OmniCloud Base URL 未设置');
-    }
-    final uri = Uri.parse(
-      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/run_logs/import',
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/run_logs/import',
+      baseUrl: baseUrl,
+      payload: {'run_id': runId.trim()},
     );
-    final response = await http
-        .post(
-          uri,
-          headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({'run_id': runId.trim(), 'confirm': confirm}),
-        )
-        .timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('保存 run_log 为 path 失败: HTTP ${response.statusCode}');
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('保存 run_log 为 path 响应格式错误');
-    }
     return UtgRunLogImportResult.fromMap(decoded);
   }
 
-  static Future<UtgPathsSnapshot> getUtgPaths({
-    String? baseUrl,
-    Duration timeout = const Duration(seconds: 10),
-  }) async {
-    final config = await getUtgBridgeConfig();
-    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
-    if (resolvedBaseUrl.isEmpty) {
-      throw Exception('OmniCloud Base URL 未设置');
-    }
-    final uri = Uri.parse(
-      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/paths',
+  static Future<UtgPathsSnapshot> getUtgPaths({String? baseUrl}) async {
+    final decoded = await _requestUtgJson(
+      method: 'GET',
+      path: '/paths',
+      baseUrl: baseUrl,
     );
-    final response = await http.get(uri).timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('UTG paths 请求失败: HTTP ${response.statusCode}');
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('UTG paths 响应格式错误');
-    }
     return UtgPathsSnapshot.fromMap(decoded);
   }
 
   static Future<Map<String, dynamic>> getUtgPathBundle({
     required String pathId,
     String? baseUrl,
-    Duration timeout = const Duration(seconds: 10),
   }) async {
-    final config = await getUtgBridgeConfig();
-    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
-    if (resolvedBaseUrl.isEmpty) {
-      throw Exception('OmniCloud Base URL 未设置');
-    }
-    final uri = Uri.parse(
-      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/paths/$pathId/bundle',
+    final decoded = await _requestUtgJson(
+      method: 'GET',
+      path: '/paths/$pathId/bundle',
+      baseUrl: baseUrl,
     );
-    final response = await http.get(uri).timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('UTG path bundle 请求失败: HTTP ${response.statusCode}');
+    final normalized = jsonDecode(jsonEncode(decoded));
+    if (normalized is Map<String, dynamic>) {
+      return normalized;
     }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('UTG path bundle 响应格式错误');
+    if (normalized is Map) {
+      return Map<String, dynamic>.from(normalized);
     }
-    return decoded;
+    throw Exception('OmniFlow path bundle 响应格式错误');
   }
 
   static Future<UtgPathMutationResult> deleteUtgPath({
     required String pathId,
     String? baseUrl,
-    Duration timeout = const Duration(seconds: 10),
   }) async {
-    final config = await getUtgBridgeConfig();
-    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
-    if (resolvedBaseUrl.isEmpty) {
-      throw Exception('OmniCloud Base URL 未设置');
-    }
-    final uri = Uri.parse(
-      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/paths/$pathId',
+    final decoded = await _requestUtgJson(
+      method: 'DELETE',
+      path: '/paths/$pathId',
+      baseUrl: baseUrl,
     );
-    final response = await http.delete(uri).timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('UTG path 删除失败: HTTP ${response.statusCode}');
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('UTG path 删除响应格式错误');
-    }
+    return UtgPathMutationResult.fromMap(decoded);
+  }
+
+  static Future<UtgPathMutationResult> distillUtgPath({
+    required String pathId,
+    String? baseUrl,
+  }) async {
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/paths/$pathId/distill',
+      baseUrl: baseUrl,
+    );
     return UtgPathMutationResult.fromMap(decoded);
   }
 
   static Future<UtgPathMutationResult> downloadCloudUtgPath({
-    required String pathId,
+    String pathId = '',
     required String cloudBaseUrl,
     String? baseUrl,
-    Duration timeout = const Duration(seconds: 20),
   }) async {
-    final config = await getUtgBridgeConfig();
-    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
-    if (resolvedBaseUrl.isEmpty) {
-      throw Exception('OmniCloud Base URL 未设置');
-    }
-    final uri = Uri.parse(
-      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/cloud_paths/download',
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/cloud_paths/download',
+      baseUrl: baseUrl,
+      payload: {
+        'cloud_base_url': cloudBaseUrl.trim(),
+        'path_id': pathId.trim(),
+      },
     );
-    final response = await http
-        .post(
-          uri,
-          headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'cloud_base_url': cloudBaseUrl.trim(),
-            'path_id': pathId.trim(),
-          }),
-        )
-        .timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('下载云端 path 失败: HTTP ${response.statusCode}');
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('下载云端 path 响应格式错误');
-    }
     return UtgPathMutationResult.fromMap(decoded);
   }
 
@@ -1469,33 +1553,16 @@ class AssistsMessageService {
     required String pathId,
     required String cloudBaseUrl,
     String? baseUrl,
-    Duration timeout = const Duration(seconds: 20),
   }) async {
-    final config = await getUtgBridgeConfig();
-    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
-    if (resolvedBaseUrl.isEmpty) {
-      throw Exception('OmniCloud Base URL 未设置');
-    }
-    final uri = Uri.parse(
-      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/cloud_paths/upload',
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/cloud_paths/upload',
+      baseUrl: baseUrl,
+      payload: {
+        'cloud_base_url': cloudBaseUrl.trim(),
+        'path_id': pathId.trim(),
+      },
     );
-    final response = await http
-        .post(
-          uri,
-          headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'cloud_base_url': cloudBaseUrl.trim(),
-            'path_id': pathId.trim(),
-          }),
-        )
-        .timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('上传本地 path 失败: HTTP ${response.statusCode}');
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('上传本地 path 响应格式错误');
-    }
     return UtgPathMutationResult.fromMap(decoded);
   }
 
@@ -1503,42 +1570,26 @@ class AssistsMessageService {
     required String pathId,
     Map<String, String> slots = const {},
     String? baseUrl,
-    Duration timeout = const Duration(seconds: 120),
   }) async {
-    final config = await getUtgBridgeConfig();
     final executionContext = await getUtgBridgeExecutionContext();
-    final resolvedBaseUrl = (baseUrl ?? config.omnicloudBaseUrl).trim();
-    if (resolvedBaseUrl.isEmpty) {
-      throw Exception('OmniCloud Base URL 未设置');
-    }
     if (executionContext.bridgeBaseUrl.trim().isEmpty ||
         executionContext.bridgeToken.trim().isEmpty) {
       throw Exception('UTG bridge 上下文不可用');
     }
-    final uri = Uri.parse(
-      '${resolvedBaseUrl.replaceFirst(RegExp(r'/+$'), '')}/run_compiled_path',
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/run_compiled_path',
+      baseUrl: baseUrl,
+      payload: {
+        'goal': 'manual_utg_path_run:$pathId',
+        'path_id': pathId,
+        'slots': slots,
+        'bridge_base_url': executionContext.bridgeBaseUrl,
+        'bridge_token': executionContext.bridgeToken,
+        'skip_terminal_verify': true,
+        'context': {'source': 'utg_manual_dashboard'},
+      },
     );
-    final response = await http
-        .post(
-          uri,
-          headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'goal': 'manual_utg_path_run:$pathId',
-            'path_id': pathId,
-            'slots': slots,
-            'bridge_base_url': executionContext.bridgeBaseUrl,
-            'bridge_token': executionContext.bridgeToken,
-            'context': {'source': 'utg_manual_dashboard'},
-          }),
-        )
-        .timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('UTG path 执行失败: HTTP ${response.statusCode}');
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('UTG path 执行响应格式错误');
-    }
     return UtgManualRunResult.fromMap(decoded);
   }
 

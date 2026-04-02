@@ -24,6 +24,8 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  static const String _omniFlowDebugUnlockedKey = 'omni_flow_debug_unlocked';
+
   bool vibrationEnabled = true;
   bool hideFromRecentsEnabled = false;
   bool _autoBackToChatAfterTaskEnabled = true;
@@ -33,6 +35,7 @@ class _SettingsPageState extends State<SettingsPage> {
   McpServerInfo? _mcpInfo;
   bool _utgLoaded = false;
   UtgBridgeConfig? _utgConfig;
+  bool _omniFlowDebugUnlocked = false;
   bool _workspaceMemoryLoaded = false;
   WorkspaceMemoryEmbeddingConfig? _embeddingConfig;
   StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
@@ -60,6 +63,12 @@ class _SettingsPageState extends State<SettingsPage> {
           }
           _loadWorkspaceMemoryState();
         });
+    _omniFlowDebugUnlocked =
+        StorageService.getBool(
+          _omniFlowDebugUnlockedKey,
+          defaultValue: false,
+        ) ??
+        false;
   }
 
   @override
@@ -319,18 +328,25 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     final config = _utgConfig;
     if (config == null) {
-      return '配置 OmniCloud UTG provider 与 run_log';
+      return '配置 OmniCloud provider 与轨迹执行 run_log';
     }
-    final enabled = config.utgEnabled ? 'UTG 已开启' : 'UTG 已关闭';
+    final enabled = config.utgEnabled ? 'OmniFlow 已开启' : 'OmniFlow 已关闭';
     final autoStart = config.providerAutoStartEnabled ? '自动拉起' : '手动拉起';
-    final fallback =
-        config.fallbackToVlmOnFailureEnabled ? '失败回退 VLM' : '失败不回退';
+    final fallback = config.fallbackToVlmOnFailureEnabled
+        ? '失败回退 VLM'
+        : '失败不回退';
     final health = config.providerHealthy ? 'provider 正常' : 'provider 不可达';
     return '$enabled，$autoStart，$fallback，$health';
   }
 
   @override
   Widget build(BuildContext context) {
+    _omniFlowDebugUnlocked =
+        StorageService.getBool(
+          _omniFlowDebugUnlockedKey,
+          defaultValue: false,
+        ) ??
+        _omniFlowDebugUnlocked;
     final workspaceMemoryConfigured = _embeddingConfig?.configured == true;
     final workspaceMemorySubtitle = !_workspaceMemoryLoaded
         ? '加载中...'
@@ -360,59 +376,60 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   List<_SettingSection> _buildSections(String workspaceMemorySubtitle) {
-    return [
-      _SettingSection(
-        items: [
-          _SettingItem(
-            icon: Icons.smart_toy_outlined,
-            iconSvg: 'assets/home/vlm_model_setting_icon.svg',
-            title: '模型提供商',
-            subtitle: '配置模型地址、密钥与模型列表',
-            onTap: () {
-              GoRouterManager.push('/home/vlm_model_setting');
-            },
-          ),
-          _SettingItem(
-            icon: Icons.tune_outlined,
-            iconSvg: 'assets/home/scene_model_setting_icon.svg',
-            title: '场景模型配置',
-            subtitle: '按场景绑定模型，未绑定场景使用默认模型',
-            onTap: () {
-              GoRouterManager.push('/home/scene_model_setting');
-            },
-          ),
-          _SettingItem(
-            icon: Icons.memory_outlined,
-            iconSvg: 'assets/home/local_model_cpu_icon.svg',
-            title: '本地模型服务',
-            subtitle: '管理本地模型、推理、API 服务与语音模型',
-            onTap: () {
-              GoRouterManager.push('/home/local_models?tab=service');
-            },
-          ),
-          _SettingItem(
-            icon: Icons.cloud_sync_outlined,
-            iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',
-            title: 'Workspace 记忆配置',
-            subtitle: workspaceMemorySubtitle,
-            onTap: () async {
-              await GoRouterManager.pushForResult(
-                '/home/workspace_memory_setting',
-              );
-              _loadWorkspaceMemoryState();
-            },
-          ),
-          _SettingItem(
-            icon: Icons.route_outlined,
-            title: 'UTG',
-            subtitle: _buildUtgSubtitle(),
-            onTap: () async {
-              await GoRouterManager.pushForResult('/home/utg');
-              _loadUtgBridgeConfig();
-            },
-          ),
-        ],
+    final primaryItems = <_SettingItem>[
+      _SettingItem(
+        icon: Icons.smart_toy_outlined,
+        iconSvg: 'assets/home/vlm_model_setting_icon.svg',
+        title: '模型提供商',
+        subtitle: '配置模型地址、密钥与模型列表',
+        onTap: () {
+          GoRouterManager.push('/home/vlm_model_setting');
+        },
       ),
+      _SettingItem(
+        icon: Icons.tune_outlined,
+        iconSvg: 'assets/home/scene_model_setting_icon.svg',
+        title: '场景模型配置',
+        subtitle: '按场景绑定模型，未绑定场景使用默认模型',
+        onTap: () {
+          GoRouterManager.push('/home/scene_model_setting');
+        },
+      ),
+      _SettingItem(
+        icon: Icons.memory_outlined,
+        iconSvg: 'assets/home/local_model_cpu_icon.svg',
+        title: '本地模型服务',
+        subtitle: '管理本地模型、推理、API 服务与语音模型',
+        onTap: () {
+          GoRouterManager.push('/home/local_models?tab=service');
+        },
+      ),
+      _SettingItem(
+        icon: Icons.cloud_sync_outlined,
+        iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',
+        title: 'Workspace 记忆配置',
+        subtitle: workspaceMemorySubtitle,
+        onTap: () async {
+          await GoRouterManager.pushForResult('/home/workspace_memory_setting');
+          _loadWorkspaceMemoryState();
+        },
+      ),
+    ];
+    if (_omniFlowDebugUnlocked) {
+      primaryItems.add(
+        _SettingItem(
+          icon: Icons.route_outlined,
+          title: 'OmniFlow 轨迹执行 [debug]',
+          subtitle: _buildUtgSubtitle(),
+          onTap: () async {
+            await GoRouterManager.pushForResult('/home/utg');
+            _loadUtgBridgeConfig();
+          },
+        ),
+      );
+    }
+    return [
+      _SettingSection(items: primaryItems),
       _SettingSection(
         items: [
           _SettingItem(
