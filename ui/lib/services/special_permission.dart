@@ -44,6 +44,7 @@ class EmbeddedTerminalInitSnapshot {
     required this.progress,
     required this.stage,
     required this.logLines,
+    required this.completedAt,
   });
 
   final bool running;
@@ -52,6 +53,7 @@ class EmbeddedTerminalInitSnapshot {
   final double progress;
   final String stage;
   final List<String> logLines;
+  final DateTime? completedAt;
 
   factory EmbeddedTerminalInitSnapshot.fromMap(Map<dynamic, dynamic> map) {
     final rawLogLines = map['logLines'];
@@ -64,8 +66,20 @@ class EmbeddedTerminalInitSnapshot {
       logLines: rawLogLines is List
           ? rawLogLines.map((line) => line.toString()).toList(growable: false)
           : const <String>[],
+      completedAt: _parseEmbeddedTerminalInitTimestamp(map['completedAt']),
     );
   }
+}
+
+DateTime? _parseEmbeddedTerminalInitTimestamp(dynamic rawValue) {
+  if (rawValue is! num) {
+    return null;
+  }
+  final millis = rawValue.toInt();
+  if (millis <= 0) {
+    return null;
+  }
+  return DateTime.fromMillisecondsSinceEpoch(millis);
 }
 
 class EmbeddedTerminalRuntimeStatus {

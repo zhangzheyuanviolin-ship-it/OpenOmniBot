@@ -335,9 +335,12 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
   }
 
   @override
-  Future<void> _retryUserMessageText(String text) async {
+  Future<void> _retryUserMessageText(
+    String text, {
+    List<Map<String, dynamic>> attachments = const [],
+  }) async {
     final messageText = text.trim();
-    if (messageText.isEmpty) return;
+    if (messageText.isEmpty && attachments.isEmpty) return;
 
     if (_isAiResponding) {
       _onCancelTask();
@@ -345,7 +348,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
 
     await _dispatchUserMessage(
       messageText,
-      attachments: const [],
+      attachments: attachments,
       runSlashCommand: false,
       restoreInputValue: _messageController.value,
     );
@@ -357,7 +360,9 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     required bool runSlashCommand,
     TextEditingValue? restoreInputValue,
   }) async {
-    if (messageText.isEmpty || _isAiResponding) return;
+    if ((messageText.isEmpty && attachments.isEmpty) || _isAiResponding) {
+      return;
+    }
 
     if (runSlashCommand) {
       final handledSlash = await _tryHandleSlashCommand(messageText);

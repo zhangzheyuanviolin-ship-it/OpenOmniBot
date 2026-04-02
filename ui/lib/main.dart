@@ -7,6 +7,7 @@ import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/scheduled_task_scheduler_service.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/theme/app_theme.dart';
+import 'package:ui/widgets/embedded_terminal_init_overlay.dart';
 
 import 'core/router/go_router_manager.dart';
 import 'services/event_bus.dart';
@@ -169,7 +170,13 @@ class _MyAppState extends ConsumerState<MyApp> {
               padding: mediaQuery.padding.copyWith(bottom: 0),
               viewPadding: mediaQuery.viewPadding.copyWith(bottom: 0),
             ),
-            child: child ?? const SizedBox.shrink(),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                child ?? const SizedBox.shrink(),
+                const EmbeddedTerminalInitOverlay(),
+              ],
+            ),
           );
         },
         localizationsDelegates: [

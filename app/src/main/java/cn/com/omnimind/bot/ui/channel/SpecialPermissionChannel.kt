@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.ui.channel
 
 import cn.com.omnimind.bot.manager.SpecialPermissionManager
+import cn.com.omnimind.bot.terminal.EmbeddedTerminalInitCoordinator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
@@ -12,12 +13,12 @@ import io.flutter.plugin.common.MethodChannel
 class SpecialPermissionChannel {
     @SuppressLint("StaticFieldLeak")
     var specialPermissionManager: SpecialPermissionManager? = null
-    private  val TAG = "[PlatformChannel]"
     private  val CHANNEL = "cn.com.omnimind.bot/SpecialPermissionEvent"
     private  val EVENT_CHANNEL = "cn.com.omnimind.bot/SpecialPermissionEvents"
     private var methodChannel: MethodChannel? = null
     private var eventChannel: EventChannel? = null
     private var eventSink: EventChannel.EventSink? = null
+    private var embeddedTerminalInitListener: ((Map<String, Any?>) -> Unit)? = null
 
     fun onCreate(context: Context) {
         specialPermissionManager = SpecialPermissionManager(context)
@@ -36,12 +37,18 @@ class SpecialPermissionChannel {
                 eventSink = null
             }
         })
-        specialPermissionManager?.onEmbeddedTerminalInitProgress = { payload ->
+        embeddedTerminalInitListener?.let {
+            EmbeddedTerminalInitCoordinator.removeListener(it)
+        }
+        embeddedTerminalInitListener = { payload ->
             Handler(Looper.getMainLooper()).post {
                 runCatching {
                     eventSink?.success(payload)
                 }
             }
+        }
+        embeddedTerminalInitListener?.let {
+            EmbeddedTerminalInitCoordinator.addListener(it)
         }
         methodChannel?.setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -150,7 +157,10 @@ class SpecialPermissionChannel {
     }
 
     fun clear() {
-        specialPermissionManager?.onEmbeddedTerminalInitProgress = null
+        embeddedTerminalInitListener?.let {
+            EmbeddedTerminalInitCoordinator.removeListener(it)
+        }
+        embeddedTerminalInitListener = null
         eventSink = null
         eventChannel?.setStreamHandler(null)
         eventChannel = null

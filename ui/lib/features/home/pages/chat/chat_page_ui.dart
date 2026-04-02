@@ -894,7 +894,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     LongPressStartDetails details,
   ) async {
     final text = (message.text ?? '').trim();
-    if (text.isEmpty) {
+    final hasAttachments = _extractRetryAttachments(message).isNotEmpty;
+    if (text.isEmpty && !hasAttachments) {
       showToast('这条用户消息没有可操作的文本', type: ToastType.warning);
       return;
     }
@@ -907,6 +908,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
 
     switch (action) {
       case _UserMessageQuickAction.copy:
+        if (text.isEmpty) {
+          showToast('这条用户消息没有可复制的文本', type: ToastType.warning);
+          return;
+        }
         await _copyUserMessageText(text);
         return;
       case _UserMessageQuickAction.retry:
@@ -996,8 +1001,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
 
   Future<void> _retryUserMessage(ChatMessageModel message) async {
     final text = (message.text ?? '').trim();
-    if (text.isEmpty) {
-      showToast('这条用户消息没有可重试的文本', type: ToastType.warning);
+    final attachments = _extractRetryAttachments(message);
+    if (text.isEmpty && attachments.isEmpty) {
+      showToast('这条用户消息没有可重试的内容', type: ToastType.warning);
       return;
     }
     if (!_canRetryUserMessage(message)) {
@@ -1005,14 +1011,25 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return;
     }
 
-    await AssistsMessageService.copyToClipboard(text);
-    if (!mounted) return;
+    if (text.isNotEmpty) {
+      await AssistsMessageService.copyToClipboard(text);
+      if (!mounted) return;
+    }
 
     await _clearRetriedMessageRound(message);
     if (!mounted) return;
 
-    await _retryUserMessageText(text);
+    await _retryUserMessageText(text, attachments: attachments);
     if (!mounted) return;
+  }
+
+  List<Map<String, dynamic>> _extractRetryAttachments(ChatMessageModel message) {
+    final raw = message.content?['attachments'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => item.map((k, v) => MapEntry(k.toString(), v)))
+        .toList();
   }
 
   String _formatThresholdLabel(int threshold) {

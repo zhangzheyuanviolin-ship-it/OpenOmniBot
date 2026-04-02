@@ -11,7 +11,7 @@ import cn.com.omnimind.bot.App
 import cn.com.omnimind.bot.ui.channel.ChannelManager
 import cn.com.omnimind.bot.ui.channel.FileSaveChannel
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalAutoStartManager
-import cn.com.omnimind.bot.terminal.EmbeddedTerminalLaunchHelper
+import cn.com.omnimind.bot.terminal.EmbeddedTerminalInitCoordinator
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.AssistsUtil
@@ -82,7 +82,7 @@ class MainActivity : FlutterActivity() {
             }
         }
         if (savedInstanceState == null) {
-            autoOpenEmbeddedTerminalOnFirstLaunchIfNeeded()
+            prepareEmbeddedTerminalOnFirstLaunchIfNeeded()
         }
 
         OmniLog.d(TAG, "MainActivity onCreate total cost: ${System.currentTimeMillis() - mainActivityStart}ms")
@@ -223,12 +223,12 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun autoOpenEmbeddedTerminalOnFirstLaunchIfNeeded() {
-        val shouldAutoOpen = intent?.getBooleanExtra(
-            LauncherActivity.EXTRA_AUTO_OPEN_RETERMINAL_ON_FIRST_LAUNCH,
+    private fun prepareEmbeddedTerminalOnFirstLaunchIfNeeded() {
+        val shouldPrepare = intent?.getBooleanExtra(
+            LauncherActivity.EXTRA_PREPARE_EMBEDDED_TERMINAL_ON_FIRST_LAUNCH,
             false
         ) == true
-        if (!shouldAutoOpen) {
+        if (!shouldPrepare) {
             return
         }
 
@@ -249,13 +249,20 @@ class MainActivity : FlutterActivity() {
             .apply()
 
         if (!EmbeddedTerminalRuntime.isSupportedDevice()) {
-            OmniLog.w(TAG, "首次启动自动进入 ReTerminal 已跳过：当前设备 ABI 不支持 Alpine 终端。")
+            OmniLog.w(TAG, "首次启动后台准备 Alpine 环境已跳过：当前设备 ABI 不支持 Alpine 终端。")
             return
         }
 
         runCatching {
-            OmniLog.d(TAG, "首次启动自动进入 ReTerminal，开始执行内嵌 Alpine 初始化。")
-            EmbeddedTerminalLaunchHelper.launch(context = this)
+            val started = EmbeddedTerminalInitCoordinator.startInBackground(applicationContext)
+            OmniLog.d(
+                TAG,
+                if (started) {
+                    "首次启动开始在后台准备内嵌 Alpine 环境。"
+                } else {
+                    "首次启动后台 Alpine 环境准备已在进行中，跳过重复触发。"
+                }
+            )
         }.onFailure { error ->
             prefs.edit()
                 .putBoolean(
@@ -263,7 +270,7 @@ class MainActivity : FlutterActivity() {
                     true
                 )
                 .apply()
-            OmniLog.e(TAG, "首次启动自动进入 ReTerminal 失败", error)
+            OmniLog.e(TAG, "首次启动后台准备 Alpine 环境失败", error)
         }
     }
 

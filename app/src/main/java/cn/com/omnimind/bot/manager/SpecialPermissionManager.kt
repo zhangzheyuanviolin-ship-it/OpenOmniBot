@@ -12,6 +12,7 @@ import cn.com.omnimind.baselib.permission.PermissionRequest
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalAutoStartManager
+import cn.com.omnimind.bot.terminal.EmbeddedTerminalInitCoordinator
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalLaunchHelper
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalSetupManager
@@ -23,7 +24,6 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -31,44 +31,9 @@ class SpecialPermissionManager(private val context: Context) {
 
     companion object {
         private const val TAG = "[PlatformManager]"
-        private const val MAX_INIT_LOG_LINES = 160
-        private val BASE_PACKAGE_NAMES = listOf(
-            "bash",
-            "ca-certificates",
-            "curl",
-            "git",
-            "gcompat",
-            "glib",
-            "nodejs",
-            "npm",
-            "python3",
-            "py3-pip",
-            "py3-virtualenv",
-            "ripgrep",
-            "tmux",
-            "xz"
-        )
     }
-
-    private data class EmbeddedTerminalInitState(
-        val running: Boolean = false,
-        val completed: Boolean = false,
-        val success: Boolean? = null,
-        val progress: Double = 0.0,
-        val stage: String = "",
-        val logLines: List<String> = emptyList(),
-        val startedAt: Long = 0L,
-        val updatedAt: Long = 0L,
-        val completedAt: Long? = null,
-        val seenBasePackages: Set<String> = emptySet()
-    )
-
-    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val embeddedTerminalInitLock = Any()
-    private var embeddedTerminalInitState = EmbeddedTerminalInitState()
     private val embeddedTerminalSetupManager = EmbeddedTerminalSetupManager(context)
     private val embeddedTerminalAutoStartManager = EmbeddedTerminalAutoStartManager(context)
-    var onEmbeddedTerminalInitProgress: ((Map<String, Any?>) -> Unit)? = null
 
     fun isAccessibilityServiceEnabled(result: MethodChannel.Result) {
         try {
@@ -669,22 +634,9 @@ class SpecialPermissionManager(private val context: Context) {
     }
 
     fun prepareTermuxLiveWrapper(result: MethodChannel.Result) {
-        resetEmbeddedTerminalInitState()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                emitEmbeddedTerminalInitProgress("status", "开始准备内嵌 Alpine 终端环境")
-                val status =
-                    TermuxCommandRunner.prepareLiveEnvironment(context) { progress ->
-                        emitEmbeddedTerminalInitProgress(
-                            kind = progress.kind.name.lowercase(),
-                            message = progress.message
-                        )
-                    }
-                emitEmbeddedTerminalInitProgress(
-                    kind = if (status.success) "status" else "error",
-                    message = status.message
-                )
-                markEmbeddedTerminalInitCompleted(status.success, status.message)
+                val status = EmbeddedTerminalInitCoordinator.prepare(context)
                 withContext(Dispatchers.Main) {
                     result.success(
                         mapOf(
@@ -697,14 +649,6 @@ class SpecialPermissionManager(private val context: Context) {
                 }
             } catch (e: Exception) {
                 OmniLog.e(TAG, "Error preparing embedded terminal runtime", e)
-                emitEmbeddedTerminalInitProgress(
-                    kind = "error",
-                    message = e.message ?: "检查内嵌终端环境失败"
-                )
-                markEmbeddedTerminalInitCompleted(
-                    success = false,
-                    finalMessage = e.message ?: "检查内嵌终端环境失败"
-                )
                 withContext(Dispatchers.Main) {
                     result.error(
                         "PREPARE_FAILED",
@@ -718,7 +662,7 @@ class SpecialPermissionManager(private val context: Context) {
 
     fun getEmbeddedTerminalInitSnapshot(result: MethodChannel.Result) {
         try {
-            result.success(buildEmbeddedTerminalInitSnapshot())
+            result.success(EmbeddedTerminalInitCoordinator.buildSnapshot())
         } catch (e: Exception) {
             OmniLog.e(TAG, "Error reading embedded terminal init snapshot", e)
             result.error(
@@ -727,257 +671,6 @@ class SpecialPermissionManager(private val context: Context) {
                 e.message
             )
         }
-    }
-
-    private fun emitEmbeddedTerminalInitProgress(
-        kind: String,
-        message: String
-    ) {
-        if (message.isBlank()) {
-            return
-        }
-        updateEmbeddedTerminalInitState(kind, message)
-        val callback = onEmbeddedTerminalInitProgress ?: return
-        mainScope.launch {
-            callback(
-                mapOf(
-                    "kind" to kind,
-                    "message" to message,
-                    "timestamp" to System.currentTimeMillis()
-                )
-            )
-        }
-    }
-
-    private fun resetEmbeddedTerminalInitState() {
-        val now = System.currentTimeMillis()
-        synchronized(embeddedTerminalInitLock) {
-            embeddedTerminalInitState = EmbeddedTerminalInitState(
-                running = true,
-                completed = false,
-                success = null,
-                progress = 0.02,
-                stage = "准备开始",
-                logLines = listOf("[系统] 正在启动内嵌 Alpine 环境初始化..."),
-                startedAt = now,
-                updatedAt = now
-            )
-        }
-    }
-
-    private fun updateEmbeddedTerminalInitState(
-        kind: String,
-        message: String
-    ) {
-        val normalizedMessage = message.trim()
-        if (normalizedMessage.isBlank()) {
-            return
-        }
-
-        val normalizedLines = normalizeEmbeddedTerminalInitLines(normalizedMessage)
-        if (normalizedLines.isEmpty()) {
-            return
-        }
-
-        synchronized(embeddedTerminalInitLock) {
-            val now = System.currentTimeMillis()
-            val current =
-                if (embeddedTerminalInitState.startedAt == 0L) {
-                    EmbeddedTerminalInitState(
-                        running = true,
-                        startedAt = now,
-                        updatedAt = now
-                    )
-                } else {
-                    embeddedTerminalInitState
-                }
-
-            val nextSeenBasePackages =
-                if (kind == "output") {
-                    current.seenBasePackages + extractSeenBasePackages(normalizedLines)
-                } else {
-                    current.seenBasePackages
-                }
-
-            val derivedProgress = deriveEmbeddedTerminalInitProgress(
-                kind = kind,
-                message = normalizedMessage,
-                seenBasePackages = nextSeenBasePackages,
-                currentProgress = current.progress
-            )
-
-            embeddedTerminalInitState = current.copy(
-                running = true,
-                completed = false,
-                success = null,
-                progress = maxOf(current.progress, derivedProgress).coerceAtMost(0.99),
-                stage = if (kind == "output") current.stage else normalizedMessage,
-                logLines = mergeEmbeddedTerminalInitLogLines(
-                    current.logLines,
-                    formatEmbeddedTerminalInitLogLines(kind, normalizedLines)
-                ),
-                updatedAt = now,
-                seenBasePackages = nextSeenBasePackages
-            )
-        }
-    }
-
-    private fun markEmbeddedTerminalInitCompleted(
-        success: Boolean,
-        finalMessage: String
-    ) {
-        val normalizedMessage = finalMessage.trim().ifBlank {
-            if (success) {
-                "内嵌 Alpine 终端和基础 Agent CLI 包均已就绪。"
-            } else {
-                "检查内嵌终端环境失败"
-            }
-        }
-        synchronized(embeddedTerminalInitLock) {
-            val now = System.currentTimeMillis()
-            val current = embeddedTerminalInitState
-            embeddedTerminalInitState = current.copy(
-                running = false,
-                completed = true,
-                success = success,
-                progress = if (success) 1.0 else current.progress.coerceAtLeast(0.02),
-                stage = normalizedMessage,
-                updatedAt = now,
-                completedAt = now
-            )
-        }
-    }
-
-    private fun buildEmbeddedTerminalInitSnapshot(): Map<String, Any?> {
-        val snapshot =
-            synchronized(embeddedTerminalInitLock) {
-                embeddedTerminalInitState
-            }
-        return mapOf(
-            "running" to snapshot.running,
-            "completed" to snapshot.completed,
-            "success" to snapshot.success,
-            "progress" to snapshot.progress,
-            "stage" to snapshot.stage,
-            "logLines" to snapshot.logLines,
-            "startedAt" to snapshot.startedAt.takeIf { it > 0L },
-            "updatedAt" to snapshot.updatedAt.takeIf { it > 0L },
-            "completedAt" to snapshot.completedAt
-        )
-    }
-
-    private fun normalizeEmbeddedTerminalInitLines(message: String): List<String> {
-        return message
-            .replace("\r\n", "\n")
-            .replace('\r', '\n')
-            .split('\n')
-            .map { it.trimEnd() }
-            .filter { it.isNotBlank() }
-    }
-
-    private fun formatEmbeddedTerminalInitLogLines(
-        kind: String,
-        lines: List<String>
-    ): List<String> {
-        val prefix =
-            when (kind) {
-                "error" -> "[错误] "
-                "output" -> ""
-                else -> "[阶段] "
-            }
-        return lines.map { line -> "$prefix$line" }
-    }
-
-    private fun mergeEmbeddedTerminalInitLogLines(
-        currentLines: List<String>,
-        appendedLines: List<String>
-    ): List<String> {
-        if (appendedLines.isEmpty()) {
-            return currentLines
-        }
-        val merged = currentLines + appendedLines
-        return if (merged.size > MAX_INIT_LOG_LINES) {
-            merged.takeLast(MAX_INIT_LOG_LINES)
-        } else {
-            merged
-        }
-    }
-
-    private fun extractSeenBasePackages(lines: List<String>): Set<String> {
-        val lowerCaseLines = lines.map { it.lowercase() }
-        return BASE_PACKAGE_NAMES.filter { packageName ->
-            val lowerPackageName = packageName.lowercase()
-            lowerCaseLines.any { line ->
-                line.contains(lowerPackageName) &&
-                    (
-                        line.contains("fetch ") ||
-                            line.contains("installing ") ||
-                            line.contains("upgrading ") ||
-                            line.contains("get:") ||
-                            line.contains("selecting previously") ||
-                            line.contains("unpacking") ||
-                            line.contains("setting up") ||
-                            line.contains("preparing to unpack")
-                        )
-            }
-        }.toSet()
-    }
-
-    private fun deriveEmbeddedTerminalInitProgress(
-        kind: String,
-        message: String,
-        seenBasePackages: Set<String>,
-        currentProgress: Double
-    ): Double {
-        val normalizedMessage = message.trim()
-        val stageProgress =
-            when {
-                normalizedMessage.contains("开始准备内嵌 Alpine 终端环境") -> 0.04
-                normalizedMessage.contains("正在准备 workspace 和运行目录") -> 0.10
-                normalizedMessage.contains("正在初始化宿主终端运行时") -> 0.14
-                normalizedMessage.contains("正在校验 Alpine 终端运行资源") -> 0.24
-                normalizedMessage.contains("正在安装 Alpine 终端运行资源") -> 0.42
-                normalizedMessage.contains("宿主终端环境校验完成") -> 0.60
-                normalizedMessage.contains("正在检查基础 Agent CLI 包") -> 0.68
-                normalizedMessage.contains("基础 Agent CLI 包已就绪") -> 0.96
-                normalizedMessage.contains("正在安装基础 Agent CLI 包") -> 0.72
-                normalizedMessage.contains("基础 Agent CLI 包安装完成") -> 0.98
-                normalizedMessage.contains("均已就绪") -> 1.0
-                else -> null
-            }
-        if (stageProgress != null) {
-            return stageProgress
-        }
-
-        if (kind != "output") {
-            return currentProgress
-        }
-
-        if (normalizedMessage.contains("fetch ", ignoreCase = true)) {
-            return 0.74
-        }
-        if (normalizedMessage.contains("installing ", ignoreCase = true)) {
-            return 0.76
-        }
-        if (normalizedMessage.contains("upgrading ", ignoreCase = true) ||
-            normalizedMessage.contains("executing busybox", ignoreCase = true)
-        ) {
-            return 0.78
-        }
-        if (normalizedMessage.contains("npm install -g pnpm", ignoreCase = true) ||
-            normalizedMessage.contains("python3 -m pip install", ignoreCase = true)
-        ) {
-            return 0.80
-        }
-        if (normalizedMessage.contains("Fetched ")) {
-            return 0.84
-        }
-        if (seenBasePackages.isNotEmpty()) {
-            val installProgress = seenBasePackages.size.toDouble() / BASE_PACKAGE_NAMES.size.toDouble()
-            return 0.82 + installProgress * 0.14
-        }
-
-        return currentProgress
     }
 
     fun isUnknownAppInstallAllowed(result: MethodChannel.Result) {
