@@ -77,6 +77,15 @@ object ApiServiceManager {
         return ServerEventManager.getInstance().getCurrentInfo()
     }
 
+    fun ensureModelReady(modelId: String?): Boolean {
+        return try {
+            OpenAIService.getInstance()?.ensureModelReady(modelId) == true
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to ensure API service model")
+            false
+        }
+    }
+
     /** * getAPIserviceport * @param context context，forgetconfig * @return serviceport*/
     fun getApiServicePort(context: Context): Int {
         ApiServerConfig.initializeConfig(context)

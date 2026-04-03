@@ -16,15 +16,24 @@ import java.util.SortedMap
 import java.util.TreeMap
 
 class AgentLlmStreamAccumulator(
-    private val json: Json
+    private val json: Json,
+    private val preferInlineThinkTags: Boolean = false
 ) {
+    companion object {
+        private const val THINK_OPEN_TAG = "<think>"
+        private const val THINK_CLOSE_TAG = "</think>"
+    }
+
     private val contentBuffer = StringBuilder()
     private val reasoningBuffer = StringBuilder()
+    private val pendingLeadingTextBuffer = StringBuilder()
     private val toolCallBuilders: SortedMap<Int, MutableToolCallBuilder> = TreeMap()
     private var finishReason: String? = null
     private var usage: ChatCompletionUsage? = null
     private var seenChunk = false
     private var lastChunkPreview: String = ""
+    private var thinkSectionOpen = false
+    private var inlineThinkTagObserved = false
 
     fun consume(rawChunk: String): Boolean {
         val trimmed = rawChunk.trim()
@@ -45,7 +54,7 @@ class AgentLlmStreamAccumulator(
         val root = parseJsonObject(trimmed)
         if (root == null) {
             seenChunk = true
-            contentBuffer.append(trimmed)
+            appendTextChunk(trimmed)
             return false
         }
         return consumeJsonChunk(root)
@@ -160,6 +169,7 @@ class AgentLlmStreamAccumulator(
         if (!seenChunk) {
             throw IllegalStateException("chat completion stream ended without chunks")
         }
+        flushPendingInlineThinkText()
         val toolCalls = toolCallBuilders.entries.map { (index, builder) ->
             val name = builder.name?.trim().orEmpty()
             if (name.isBlank()) {
@@ -349,13 +359,91 @@ class AgentLlmStreamAccumulator(
     }
 
     private fun appendReasoningPayload(element: JsonElement?) {
-        extractText(element)?.let { reasoningBuffer.append(it) }
+        extractText(element)?.let { appendReasoningText(it) }
     }
 
     private fun appendTextPayload(element: JsonElement?): Boolean {
         val text = extractText(element) ?: return false
-        contentBuffer.append(text)
+        appendTextChunk(text)
         return text.isNotEmpty()
+    }
+
+    private fun appendTextChunk(text: String) {
+        if (text.isEmpty()) {
+            return
+        }
+        if (!preferInlineThinkTags) {
+            contentBuffer.append(text)
+            return
+        }
+        var remaining = text
+        while (remaining.isNotEmpty()) {
+            if (thinkSectionOpen) {
+                val closeIndex = remaining.indexOf(THINK_CLOSE_TAG)
+                if (closeIndex < 0) {
+                    appendReasoningText(remaining)
+                    return
+                }
+                appendReasoningText(remaining.substring(0, closeIndex))
+                remaining = remaining.substring(closeIndex + THINK_CLOSE_TAG.length)
+                thinkSectionOpen = false
+                inlineThinkTagObserved = true
+                continue
+            }
+
+            val openIndex = remaining.indexOf(THINK_OPEN_TAG)
+            val closeIndex = remaining.indexOf(THINK_CLOSE_TAG)
+
+            if (openIndex >= 0 && (closeIndex < 0 || openIndex < closeIndex)) {
+                flushPendingInlineThinkText()
+                appendVisibleText(remaining.substring(0, openIndex))
+                remaining = remaining.substring(openIndex + THINK_OPEN_TAG.length)
+                thinkSectionOpen = true
+                inlineThinkTagObserved = true
+                continue
+            }
+
+            if (closeIndex >= 0 && contentBuffer.isEmpty()) {
+                pendingLeadingTextBuffer.append(remaining.substring(0, closeIndex))
+                if (pendingLeadingTextBuffer.isNotEmpty()) {
+                    appendReasoningText(pendingLeadingTextBuffer.toString())
+                    pendingLeadingTextBuffer.setLength(0)
+                }
+                remaining = remaining.substring(closeIndex + THINK_CLOSE_TAG.length)
+                inlineThinkTagObserved = true
+                continue
+            }
+
+            if (!inlineThinkTagObserved && contentBuffer.isEmpty()) {
+                pendingLeadingTextBuffer.append(remaining)
+                return
+            }
+
+            appendVisibleText(remaining)
+            return
+        }
+    }
+
+    private fun flushPendingInlineThinkText() {
+        if (pendingLeadingTextBuffer.isEmpty()) {
+            return
+        }
+        appendVisibleText(pendingLeadingTextBuffer.toString())
+        pendingLeadingTextBuffer.setLength(0)
+    }
+
+    private fun appendVisibleText(text: String) {
+        if (text.isEmpty()) {
+            return
+        }
+        contentBuffer.append(text)
+    }
+
+    private fun appendReasoningText(text: String) {
+        if (text.isEmpty()) {
+            return
+        }
+        reasoningBuffer.append(text)
     }
 
     private fun extractText(element: JsonElement?): String? {

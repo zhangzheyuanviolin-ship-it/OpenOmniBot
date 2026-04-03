@@ -2,6 +2,7 @@ package cn.com.omnimind.bot
 
 import BaseApplication
 import cn.com.omnimind.baselib.database.DatabaseHelper
+import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
@@ -113,6 +114,22 @@ class App : BaseApplication() {
         // OSS 版本统一使用固定本地数据库，不依赖历史账号分库
         DatabaseHelper.init(this)
         MnnLocalInitializer.initialize(this)
+        LocalModelProviderBridge.setDelegate(
+            object : LocalModelProviderBridge.Delegate {
+                override suspend fun prepareForRequest(
+                    profileId: String?,
+                    apiBase: String?,
+                    modelId: String
+                ): Boolean {
+                    return runCatching {
+                        MnnLocalInitializer.initialize(this@App)
+                        cn.com.omnimind.bot.mnnlocal.MnnLocalModelsManager.ensureApiServiceForModel(
+                            modelId = modelId
+                        )
+                    }.getOrDefault(false)
+                }
+            }
+        )
 
         val nestedStart = System.currentTimeMillis()
         NestedBackgroundStateUtil.init(this)

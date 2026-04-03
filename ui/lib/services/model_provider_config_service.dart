@@ -166,6 +166,7 @@ class ProviderModelGroup {
 }
 
 class ModelProviderConfigService {
+  static const String _kBuiltinMnnLocalProfileId = 'mnn-local';
   static const String _kManualModelIdsKey = 'manual_provider_model_ids_v2';
   static const String _kCachedFetchedModelsKey =
       'cached_provider_models_with_base_v2';
@@ -272,6 +273,8 @@ class ModelProviderConfigService {
         .invokeMethod<List<dynamic>>('fetchProviderModels', {
           'apiBase': apiBase,
           'apiKey': apiKey,
+          if (profileId != null && profileId.trim().isNotEmpty)
+            'profileId': profileId.trim(),
         });
     final models = (result ?? const [])
         .map((item) => ProviderModelOption.fromMap(item as Map?))
@@ -401,13 +404,27 @@ class ModelProviderConfigService {
   static Future<List<ProviderModelOption>> getStoredModelOptionsForProfile(
     String profileId,
   ) async {
-    final results = await Future.wait<dynamic>([
-      getManualModelIds(profileId: profileId),
-      getCachedFetchedModels(profileId: profileId),
-    ]);
+    final normalizedProfileId = profileId.trim();
+    final manualModelIds = await getManualModelIds(
+      profileId: normalizedProfileId,
+    );
+    List<ProviderModelOption> remoteModels;
+    if (normalizedProfileId == _kBuiltinMnnLocalProfileId) {
+      try {
+        remoteModels = await fetchModels(profileId: normalizedProfileId);
+      } catch (_) {
+        remoteModels = await getCachedFetchedModels(
+          profileId: normalizedProfileId,
+        );
+      }
+    } else {
+      remoteModels = await getCachedFetchedModels(
+        profileId: normalizedProfileId,
+      );
+    }
     return mergeModelOptions(
-      remoteModels: results[1] as List<ProviderModelOption>,
-      manualModelIds: results[0] as List<String>,
+      remoteModels: remoteModels,
+      manualModelIds: manualModelIds,
     );
   }
 

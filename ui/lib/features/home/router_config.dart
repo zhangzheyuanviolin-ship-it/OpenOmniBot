@@ -334,7 +334,7 @@ List<GoRoute> homeRoutes = [
       key: state.pageKey,
       name: 'home/local_models',
       child: LocalModelsPage(
-        initialTab: state.uri.queryParameters['tab'] ?? 'installed',
+        initialTab: state.uri.queryParameters['tab'] ?? 'service',
       ),
     ),
   ),

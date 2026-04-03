@@ -4,6 +4,7 @@ import OpenAIChatRequest
 import com.alibaba.mnnllm.android.MnnLlmApplication
 import com.alibaba.mnnllm.android.llm.LlmSession
 import com.alibaba.mnnllm.api.openai.di.ServiceLocator
+import com.alibaba.mnnllm.api.openai.manager.ApiServiceManager
 import com.alibaba.mnnllm.api.openai.network.handlers.ResponseHandler
 import com.alibaba.mnnllm.api.openai.network.logging.ChatLogger
 import com.alibaba.mnnllm.api.openai.network.processors.MnnImageProcessor
@@ -94,6 +95,19 @@ class MNNChatService {
         traceId: String
     ) {
         try {
+            val requestedModelId = chatRequest.model?.trim().orEmpty()
+            if (requestedModelId.isNotEmpty() && !ApiServiceManager.ensureModelReady(requestedModelId)) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    mapOf(
+                        "error" to mapOf(
+                            "message" to "Failed to load requested model: $requestedModelId",
+                            "trace_id" to traceId
+                        )
+                    )
+                )
+                return
+            }
             //willas MNNformatunifiedhistory message (containingsystem prompt)
             val unifiedHistory = messageTransformer.convertToUnifiedMnnHistory(
                 chatRequest.messages,

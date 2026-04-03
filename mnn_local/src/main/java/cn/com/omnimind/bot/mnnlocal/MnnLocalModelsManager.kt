@@ -2,6 +2,7 @@ package cn.com.omnimind.bot.mnnlocal
 
 import android.content.Context
 import android.net.Uri
+import android.text.format.Formatter
 import com.alibaba.mls.api.ModelItem
 import com.alibaba.mls.api.download.DownloadInfo
 import com.alibaba.mls.api.download.DownloadListener
@@ -371,6 +372,30 @@ object MnnLocalModelsManager {
         MnnLocalConfigStore.syncProviderState(ApiServiceManager.isApiServiceReady())
         emitConfigChanged()
         return getConfig()
+    }
+
+    suspend fun ensureApiServiceForModel(
+        modelId: String,
+        timeoutMs: Long = 30_000L
+    ): Boolean {
+        ensureInitialized()
+        val normalizedModelId = modelId.trim()
+        if (normalizedModelId.isEmpty()) {
+            return false
+        }
+        startApiService(normalizedModelId)
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val ready = ApiServiceManager.isApiServiceReady()
+            val activeModelId = CurrentModelManager.getCurrentModelId()
+                ?: MnnLocalConfigStore.getActiveModelId()
+            if (ready && activeModelId == normalizedModelId) {
+                return true
+            }
+            delay(200)
+        }
+        return ApiServiceManager.isApiServiceReady() &&
+            (CurrentModelManager.getCurrentModelId() ?: MnnLocalConfigStore.getActiveModelId()) == normalizedModelId
     }
 
     fun stopApiService(): Map<String, Any?> {
@@ -895,10 +920,20 @@ object MnnLocalModelsManager {
             "extraTags" to extraTags,
             "fileSize" to fileSize,
             "sizeB" to sizeB,
+            "formattedSize" to formattedFileSize(fileSize),
             "source" to currentSource,
             "repoPath" to currentRepoPath,
             "download" to downloadInfo?.toMap(),
         )
+    }
+
+    private fun formattedFileSize(bytes: Long): String {
+        if (bytes <= 0L) {
+            return ""
+        }
+        val context = appContext ?: return ""
+        return runCatching { Formatter.formatFileSize(context, bytes) }
+            .getOrDefault("")
     }
 
     private fun contextDownloadManager(): ModelDownloadManager? {

@@ -4,6 +4,7 @@ import com.alibaba.mnnllm.android.MnnLlmApplication
 import com.alibaba.mnnllm.android.llm.GenerateProgressListener
 import com.alibaba.mnnllm.android.llm.LlmSession
 import com.alibaba.mnnllm.api.openai.di.ServiceLocator
+import com.alibaba.mnnllm.api.openai.manager.ApiServiceManager
 import com.alibaba.mnnllm.api.openai.network.compat.AnthropicAdapter
 import com.alibaba.mnnllm.api.openai.network.compat.AnthropicMessagesRequest
 import com.alibaba.mnnllm.api.openai.network.compat.AnthropicUsage
@@ -79,6 +80,19 @@ class AnthropicMessagesService {
         traceId: String
     ) {
         try {
+            val requestedModelId = request.model?.trim().orEmpty()
+            if (requestedModelId.isNotEmpty() && !ApiServiceManager.ensureModelReady(requestedModelId)) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    mapOf<String, Any>(
+                        "error" to mapOf<String, String>(
+                            "type" to "api_error",
+                            "message" to "Failed to load requested model: $requestedModelId"
+                        )
+                    )
+                )
+                return
+            }
             val llmSession = getLlmSession()
             if (llmSession == null) {
                 logger.logInfo(traceId, "No active LLM session available")

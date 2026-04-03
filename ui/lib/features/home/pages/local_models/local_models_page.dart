@@ -7,10 +7,10 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
-enum _LocalModelsTab { installed, market, inference, service }
+enum _LocalModelsTab { service, market, benchmark }
 
 class LocalModelsPage extends StatefulWidget {
-  const LocalModelsPage({super.key, this.initialTab = 'installed'});
+  const LocalModelsPage({super.key, this.initialTab = 'service'});
 
   final String initialTab;
 
@@ -25,11 +25,6 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   final TextEditingController _installedSearchController =
       TextEditingController();
   final TextEditingController _marketSearchController = TextEditingController();
-  final TextEditingController _promptController = TextEditingController();
-  final TextEditingController _imagePathController = TextEditingController();
-  final TextEditingController _audioPathController = TextEditingController();
-  final TextEditingController _videoPathController = TextEditingController();
-  final TextEditingController _outputPathController = TextEditingController();
   final TextEditingController _portController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _benchmarkPromptController =
@@ -52,16 +47,11 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   bool _loadingConfig = true;
   bool _savingConfig = false;
   bool _startingBenchmark = false;
-  bool _generating = false;
 
   String _installedCategory = 'all';
   String _marketCategory = 'all';
-  String _generationOutput = '';
-  String _generationMetrics = '';
-  String _activeRequestId = '';
   String _benchmarkBackend = 'cpu';
   String? _benchmarkModelId;
-  bool _enableAudioOutput = false;
 
   @override
   void initState() {
@@ -86,11 +76,6 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       ..dispose();
     _installedSearchController.dispose();
     _marketSearchController.dispose();
-    _promptController.dispose();
-    _imagePathController.dispose();
-    _audioPathController.dispose();
-    _videoPathController.dispose();
-    _outputPathController.dispose();
     _portController.dispose();
     _apiKeyController.dispose();
     _benchmarkPromptController.dispose();
@@ -103,13 +88,12 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     switch (raw.trim().toLowerCase()) {
       case 'market':
         return _LocalModelsTab.market.index;
-      case 'inference':
-        return _LocalModelsTab.inference.index;
-      case 'service':
-        return _LocalModelsTab.service.index;
+      case 'benchmark':
       case 'installed':
+        return _LocalModelsTab.benchmark.index;
+      case 'service':
       default:
-        return _LocalModelsTab.installed.index;
+        return _LocalModelsTab.service.index;
     }
   }
 
@@ -127,18 +111,16 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       return;
     }
     switch (_LocalModelsTab.values[_tabController.index]) {
-      case _LocalModelsTab.installed:
+      case _LocalModelsTab.service:
+        _refreshConfig(silent: true);
         _refreshInstalled(silent: true);
-        _refreshBenchmarkState(silent: true);
         break;
       case _LocalModelsTab.market:
         _refreshMarket(silent: true);
         break;
-      case _LocalModelsTab.inference:
+      case _LocalModelsTab.benchmark:
         _refreshInstalled(silent: true);
-        break;
-      case _LocalModelsTab.service:
-        _refreshConfig(silent: true);
+        _refreshBenchmarkState(silent: true);
         break;
     }
   }
@@ -148,20 +130,16 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!mounted) return;
       switch (_LocalModelsTab.values[_tabController.index]) {
-        case _LocalModelsTab.installed:
+        case _LocalModelsTab.service:
+          _refreshConfig(silent: true);
           _refreshInstalled(silent: true);
-          _refreshBenchmarkState(silent: true);
           break;
         case _LocalModelsTab.market:
           _refreshMarket(silent: true);
           break;
-        case _LocalModelsTab.inference:
-          if (_generating) {
-            _refreshConfig(silent: true);
-          }
-          break;
-        case _LocalModelsTab.service:
-          _refreshConfig(silent: true);
+        case _LocalModelsTab.benchmark:
+          _refreshInstalled(silent: true);
+          _refreshBenchmarkState(silent: true);
           break;
       }
     });
@@ -206,7 +184,8 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       setState(() {
         _installedModels = models;
         _loadingInstalled = false;
-        final benchmarkModelStillExists = _benchmarkModelId != null &&
+        final benchmarkModelStillExists =
+            _benchmarkModelId != null &&
             models.any((item) => item.id == _benchmarkModelId);
         if (!benchmarkModelStillExists) {
           final llmModels = models.where((item) => item.category == 'llm');
@@ -222,7 +201,10 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     }
   }
 
-  Future<void> _refreshMarket({bool silent = false, bool refresh = false}) async {
+  Future<void> _refreshMarket({
+    bool silent = false,
+    bool refresh = false,
+  }) async {
     if (!silent && mounted) {
       setState(() => _loadingMarket = true);
     }
@@ -279,59 +261,6 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         if (download?.isCompleted == true) {
           _refreshInstalled(silent: true);
         }
-        break;
-      case 'generation_started':
-        setState(() {
-          _generating = true;
-          _activeRequestId = (event.payload['requestId'] ?? '').toString();
-          _generationOutput = '';
-          _generationMetrics = '';
-        });
-        break;
-      case 'generation_chunk':
-        if (_activeRequestId.isNotEmpty &&
-            _activeRequestId != (event.payload['requestId'] ?? '').toString()) {
-          return;
-        }
-        setState(() {
-          _generationOutput += (event.payload['text'] ?? '').toString();
-        });
-        break;
-      case 'generation_completed':
-        final resultRaw = event.payload['result'];
-        final result = resultRaw is Map
-            ? resultRaw.map((key, value) => MapEntry(key.toString(), value))
-            : const <String, dynamic>{};
-        final outputPath = (result['output'] ?? result['output_path'] ?? '')
-            .toString();
-        setState(() {
-          _generating = false;
-          _generationMetrics = (event.payload['metricsText'] ?? '').toString();
-          if (outputPath.isNotEmpty &&
-              !_generationOutput.contains(outputPath)) {
-            if (_generationOutput.isNotEmpty) {
-              _generationOutput += '\n\n';
-            }
-            _generationOutput += '生成文件：$outputPath';
-          }
-        });
-        _refreshConfig(silent: true);
-        break;
-      case 'generation_error':
-        setState(() {
-          _generating = false;
-          _generationMetrics = '';
-        });
-        showToast(
-          (event.payload['message'] ?? '本地推理失败').toString(),
-          type: ToastType.error,
-        );
-        break;
-      case 'generation_cancelled':
-        setState(() {
-          _generating = false;
-        });
-        showToast('已停止本地推理');
         break;
       case 'config_changed':
         _refreshConfig(silent: true);
@@ -524,42 +453,6 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     }
   }
 
-  Future<void> _startGeneration() async {
-    final selectedModelId = _config?.activeModelId ?? '';
-    if (selectedModelId.isEmpty) {
-      showToast('请先选择一个本地模型', type: ToastType.warning);
-      return;
-    }
-    if (_promptController.text.trim().isEmpty &&
-        _imagePathController.text.trim().isEmpty &&
-        _audioPathController.text.trim().isEmpty &&
-        _videoPathController.text.trim().isEmpty) {
-      showToast('请输入提示词或附件路径', type: ToastType.warning);
-      return;
-    }
-    try {
-      await MnnLocalModelsService.startGeneration(
-        modelId: selectedModelId,
-        prompt: _promptController.text.trim(),
-        imagePath: _imagePathController.text.trim().isEmpty
-            ? null
-            : _imagePathController.text.trim(),
-        audioPath: _audioPathController.text.trim().isEmpty
-            ? null
-            : _audioPathController.text.trim(),
-        videoPath: _videoPathController.text.trim().isEmpty
-            ? null
-            : _videoPathController.text.trim(),
-        outputPath: _outputPathController.text.trim().isEmpty
-            ? null
-            : _outputPathController.text.trim(),
-        enableAudioOutput: _enableAudioOutput,
-      );
-    } catch (error) {
-      showToast('启动本地推理失败', type: ToastType.error);
-    }
-  }
-
   Future<void> _updateSpeechProvider(String value) async {
     try {
       final config = await MnnLocalModelsService.saveConfig(
@@ -640,10 +533,6 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     }
   }
 
-  List<MnnLocalModel> get _inferenceModels => _installedModels
-      .where((model) => model.category != 'asr' && model.category != 'tts' && model.category != 'libs')
-      .toList();
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -659,10 +548,9 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               unselectedLabelColor: AppColors.text50,
               indicatorColor: AppColors.buttonPrimary,
               tabs: const [
-                Tab(text: '已安装'),
-                Tab(text: '模型市场'),
-                Tab(text: '推理台'),
                 Tab(text: '服务与语音'),
+                Tab(text: '模型市场'),
+                Tab(text: '性能测试'),
               ],
             ),
           ),
@@ -670,10 +558,9 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildInstalledTab(),
-                _buildMarketTab(),
-                _buildInferenceTab(),
                 _buildServiceTab(),
+                _buildMarketTab(),
+                _buildBenchmarkTab(),
               ],
             ),
           ),
@@ -682,46 +569,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     );
   }
 
-  Widget _buildInstalledTab() {
+  Widget _buildBenchmarkTab() {
     final llmModels = _installedModels
         .where((item) => item.category == 'llm')
         .toList();
-    return Column(
-      children: [
-        _buildSearchBar(
-          controller: _installedSearchController,
-          hint: '搜索已安装模型',
-          onSubmitted: (_) => _refreshInstalled(),
-          onRefresh: () => _refreshInstalled(),
-        ),
-        _buildCategoryChips(
-          current: _installedCategory,
-          categories: const ['all', 'llm', 'diffusion', 'asr', 'tts'],
-          onSelected: (value) {
-            setState(() => _installedCategory = value);
-            _refreshInstalled();
-          },
-        ),
-        Expanded(
-          child: _loadingInstalled
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                  children: [
-                    _buildBenchmarkCard(llmModels),
-                    const SizedBox(height: 12),
-                    if (_installedModels.isEmpty)
-                      _buildEmptyState(
-                        title: '还没有可用的本地模型',
-                        subtitle:
-                            '可以先到“模型市场”下载模型，或把模型放到 /data/local/tmp/mnn_models 后返回刷新。',
-                      )
-                    else
-                      ..._installedModels.map(_buildInstalledCard),
-                  ],
-                ),
-        ),
-      ],
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [_buildBenchmarkCard(llmModels)],
     );
   }
 
@@ -805,155 +659,6 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     );
   }
 
-  Widget _buildInferenceTab() {
-    final currentModelId = _config?.activeModelId ?? '';
-    final isDiffusionModel = _inferenceModels
-        .any((item) => item.id == currentModelId && item.category == 'diffusion');
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      children: [
-        DropdownButtonFormField<String>(
-          key: ValueKey('inference-model-$currentModelId'),
-          initialValue: currentModelId.isNotEmpty &&
-                  _inferenceModels.any((item) => item.id == currentModelId)
-              ? currentModelId
-              : null,
-          decoration: const InputDecoration(
-            labelText: '当前模型',
-            border: OutlineInputBorder(),
-          ),
-          items: _inferenceModels
-              .map(
-                (item) => DropdownMenuItem<String>(
-                  value: item.id,
-                  child: Text('${item.name} · ${item.category.toUpperCase()}'),
-                ),
-              )
-              .toList(),
-          onChanged: (value) {
-            _setActiveModel(value);
-          },
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _promptController,
-          minLines: 5,
-          maxLines: 8,
-          decoration: const InputDecoration(
-            labelText: '提示词',
-            hintText: '输入文本，或搭配图片 / 音频 / 视频路径一起推理',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 12),
-        ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 8),
-          title: const Text('多模态输入'),
-          subtitle: const Text('可选：图片、音频、视频本地路径'),
-          children: [
-            TextField(
-              controller: _imagePathController,
-              decoration: const InputDecoration(
-                labelText: '图片路径',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _audioPathController,
-              decoration: const InputDecoration(
-                labelText: '音频路径',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _videoPathController,
-              decoration: const InputDecoration(
-                labelText: '视频路径',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        if (isDiffusionModel) ...[
-          const SizedBox(height: 12),
-          TextField(
-            controller: _outputPathController,
-            decoration: const InputDecoration(
-              labelText: '输出图片路径',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        SwitchListTile(
-          value: _enableAudioOutput,
-          contentPadding: EdgeInsets.zero,
-          title: const Text('生成结果语音播报'),
-          subtitle: Text(
-            _config?.defaultTtsModelId.isNotEmpty == true
-                ? '使用默认 TTS 模型播报输出'
-                : '需要先在“服务与语音”里设置默认 TTS 模型',
-          ),
-          onChanged: (value) {
-            setState(() {
-              _enableAudioOutput = value;
-            });
-          },
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton(
-                onPressed: _generating ? null : _startGeneration,
-                child: Text(_generating ? '推理中…' : '开始推理'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            OutlinedButton(
-              onPressed: _generating
-                  ? () {
-                      MnnLocalModelsService.stopGeneration();
-                    }
-                  : null,
-              child: const Text('停止'),
-            ),
-            const SizedBox(width: 10),
-            OutlinedButton(
-              onPressed: () {
-                MnnLocalModelsService.resetInferenceSession();
-                setState(() {
-                  _generationOutput = '';
-                  _generationMetrics = '';
-                });
-              },
-              child: const Text('重置会话'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _buildInfoCard(
-          title: '输出',
-          child: SelectableText(
-            _generationOutput.isEmpty ? '等待本地模型输出…' : _generationOutput,
-            style: const TextStyle(height: 1.6),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildInfoCard(
-          title: '性能指标',
-          child: Text(
-            _generationMetrics.isEmpty ? '暂无数据' : _generationMetrics,
-            style: const TextStyle(height: 1.6),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildServiceTab() {
     final config = _config;
     if (_loadingConfig && config == null) {
@@ -961,10 +666,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     }
     final resolvedConfig = config;
     if (resolvedConfig == null) {
-      return _buildEmptyState(
-        title: '本地模型服务尚未就绪',
-        subtitle: '请稍后重试。',
-      );
+      return _buildEmptyState(title: '本地模型服务尚未就绪', subtitle: '请稍后重试。');
     }
 
     return ListView(
@@ -979,7 +681,9 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               const SizedBox(height: 6),
               Text('Base URL：${resolvedConfig.baseUrl}'),
               const SizedBox(height: 6),
-              Text('当前模型：${resolvedConfig.activeModelId.isEmpty ? '未选择' : resolvedConfig.activeModelId}'),
+              Text(
+                '后台服务模型：${resolvedConfig.activeModelId.isEmpty ? '未选择' : resolvedConfig.activeModelId}',
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -1157,6 +861,43 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             ],
           ),
         ),
+        const SizedBox(height: 16),
+        _buildInfoCard(
+          title: '已安装模型',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSearchBar(
+                controller: _installedSearchController,
+                hint: '搜索已安装模型',
+                onSubmitted: (_) => _refreshInstalled(),
+                onRefresh: () => _refreshInstalled(),
+                compact: true,
+              ),
+              const SizedBox(height: 8),
+              _buildCategoryChips(
+                current: _installedCategory,
+                categories: const ['all', 'llm', 'diffusion', 'asr', 'tts'],
+                compact: true,
+                onSelected: (value) {
+                  setState(() => _installedCategory = value);
+                  _refreshInstalled();
+                },
+              ),
+              const SizedBox(height: 12),
+              if (_loadingInstalled)
+                const Center(child: CircularProgressIndicator())
+              else if (_installedModels.isEmpty)
+                _buildEmptyState(
+                  title: '还没有可用的本地模型',
+                  subtitle:
+                      '可以先到“模型市场”下载模型，或把模型放到 /data/local/tmp/mnn_models 后返回刷新。',
+                )
+              else
+                ..._installedModels.map(_buildInstalledCard),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1165,7 +906,8 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     final benchmarkState = _benchmarkState;
     final benchmarkResults = benchmarkState?.results ?? const [];
     final progress = benchmarkState?.progress;
-    final selectedModelId = (_benchmarkModelId != null &&
+    final selectedModelId =
+        (_benchmarkModelId != null &&
             llmModels.any((item) => item.id == _benchmarkModelId))
         ? _benchmarkModelId
         : null;
@@ -1266,17 +1008,22 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: benchmarkState?.running == true || _startingBenchmark
+                    onPressed:
+                        benchmarkState?.running == true || _startingBenchmark
                         ? null
                         : () => _startBenchmark(),
                     child: Text(
-                      benchmarkState?.running == true ? 'Benchmark 运行中…' : '开始 Benchmark',
+                      benchmarkState?.running == true
+                          ? 'Benchmark 运行中…'
+                          : '开始 Benchmark',
                     ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 OutlinedButton(
-                  onPressed: benchmarkState?.running == true ? _stopBenchmark : null,
+                  onPressed: benchmarkState?.running == true
+                      ? _stopBenchmark
+                      : null,
                   child: const Text('停止'),
                 ),
               ],
@@ -1293,7 +1040,9 @@ class _LocalModelsPageState extends State<LocalModelsPage>
           ],
           if (progress != null) ...[
             const SizedBox(height: 10),
-            LinearProgressIndicator(value: (progress.progress / 100).clamp(0, 1)),
+            LinearProgressIndicator(
+              value: (progress.progress / 100).clamp(0, 1),
+            ),
             const SizedBox(height: 8),
             Text(
               progress.statusMessage.isEmpty
@@ -1311,10 +1060,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
           ],
           if (benchmarkResults.isNotEmpty) ...[
             const SizedBox(height: 12),
-            const Text(
-              '结果',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
+            const Text('结果', style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             ...benchmarkResults.reversed.map(_buildBenchmarkResultCard),
           ],
@@ -1357,6 +1103,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   }
 
   Widget _buildInstalledCard(MnnLocalModel model) {
+    final modelSizeText = _resolvedModelSizeText(model);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -1402,6 +1149,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 for (final tag in model.tags.take(4)) _buildTag(tag),
               ],
             ),
+            if (modelSizeText != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                '文件大小：$modelSizeText',
+                style: const TextStyle(fontSize: 12, color: AppColors.text50),
+              ),
+            ],
             if (model.path.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
@@ -1417,7 +1171,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 if (model.category == 'llm' || model.category == 'diffusion')
                   FilledButton.tonal(
                     onPressed: () => _setActiveModel(model.id),
-                    child: const Text('设为推理模型'),
+                    child: const Text('设为服务模型'),
                   ),
                 if (model.category == 'llm')
                   OutlinedButton(
@@ -1460,6 +1214,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     final isCompleted = download?.isCompleted == true;
     final isDownloading = download?.isDownloading == true;
     final isPaused = download?.isPaused == true;
+    final modelSizeText = _resolvedModelSizeText(model);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -1504,6 +1259,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 for (final tag in model.tags.take(4)) _buildTag(tag),
               ],
             ),
+            if (modelSizeText != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                '文件大小：$modelSizeText',
+                style: const TextStyle(fontSize: 12, color: AppColors.text50),
+              ),
+            ],
             if (download != null && (isDownloading || isPaused))
               Padding(
                 padding: const EdgeInsets.only(top: 12),
@@ -1591,9 +1353,12 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     required String hint,
     required ValueChanged<String> onSubmitted,
     required VoidCallback onRefresh,
+    bool compact = false,
   }) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: compact
+          ? EdgeInsets.zero
+          : const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         children: [
           Expanded(
@@ -1619,10 +1384,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             ),
           ),
           const SizedBox(width: 8),
-          IconButton(
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh),
-          ),
+          IconButton(onPressed: onRefresh, icon: const Icon(Icons.refresh)),
         ],
       ),
     );
@@ -1632,26 +1394,27 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     required String current,
     required List<String> categories,
     required ValueChanged<String> onSelected,
+    bool compact = false,
   }) {
     return SizedBox(
       height: 44,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: compact
+            ? EdgeInsets.zero
+            : const EdgeInsets.symmetric(horizontal: 16),
         itemBuilder: (context, index) {
           final value = categories[index];
           return ChoiceChip(
-            label: Text(
-              switch (value) {
-                'all' => '全部',
-                'llm' => 'LLM',
-                'diffusion' => '扩散',
-                'asr' => 'ASR',
-                'tts' => 'TTS',
-                'libs' => 'Libs',
-                _ => value,
-              },
-            ),
+            label: Text(switch (value) {
+              'all' => '全部',
+              'llm' => 'LLM',
+              'diffusion' => '扩散',
+              'asr' => 'ASR',
+              'tts' => 'TTS',
+              'libs' => 'Libs',
+              _ => value,
+            }),
             selected: current == value,
             onSelected: (_) => onSelected(value),
           );
@@ -1714,10 +1477,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             Text(
@@ -1729,5 +1489,27 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         ),
       ),
     );
+  }
+
+  String? _resolvedModelSizeText(MnnLocalModel model) {
+    final formatted = model.formattedSize.trim();
+    if (formatted.isNotEmpty) {
+      return formatted;
+    }
+    final bytes = model.fileSize > 0
+        ? model.fileSize.toDouble()
+        : model.download?.totalSize.toDouble() ?? 0;
+    if (bytes <= 0) {
+      return null;
+    }
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var size = bytes;
+    var unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    final fractionDigits = size >= 100 || unitIndex == 0 ? 0 : 1;
+    return '${size.toStringAsFixed(fractionDigits)} ${units[unitIndex]}';
   }
 }

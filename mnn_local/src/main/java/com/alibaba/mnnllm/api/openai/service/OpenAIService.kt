@@ -219,6 +219,23 @@ class OpenAIService : Service() {
     
     fun getCurrentModelId(): String? = currentModelId
 
+    fun ensureModelReady(modelId: String?): Boolean {
+        val normalizedModelId = modelId?.trim().orEmpty()
+        if (normalizedModelId.isEmpty()) {
+            return coordinator.startServer(currentModelId)
+        }
+        val previousModelId = currentModelId
+        currentModelId = normalizedModelId
+        CurrentModelManager.setCurrentModelId(normalizedModelId)
+        MnnLocalConfigStore.setActiveModelId(normalizedModelId)
+        val success = coordinator.startServer(normalizedModelId)
+        if (!success) {
+            currentModelId = previousModelId
+            syncCurrentModelManager(previousModelId)
+        }
+        return success
+    }
+
     fun getBootstrapCount(): Int = coordinator.getBootstrapCount()
 
     fun getStartRequestCount(): Int = startRequestCount
