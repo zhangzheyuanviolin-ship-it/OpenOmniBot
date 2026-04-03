@@ -15,7 +15,7 @@ apply plugin: 'org.jetbrains.kotlin.android'
 android {
     namespace 'com.alibaba.mnn.tts'
     compileSdk 34
-    ndkVersion "27.2.12479018"
+    ndkVersion "28.2.13676358"
     sourceSets {
         main.java.srcDirs += ['java']
     }
@@ -68,6 +68,13 @@ android {
         }
     }
 }
+
+tasks.register("prepareMnnNativeLibs", Exec) {
+    workingDir rootProject.projectDir
+    commandLine "bash", "${rootProject.projectDir}/scripts/prepare_mnn_android_native.sh"
+}
+
+preBuild.dependsOn prepareMnnNativeLibs
 
 configurations.all {
     resolutionStrategy {
