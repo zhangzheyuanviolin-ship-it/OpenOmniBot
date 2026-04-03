@@ -199,7 +199,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _utgLoaded = true;
       });
     } catch (e) {
-      debugPrint('Load UTG bridge config failed: $e');
+      debugPrint('Load OmniFlow bridge config failed: $e');
       if (!mounted) return;
       setState(() {
         _utgLoaded = true;
@@ -328,7 +328,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     final config = _utgConfig;
     if (config == null) {
-      return '配置 OmniCloud provider 与轨迹执行 run_log';
+      return '配置 OmniFlow provider 与轨迹执行 run_log';
     }
     final enabled = config.utgEnabled ? 'OmniFlow 已开启' : 'OmniFlow 已关闭';
     final autoStart = config.providerAutoStartEnabled ? '自动拉起' : '手动拉起';
