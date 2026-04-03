@@ -10,6 +10,10 @@ class ModelProviderConfig {
   final String baseUrl;
   final String apiKey;
   final String source;
+  final String providerType;
+  final bool readOnly;
+  final bool ready;
+  final String statusText;
   final bool configured;
 
   const ModelProviderConfig({
@@ -18,6 +22,10 @@ class ModelProviderConfig {
     required this.baseUrl,
     required this.apiKey,
     required this.source,
+    required this.providerType,
+    required this.readOnly,
+    required this.ready,
+    required this.statusText,
     required this.configured,
   });
 
@@ -28,6 +36,10 @@ class ModelProviderConfig {
       baseUrl: '',
       apiKey: '',
       source: 'none',
+      providerType: 'custom',
+      readOnly: false,
+      ready: false,
+      statusText: '',
       configured: false,
     );
   }
@@ -42,6 +54,10 @@ class ModelProviderConfig {
       baseUrl: (map['baseUrl'] ?? '').toString(),
       apiKey: (map['apiKey'] ?? '').toString(),
       source: (map['source'] ?? 'none').toString(),
+      providerType: (map['providerType'] ?? 'custom').toString(),
+      readOnly: map['readOnly'] == true,
+      ready: map['ready'] == true,
+      statusText: (map['statusText'] ?? '').toString(),
       configured: map['configured'] == true,
     );
   }
@@ -52,6 +68,10 @@ class ModelProviderProfileSummary {
   final String name;
   final String baseUrl;
   final String apiKey;
+  final String sourceType;
+  final bool readOnly;
+  final bool ready;
+  final String statusText;
   final bool configured;
 
   const ModelProviderProfileSummary({
@@ -59,6 +79,10 @@ class ModelProviderProfileSummary {
     required this.name,
     required this.baseUrl,
     required this.apiKey,
+    required this.sourceType,
+    required this.readOnly,
+    required this.ready,
+    required this.statusText,
     required this.configured,
   });
 
@@ -68,6 +92,10 @@ class ModelProviderProfileSummary {
       name: (map?['name'] ?? '').toString(),
       baseUrl: (map?['baseUrl'] ?? '').toString(),
       apiKey: (map?['apiKey'] ?? '').toString(),
+      sourceType: (map?['sourceType'] ?? 'custom').toString(),
+      readOnly: map?['readOnly'] == true,
+      ready: map?['ready'] == true,
+      statusText: (map?['statusText'] ?? '').toString(),
       configured: map?['configured'] == true,
     );
   }
@@ -79,6 +107,10 @@ class ModelProviderProfileSummary {
       baseUrl: baseUrl,
       apiKey: apiKey,
       source: source,
+      providerType: sourceType,
+      readOnly: readOnly,
+      ready: ready,
+      statusText: statusText,
       configured: configured,
     );
   }
@@ -164,6 +196,10 @@ class ModelProviderConfigService {
         name: fallback.name.isNotEmpty ? fallback.name : 'Provider 1',
         baseUrl: fallback.baseUrl,
         apiKey: fallback.apiKey,
+        sourceType: fallback.providerType,
+        readOnly: fallback.readOnly,
+        ready: fallback.ready,
+        statusText: fallback.statusText,
         configured: fallback.configured,
       );
       return ModelProviderProfilesPayload(

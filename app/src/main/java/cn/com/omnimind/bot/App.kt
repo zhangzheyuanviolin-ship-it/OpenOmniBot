@@ -9,6 +9,7 @@ import cn.com.omnimind.bot.agent.SkillIndexService
 import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.mcp.McpServerManager
+import cn.com.omnimind.bot.mnnlocal.MnnLocalInitializer
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
@@ -111,6 +112,7 @@ class App : BaseApplication() {
 
         // OSS 版本统一使用固定本地数据库，不依赖历史账号分库
         DatabaseHelper.init(this)
+        MnnLocalInitializer.initialize(this)
 
         val nestedStart = System.currentTimeMillis()
         NestedBackgroundStateUtil.init(this)

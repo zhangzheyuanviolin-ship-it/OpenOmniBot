@@ -1,9 +1,13 @@
 package cn.com.omnimind.bot.ui.channel
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import cn.com.omnimind.bot.manager.AsrServiceIatSpeechRecognitionManager
+import cn.com.omnimind.bot.manager.MnnLocalSpeechRecognitionManager
 import cn.com.omnimind.bot.manager.SpeechRecognitionManager
+import cn.com.omnimind.bot.mnnlocal.MnnLocalConfigStore
+import cn.com.omnimind.bot.mnnlocal.SpeechRecognitionProvider
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
@@ -11,10 +15,15 @@ import io.flutter.plugin.common.MethodChannel
 class SpeechRecognitionChannel {
     @SuppressLint("StaticFieldLeak")
     private var asrServiceManager: AsrServiceIatSpeechRecognitionManager? = null
+    @SuppressLint("StaticFieldLeak")
+    private var mnnLocalSpeechRecognitionManager: MnnLocalSpeechRecognitionManager? = null
 
     private fun activeManager(): SpeechRecognitionManager? {
-        // 仅走 asr-service 转发（避免降级误判）
-        return asrServiceManager
+        return when (MnnLocalConfigStore.getSpeechRecognitionProvider()) {
+            SpeechRecognitionProvider.MNN_LOCAL -> mnnLocalSpeechRecognitionManager
+            SpeechRecognitionProvider.DISABLED -> null
+            SpeechRecognitionProvider.SYSTEM -> asrServiceManager
+        }
     }
 
     private val TAG = "[SpeechRecognitionChannel]"
@@ -26,6 +35,9 @@ class SpeechRecognitionChannel {
     fun onCreate(context: Context) {
         // 仅走 asr-service
         asrServiceManager = AsrServiceIatSpeechRecognitionManager(context)
+        mnnLocalSpeechRecognitionManager = (context as? Activity)?.let {
+            MnnLocalSpeechRecognitionManager(it)
+        }
     }
 
     fun setChannel(flutterEngine: FlutterEngine) {
@@ -41,6 +53,7 @@ class SpeechRecognitionChannel {
                     ?: result.error("NO_MANAGER", "SpeechRecognitionManager is null", null)
                 "release" -> {
                     asrServiceManager?.release()
+                    mnnLocalSpeechRecognitionManager?.release()
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -54,16 +67,21 @@ class SpeechRecognitionChannel {
                 val manager = activeManager()
                 // 只给当前生效的 manager 绑定 sink，避免重复回调
                 asrServiceManager?.setEventSink(if (manager === asrServiceManager) events else null)
+                mnnLocalSpeechRecognitionManager?.setEventSink(
+                    if (manager === mnnLocalSpeechRecognitionManager) events else null
+                )
             }
 
             override fun onCancel(arguments: Any?) {
                 asrServiceManager?.setEventSink(null)
+                mnnLocalSpeechRecognitionManager?.setEventSink(null)
             }
         })
     }
 
     fun clear() {
         asrServiceManager?.release()
+        mnnLocalSpeechRecognitionManager?.release()
         methodChannel?.setMethodCallHandler(null)
         methodChannel = null
         eventChannel?.setStreamHandler(null)

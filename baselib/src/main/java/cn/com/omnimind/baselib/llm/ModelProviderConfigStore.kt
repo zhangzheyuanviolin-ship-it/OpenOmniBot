@@ -27,16 +27,16 @@ object ModelProviderConfigStore {
 
     fun listProfiles(): List<ModelProviderProfile> {
         ModelProviderMigration.ensureMigrated()
-        val mmkv = MMKV.defaultMMKV() ?: return defaultProfiles()
+        val mmkv = MMKV.defaultMMKV() ?: return withBuiltin(defaultProfiles())
         val current = readProfiles(mmkv)
         if (current.isNotEmpty()) {
-            ensureEditingProfile(mmkv, current)
-            return current
+            ensureEditingProfile(mmkv, withBuiltin(current))
+            return withBuiltin(current)
         }
         val created = defaultProfiles()
         writeProfiles(mmkv, created)
         mmkv.encode(KEY_EDITING_PROFILE_ID, created.first().id)
-        return created
+        return withBuiltin(created)
     }
 
     fun getEditingProfileId(): String {
@@ -75,7 +75,9 @@ object ModelProviderConfigStore {
         ModelProviderMigration.ensureMigrated()
 
         val sanitized = buildList<ModelProviderProfile> {
-            profiles.forEach { profile ->
+            profiles
+                .filterNot { MnnLocalProviderStateStore.isBuiltinProfileId(it.id) }
+                .forEach { profile ->
                 val existing = toList()
                 val requestedId = profile.id.trim()
                 val normalizedId = when {
@@ -100,18 +102,20 @@ object ModelProviderConfigStore {
 
         val resolvedEditingId = editingProfileId
             ?.trim()
-            ?.takeIf { candidate -> sanitized.any { it.id == candidate } }
+            ?.takeIf { candidate ->
+                sanitized.any { it.id == candidate } ||
+                    MnnLocalProviderStateStore.isBuiltinProfileId(candidate)
+            }
             ?: sanitized.first().id
 
         val mmkv = MMKV.defaultMMKV()
         if (mmkv != null) {
             writeProfiles(mmkv, sanitized)
             mmkv.encode(KEY_EDITING_PROFILE_ID, resolvedEditingId)
-            sanitized.firstOrNull { it.id == resolvedEditingId }
-                ?.let { syncLegacyFlatConfig(mmkv, it) }
+            getProfile(resolvedEditingId)?.let { syncLegacyFlatConfig(mmkv, it) }
         }
 
-        return sanitized
+        return withBuiltin(sanitized)
     }
 
     fun saveProfile(
@@ -121,6 +125,7 @@ object ModelProviderConfigStore {
         apiKey: String
     ): ModelProviderProfile {
         ModelProviderMigration.ensureMigrated()
+        require(!MnnLocalProviderStateStore.isBuiltinProfileId(id)) { "builtin provider is read only" }
         val mmkv = MMKV.defaultMMKV() ?: return ModelProviderProfile(
             id = id?.trim().orEmpty().ifEmpty { DEFAULT_PROFILE_ID },
             name = name.trim().ifEmpty { DEFAULT_PROFILE_NAME },
@@ -159,7 +164,8 @@ object ModelProviderConfigStore {
 
     fun deleteProfile(profileId: String): List<ModelProviderProfile> {
         ModelProviderMigration.ensureMigrated()
-        val mmkv = MMKV.defaultMMKV() ?: return defaultProfiles()
+        require(!MnnLocalProviderStateStore.isBuiltinProfileId(profileId)) { "builtin provider is read only" }
+        val mmkv = MMKV.defaultMMKV() ?: return withBuiltin(defaultProfiles())
         val normalizedId = profileId.trim()
         val current = readProfiles(mmkv).toMutableList().ifEmpty {
             defaultProfiles().toMutableList()
@@ -174,22 +180,30 @@ object ModelProviderConfigStore {
             mmkv.encode(KEY_EDITING_PROFILE_ID, current.first().id)
             syncLegacyFlatConfig(mmkv, current.first())
         }
-        return current
+        return withBuiltin(current)
     }
 
     fun getConfig(): ModelProviderConfig {
         val profile = getEditingProfile()
+        if (profile.readOnly && MnnLocalProviderStateStore.isBuiltinProfileId(profile.id)) {
+            return MnnLocalProviderStateStore.getConfig()
+        }
         return ModelProviderConfig(
             id = profile.id,
             name = profile.name,
             baseUrl = profile.baseUrl,
             apiKey = profile.apiKey,
-            source = "profile"
+            source = "profile",
+            providerType = profile.sourceType,
+            readOnly = profile.readOnly,
+            ready = profile.ready,
+            statusText = profile.statusText
         )
     }
 
     fun saveConfig(baseUrl: String, apiKey: String) {
         val current = getEditingProfile()
+        require(!current.readOnly) { "builtin provider is read only" }
         saveProfile(
             id = current.id,
             name = current.name,
@@ -200,6 +214,7 @@ object ModelProviderConfigStore {
 
     fun clearConfig() {
         val current = getEditingProfile()
+        require(!current.readOnly) { "builtin provider is read only" }
         saveProfile(
             id = current.id,
             name = current.name,
@@ -314,6 +329,16 @@ object ModelProviderConfigStore {
         )
     }
 
+    private fun withBuiltin(profiles: List<ModelProviderProfile>): List<ModelProviderProfile> {
+        val builtIn = MnnLocalProviderStateStore.getProfile()
+        return buildList {
+            add(builtIn)
+            profiles
+                .filterNot { it.id == builtIn.id }
+                .forEach(::add)
+        }
+    }
+
     private fun generateProfileId(profiles: List<ModelProviderProfile>): String {
         var nextIndex = profiles.size + 1
         while (true) {
@@ -356,6 +381,9 @@ object ModelProviderConfigStore {
         val normalized = profiles.mapIndexedNotNull { index, profile ->
             val id = profile.id.trim().takeIf { it.isNotEmpty() }
                 ?: return@mapIndexedNotNull null
+            if (MnnLocalProviderStateStore.isBuiltinProfileId(id)) {
+                return@mapIndexedNotNull null
+            }
             ModelProviderProfile(
                 id = id,
                 name = profile.name.trim().ifEmpty { "Provider ${index + 1}" },

@@ -288,6 +288,11 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
               title: '定时',
               onTap: () => GoRouterManager.push('/task/scheduled_tasks'),
             ),
+            _buildMenuItem(
+              icon: 'assets/home/vlm_model_setting_icon.svg',
+              title: '本地模型',
+              onTap: () => GoRouterManager.push('/home/local_models'),
+            ),
             const SizedBox(height: 16),
 
             Expanded(child: _buildConversationSection()),
