@@ -1505,7 +1505,7 @@ class AssistsMessageService {
     if (normalized is Map) {
       return Map<String, dynamic>.from(normalized);
     }
-    throw Exception('OmniFlow path bundle 响应格式错误');
+    throw Exception('OmniFlow 轨迹详情响应格式错误');
   }
 
   static Future<UtgPathMutationResult> deleteUtgPath({
@@ -1574,7 +1574,7 @@ class AssistsMessageService {
     final executionContext = await getUtgBridgeExecutionContext();
     if (executionContext.bridgeBaseUrl.trim().isEmpty ||
         executionContext.bridgeToken.trim().isEmpty) {
-      throw Exception('UTG bridge 上下文不可用');
+      throw Exception('OmniFlow bridge 上下文不可用');
     }
     final decoded = await _requestUtgJson(
       method: 'POST',

@@ -173,7 +173,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         _pathsError = errorText;
       });
       if (!silent) {
-        showToast('加载 OmniFlow paths 失败：$errorText', type: ToastType.error);
+        showToast('加载 OmniFlow 轨迹失败：$errorText', type: ToastType.error);
       }
     } finally {
       if (mounted) {
@@ -523,7 +523,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.account_tree_outlined),
-                  label: Text(viewing ? '加载中...' : '查看 Path'),
+                  label: Text(viewing ? '加载中...' : '查看轨迹'),
                 ),
                 OutlinedButton.icon(
                   onPressed:
@@ -703,14 +703,11 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         children: [
           Row(
             children: [
-              const Text(
-                'Path 详情',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
+              const Text('轨迹详情', style: TextStyle(fontWeight: FontWeight.w700)),
               const Spacer(),
               OutlinedButton(
                 onPressed: () => _copyText(
-                  'path json',
+                  '轨迹 JSON',
                   const JsonEncoder.withIndent('  ').convert(payload),
                 ),
                 child: const Text('复制 JSON'),
@@ -749,10 +746,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             const SizedBox(height: 12),
           ],
           if (stepEntries.isEmpty)
-            const Text(
-              '这个 path 暂时没有 steps。',
-              style: TextStyle(color: AppColors.text70),
-            )
+            const Text('这条轨迹暂时没有步骤。', style: TextStyle(color: AppColors.text70))
           else
             ...stepEntries.map((entry) {
               final nodeId = entry.key;
@@ -1620,16 +1614,6 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     return path.assetState.trim().isEmpty ? '未分区' : path.assetState.trim();
   }
 
-  String _pathCapabilityLabel(UtgPathSummary path) {
-    if (_isTemporaryPath(path)) {
-      return '可回放 · 未沉淀 · 不参与 compile';
-    }
-    if (_isReadyPath(path)) {
-      return '可复用 · 可 compile · 可上传';
-    }
-    return '分区未知';
-  }
-
   Future<void> _controlProvider(String action) async {
     try {
       setState(() => _providerControlAction = action);
@@ -1666,7 +1650,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         return AlertDialog(
           title: const Text('记忆到 OmniFlow'),
           content: const Text(
-            '是否确定将这次执行记录记忆到 OmniFlow 临时区？\n\n记忆后可在下方 OmniFlow Path 列表继续沉淀为可 compile 资产。',
+            '是否确定将这次执行记录记忆到 OmniFlow 临时区？\n\n记忆后可在下方 OmniFlow 轨迹列表继续沉淀为可 compile 资产。',
           ),
           actions: [
             TextButton(
@@ -1778,7 +1762,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text('执行 OmniFlow Path'),
+            title: const Text('执行 OmniFlow 轨迹'),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1811,7 +1795,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   ),
                   const SizedBox(height: 12),
                   if (controllers.isEmpty)
-                    const Text('此 path 无需填写 slots。')
+                    const Text('此轨迹无需填写 slots。')
                   else
                     ...controllers.entries.map(
                       (entry) => Padding(
@@ -1870,14 +1854,14 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       );
       if (!mounted) return;
       if (!result.success) {
-        showToast(result.errorMessage ?? '上传云端 path 失败', type: ToastType.error);
+        showToast(result.errorMessage ?? '上传云端轨迹失败', type: ToastType.error);
         return;
       }
       showToast('已上传到云端：${path.pathId}', type: ToastType.success);
     } catch (e) {
       if (!mounted) return;
-      showToast('上传云端 path 失败', type: ToastType.error);
-      debugPrint('Upload cloud path failed: $e');
+      showToast('上传云端轨迹失败', type: ToastType.error);
+      debugPrint('Upload cloud trajectory failed: $e');
     } finally {
       if (mounted) {
         setState(() => _uploadingPathId = null);
@@ -1915,105 +1899,16 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _pathBundleErrorById[path.pathId] = '加载 path 详情失败：$e';
+        _pathBundleErrorById[path.pathId] = '加载轨迹详情失败：$e';
         _expandedPathId = path.pathId;
       });
-      showToast('加载 path 详情失败', type: ToastType.error);
-      debugPrint('Load OmniFlow path bundle failed: $e');
+      showToast('加载轨迹详情失败', type: ToastType.error);
+      debugPrint('Load OmniFlow trajectory bundle failed: $e');
     } finally {
       if (mounted) {
         setState(() => _viewingPathId = null);
       }
     }
-  }
-
-  Future<void> _showRunResult(UtgManualRunResult result) async {
-    final terminalSummary = result.terminalState.isEmpty
-        ? '无 terminal verify 结果'
-        : const JsonEncoder.withIndent('  ').convert(result.terminalState);
-    final rawJson = const JsonEncoder.withIndent('  ').convert(result.rawJson);
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text(result.success ? 'OmniFlow 执行成功' : 'OmniFlow 执行失败'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SelectableText('goal: ${result.goal}'),
-                const SizedBox(height: 8),
-                SelectableText('path_id: ${result.pathId}'),
-                const SizedBox(height: 8),
-                if ((result.errorCode ?? '').isNotEmpty)
-                  SelectableText('error_code: ${result.errorCode}'),
-                if ((result.errorMessage ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  SelectableText('error_message: ${result.errorMessage}'),
-                ],
-                const SizedBox(height: 12),
-                const Text(
-                  'terminal verify',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                SelectableText(
-                  terminalSummary,
-                  style: const TextStyle(fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'run logs',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                SelectableText(
-                  'canonical: ${result.canonicalRunLogPath}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                const SizedBox(height: 6),
-                SelectableText(
-                  'provider: ${result.providerRunLogPath}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => _copyText(
-                        'canonical run log',
-                        result.canonicalRunLogPath,
-                      ),
-                      child: const Text('复制 canonical'),
-                    ),
-                    OutlinedButton(
-                      onPressed: () => _copyText(
-                        'provider run log',
-                        result.providerRunLogPath,
-                      ),
-                      child: const Text('复制 provider'),
-                    ),
-                    OutlinedButton(
-                      onPressed: () => _copyText('结果 JSON', rawJson),
-                      child: const Text('复制 JSON'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   Future<void> _runPathFromDashboard(UtgPathSummary path) async {
@@ -2047,8 +1942,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       showToast(e.message ?? '获取 OmniFlow bridge 失败', type: ToastType.error);
     } catch (e) {
       if (!mounted) return;
-      showToast('执行 OmniFlow path 失败', type: ToastType.error);
-      debugPrint('Run OmniFlow path failed: $e');
+      showToast('执行 OmniFlow 轨迹失败', type: ToastType.error);
+      debugPrint('Run OmniFlow trajectory failed: $e');
     } finally {
       if (mounted) {
         setState(() => _runningPathId = null);
@@ -2111,7 +2006,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     } catch (e) {
       if (!mounted) return;
       showToast('沉淀资产失败', type: ToastType.error);
-      debugPrint('Distill OmniFlow path failed: $e');
+      debugPrint('Distill OmniFlow trajectory failed: $e');
     } finally {
       if (mounted) {
         setState(() => _distillingPathId = null);
@@ -2124,7 +2019,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('删除 OmniFlow Path'),
+          title: const Text('删除 OmniFlow 轨迹'),
           content: SelectableText(
             '确认删除 path_id=${path.pathId}？\n\n删除后会直接从当前本地 provider 的 OmniFlow store 移除。',
           ),
@@ -2173,8 +2068,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       showToast('已删除 ${path.pathId}', type: ToastType.success);
     } catch (e) {
       if (!mounted) return;
-      showToast('删除 OmniFlow path 失败', type: ToastType.error);
-      debugPrint('Delete OmniFlow path failed: $e');
+      showToast('删除 OmniFlow 轨迹失败', type: ToastType.error);
+      debugPrint('Delete OmniFlow trajectory failed: $e');
     } finally {
       if (mounted) {
         setState(() => _deletingPathId = null);
@@ -2198,7 +2093,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       );
       if (!mounted) return;
       if (!result.success) {
-        showToast(result.errorMessage ?? '下载云端 path 失败', type: ToastType.error);
+        showToast(result.errorMessage ?? '下载云端轨迹失败', type: ToastType.error);
         return;
       }
       await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
@@ -2206,18 +2101,16 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       final importedCount = result.count;
       if (pathId.isEmpty) {
         showToast(
-          importedCount > 0
-              ? '已下载全部云端 path：$importedCount 条'
-              : '云端 path 已同步，无新增条目',
+          importedCount > 0 ? '已下载全部云端轨迹：$importedCount 条' : '云端轨迹已同步，无新增条目',
           type: ToastType.success,
         );
       } else {
-        showToast('已下载云端 path：$pathId', type: ToastType.success);
+        showToast('已下载云端轨迹：$pathId', type: ToastType.success);
       }
     } catch (e) {
       if (!mounted) return;
-      showToast('下载云端 path 失败', type: ToastType.error);
-      debugPrint('Download cloud path failed: $e');
+      showToast('下载云端轨迹失败', type: ToastType.error);
+      debugPrint('Download cloud trajectory failed: $e');
     } finally {
       if (mounted) {
         setState(() => _downloadingCloudPath = false);
@@ -2288,7 +2181,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 children: [
                   _buildCard(
                     child: const Text(
-                      '这里统一处理 OmniFlow provider 的轨迹执行设置，并展示当前 provider 暴露出来的临时 raw replay 与 ready 资产路径。'
+                      '这里统一处理 OmniFlow provider 的轨迹执行设置，并展示当前 provider 暴露出来的临时 raw replay 与 ready 资产轨迹。'
                       ' `vlm_task` 的 compile-first pre-hook 也由这里控制。',
                       style: TextStyle(
                         fontSize: 13,
@@ -2406,7 +2299,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                             border: Border.all(color: const Color(0xFFFFD89B)),
                           ),
                           child: const Text(
-                            '当前页的启动/重启/停止按钮只控制手机内 provider。若你现在使用的是 Mac + adb reverse 调试模式，请在开发机运行 bash scripts/start_oob_utg_host_bridge.sh <serial>，然后这里再点刷新 paths。',
+                            '当前页的启动/重启/停止按钮只控制手机内 provider。若你现在使用的是 Mac + adb reverse 调试模式，请在开发机运行 bash scripts/start_oob_utg_host_bridge.sh <serial>，然后这里再点刷新轨迹。',
                             style: TextStyle(
                               fontSize: 12,
                               height: 1.5,
@@ -2427,7 +2320,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                       baseUrl: _baseUrlController.text.trim(),
                                     ),
                               icon: const Icon(Icons.sync_outlined),
-                              label: const Text('刷新 paths'),
+                              label: const Text('刷新轨迹'),
                             ),
                             OutlinedButton.icon(
                               onPressed:
@@ -2515,7 +2408,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          '下载云端 Path',
+                          '下载云端轨迹',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
@@ -2559,7 +2452,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   )
                                 : const Icon(Icons.cloud_download_outlined),
                             label: Text(
-                              _downloadingCloudPath ? '下载中...' : '下载云端 Path',
+                              _downloadingCloudPath ? '下载中...' : '下载云端轨迹',
                             ),
                           ),
                         ),
@@ -2661,7 +2554,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           ),
                           const SizedBox(height: 8),
                           const Text(
-                            'OmniFlow provider 目前还没有记录到 canonical run(goal) 日志，先执行一次 `vlm_task` 或手动运行 path。',
+                            'OmniFlow provider 目前还没有记录到 canonical run(goal) 日志，先执行一次 `vlm_task` 或手动运行轨迹。',
                             style: TextStyle(
                               fontSize: 13,
                               color: AppColors.text70,
@@ -2768,7 +2661,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   Row(
                     children: [
                       const Text(
-                        '已有 OmniFlow Paths',
+                        '已有 OmniFlow 轨迹',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
@@ -2798,7 +2691,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                             controller: _pathSearchController,
                             onChanged: (_) => setState(() {}),
                             decoration: InputDecoration(
-                              labelText: '搜索 path',
+                              labelText: '搜索轨迹',
                               hintText: '按 path_id、描述、slot、node 过滤',
                               prefixIcon: const Icon(Icons.search_outlined),
                               suffixIcon: searchQuery.isEmpty
@@ -2828,7 +2721,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'OmniFlow path 列表加载失败',
+                            'OmniFlow 轨迹列表加载失败',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
@@ -2849,7 +2742,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   else if (allPaths.isEmpty)
                     _buildCard(
                       child: const Text(
-                        '当前 provider 没有返回可展示的 OmniFlow path。确认 OmniFlow provider 已启动、Base URL 正确，并且 provider 能访问到临时区或资产区轨迹数据。',
+                        '当前 provider 没有返回可展示的 OmniFlow 轨迹。确认 OmniFlow provider 已启动、Base URL 正确，并且 provider 能访问到临时区或资产区轨迹数据。',
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.text70,
@@ -2860,7 +2753,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   else if (filteredPaths.isEmpty)
                     _buildCard(
                       child: Text(
-                        '没有匹配到 path：${_pathSearchController.text.trim()}',
+                        '没有匹配到轨迹：${_pathSearchController.text.trim()}',
                         style: const TextStyle(
                           fontSize: 13,
                           color: AppColors.text70,
@@ -2949,7 +2842,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                               children: [
                                 const Expanded(
                                   child: Text(
-                                    '资产区 Ready Paths',
+                                    '资产区 Ready 轨迹',
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
@@ -3017,7 +2910,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           children: [
                             const Expanded(
                               child: Text(
-                                '未分区 Paths',
+                                '未分区轨迹',
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
