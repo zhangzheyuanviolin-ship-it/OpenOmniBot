@@ -20,6 +20,7 @@ import com.alibaba.mnnllm.android.utils.Permissions.REQUEST_RECORD_AUDIO_PERMISS
 import com.k2fsa.sherpa.mnn.OnlineCtcFstDecoderConfig
 import com.k2fsa.sherpa.mnn.OnlineRecognizer
 import com.k2fsa.sherpa.mnn.OnlineRecognizerConfig
+import com.k2fsa.sherpa.mnn.OnlineStream
 import com.k2fsa.sherpa.mnn.getEndpointConfig
 import com.k2fsa.sherpa.mnn.getFeatureConfig
 import com.k2fsa.sherpa.mnn.setAsrModelDir
@@ -146,70 +147,79 @@ class AsrService(
 
     private fun processSamples() {
         Log.i(TAG, "processing samples")
-        val stream = recognizer!!.createStream("")
+        val activeRecognizer = recognizer ?: return
+        val stream = activeRecognizer.createStream("")
         val interval = 0.1 // i.e., 100 ms
         val bufferSize = (interval * sampleRateInHz).toInt() // in samples
         val buffer = ShortArray(bufferSize)
 
-        while (isRecording.get() && audioRecord != null) {
-            val ret = audioRecord!!.read(buffer, 0, buffer.size)
-            if (ret > 0) {
-                // If muted, replace the buffer content with zeros (silence) to prevent ASR from processing audio
-                if (isMuted.get()) {
-                    buffer.fill(0)
-                }
-                chunkCount.incrementAndGet()
-                val samples = FloatArray(ret) { i -> buffer[i] / 32768.0f }
-                utteranceAudioTimeSec += ret.toDouble() / sampleRateInHz
-                val tStartProc = System.nanoTime()
-                val tAcceptStart = tStartProc
-                stream.acceptWaveform(samples, sampleRateInHz)
-                val tAcceptEnd = System.nanoTime()
-                acceptTimeNs.addAndGet(tAcceptEnd - tAcceptStart)
-                while (recognizer!!.isReady(stream)) {
-                    val tDecodeStart = System.nanoTime()
-                    recognizer!!.decode(stream)
-                    val tDecodeEnd = System.nanoTime()
-                    decodeTimeNs.addAndGet(tDecodeEnd - tDecodeStart)
-                    decodeCount.incrementAndGet()
-                }
-                val tEndProc = System.nanoTime()
-                utteranceProcTimeNs += (tEndProc - tStartProc)
-
-                val isEndpoint = recognizer!!.isEndpoint(stream)
-                var text = recognizer!!.getResult(stream).text
-                // Check if any speech is detected in the current stream to trigger early interruption
-                if (text.isNotBlank()) {
-                    onSpeechDetected?.invoke()
-                }
-
-                if (isEndpoint && recognizer!!.config.modelConfig.paraformer.encoder.isNotEmpty()) {
-                    val tailPaddings = FloatArray((0.8 * sampleRateInHz).toInt())
-                    stream.acceptWaveform(tailPaddings, sampleRateInHz)
-                    while (recognizer!!.isReady(stream)) {
-                        recognizer!!.decode(stream)
+        try {
+            while (isRecording.get() && audioRecord != null) {
+                val ret = audioRecord!!.read(buffer, 0, buffer.size)
+                if (ret > 0) {
+                    // If muted, replace the buffer content with zeros (silence) to prevent ASR from processing audio
+                    if (isMuted.get()) {
+                        buffer.fill(0)
                     }
-                    text = recognizer!!.getResult(stream).text
-                }
+                    chunkCount.incrementAndGet()
+                    val samples = FloatArray(ret) { i -> buffer[i] / 32768.0f }
+                    utteranceAudioTimeSec += ret.toDouble() / sampleRateInHz
+                    val tStartProc = System.nanoTime()
+                    val tAcceptStart = tStartProc
+                    stream.acceptWaveform(samples, sampleRateInHz)
+                    val tAcceptEnd = System.nanoTime()
+                    acceptTimeNs.addAndGet(tAcceptEnd - tAcceptStart)
+                    while (activeRecognizer.isReady(stream)) {
+                        val tDecodeStart = System.nanoTime()
+                        activeRecognizer.decode(stream)
+                        val tDecodeEnd = System.nanoTime()
+                        decodeTimeNs.addAndGet(tDecodeEnd - tDecodeStart)
+                        decodeCount.incrementAndGet()
+                    }
+                    val tEndProc = System.nanoTime()
+                    utteranceProcTimeNs += (tEndProc - tStartProc)
 
-                if (isEndpoint) {
-                    val T_proc = utteranceProcTimeNs / 1_000_000_000.0
-                    val T_audio = utteranceAudioTimeSec
-                    val rtf = if (T_audio > 0) T_proc / T_audio else 0.0
-                    totalRtf += rtf
-                    utteranceCount += 1
+                    val isEndpoint = activeRecognizer.isEndpoint(stream)
+                    var text = activeRecognizer.getResult(stream).text
+                    // Check if any speech is detected in the current stream to trigger early interruption
+                    if (text.isNotBlank()) {
+                        onSpeechDetected?.invoke()
+                    }
+
+                    if (isEndpoint && activeRecognizer.config.modelConfig.paraformer.encoder.isNotEmpty()) {
+                        val tailPaddings = FloatArray((0.8 * sampleRateInHz).toInt())
+                        stream.acceptWaveform(tailPaddings, sampleRateInHz)
+                        while (activeRecognizer.isReady(stream)) {
+                            activeRecognizer.decode(stream)
+                        }
+                        text = activeRecognizer.getResult(stream).text
+                    }
+
+                    if (isEndpoint) {
+                        val T_proc = utteranceProcTimeNs / 1_000_000_000.0
+                        val T_audio = utteranceAudioTimeSec
+                        val rtf = if (T_audio > 0) T_proc / T_audio else 0.0
+                        totalRtf += rtf
+                        utteranceCount += 1
 //                    Log.i(TAG, "Utterance RTF = ${"%.3f".format(rtf)} over ${"%.2f".format(T_audio)}s audio")
-                    recognizer!!.reset(stream)
-                    if (text.isNotEmpty()) {
-                        onRecognizeText?.invoke(text)
-                        Log.d(TAG, "recognize text: $text")
+                        activeRecognizer.reset(stream)
+                        if (text.isNotEmpty()) {
+                            onRecognizeText?.invoke(text)
+                            Log.d(TAG, "recognize text: $text")
+                        }
+                        utteranceProcTimeNs = 0
+                        utteranceAudioTimeSec = 0.0
                     }
-                    utteranceProcTimeNs = 0
-                    utteranceAudioTimeSec = 0.0
                 }
             }
+            val finalText = flushPendingRecognition(activeRecognizer, stream)
+            if (finalText.isNotEmpty()) {
+                onRecognizeText?.invoke(finalText)
+                Log.d(TAG, "recognize final text on stop: $finalText")
+            }
+        } finally {
+            stream.release()
         }
-        stream.release()
         val totalChunks = chunkCount.get().takeIf { it > 0 } ?: 1
         val totalDecodes = decodeCount.get().takeIf { it > 0 } ?: 1
         val avgAcceptMs = acceptTimeNs.get() / totalChunks / 1_000_000.0
@@ -229,6 +239,23 @@ class AsrService(
         utteranceCount = 0
     }
 
+    private fun flushPendingRecognition(recognizer: OnlineRecognizer, stream: OnlineStream): String {
+        return runCatching {
+            if (recognizer.config.modelConfig.paraformer.encoder.isNotEmpty()) {
+                val tailPaddings = FloatArray((0.5f * sampleRateInHz).toInt())
+                stream.acceptWaveform(tailPaddings, sampleRateInHz)
+            }
+            stream.inputFinished()
+            while (recognizer.isReady(stream)) {
+                recognizer.decode(stream)
+            }
+            recognizer.getResult(stream).text.trim()
+        }.getOrElse { error ->
+            Log.w(TAG, "Failed to flush pending ASR recognition", error)
+            ""
+        }
+    }
+
     fun stopRecord() {
         Log.i(TAG, "stopRecord isRecording: ${isRecording.get()}")
         if (!isRecording.get()) {
@@ -236,10 +263,23 @@ class AsrService(
         }
         isRecording.set(false)
         if (audioRecord != null) {
-            audioRecord!!.stop()
+            runCatching {
+                audioRecord!!.stop()
+            }.onFailure { error ->
+                Log.w(TAG, "Failed to stop AudioRecord cleanly", error)
+            }
             audioRecord!!.release()
             audioRecord = null
             Log.i(TAG, "Stopped recording")
+        }
+        val thread = recordingThread
+        recordingThread = null
+        if (thread != null && thread !== Thread.currentThread()) {
+            runCatching {
+                thread.join(800)
+            }.onFailure { error ->
+                Log.w(TAG, "Failed waiting for recording thread to finish", error)
+            }
         }
     }
 

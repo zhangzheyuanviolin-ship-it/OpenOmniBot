@@ -84,13 +84,29 @@ class MnnLocalSpeechRecognitionManager(
     }
 
     override fun stop(result: MethodChannel.Result) {
-        asrService?.stopRecord()
-        result.success(null)
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                asrService?.stopRecord()
+            }.onSuccess {
+                handler.post {
+                    eventSink?.endOfStream()
+                    result.success(null)
+                }
+            }.onFailure { error ->
+                handler.post {
+                    eventSink?.endOfStream()
+                    result.error(
+                        NOT_READY_CODE,
+                        error.message ?: "MNN 本地 ASR 停止失败",
+                        null
+                    )
+                }
+            }
+        }
     }
 
     override fun stopSendingOnly(result: MethodChannel.Result) {
-        asrService?.stopRecord()
-        result.success(null)
+        stop(result)
     }
 
     override fun release() {
