@@ -52,6 +52,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 object MnnLocalModelsManager {
     private const val TAG = "MnnLocalModelsManager"
+    private data class MarketListEntry(
+        val item: ModelMarketItem,
+        val category: String,
+    )
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val generationMutex = Mutex()
     private val generationCancelled = AtomicBoolean(false)
@@ -237,35 +242,15 @@ object MnnLocalModelsManager {
         val config = loadMarketConfig(refresh)
         val normalizedCategory = normalizeCategory(category)
         val normalizedQuery = query?.trim()?.lowercase(Locale.getDefault()).orEmpty()
-        val allItems = when (normalizedCategory) {
-            "asr" -> config.asrModels
-            "tts" -> config.ttsModels
-            "libs" -> config.libs
-            "all", "llm" -> if (normalizedCategory == "llm") config.llmModels else {
-                config.llmModels + config.asrModels + config.ttsModels + config.libs
-            }
-            else -> config.llmModels
-        }
-        val filtered = allItems.filter { item ->
-            if (normalizedQuery.isEmpty()) {
-                return@filter true
-            }
-            buildList {
-                add(item.modelName)
-                add(item.modelId)
-                add(item.vendor)
-                add(item.description.orEmpty())
-                addAll(item.tags)
-                addAll(item.extraTags)
-            }.any { value ->
-                value.lowercase(Locale.getDefault()).contains(normalizedQuery)
-            }
+        val entries = marketEntriesForCategory(config, normalizedCategory)
+        val filtered = entries.filter { entry ->
+            matchesOriginalMarketSearch(entry.item, normalizedQuery)
         }
         return mapOf(
             "source" to MnnLocalConfigStore.getDownloadProviderString(),
             "availableSources" to ModelSources.sourceList,
             "category" to normalizedCategory,
-            "models" to filtered.map { it.toMarketMap() },
+            "models" to filtered.map { it.item.toMarketMap(it.category) },
         )
     }
 
@@ -847,6 +832,11 @@ object MnnLocalModelsManager {
         if (cachedMarketItems.isEmpty()) {
             return baseModels
         }
+        val cachedConfig = ModelRepository.getModelMarketDataV2()
+        val libIds = cachedConfig?.libs
+            ?.mapNotNull { it.safeModelId().takeIf(String::isNotBlank) }
+            ?.toSet()
+            .orEmpty()
 
         val existingIds = baseModels.mapNotNull { it.modelItem.modelId }.toMutableSet()
         val pinnedModels = PreferenceUtils.getPinnedModels(context)
@@ -856,7 +846,7 @@ object MnnLocalModelsManager {
         val supplementalModels = buildList {
             cachedMarketItems.forEach { marketItem ->
                 runCatching {
-                    if (!shouldSupplementInstalledModel(marketItem)) {
+                    if (!shouldSupplementInstalledModel(marketItem, libIds)) {
                         return@runCatching
                     }
 
@@ -888,10 +878,10 @@ object MnnLocalModelsManager {
 
                     val modelItem = ModelItem(
                         modelId = modelId,
-                        modelName = marketItem.modelName,
+                        modelName = marketItem.safeModelName(),
                         localPath = downloadedFile.absolutePath,
-                        tags = marketItem.tags,
-                        vendor = marketItem.vendor,
+                        tags = marketItem.safeTags(),
+                        vendor = marketItem.safeVendor(),
                         sizeB = marketItem.fileSize,
                         modelMarketItem = marketItem,
                     )
@@ -933,18 +923,24 @@ object MnnLocalModelsManager {
         )
     }
 
-    private fun shouldSupplementInstalledModel(item: ModelMarketItem): Boolean {
-        return item.categories.any { it.equals("libs", ignoreCase = true) } ||
-            ModelTypeUtils.isAsrModelByTags(item.tags) ||
-            ModelTypeUtils.isTtsModelByTags(item.tags)
+    private fun shouldSupplementInstalledModel(
+        item: ModelMarketItem,
+        libIds: Set<String>,
+    ): Boolean {
+        val safeModelId = item.safeModelId()
+        val safeTags = item.safeTags()
+        return safeModelId in libIds ||
+            item.safeCategories().any { it.equals("libs", ignoreCase = true) } ||
+            ModelTypeUtils.isAsrModelByTags(safeTags) ||
+            ModelTypeUtils.isTtsModelByTags(safeTags)
     }
 
     private fun buildMarketCandidateIds(item: ModelMarketItem): List<String> {
         val candidateIds = linkedSetOf<String>()
-        if (item.modelId.isNotBlank()) {
-            candidateIds.add(item.modelId)
+        if (item.safeModelId().isNotBlank()) {
+            candidateIds.add(item.safeModelId())
         }
-        item.sources.forEach { (source, repoPath) ->
+        item.safeSources().forEach { (source, repoPath) ->
             if (source.isNotBlank() && repoPath.isNotBlank()) {
                 candidateIds.add("$source/$repoPath")
             }
@@ -1019,13 +1015,11 @@ object MnnLocalModelsManager {
         val tags = modelItem.getTags()
         val modelId = modelItem.modelId.orEmpty()
         val modelName = modelItem.modelName ?: ModelUtils.getModelName(modelId).orEmpty()
+        val marketItem = modelItem.modelMarketItem as? ModelMarketItem
         return when {
             ModelTypeUtils.isAsrModelByTags(tags) -> "asr"
             ModelTypeUtils.isTtsModelByTags(tags) || ModelTypeUtils.isTtsModel(modelName) -> "tts"
-            modelItem.modelMarketItem is ModelMarketItem &&
-                ((modelItem.modelMarketItem as ModelMarketItem).categories.any {
-                    it.equals("libs", ignoreCase = true)
-                }) -> "libs"
+            marketItem != null && isLibraryMarketItem(marketItem) -> "libs"
             ModelTypeUtils.isDiffusionModel(modelName) -> "diffusion"
             else -> "llm"
         }
@@ -1038,7 +1032,7 @@ object MnnLocalModelsManager {
         val marketItem = modelItem.modelMarketItem as? ModelMarketItem
         val extraTags = buildList {
             addAll(modelItem.getExtraTags())
-            marketItem?.extraTags?.forEach { tag ->
+            marketItem?.safeExtraTags()?.forEach { tag ->
                 if (!contains(tag)) {
                     add(tag)
                 }
@@ -1052,7 +1046,7 @@ object MnnLocalModelsManager {
         return mapOf(
             "id" to modelId,
             "name" to displayName,
-            "description" to marketItem?.description.orEmpty(),
+            "description" to marketItem?.safeDescription().orEmpty(),
             "path" to modelItem.localPath.orEmpty(),
             "source" to sourceTag.orEmpty(),
             "category" to category,
@@ -1069,35 +1063,142 @@ object MnnLocalModelsManager {
                 CurrentModelManager.getCurrentModelId() == modelId),
             "tags" to modelItem.getTags(),
             "extraTags" to extraTags,
-            "vendor" to modelItem.vendor.orEmpty(),
+            "vendor" to marketItem?.safeVendor().orEmpty().ifBlank { modelItem.vendor.orEmpty() },
             "download" to downloadInfo?.toMap(),
         )
     }
 
-    private fun ModelMarketItem.toMarketMap(): Map<String, Any?> {
-        val downloadInfo = contextDownloadManager()?.getDownloadInfo(modelId)
-        val category = when {
-            categories.any { it.equals("libs", ignoreCase = true) } -> "libs"
-            ModelTypeUtils.isAsrModelByTags(tags) -> "asr"
-            ModelTypeUtils.isTtsModelByTags(tags) -> "tts"
-            ModelTypeUtils.isDiffusionModel(modelName) -> "diffusion"
+    private fun ModelMarketItem.toMarketMap(categoryOverride: String? = null): Map<String, Any?> {
+        val safeModelId = safeModelId()
+        val safeModelName = safeModelName()
+        val safeTags = safeTags()
+        val safeExtraTags = safeExtraTags()
+        val safeVendor = safeVendor()
+        val safeDescription = safeDescription()
+        val safeSource = safeCurrentSource()
+        val safeRepoPath = safeCurrentRepoPath()
+        val resolvedFileSize = fileSize.takeIf { it > 0L }
+            ?: contextDownloadManager()?.getDownloadInfo(safeModelId)?.totalSize
+            ?: 0L
+        val downloadInfo = contextDownloadManager()?.getDownloadInfo(safeModelId)
+        val category = categoryOverride ?: when {
+            isLibraryMarketItem(this) -> "libs"
+            ModelTypeUtils.isAsrModelByTags(safeTags) -> "asr"
+            ModelTypeUtils.isTtsModelByTags(safeTags) -> "tts"
+            ModelTypeUtils.isDiffusionModel(safeModelName) -> "diffusion"
             else -> "llm"
         }
         return mapOf(
-            "id" to modelId,
-            "name" to modelName,
-            "vendor" to vendor,
-            "description" to description.orEmpty(),
+            "id" to safeModelId,
+            "name" to safeModelName,
+            "vendor" to safeVendor,
+            "description" to safeDescription,
             "category" to category,
-            "tags" to tags,
-            "extraTags" to extraTags,
-            "fileSize" to fileSize,
+            "tags" to safeTags,
+            "extraTags" to safeExtraTags,
+            "fileSize" to resolvedFileSize,
             "sizeB" to sizeB,
-            "formattedSize" to formattedFileSize(fileSize),
-            "source" to currentSource,
-            "repoPath" to currentRepoPath,
+            "formattedSize" to formattedFileSize(resolvedFileSize),
+            "source" to safeSource,
+            "repoPath" to safeRepoPath,
             "download" to downloadInfo?.toMap(),
         )
+    }
+
+    private fun marketEntriesForCategory(
+        config: ModelMarketConfig,
+        normalizedCategory: String,
+    ): List<MarketListEntry> {
+        val llmEntries = config.llmModels.map { MarketListEntry(it, "llm") }
+        val asrEntries = config.asrModels.map { MarketListEntry(it, "asr") }
+        val ttsEntries = config.ttsModels.map { MarketListEntry(it, "tts") }
+        val libsEntries = config.libs.map { MarketListEntry(it, "libs") }
+        return when (normalizedCategory) {
+            "asr" -> asrEntries
+            "tts" -> ttsEntries
+            "libs" -> libsEntries
+            "all" -> llmEntries + asrEntries + ttsEntries + libsEntries
+            "diffusion", "llm" -> llmEntries
+            else -> llmEntries
+        }
+    }
+
+    private fun matchesOriginalMarketSearch(item: ModelMarketItem, normalizedQuery: String): Boolean {
+        if (normalizedQuery.isBlank()) {
+            return true
+        }
+        val locale = Locale.getDefault()
+        return item.safeModelName().lowercase(locale).contains(normalizedQuery) ||
+            item.safeDescription().lowercase(locale).contains(normalizedQuery) ||
+            item.safeTags().any { it.lowercase(locale).contains(normalizedQuery) }
+    }
+
+    private fun isLibraryMarketItem(item: ModelMarketItem): Boolean {
+        val safeModelId = item.safeModelId()
+        return item.safeCategories().any { it.equals("libs", ignoreCase = true) } ||
+            ModelRepository.getModelMarketDataV2()?.libs?.any { lib ->
+                lib.safeModelId() == safeModelId && safeModelId.isNotBlank()
+            } == true
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun ModelMarketItem.safeTags(): List<String> {
+        return runCatching {
+            (tags as? List<*>)?.mapNotNull { it?.toString()?.trim() }?.filter(String::isNotEmpty)
+        }.getOrNull().orEmpty()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun ModelMarketItem.safeExtraTags(): List<String> {
+        return runCatching {
+            (extraTags as? List<*>)?.mapNotNull { it?.toString()?.trim() }?.filter(String::isNotEmpty)
+        }.getOrNull().orEmpty()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun ModelMarketItem.safeCategories(): List<String> {
+        return runCatching {
+            (categories as? List<*>)?.mapNotNull { it?.toString()?.trim() }?.filter(String::isNotEmpty)
+        }.getOrNull().orEmpty()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun ModelMarketItem.safeSources(): Map<String, String> {
+        return runCatching {
+            (sources as? Map<*, *>)?.entries?.mapNotNull { entry ->
+                val key = entry.key?.toString()?.trim().orEmpty()
+                val value = entry.value?.toString()?.trim().orEmpty()
+                if (key.isEmpty() || value.isEmpty()) {
+                    null
+                } else {
+                    key to value
+                }
+            }?.toMap()
+        }.getOrNull().orEmpty()
+    }
+
+    private fun ModelMarketItem.safeModelName(): String {
+        return runCatching { modelName }.getOrNull().orEmpty()
+    }
+
+    private fun ModelMarketItem.safeVendor(): String {
+        return runCatching { vendor }.getOrNull().orEmpty()
+    }
+
+    private fun ModelMarketItem.safeDescription(): String {
+        return runCatching { description }.getOrNull().orEmpty()
+    }
+
+    private fun ModelMarketItem.safeModelId(): String {
+        return runCatching { modelId }.getOrNull().orEmpty()
+    }
+
+    private fun ModelMarketItem.safeCurrentSource(): String {
+        return runCatching { currentSource }.getOrNull().orEmpty()
+    }
+
+    private fun ModelMarketItem.safeCurrentRepoPath(): String {
+        return runCatching { currentRepoPath }.getOrNull().orEmpty()
     }
 
     private fun formattedFileSize(bytes: Long): String {
