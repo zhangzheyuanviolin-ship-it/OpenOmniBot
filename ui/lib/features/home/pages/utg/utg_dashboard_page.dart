@@ -90,7 +90,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       showToast(e.message ?? '加载 OmniFlow 配置失败', type: ToastType.error);
     } catch (e) {
       showToast('加载 OmniFlow 配置失败', type: ToastType.error);
-      debugPrint('Load UTG config failed: $e');
+      debugPrint('Load OmniFlow config failed: $e');
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -138,7 +138,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       showToast(e.message ?? '保存 OmniFlow 配置失败', type: ToastType.error);
     } catch (e) {
       showToast('保存 OmniFlow 配置失败', type: ToastType.error);
-      debugPrint('Save UTG config failed: $e');
+      debugPrint('Save OmniFlow config failed: $e');
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -1757,7 +1757,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       }
       if (!mounted) return;
       showToast('记忆到 OmniFlow 失败', type: ToastType.error);
-      debugPrint('Convert run log to UTG failed: $e');
+      debugPrint('Convert run log to OmniFlow failed: $e');
     } finally {
       if (mounted) {
         setState(() => _importingRunId = null);
@@ -1919,7 +1919,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         _expandedPathId = path.pathId;
       });
       showToast('加载 path 详情失败', type: ToastType.error);
-      debugPrint('Load UTG path bundle failed: $e');
+      debugPrint('Load OmniFlow path bundle failed: $e');
     } finally {
       if (mounted) {
         setState(() => _viewingPathId = null);
@@ -2048,7 +2048,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     } catch (e) {
       if (!mounted) return;
       showToast('执行 OmniFlow path 失败', type: ToastType.error);
-      debugPrint('Run UTG path failed: $e');
+      debugPrint('Run OmniFlow path failed: $e');
     } finally {
       if (mounted) {
         setState(() => _runningPathId = null);
@@ -2111,7 +2111,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     } catch (e) {
       if (!mounted) return;
       showToast('沉淀资产失败', type: ToastType.error);
-      debugPrint('Distill UTG path failed: $e');
+      debugPrint('Distill OmniFlow path failed: $e');
     } finally {
       if (mounted) {
         setState(() => _distillingPathId = null);
@@ -2126,7 +2126,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         return AlertDialog(
           title: const Text('删除 OmniFlow Path'),
           content: SelectableText(
-            '确认删除 path_id=${path.pathId}？\n\n删除后会直接从当前本地 provider 的 UTG store 移除。',
+            '确认删除 path_id=${path.pathId}？\n\n删除后会直接从当前本地 provider 的 OmniFlow store 移除。',
           ),
           actions: [
             TextButton(
@@ -2174,7 +2174,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     } catch (e) {
       if (!mounted) return;
       showToast('删除 OmniFlow path 失败', type: ToastType.error);
-      debugPrint('Delete UTG path failed: $e');
+      debugPrint('Delete OmniFlow path failed: $e');
     } finally {
       if (mounted) {
         setState(() => _deletingPathId = null);
@@ -2288,7 +2288,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 children: [
                   _buildCard(
                     child: const Text(
-                      '这里统一处理 OmniCloud provider 的轨迹执行设置，并展示当前 provider 暴露出来的临时 raw replay 与 ready 资产路径。'
+                      '这里统一处理 OmniFlow provider 的轨迹执行设置，并展示当前 provider 暴露出来的临时 raw replay 与 ready 资产路径。'
                       ' `vlm_task` 的 compile-first pre-hook 也由这里控制。',
                       style: TextStyle(
                         fontSize: 13,
@@ -2353,7 +2353,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         const SizedBox(height: 8),
                         _buildInputField(
                           controller: _baseUrlController,
-                          label: 'OmniCloud Base URL',
+                          label: 'OmniFlow Base URL',
                           hint: 'http://127.0.0.1:19070',
                         ),
                         const SizedBox(height: 12),
@@ -2367,7 +2367,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         _buildInputField(
                           controller: _workingDirectoryController,
                           label: 'Working Directory',
-                          hint: '/data/data/com.termux/files/home/OmniCloud',
+                          hint: '/data/data/com.termux/files/home/omniflow-utg',
                         ),
                         const SizedBox(height: 8),
                         _buildInfoRow(
@@ -2523,7 +2523,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          '本地 provider 会从另一台 OmniCloud provider 拉取单条 `/paths/{path_id}/bundle`，或在 path_id 留空时先拉 `/paths` 再全量同步。',
+                          '本地 provider 会从另一台 OmniFlow provider 拉取单条 `/paths/{path_id}/bundle`，或在 path_id 留空时先拉 `/paths` 再全量同步。',
                           style: TextStyle(
                             fontSize: 13,
                             color: AppColors.text70,
@@ -2661,7 +2661,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           ),
                           const SizedBox(height: 8),
                           const Text(
-                            'OmniCloud 目前还没有记录到 canonical run(goal) 日志，先执行一次 `vlm_task` 或手动运行 path。',
+                            'OmniFlow provider 目前还没有记录到 canonical run(goal) 日志，先执行一次 `vlm_task` 或手动运行 path。',
                             style: TextStyle(
                               fontSize: 13,
                               color: AppColors.text70,
@@ -2849,7 +2849,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   else if (allPaths.isEmpty)
                     _buildCard(
                       child: const Text(
-                        '当前 provider 没有返回可展示的 OmniFlow path。确认 OmniCloud 已启动、Base URL 正确，并且 provider 能访问到临时区或资产区轨迹数据。',
+                        '当前 provider 没有返回可展示的 OmniFlow path。确认 OmniFlow provider 已启动、Base URL 正确，并且 provider 能访问到临时区或资产区轨迹数据。',
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.text70,

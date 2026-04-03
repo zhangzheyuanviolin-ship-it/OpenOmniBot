@@ -692,7 +692,7 @@ String? _resolvedRouteLabel({
   required String compileStatus,
 }) {
   if (executionRoute == 'utg' || compileStatus == 'hit') {
-    return 'UTG';
+    return 'OmniFlow';
   }
   if (executionRoute == 'vlm' && compileStatus == 'miss') {
     return 'VLM';
