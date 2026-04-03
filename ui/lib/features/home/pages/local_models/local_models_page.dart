@@ -27,6 +27,8 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   final TextEditingController _marketSearchController = TextEditingController();
   final TextEditingController _portController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
+  final FocusNode _portFocusNode = FocusNode();
+  final FocusNode _apiKeyFocusNode = FocusNode();
   final TextEditingController _benchmarkPromptController =
       TextEditingController(text: '512');
   final TextEditingController _benchmarkGenerateController =
@@ -36,6 +38,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
 
   StreamSubscription<MnnLocalEvent>? _eventSubscription;
   Timer? _pollTimer;
+  Timer? _configSaveDebounce;
 
   MnnLocalConfig? _config;
   MnnLocalBenchmarkState? _benchmarkState;
@@ -45,7 +48,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   bool _loadingInstalled = true;
   bool _loadingMarket = true;
   bool _loadingConfig = true;
-  bool _savingConfig = false;
+  bool _togglingApiService = false;
   bool _startingBenchmark = false;
 
   String _installedCategory = 'all';
@@ -62,6 +65,8 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       initialIndex: _tabIndexFromName(widget.initialTab),
     );
     _tabController.addListener(_handleTabChanged);
+    _portFocusNode.addListener(_handleServiceFieldFocusChanged);
+    _apiKeyFocusNode.addListener(_handleServiceFieldFocusChanged);
     _eventSubscription = MnnLocalModelsService.eventStream.listen(_handleEvent);
     _bootstrap();
     _startPolling();
@@ -70,6 +75,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _configSaveDebounce?.cancel();
     _eventSubscription?.cancel();
     _tabController
       ..removeListener(_handleTabChanged)
@@ -78,6 +84,12 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     _marketSearchController.dispose();
     _portController.dispose();
     _apiKeyController.dispose();
+    _portFocusNode
+      ..removeListener(_handleServiceFieldFocusChanged)
+      ..dispose();
+    _apiKeyFocusNode
+      ..removeListener(_handleServiceFieldFocusChanged)
+      ..dispose();
     _benchmarkPromptController.dispose();
     _benchmarkGenerateController.dispose();
     _benchmarkRepeatController.dispose();
@@ -95,6 +107,69 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       default:
         return _LocalModelsTab.service.index;
     }
+  }
+
+  List<MnnLocalModel> get _filteredInstalledModels {
+    final normalizedQuery = _installedSearchController.text
+        .trim()
+        .toLowerCase();
+    return _installedModels.where((item) {
+      if (_installedCategory != 'all' && item.category != _installedCategory) {
+        return false;
+      }
+      if (normalizedQuery.isEmpty) {
+        return true;
+      }
+      final haystacks = <String>[
+        item.name,
+        item.id,
+        item.vendor,
+        item.description,
+        item.path,
+        ...item.tags,
+        ...item.extraTags,
+      ];
+      return haystacks.any(
+        (value) => value.toLowerCase().contains(normalizedQuery),
+      );
+    }).toList();
+  }
+
+  List<MnnLocalModel> get _installedAsrModels =>
+      _installedModels.where((item) => item.category == 'asr').toList();
+
+  List<MnnLocalModel> get _installedTtsModels =>
+      _installedModels.where((item) => item.category == 'tts').toList();
+
+  void _syncConfigControllers(MnnLocalConfig config) {
+    if (!_portFocusNode.hasFocus &&
+        _portController.text != config.apiPort.toString()) {
+      _portController.text = config.apiPort.toString();
+    }
+    if (!_apiKeyFocusNode.hasFocus && _apiKeyController.text != config.apiKey) {
+      _apiKeyController.text = config.apiKey;
+    }
+  }
+
+  void _handleServiceFieldFocusChanged() {
+    if (!_portFocusNode.hasFocus && !_apiKeyFocusNode.hasFocus) {
+      _scheduleServiceConfigSave(immediate: true);
+    }
+  }
+
+  void _scheduleServiceConfigSave({
+    Duration delay = const Duration(milliseconds: 500),
+    bool immediate = false,
+  }) {
+    _configSaveDebounce?.cancel();
+    if (immediate) {
+      unawaited(_saveServiceConfig(silent: true));
+      return;
+    }
+    _configSaveDebounce = Timer(
+      delay,
+      () => unawaited(_saveServiceConfig(silent: true)),
+    );
   }
 
   Future<void> _bootstrap() async {
@@ -124,12 +199,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
           _benchmarkModelId = llmModels.isNotEmpty ? llmModels.first.id : null;
         }
       });
-      if (_portController.text != overview.config.apiPort.toString()) {
-        _portController.text = overview.config.apiPort.toString();
-      }
-      if (_apiKeyController.text != overview.config.apiKey) {
-        _apiKeyController.text = overview.config.apiKey;
-      }
+      _syncConfigControllers(overview.config);
     } catch (_) {
       await Future.wait([
         _refreshConfig(silent: true),
@@ -191,12 +261,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         _config = config;
         _loadingConfig = false;
       });
-      if (_portController.text != config.apiPort.toString()) {
-        _portController.text = config.apiPort.toString();
-      }
-      if (_apiKeyController.text != config.apiKey) {
-        _apiKeyController.text = config.apiKey;
-      }
+      _syncConfigControllers(config);
     } catch (error) {
       if (!mounted) return;
       if (!silent) {
@@ -211,10 +276,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       setState(() => _loadingInstalled = true);
     }
     try {
-      final models = await MnnLocalModelsService.listInstalledModels(
-        query: _installedSearchController.text.trim(),
-        category: _installedCategory,
-      );
+      final models = await MnnLocalModelsService.listInstalledModels();
       if (!mounted) return;
       setState(() {
         _installedModels = models;
@@ -443,48 +505,101 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     }
   }
 
-  Future<void> _saveServiceConfig() async {
+  Future<void> _saveServiceConfig({bool silent = false}) async {
     final port = int.tryParse(_portController.text.trim());
     if (port == null || port <= 0) {
-      showToast('端口格式不正确', type: ToastType.warning);
+      if (!silent || _portController.text.trim().isNotEmpty) {
+        showToast('端口格式不正确', type: ToastType.warning);
+      }
       return;
     }
-    setState(() => _savingConfig = true);
+    final apiKey = _apiKeyController.text.trim();
+    final currentConfig = _config;
+    if (currentConfig != null &&
+        currentConfig.apiPort == port &&
+        currentConfig.apiKey == apiKey) {
+      return;
+    }
     try {
       final config = await MnnLocalModelsService.saveConfig(
         apiPort: port,
-        apiKey: _apiKeyController.text.trim(),
+        apiKey: apiKey,
       );
       if (!mounted) return;
       setState(() {
         _config = config;
       });
-      showToast('本地模型服务配置已保存', type: ToastType.success);
-    } catch (error) {
-      showToast('保存配置失败', type: ToastType.error);
-    } finally {
-      if (mounted) {
-        setState(() => _savingConfig = false);
+      _syncConfigControllers(config);
+      if (!silent) {
+        showToast('本地模型服务配置已保存', type: ToastType.success);
       }
+    } catch (error) {
+      showToast(silent ? '自动保存服务配置失败' : '保存配置失败', type: ToastType.error);
     }
   }
 
+  bool _isApiServiceActive(MnnLocalConfig config) {
+    final state = config.apiState.trim().toLowerCase();
+    return config.apiRunning ||
+        state == 'starting' ||
+        state == 'started' ||
+        state == 'ready';
+  }
+
+  bool _matchesApiServiceTarget(MnnLocalConfig config, bool enable) {
+    return enable ? _isApiServiceActive(config) : !_isApiServiceActive(config);
+  }
+
+  Future<MnnLocalConfig> _settleApiServiceState({
+    required bool enable,
+    required MnnLocalConfig initialConfig,
+  }) async {
+    var latestConfig = initialConfig;
+    if (_matchesApiServiceTarget(latestConfig, enable)) {
+      return latestConfig;
+    }
+    for (var attempt = 0; attempt < 12; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      latestConfig = await MnnLocalModelsService.getConfig();
+      if (_matchesApiServiceTarget(latestConfig, enable)) {
+        return latestConfig;
+      }
+    }
+    return latestConfig;
+  }
+
   Future<void> _toggleApiService(bool enable) async {
+    setState(() => _togglingApiService = true);
     try {
-      final nextConfig = enable
+      var nextConfig = enable
           ? await MnnLocalModelsService.startApiService(
               modelId: _config?.activeModelId.isEmpty == true
                   ? null
                   : _config?.activeModelId,
             )
           : await MnnLocalModelsService.stopApiService();
+      nextConfig = await _settleApiServiceState(
+        enable: enable,
+        initialConfig: nextConfig,
+      );
       if (!mounted) return;
       setState(() {
         _config = nextConfig;
       });
-      showToast(enable ? '本地 API 服务已启动' : '本地 API 服务已停止');
+      _syncConfigControllers(nextConfig);
+      final success = _matchesApiServiceTarget(nextConfig, enable);
+      showToast(
+        success
+            ? (enable ? '本地 API 服务已启动' : '本地 API 服务已停止')
+            : (enable ? '启动 API 服务失败' : '停止 API 服务失败'),
+        type: success ? ToastType.success : ToastType.error,
+      );
     } catch (error) {
       showToast(enable ? '启动 API 服务失败' : '停止 API 服务失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() => _togglingApiService = false);
+      }
     }
   }
 
@@ -703,6 +818,24 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     if (resolvedConfig == null) {
       return _buildEmptyState(title: '本地模型服务尚未就绪', subtitle: '请稍后重试。');
     }
+    final installedModels = _filteredInstalledModels;
+    final installedAsrModels = _installedAsrModels;
+    final installedTtsModels = _installedTtsModels;
+    final isApiServiceActive = _isApiServiceActive(resolvedConfig);
+    final selectedAsrModelId =
+        resolvedConfig.defaultAsrModelId.isNotEmpty &&
+            installedAsrModels.any(
+              (item) => item.id == resolvedConfig.defaultAsrModelId,
+            )
+        ? resolvedConfig.defaultAsrModelId
+        : '';
+    final selectedTtsModelId =
+        resolvedConfig.defaultTtsModelId.isNotEmpty &&
+            installedTtsModels.any(
+              (item) => item.id == resolvedConfig.defaultTtsModelId,
+            )
+        ? resolvedConfig.defaultTtsModelId
+        : '';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -714,66 +847,74 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             children: [
               Text('状态：${resolvedConfig.apiState}'),
               const SizedBox(height: 6),
-              Text('Base URL：${resolvedConfig.baseUrl}'),
-              const SizedBox(height: 6),
-              Text(
-                '后台服务模型：${resolvedConfig.activeModelId.isEmpty ? '未选择' : resolvedConfig.activeModelId}',
-              ),
-              const SizedBox(height: 12),
-              Row(
+              Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => _toggleApiService(true),
-                      child: const Text('启动服务'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _toggleApiService(false),
-                      child: const Text('停止服务'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _portController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: '端口',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _apiKeyController,
-                decoration: const InputDecoration(
-                  labelText: 'API Key',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _savingConfig ? null : _saveServiceConfig,
-                      child: const Text('保存服务配置'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  OutlinedButton(
-                    onPressed: () async {
+                  const Text('Base URL：'),
+                  InkWell(
+                    onTap: () async {
                       await Clipboard.setData(
                         ClipboardData(text: resolvedConfig.baseUrl),
                       );
                       showToast('已复制 Base URL');
                     },
-                    child: const Text('复制地址'),
+                    child: Text(
+                      resolvedConfig.baseUrl,
+                      style: const TextStyle(
+                        color: AppColors.buttonPrimary,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '后台服务模型：${resolvedConfig.activeModelId.isEmpty ? '未选择' : resolvedConfig.activeModelId}',
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _togglingApiService
+                    ? null
+                    : () => _toggleApiService(!isApiServiceActive),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  backgroundColor: isApiServiceActive
+                      ? const Color(0xFFC62828)
+                      : null,
+                ),
+                child: Text(
+                  _togglingApiService
+                      ? (isApiServiceActive ? '停止中…' : '启动中…')
+                      : (isApiServiceActive ? '停止服务' : '启动服务'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _portController,
+                focusNode: _portFocusNode,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: '端口',
+                  border: OutlineInputBorder(),
+                  helperText: '离开输入框后自动保存',
+                ),
+                onSubmitted: (_) => _scheduleServiceConfigSave(immediate: true),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _apiKeyController,
+                focusNode: _apiKeyFocusNode,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'API Key',
+                  border: OutlineInputBorder(),
+                  helperText: '离开输入框后自动保存',
+                ),
+                onSubmitted: (_) => _scheduleServiceConfigSave(immediate: true),
               ),
             ],
           ),
@@ -839,22 +980,25 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 key: ValueKey(
                   'default-asr-${resolvedConfig.defaultAsrModelId}',
                 ),
-                initialValue: resolvedConfig.defaultAsrModelId.isNotEmpty
-                    ? resolvedConfig.defaultAsrModelId
-                    : null,
-                decoration: const InputDecoration(
+                initialValue: selectedAsrModelId,
+                decoration: InputDecoration(
                   labelText: '默认 ASR 模型',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  helperText: installedAsrModels.isEmpty
+                      ? '安装 ASR 模型后可在此选择'
+                      : null,
                 ),
-                items: resolvedConfig.installedAsrModels
-                    .map(
-                      (item) => DropdownMenuItem<String>(
-                        value: item.id,
-                        child: Text(item.name),
-                      ),
-                    )
-                    .toList(),
+                items: [
+                  const DropdownMenuItem<String>(value: '', child: Text('未设置')),
+                  ...installedAsrModels.map(
+                    (item) => DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(item.name),
+                    ),
+                  ),
+                ],
                 onChanged: (value) {
+                  if (value == null) return;
                   _updateVoiceDefault(asrModelId: value);
                 },
               ),
@@ -863,22 +1007,25 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 key: ValueKey(
                   'default-tts-${resolvedConfig.defaultTtsModelId}',
                 ),
-                initialValue: resolvedConfig.defaultTtsModelId.isNotEmpty
-                    ? resolvedConfig.defaultTtsModelId
-                    : null,
-                decoration: const InputDecoration(
+                initialValue: selectedTtsModelId,
+                decoration: InputDecoration(
                   labelText: '默认 TTS 模型',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  helperText: installedTtsModels.isEmpty
+                      ? '安装 TTS 模型后可在此选择'
+                      : null,
                 ),
-                items: resolvedConfig.installedTtsModels
-                    .map(
-                      (item) => DropdownMenuItem<String>(
-                        value: item.id,
-                        child: Text(item.name),
-                      ),
-                    )
-                    .toList(),
+                items: [
+                  const DropdownMenuItem<String>(value: '', child: Text('未设置')),
+                  ...installedTtsModels.map(
+                    (item) => DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(item.name),
+                    ),
+                  ),
+                ],
                 onChanged: (value) {
+                  if (value == null) return;
                   _updateVoiceDefault(ttsModelId: value);
                 },
               ),
@@ -912,11 +1059,17 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               const SizedBox(height: 8),
               _buildCategoryChips(
                 current: _installedCategory,
-                categories: const ['all', 'llm', 'diffusion', 'asr', 'tts'],
+                categories: const [
+                  'all',
+                  'llm',
+                  'diffusion',
+                  'asr',
+                  'tts',
+                  'libs',
+                ],
                 compact: true,
                 onSelected: (value) {
                   setState(() => _installedCategory = value);
-                  _refreshInstalled();
                 },
               ),
               const SizedBox(height: 12),
@@ -928,8 +1081,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                   subtitle:
                       '可以先到“模型市场”下载模型，或把模型放到 /data/local/tmp/mnn_models 后返回刷新。',
                 )
+              else if (installedModels.isEmpty)
+                _buildEmptyState(
+                  title: '没有匹配的已安装模型',
+                  subtitle: '试试切换分类或调整搜索关键词。',
+                )
               else
-                ..._installedModels.map(_buildInstalledCard),
+                ...installedModels.map(_buildInstalledCard),
             ],
           ),
         ),

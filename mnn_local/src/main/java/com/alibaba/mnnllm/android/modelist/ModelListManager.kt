@@ -66,6 +66,7 @@ object ModelListManager {
     // Reentrancy protection mechanism
     private val loadingMutex = Mutex()
     private var cachedModels: List<ModelItemWrapper>? = null
+    private var cachedAllModels: List<ModelItemWrapper>? = null
 
     // Flow-based state management
     private val _modelListState = MutableStateFlow<ModelListState>(ModelListState.Loading)
@@ -300,14 +301,15 @@ object ModelListManager {
                 // Step 1: Try to load and emit cached data first
                 val loadedCachedModels = loadFromDiskCache()
                 if (!loadedCachedModels.isNullOrEmpty()) {
-                    Timber.d("Emitting cached data (${loadedCachedModels.size} models)")
+                    val cachedPrimaryModels = filterPrimaryListModels(loadedCachedModels)
+                    Timber.d(
+                        "Emitting cached data (${loadedCachedModels.size} models, primary=${cachedPrimaryModels.size})"
+                    )
                     _modelListState.value = ModelListState.Success(
-                        models = loadedCachedModels,
+                        models = cachedPrimaryModels,
                         source = DataSource.CACHE
                     )
-                    loadedCachedModels.forEach {
-                        modelIdModelMap[it.modelItem.modelId!!] = it.modelItem
-                    }
+                    cacheLoadedModels(loadedCachedModels)
                     hasEmittedInitialCache = true
                 } else {
                     Timber.d("No valid cache found, showing loading state")
@@ -317,34 +319,35 @@ object ModelListManager {
                 // Step 2: Immediately fetch fresh data in background
                 try {
                     val freshModels = performModelLoading(context, "Initialize")
+                    val oldPrimaryModels = loadedCachedModels?.let(::filterPrimaryListModels)
+                    val freshPrimaryModels = filterPrimaryListModels(freshModels)
+                    val primaryModelsChanged = hasDataChanged(oldPrimaryModels, freshPrimaryModels)
+                    val allModelsChanged = hasDataChanged(loadedCachedModels, freshModels)
 
                     // Step 3: Compare and emit if different
-                    if (hasDataChanged(loadedCachedModels, freshModels)) {
-                        Timber.d("Fresh data differs from cache, emitting update (${freshModels.size} models)")
+                    if (primaryModelsChanged) {
+                        Timber.d(
+                            "Fresh data differs from cache, emitting update (all=${freshModels.size}, primary=${freshPrimaryModels.size})"
+                        )
                         _modelListState.value = ModelListState.Success(
-                            models = freshModels,
+                            models = freshPrimaryModels,
                             source = DataSource.FRESH
                         )
-
-                        // Update memory cache
-                        cachedModels = freshModels
-                        modelIdModelMap.clear()
-                        freshModels.forEach {
-                            modelIdModelMap[it.modelItem.modelId!!] = it.modelItem
-                        }
-
+                    } else {
+                        // Update source to FRESH and ensure we transition out of Loading state
+                        _modelListState.value = ModelListState.Success(
+                            models = oldPrimaryModels ?: freshPrimaryModels,
+                            source = DataSource.FRESH
+                        )
+                    }
+                    cacheLoadedModels(freshModels)
+                    if (allModelsChanged) {
                         // Save to disk cache for next time
                         try {
                             saveToDiskCache(freshModels)
                         } catch (e: Exception) {
                             Timber.e(e, "Exception calling saveToDiskCache: ${e.message}")
                         }
-                    } else {
-                        // Update source to FRESH and ensure we transition out of Loading state
-                        _modelListState.value = ModelListState.Success(
-                            models = loadedCachedModels ?: freshModels,
-                            source = DataSource.FRESH
-                        )
                     }
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to load fresh data")
@@ -417,6 +420,13 @@ object ModelListManager {
      */
     fun getCurrentModels(): List<ModelItemWrapper>? {
         return (modelListState.value as? ModelListState.Success)?.models
+    }
+
+    /**
+     * Get all current models synchronously, including models hidden from the primary list.
+     */
+    fun getAllCurrentModels(): List<ModelItemWrapper>? {
+        return cachedAllModels ?: getCurrentModels()
     }
 
     /**
@@ -562,22 +572,23 @@ object ModelListManager {
             try {
                 val oldModels = (_modelListState.value as? ModelListState.Success)?.models
                 val freshModels = performModelLoading(context, "FlowRefresh")
+                val freshPrimaryModels = filterPrimaryListModels(freshModels)
+                val allModelsChanged = hasDataChanged(cachedAllModels, freshModels)
 
                 // Check if data actually changed
-                if (hasDataChanged(oldModels, freshModels)) {
+                if (hasDataChanged(oldModels, freshPrimaryModels)) {
                     Timber.d("Model list changed, emitting update")
                     _modelListState.value = ModelListState.Success(
-                        models = freshModels,
+                        models = freshPrimaryModels,
                         source = DataSource.FRESH
                     )
 
-                    // Update memory cache
-                    cachedModels = freshModels
-                    modelIdModelMap.clear()
-                    freshModels.forEach {
-                        modelIdModelMap[it.modelItem.modelId!!] = it.modelItem
-                    }
-
+                    _refreshEvents.emit(RefreshEvent.Success)
+                } else {
+                    _refreshEvents.emit(RefreshEvent.NoChange)
+                }
+                cacheLoadedModels(freshModels)
+                if (allModelsChanged) {
                     // Save to disk cache
                     Timber.d("About to call saveToDiskCache with ${freshModels.size} models (from refreshModelList)")
                     try {
@@ -585,10 +596,6 @@ object ModelListManager {
                     } catch (e: Exception) {
                         Timber.e(e, "Exception calling saveToDiskCache: ${e.message}")
                     }
-
-                    _refreshEvents.emit(RefreshEvent.Success)
-                } else {
-                    _refreshEvents.emit(RefreshEvent.NoChange)
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Failed to refresh model list")
@@ -654,13 +661,11 @@ object ModelListManager {
                     null
                 }
             }
-            val filteredModels = filterPrimaryListModels(models)
-
-            if (filteredModels.isEmpty() && cache.models.isNotEmpty()) {
+            if (models.isEmpty() && cache.models.isNotEmpty()) {
                 return@withContext null
             }
 
-            filteredModels
+            models
         } catch (e: Exception) {
             Timber.w(e, "Failed to load model list from disk cache")
             // Delete corrupted cache
@@ -715,6 +720,7 @@ object ModelListManager {
     fun clearModelCache() {
         synchronized(this) {
             cachedModels = null
+            cachedAllModels = null
             Timber.d("Model cache cleared - next load will reload from disk")
         }
     }
@@ -775,10 +781,8 @@ object ModelListManager {
                 }
             }
 
-            val filteredModels = filterPrimaryListModels(modelWrappers)
-
             // Sort models: pinned as first priority, then recently used first, then by download time
-            val sortedModels = filteredModels.sortedWith(
+            val sortedModels = modelWrappers.sortedWith(
                 compareByDescending<ModelItemWrapper> {
                     if (it.isPinned) 1 else 0
                 }.thenByDescending {
@@ -791,12 +795,6 @@ object ModelListManager {
                     if (it.lastChatTime <= 0) it.downloadTime else 0L
                 }
             )
-            
-            // Clear and cache modelId model to a map
-                modelIdModelMap.clear()
-                sortedModels.forEach {
-                    modelIdModelMap[it.modelItem.modelId!!] = it.modelItem
-                }
 
             return sortedModels
         } catch (e: Exception) {
@@ -1329,6 +1327,17 @@ object ModelListManager {
             normalized.contains("sherpa") ||
             normalized.contains("whisper") ||
             normalized.contains("zipformer")
+    }
+
+    private fun cacheLoadedModels(models: List<ModelItemWrapper>) {
+        cachedAllModels = models
+        cachedModels = filterPrimaryListModels(models)
+        modelIdModelMap.clear()
+        models.forEach { wrapper ->
+            wrapper.modelItem.modelId?.let { modelId ->
+                modelIdModelMap[modelId] = wrapper.modelItem
+            }
+        }
     }
 
     internal fun shouldIncludeMissingConfigModelForScan(

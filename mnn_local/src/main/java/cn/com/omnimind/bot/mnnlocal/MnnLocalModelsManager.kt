@@ -3,7 +3,9 @@ package cn.com.omnimind.bot.mnnlocal
 import android.content.Context
 import android.net.Uri
 import android.text.format.Formatter
+import android.util.Log
 import com.alibaba.mls.api.ModelItem
+import com.alibaba.mls.api.download.DownloadPersistentData
 import com.alibaba.mls.api.download.DownloadInfo
 import com.alibaba.mls.api.download.DownloadListener
 import com.alibaba.mls.api.download.DownloadState
@@ -18,6 +20,7 @@ import com.alibaba.mnnllm.android.benchmark.RuntimeParameters
 import com.alibaba.mnnllm.android.benchmark.TestParameters
 import com.alibaba.mnnllm.android.chat.PromptUtils
 import com.alibaba.mnnllm.android.chat.model.ChatDataItem
+import com.alibaba.mnnllm.android.chat.model.ChatDataManager
 import com.alibaba.mnnllm.android.llm.ChatService
 import com.alibaba.mnnllm.android.llm.ChatSession
 import com.alibaba.mnnllm.android.llm.GenerateProgressListener
@@ -29,6 +32,7 @@ import com.alibaba.mnnllm.android.modelist.ModelListManager
 import com.alibaba.mnnllm.android.modelmarket.ModelMarketConfig
 import com.alibaba.mnnllm.android.modelmarket.ModelMarketItem
 import com.alibaba.mnnllm.android.modelmarket.ModelRepository
+import com.alibaba.mnnllm.android.utils.PreferenceUtils
 import com.alibaba.mnnllm.android.utils.VoiceModelPathUtils
 import com.alibaba.mnnllm.api.openai.di.ServiceLocator
 import com.alibaba.mnnllm.api.openai.manager.ApiServiceManager
@@ -47,6 +51,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 object MnnLocalModelsManager {
+    private const val TAG = "MnnLocalModelsManager"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val generationMutex = Mutex()
     private val generationCancelled = AtomicBoolean(false)
@@ -214,7 +219,7 @@ object MnnLocalModelsManager {
                     .thenByDescending { it.downloadTime }
                     .thenBy { it.displayName.lowercase(Locale.getDefault()) }
             )
-            .map { wrapper -> wrapper.toInstalledMap() }
+            .mapNotNull(::safeInstalledMap)
     }
 
     suspend fun refreshInstalledModels(): List<Map<String, Any?>> {
@@ -275,7 +280,13 @@ object MnnLocalModelsManager {
         val context = appContext ?: error("MNN local context is not initialized")
         val serviceInfo = ApiServiceManager.getServerInfo()
         val voiceStatus = VoiceModelPathUtils.checkVoiceModelsStatus(context)
-        val installed = ModelListManager.getCurrentModels().orEmpty()
+        val installed = installedModelsSnapshot()
+        val installedAsrModels = installed
+            .filter { detectCategory(it.modelItem) == "asr" }
+            .mapNotNull(::safeInstalledMap)
+        val installedTtsModels = installed
+            .filter { detectCategory(it.modelItem) == "tts" }
+            .mapNotNull(::safeInstalledMap)
         return mapOf(
             "autoStartOnAppOpen" to MnnLocalConfigStore.shouldAutoStartOnAppOpen(),
             "apiEnabled" to MnnLocalConfigStore.isApiEnabled(),
@@ -296,12 +307,8 @@ object MnnLocalModelsManager {
             "availableSources" to ModelSources.sourceList,
             "voiceReady" to voiceStatus.first,
             "voiceStatusText" to voiceStatus.second,
-            "installedAsrModels" to installed
-                .filter { detectCategory(it.modelItem) == "asr" }
-                .map { it.toInstalledMap() },
-            "installedTtsModels" to installed
-                .filter { detectCategory(it.modelItem) == "tts" }
-                .map { it.toInstalledMap() },
+            "installedAsrModels" to installedAsrModels,
+            "installedTtsModels" to installedTtsModels,
         )
     }
 
@@ -457,7 +464,7 @@ object MnnLocalModelsManager {
         val context = appContext ?: error("MNN local context is not initialized")
         val modelId = arguments["modelId"]?.toString()?.takeIf { it.isNotBlank() }
             ?: MnnLocalConfigStore.getActiveModelId()
-            ?: installedModels().firstOrNull()?.modelItem?.modelId
+            ?: installedModels().firstOrNull { detectCategory(it.modelItem) == "llm" }?.modelItem?.modelId
             ?: error("No installed model available")
         val wrapper = findInstalledModel(modelId) ?: error("Model not found: $modelId")
         val modelName = wrapper.displayName.ifBlank {
@@ -811,11 +818,159 @@ object MnnLocalModelsManager {
 
     private suspend fun installedModels(): List<ModelItemWrapper> {
         ensureInitialized()
-        return ModelListManager.getCurrentModels().orEmpty()
+        return installedModelsSnapshot()
     }
 
     private suspend fun findInstalledModel(modelId: String): ModelItemWrapper? {
         return installedModels().firstOrNull { it.modelItem.modelId == modelId }
+    }
+
+    private fun installedModelsSnapshot(): List<ModelItemWrapper> {
+        val context = appContext ?: return ModelListManager.getAllCurrentModels().orEmpty()
+        val baseModels = ModelListManager.getAllCurrentModels().orEmpty()
+        return runCatching {
+            mergeSupplementalDownloadedModels(baseModels, context)
+        }.onFailure { error ->
+            Log.w(
+                TAG,
+                "Failed to merge supplemental installed models, falling back to primary cache",
+                error,
+            )
+        }.getOrDefault(baseModels)
+    }
+
+    private fun mergeSupplementalDownloadedModels(
+        baseModels: List<ModelItemWrapper>,
+        context: Context,
+    ): List<ModelItemWrapper> {
+        val cachedMarketItems = ModelRepository.getAllCachedModels()
+        if (cachedMarketItems.isEmpty()) {
+            return baseModels
+        }
+
+        val existingIds = baseModels.mapNotNull { it.modelItem.modelId }.toMutableSet()
+        val pinnedModels = PreferenceUtils.getPinnedModels(context)
+        val downloadManager = ModelDownloadManager.getInstance(context)
+        val chatDataManager = ChatDataManager.getInstance(context)
+
+        val supplementalModels = buildList {
+            cachedMarketItems.forEach { marketItem ->
+                runCatching {
+                    if (!shouldSupplementInstalledModel(marketItem)) {
+                        return@runCatching
+                    }
+
+                    val modelId = buildMarketCandidateIds(marketItem).firstOrNull { candidateId ->
+                        !existingIds.contains(candidateId) &&
+                            downloadManager.getDownloadedFile(candidateId)?.exists() == true
+                    } ?: return@runCatching
+
+                    val downloadedFile = downloadManager.getDownloadedFile(modelId)
+                        ?: return@runCatching
+
+                    val savedSize = DownloadPersistentData.getDownloadSizeSaved(context, modelId)
+                    val totalSize = DownloadPersistentData.getDownloadSizeTotal(context, modelId)
+                    val resolvedDownloadSize = when {
+                        savedSize > 0L -> savedSize
+                        totalSize > 0L -> totalSize
+                        marketItem.fileSize > 0L -> marketItem.fileSize
+                        else -> 0L
+                    }
+
+                    val recordedDownloadTime = chatDataManager.getDownloadTime(modelId)
+                    val persistedDownloadTime = DownloadPersistentData.getDownloadedTime(context, modelId)
+                    val lastChatTime = chatDataManager.getLastChatTime(modelId)
+                    val resolvedDownloadTime = when {
+                        recordedDownloadTime > 0L -> recordedDownloadTime
+                        persistedDownloadTime > 0L -> persistedDownloadTime
+                        else -> downloadedFile.lastModified()
+                    }
+
+                    val modelItem = ModelItem(
+                        modelId = modelId,
+                        modelName = marketItem.modelName,
+                        localPath = downloadedFile.absolutePath,
+                        tags = marketItem.tags,
+                        vendor = marketItem.vendor,
+                        sizeB = marketItem.fileSize,
+                        modelMarketItem = marketItem,
+                    )
+
+                    add(
+                        ModelItemWrapper(
+                            modelItem = modelItem,
+                            downloadedModelInfo = ChatDataManager.DownloadedModelInfo(
+                                modelId = modelId,
+                                downloadTime = resolvedDownloadTime,
+                                modelPath = downloadedFile.absolutePath,
+                                lastChatTime = lastChatTime,
+                            ),
+                            downloadSize = resolvedDownloadSize,
+                            isPinned = pinnedModels.contains(modelId),
+                            sourceTag = inferSourceLabel(modelId),
+                        )
+                    )
+                    existingIds.add(modelId)
+                }.onFailure { error ->
+                    Log.w(
+                        TAG,
+                        "Failed to supplement installed model ${marketItem.modelId}",
+                        error,
+                    )
+                }
+            }
+        }
+
+        if (supplementalModels.isEmpty()) {
+            return baseModels
+        }
+
+        return (baseModels + supplementalModels).sortedWith(
+            compareByDescending<ModelItemWrapper> { it.isPinned }
+                .thenByDescending { it.lastChatTime }
+                .thenByDescending { it.downloadTime }
+                .thenBy { it.displayName.lowercase(Locale.getDefault()) }
+        )
+    }
+
+    private fun shouldSupplementInstalledModel(item: ModelMarketItem): Boolean {
+        return item.categories.any { it.equals("libs", ignoreCase = true) } ||
+            ModelTypeUtils.isAsrModelByTags(item.tags) ||
+            ModelTypeUtils.isTtsModelByTags(item.tags)
+    }
+
+    private fun buildMarketCandidateIds(item: ModelMarketItem): List<String> {
+        val candidateIds = linkedSetOf<String>()
+        if (item.modelId.isNotBlank()) {
+            candidateIds.add(item.modelId)
+        }
+        item.sources.forEach { (source, repoPath) ->
+            if (source.isNotBlank() && repoPath.isNotBlank()) {
+                candidateIds.add("$source/$repoPath")
+            }
+        }
+        return candidateIds.toList()
+    }
+
+    private fun inferSourceLabel(modelId: String): String? {
+        return when {
+            modelId.startsWith("HuggingFace/", ignoreCase = true) -> "HuggingFace"
+            modelId.startsWith("Modelers/", ignoreCase = true) -> "Modelers"
+            modelId.startsWith("ModelScope/", ignoreCase = true) -> "ModelScope"
+            else -> null
+        }
+    }
+
+    private fun safeInstalledMap(wrapper: ModelItemWrapper): Map<String, Any?>? {
+        return runCatching {
+            wrapper.toInstalledMap()
+        }.onFailure { error ->
+            Log.w(
+                TAG,
+                "Failed to serialize installed model ${wrapper.modelItem.modelId.orEmpty()}",
+                error,
+            )
+        }.getOrNull()
     }
 
     private fun buildPrompt(
@@ -880,22 +1035,40 @@ object MnnLocalModelsManager {
         val modelId = modelItem.modelId.orEmpty()
         val downloadInfo = contextDownloadManager()?.getDownloadInfo(modelId)
         val category = detectCategory(modelItem)
+        val marketItem = modelItem.modelMarketItem as? ModelMarketItem
+        val extraTags = buildList {
+            addAll(modelItem.getExtraTags())
+            marketItem?.extraTags?.forEach { tag ->
+                if (!contains(tag)) {
+                    add(tag)
+                }
+            }
+        }
+        val resolvedFileSize = when {
+            downloadSize > 0L -> downloadSize
+            marketItem?.fileSize?.let { it > 0L } == true -> marketItem.fileSize
+            else -> 0L
+        }
         return mapOf(
             "id" to modelId,
             "name" to displayName,
+            "description" to marketItem?.description.orEmpty(),
             "path" to modelItem.localPath.orEmpty(),
             "source" to sourceTag.orEmpty(),
             "category" to category,
             "isLocal" to isLocal,
             "isPinned" to isPinned,
             "hasUpdate" to (hasUpdate || (downloadInfo?.hasUpdate == true)),
+            "fileSize" to resolvedFileSize,
+            "sizeB" to (marketItem?.sizeB ?: 0.0),
             "downloadSize" to downloadSize,
-            "formattedSize" to formattedSize,
+            "formattedSize" to if (resolvedFileSize > 0L) formattedFileSize(resolvedFileSize) else formattedSize,
             "lastUsedAt" to lastChatTime,
             "downloadedAt" to downloadTime,
             "active" to (MnnLocalConfigStore.getActiveModelId() == modelId ||
                 CurrentModelManager.getCurrentModelId() == modelId),
             "tags" to modelItem.getTags(),
+            "extraTags" to extraTags,
             "vendor" to modelItem.vendor.orEmpty(),
             "download" to downloadInfo?.toMap(),
         )
