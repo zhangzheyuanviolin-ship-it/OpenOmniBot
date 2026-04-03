@@ -73,8 +73,15 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}/third_party")
 add_library(MNN SHARED IMPORTED)
 set_target_properties(MNN PROPERTIES IMPORTED_LOCATION "${LIB_PATH}/libMNN.so")
 
-add_library(mnn_Express SHARED IMPORTED)
-set_target_properties(mnn_Express PROPERTIES IMPORTED_LOCATION "${LIB_PATH}/libMNN_Express.so")
+set(MNN_EXPRESS_LIB_PATH "${LIB_PATH}/libMNN_Express.so")
+set(HAS_SEPARATE_MNN_EXPRESS FALSE)
+if (EXISTS "${MNN_EXPRESS_LIB_PATH}")
+    add_library(mnn_Express SHARED IMPORTED)
+    set_target_properties(mnn_Express PROPERTIES IMPORTED_LOCATION "${MNN_EXPRESS_LIB_PATH}")
+    set(HAS_SEPARATE_MNN_EXPRESS TRUE)
+else ()
+    message(STATUS "libMNN_Express.so not found under ${LIB_PATH}; assuming Express symbols are bundled into libMNN.so")
+endif ()
 
 set(MNN_LLM_LIB_PATH "${LIB_PATH}/libllm.so")
 set(HAS_SEPARATE_MNN_LLM FALSE)
@@ -95,11 +102,14 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         android
         log
         MNN
-        mnn_Express
         # MediaCodec libraries for hardware video decoding
         mediandk
 
         )
+
+if (HAS_SEPARATE_MNN_EXPRESS)
+    target_link_libraries(${CMAKE_PROJECT_NAME} mnn_Express)
+endif ()
 
 if (HAS_SEPARATE_MNN_LLM)
     target_link_libraries(${CMAKE_PROJECT_NAME} mnn_llm)
