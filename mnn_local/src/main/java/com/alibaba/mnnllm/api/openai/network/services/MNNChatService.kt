@@ -3,8 +3,11 @@ package com.alibaba.mnnllm.api.openai.network.services
 import OpenAIChatRequest
 import com.alibaba.mnnllm.android.MnnLlmApplication
 import com.alibaba.mnnllm.android.llm.LlmSession
+import com.alibaba.mnnllm.android.modelist.ModelListManager
+import com.alibaba.mnnllm.android.modelsettings.ModelConfig
 import com.alibaba.mnnllm.api.openai.di.ServiceLocator
 import com.alibaba.mnnllm.api.openai.manager.ApiServiceManager
+import com.alibaba.mnnllm.api.openai.manager.CurrentModelManager
 import com.alibaba.mnnllm.api.openai.network.handlers.ResponseHandler
 import com.alibaba.mnnllm.api.openai.network.logging.ChatLogger
 import com.alibaba.mnnllm.api.openai.network.processors.MnnImageProcessor
@@ -14,11 +17,16 @@ import com.alibaba.mnnllm.api.openai.network.validators.ChatRequestValidator
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
-import kotlinx.coroutines.runBlocking
 import java.util.UUID
 
 /** * chat service * responsible for coordinatingvarious components,processchatrequestcorebusinesslogic * nowallrequests throughqueuemanagerperformqueueprocess,ensuresame timeonlyoneLLM generationtaskrunning*/
 class MNNChatService {
+
+    private data class ThinkingStreamPolicy(
+        val modelId: String?,
+        val thinkingEnabled: Boolean,
+        val streamLeadingReasoning: Boolean
+    )
 
     private val messageTransformer = MessageTransformer()
     private val responseHandler = ResponseHandler()
@@ -108,6 +116,7 @@ class MNNChatService {
                 )
                 return
             }
+            val thinkingPolicy = resolveThinkingStreamPolicy(chatRequest, traceId)
             //willas MNNformatunifiedhistory message (containingsystem prompt)
             val unifiedHistory = messageTransformer.convertToUnifiedMnnHistory(
                 chatRequest.messages,
@@ -126,10 +135,15 @@ class MNNChatService {
                     responseHandler.handleStreamResponseWithFullHistory(
                         call,
                         unifiedHistory,
-                        traceId
+                        traceId,
+                        streamLeadingReasoning = thinkingPolicy.streamLeadingReasoning
                     )
                 } else {
-                    responseHandler.handleNonStreamResponseWithFullHistory(call, unifiedHistory)
+                    responseHandler.handleNonStreamResponseWithFullHistory(
+                        call,
+                        unifiedHistory,
+                        streamLeadingReasoning = thinkingPolicy.streamLeadingReasoning
+                    )
                 }
 
                 logger.logInferenceComplete(traceId)
@@ -146,6 +160,32 @@ class MNNChatService {
                 )
             )
         }
+    }
+
+    private fun resolveThinkingStreamPolicy(
+        chatRequest: OpenAIChatRequest,
+        traceId: String
+    ): ThinkingStreamPolicy {
+        val runtime = ServiceLocator.getLlmRuntimeController()
+        val activeModelId = runtime.getActiveModelId()
+            ?: CurrentModelManager.getCurrentModelId()
+        val isThinkingModel = activeModelId?.let(ModelListManager::isThinkingModel) == true
+        val defaultThinkingEnabled = activeModelId
+            ?.let { modelId -> ModelConfig.loadConfig(modelId)?.jinja?.context?.enableThinking != false }
+            ?: false
+        val effectiveThinkingEnabled = chatRequest.enableThinking ?: defaultThinkingEnabled
+
+        val applied = runtime.setThinkingEnabled(effectiveThinkingEnabled)
+        logger.logInfo(
+            traceId,
+            "thinking policy modelId=$activeModelId thinkingModel=$isThinkingModel enableThinking=$effectiveThinkingEnabled applied=$applied"
+        )
+
+        return ThinkingStreamPolicy(
+            modelId = activeModelId,
+            thinkingEnabled = effectiveThinkingEnabled,
+            streamLeadingReasoning = isThinkingModel && effectiveThinkingEnabled
+        )
     }
     
     /** * getqueuestatisticsinfo*/

@@ -33,6 +33,8 @@ data class OpenAIChatRequest(
     val stream: Boolean? = null,
     val frequency_penalty: Double? = null,
     val presence_penalty: Double? = null,
+    @SerialName("enable_thinking")
+    val enableThinking: Boolean? = null,
 )
 
 // ========================

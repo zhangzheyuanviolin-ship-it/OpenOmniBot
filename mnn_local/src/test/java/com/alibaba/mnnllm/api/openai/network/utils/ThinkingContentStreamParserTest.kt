@@ -95,4 +95,36 @@ class ThinkingContentStreamParserTest {
         assertTrue(json.contains("\"reasoning_content\":\"思考中\""))
         assertFalse(json.contains("\"content\":null"))
     }
+
+    @Test
+    fun thinkingModelMode_streamsReasoningImmediatelyBeforeCloseTag() {
+        val parser = ThinkingContentStreamParser(streamLeadingReasoning = true)
+
+        val deltas = parser.append("先想第一步")
+
+        assertEquals(
+            listOf(ThinkingContentStreamParser.DeltaPayload(reasoningContent = "先想第一步")),
+            deltas
+        )
+        assertEquals("先想第一步", parser.result().reasoningContent)
+        assertEquals("", parser.result().content)
+    }
+
+    @Test
+    fun thinkingModelMode_switchesToContentAfterCloseTag() {
+        val parser = ThinkingContentStreamParser(streamLeadingReasoning = true)
+
+        assertEquals(
+            listOf(ThinkingContentStreamParser.DeltaPayload(reasoningContent = "先想第一步")),
+            parser.append("先想第一步")
+        )
+        val deltas = parser.append("</think>再给答案")
+
+        assertEquals(
+            listOf(ThinkingContentStreamParser.DeltaPayload(content = "再给答案")),
+            deltas
+        )
+        assertEquals("先想第一步", parser.result().reasoningContent)
+        assertEquals("再给答案", parser.result().content)
+    }
 }

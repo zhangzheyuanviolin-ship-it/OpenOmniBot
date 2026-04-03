@@ -7,7 +7,9 @@ package com.alibaba.mnnllm.api.openai.network.utils
  * We intentionally keep the prefix before the first `</think>` buffered until it
  * can be classified, because local models may omit the opening `<think>` tag.
  */
-class ThinkingContentStreamParser {
+class ThinkingContentStreamParser(
+    private val streamLeadingReasoning: Boolean = false
+) {
 
     data class DeltaPayload(
         val content: String? = null,
@@ -101,12 +103,26 @@ class ThinkingContentStreamParser {
             }
 
             if (final) {
-                emitContent(bufferText, emitted)
+                if (streamLeadingReasoning && !inlineThinkTagObserved && contentBuffer.isEmpty()) {
+                    emitReasoning(bufferText, emitted)
+                } else {
+                    emitContent(bufferText, emitted)
+                }
                 pendingBuffer.setLength(0)
                 return emitted
             }
 
             if (!inlineThinkTagObserved && contentBuffer.isEmpty()) {
+                if (!streamLeadingReasoning) {
+                    return emitted
+                }
+                val retainedLength = partialInlineTagSuffixLength(bufferText)
+                val safeLength = pendingBuffer.length - retainedLength
+                if (safeLength <= 0) {
+                    return emitted
+                }
+                emitReasoning(bufferText.substring(0, safeLength), emitted)
+                pendingBuffer.delete(0, safeLength)
                 return emitted
             }
 

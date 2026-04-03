@@ -37,10 +37,13 @@ class ResponseHandler {
     suspend fun handleStreamResponseWithFullHistory(
         call: ApplicationCall,
         history: List<android.util.Pair<String, String>>,
-        traceId: String
+        traceId: String,
+        streamLeadingReasoning: Boolean = false
     ) {
         val responseMetadata = createResponseMetadata()
-        val parser = ThinkingContentStreamParser()
+        val parser = ThinkingContentStreamParser(
+            streamLeadingReasoning = streamLeadingReasoning
+        )
         
         call.respond(SSEServerContent(call) {
             //set heartbeenat
@@ -186,9 +189,12 @@ class ResponseHandler {
     /** * processwithhistorymessagenon-streamingresponse * * @param call Ktorapplicationcallcontext * @param history historymessagelist*/
     suspend fun handleNonStreamResponseWithFullHistory(
         call: ApplicationCall,
-        history: List<android.util.Pair<String, String>>
+        history: List<android.util.Pair<String, String>>,
+        streamLeadingReasoning: Boolean = false
     ) {
-        val parser = ThinkingContentStreamParser()
+        val parser = ThinkingContentStreamParser(
+            streamLeadingReasoning = streamLeadingReasoning
+        )
         val responseMetadata = createResponseMetadata()
         
         var result = HashMap<String, Any>()
