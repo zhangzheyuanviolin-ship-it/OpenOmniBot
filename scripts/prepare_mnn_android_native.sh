@@ -7,13 +7,12 @@ BUILD_DIR="$MNN_ROOT/project/android/build_64"
 LIB_DIR="$BUILD_DIR/lib"
 REQUIRED_LIBS=(
   "$LIB_DIR/libMNN.so"
-  "$LIB_DIR/libMNN_Express.so"
 )
 ROOT_OUTPUT_LIBS=(
   "$BUILD_DIR/libMNN.so"
-  "$BUILD_DIR/libMNN_Express.so"
 )
 OPTIONAL_ROOT_OUTPUT_LIBS=(
+  "$BUILD_DIR/libMNN_Express.so"
   "$BUILD_DIR/libllm.so"
 )
 REQUIRED_SCHEMA_HEADERS=(

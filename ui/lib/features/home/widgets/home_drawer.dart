@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/widgets/conversation_mode_badge.dart';
 import 'package:ui/services/agent_skill_store_service.dart';
@@ -32,14 +33,13 @@ class HomeDrawer extends ConsumerStatefulWidget {
 }
 
 class HomeDrawerState extends ConsumerState<HomeDrawer> {
-  static const double _conversationDeleteExtentRatio = 0.24;
-  static const double _conversationDeleteIconSize = 18;
+  static const double _conversationActionIconSize = 18;
   int _localMemoryCount = 0;
   int _cloudMemoryCount = 0;
   int _installedSkillCount = 0;
   int _enabledSkillCount = 0;
   List<ConversationModel> conversations = [];
-  final Set<String> _deletingConversationKeys = <String>{};
+  final Set<String> _busyConversationKeys = <String>{};
   bool isLoadingConversations = true;
   static const BorderRadius _drawerDeleteActionRadius = BorderRadius.only(
     topRight: Radius.circular(4),
@@ -588,10 +588,10 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                 Row(
                   children: [
                     _buildIconActionButton(
-                      iconPath: 'assets/home/chat_history_icon.svg',
+                      iconPath: 'assets/home/archive_icon.svg',
                       onTap: () {
                         Navigator.pop(context);
-                        GoRouterManager.push('/home/chat_history');
+                        GoRouterManager.push('/home/archived_conversations');
                       },
                     ),
                     const SizedBox(width: 12),
@@ -726,7 +726,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
   /// 单个聊天记录项
   void _openConversationFromDrawer(ConversationModel conversation) {
-    if (_deletingConversationKeys.contains(conversation.threadKey)) {
+    if (_busyConversationKeys.contains(conversation.threadKey)) {
       return;
     }
 
@@ -741,7 +741,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 
   Future<void> _deleteConversation(ConversationModel conversation) async {
-    if (_deletingConversationKeys.contains(conversation.threadKey)) {
+    if (_busyConversationKeys.contains(conversation.threadKey)) {
       return;
     }
 
@@ -753,7 +753,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
 
     setState(() {
-      _deletingConversationKeys.add(conversation.threadKey);
+      _busyConversationKeys.add(conversation.threadKey);
       conversations = List<ConversationModel>.from(conversations)
         ..removeAt(originalIndex);
     });
@@ -770,7 +770,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
 
     setState(() {
-      _deletingConversationKeys.remove(conversation.threadKey);
+      _busyConversationKeys.remove(conversation.threadKey);
       if (!deleted) {
         final restoredIndex = originalIndex <= conversations.length
             ? originalIndex
@@ -786,121 +786,149 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
   }
 
+  Future<void> _archiveConversation(ConversationModel conversation) async {
+    if (_busyConversationKeys.contains(conversation.threadKey)) {
+      return;
+    }
+
+    final originalIndex = conversations.indexWhere(
+      (item) => item.id == conversation.id,
+    );
+    if (originalIndex < 0) {
+      return;
+    }
+
+    setState(() {
+      _busyConversationKeys.add(conversation.threadKey);
+      conversations = List<ConversationModel>.from(conversations)
+        ..removeAt(originalIndex);
+    });
+
+    final archived = await ConversationService.archiveConversation(conversation);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _busyConversationKeys.remove(conversation.threadKey);
+      if (!archived) {
+        final restoredIndex = originalIndex <= conversations.length
+            ? originalIndex
+            : conversations.length;
+        conversations = List<ConversationModel>.from(conversations)
+          ..insert(restoredIndex, conversation);
+      }
+    });
+
+    showToast(
+      archived ? '已归档' : '归档失败',
+      type: archived ? ToastType.success : ToastType.error,
+    );
+  }
+
+  List<ConversationSlideAction> _buildDrawerActions(
+    ConversationModel conversation,
+  ) {
+    return [
+      ConversationSlideAction(
+        onPressed: () => _archiveConversation(conversation),
+        backgroundColor: AppColors.buttonPrimary,
+        child: Center(
+          child: SvgPicture.asset(
+            'assets/home/archive_icon.svg',
+            width: _conversationActionIconSize,
+            height: _conversationActionIconSize,
+            colorFilter: const ColorFilter.mode(
+              Colors.white,
+              BlendMode.srcIn,
+            ),
+          ),
+        ),
+      ),
+      ConversationSlideAction(
+        onPressed: () => _deleteConversation(conversation),
+        backgroundColor: AppColors.alertRed,
+        borderRadius: _drawerDeleteActionRadius,
+        child: Center(
+          child: SvgPicture.asset(
+            'assets/memory/memory_delete.svg',
+            width: _conversationActionIconSize,
+            height: _conversationActionIconSize,
+            colorFilter: const ColorFilter.mode(
+              Colors.white,
+              BlendMode.srcIn,
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   Widget _buildSwipeConversationItem(ConversationModel conversation) {
-    final isDeleting = _deletingConversationKeys.contains(
+    final isBusy = _busyConversationKeys.contains(
       conversation.threadKey,
     );
 
-    return Container(
+    return ConversationSlidable(
+      itemKey: conversation.threadKey,
+      groupTag: 'home-drawer-conversations',
+      isBusy: isBusy,
+      actions: _buildDrawerActions(conversation),
+      onDismissed: () => _deleteConversation(conversation),
       margin: const EdgeInsets.only(bottom: 6),
-      child: IgnorePointer(
-        ignoring: isDeleting,
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 180),
-          opacity: isDeleting ? 0.72 : 1,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final initialActionWidth =
-                  constraints.maxWidth * _conversationDeleteExtentRatio;
-              final deleteIconRightPadding =
-                  ((initialActionWidth - _conversationDeleteIconSize) / 2)
-                      .clamp(0.0, double.infinity)
-                      .toDouble();
-
-              return Slidable(
-                key: ValueKey<String>(conversation.threadKey),
-                groupTag: 'home-drawer-conversations',
-                closeOnScroll: true,
-                endActionPane: ActionPane(
-                  motion: const BehindMotion(),
-                  extentRatio: _conversationDeleteExtentRatio,
-                  dismissible: DismissiblePane(
-                    dismissThreshold: 0.4,
-                    closeOnCancel: true,
-                    motion: const InversedDrawerMotion(),
-                    onDismissed: () => _deleteConversation(conversation),
-                  ),
-                  children: [
-                    CustomSlidableAction(
-                      onPressed: (_) => _deleteConversation(conversation),
-                      backgroundColor: AppColors.alertRed,
-                      borderRadius: _drawerDeleteActionRadius,
-                      padding: EdgeInsets.zero,
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: EdgeInsets.only(right: deleteIconRightPadding),
-                        child: SvgPicture.asset(
-                          'assets/memory/memory_delete.svg',
-                          width: _conversationDeleteIconSize,
-                          height: _conversationDeleteIconSize,
-                          colorFilter: const ColorFilter.mode(
-                            Colors.white,
-                            BlendMode.srcIn,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            onTap: () => _openConversationFromDrawer(conversation),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 9,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            conversation.summary ?? conversation.title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.text,
+                              fontFamily: 'PingFang SC',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
-                    child: InkWell(
-                      onTap: () => _openConversationFromDrawer(conversation),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 9,
+                        const SizedBox(width: 8),
+                        ConversationModeBadge(
+                          mode: conversation.mode,
+                          compact: true,
                         ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      conversation.summary ??
-                                          conversation.title,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: AppColors.text,
-                                        fontFamily: 'PingFang SC',
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ConversationModeBadge(
-                                    mode: conversation.mode,
-                                    compact: true,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              conversation.timeDisplay,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.text.withOpacity(0.4),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   ),
-                ),
-              );
-            },
+                  const SizedBox(width: 8),
+                  Text(
+                    conversation.timeDisplay,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.text.withOpacity(0.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

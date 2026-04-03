@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
+import 'package:ui/services/conversation_archive_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 
 class ConversationService {
@@ -29,13 +30,25 @@ class ConversationService {
     return conversations;
   }
 
-  static Future<List<ConversationModel>> getAllConversations() async {
+  static Future<List<ConversationModel>> getAllConversations({
+    bool includeArchived = false,
+    bool archivedOnly = false,
+  }) async {
     try {
       final result = await _assistCore.invokeMethod<List<dynamic>>(
         'getConversations',
       );
       if (result == null) return [];
-      return _normalizeConversations(result);
+      final conversations = await ConversationArchiveService.applyArchiveState(
+        _normalizeConversations(result),
+      );
+      if (archivedOnly) {
+        return conversations.where((item) => item.isArchived).toList();
+      }
+      if (includeArchived) {
+        return conversations;
+      }
+      return conversations.where((item) => !item.isArchived).toList();
     } on PlatformException catch (e) {
       print('[ConversationService] 获取对话列表失败: ${e.message}');
       return [];
@@ -48,8 +61,13 @@ class ConversationService {
   static Future<List<ConversationModel>> getConversationsByPage({
     required int offset,
     required int limit,
+    bool includeArchived = false,
+    bool archivedOnly = false,
   }) async {
-    final all = await getAllConversations();
+    final all = await getAllConversations(
+      includeArchived: includeArchived,
+      archivedOnly: archivedOnly,
+    );
     if (all.isEmpty) return [];
     final start = offset < 0 ? 0 : offset;
     if (start >= all.length) return [];
@@ -122,10 +140,25 @@ class ConversationService {
     ConversationMode? mode,
   }) async {
     try {
-      final result = await _assistCore.invokeMethod<dynamic>('deleteConversation', {
-        'conversationId': conversationId,
-        if (mode != null) 'mode': mode.storageValue,
-      });
+      final result = await _assistCore.invokeMethod<dynamic>(
+        'deleteConversation',
+        {
+          'conversationId': conversationId,
+          if (mode != null) 'mode': mode.storageValue,
+        },
+      );
+      final deleted = result == 'SUCCESS';
+      if (!deleted) {
+        return false;
+      }
+      await ConversationHistoryService.clearConversationMessages(
+        conversationId,
+        mode: mode ?? ConversationMode.normal,
+      );
+      await ConversationArchiveService.forgetConversation(
+        conversationId: conversationId,
+        mode: mode,
+      );
       await ConversationHistoryService.clearConversationThreadReferences(
         conversationId,
         mode: mode,
@@ -133,7 +166,7 @@ class ConversationService {
       await setCurrentConversationTarget(
         await ConversationHistoryService.getLastVisibleThreadTarget(),
       );
-      return result == 'SUCCESS';
+      return true;
     } on PlatformException catch (e) {
       print('删除对话失败: ${e.message}');
       return false;
@@ -141,6 +174,29 @@ class ConversationService {
       print('删除对话失败: $e');
       return false;
     }
+  }
+
+  static Future<bool> archiveConversation(ConversationModel conversation) async {
+    final archived = await ConversationArchiveService.setConversationArchived(
+      conversation,
+      archived: true,
+    );
+    if (!archived) {
+      return false;
+    }
+    await setCurrentConversationTarget(
+      await ConversationHistoryService.getLastVisibleThreadTarget(),
+    );
+    return true;
+  }
+
+  static Future<bool> unarchiveConversation(
+    ConversationModel conversation,
+  ) async {
+    return ConversationArchiveService.setConversationArchived(
+      conversation,
+      archived: false,
+    );
   }
 
   static Future<bool> updateConversationTitle({
@@ -234,8 +290,11 @@ class ConversationService {
 
   static Future<ConversationModel?> getLatestConversation({
     ConversationMode? mode,
+    bool includeArchived = false,
   }) async {
-    final conversations = await getAllConversations();
+    final conversations = await getAllConversations(
+      includeArchived: includeArchived,
+    );
     for (final conversation in conversations) {
       if (mode == null || conversation.mode == mode) {
         return conversation;
@@ -246,8 +305,12 @@ class ConversationService {
 
   static Future<ConversationThreadTarget?> getLatestConversationTarget({
     ConversationMode? mode,
+    bool includeArchived = false,
   }) async {
-    final conversation = await getLatestConversation(mode: mode);
+    final conversation = await getLatestConversation(
+      mode: mode,
+      includeArchived: includeArchived,
+    );
     if (conversation == null) {
       return null;
     }

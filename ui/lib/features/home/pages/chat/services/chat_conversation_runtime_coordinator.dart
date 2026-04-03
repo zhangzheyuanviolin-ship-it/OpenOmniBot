@@ -304,6 +304,23 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     notifyListeners();
   }
 
+  void discardConversationRuntime({
+    required int conversationId,
+    required String mode,
+  }) {
+    _cancelPendingPersistence(conversationId: conversationId, mode: mode);
+    _taskBindings.removeWhere(
+      (_, binding) =>
+          binding.conversationId == conversationId && binding.mode == mode,
+    );
+    final removed = _runtimes.remove(
+      _runtimeKey(conversationId: conversationId, mode: mode),
+    );
+    if (removed != null) {
+      notifyListeners();
+    }
+  }
+
   void interruptActiveToolCard({
     required int conversationId,
     required String mode,

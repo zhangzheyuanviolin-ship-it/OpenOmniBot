@@ -2,9 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/pages/chat_history/widgets/chat_history_conversation_item.dart';
+import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/services/conversation_service.dart';
@@ -14,15 +15,25 @@ import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
 class ChatHistoryPage extends StatefulWidget {
-  const ChatHistoryPage({super.key});
+  const ChatHistoryPage({
+    super.key,
+    this.archivedOnly = false,
+  });
+
+  final bool archivedOnly;
 
   @override
   State<ChatHistoryPage> createState() => _ChatHistoryPageState();
 }
 
 class _ChatHistoryPageState extends State<ChatHistoryPage> {
+  static const BorderRadius _deleteActionRadius = BorderRadius.only(
+    topRight: Radius.circular(8),
+    bottomRight: Radius.circular(8),
+  );
+
   List<ConversationModel> _conversations = const [];
-  final Set<String> _deletingKeys = <String>{};
+  final Set<String> _busyKeys = <String>{};
   bool _isLoading = true;
 
   Future<void> _triggerDeleteHaptic() async {
@@ -55,7 +66,9 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
 
     try {
       final loadedConversations =
-          await ConversationService.getAllConversations();
+          await ConversationService.getAllConversations(
+            archivedOnly: widget.archivedOnly,
+          );
       if (!mounted) {
         return;
       }
@@ -75,7 +88,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   }
 
   Future<void> _deleteConversation(ConversationModel conversation) async {
-    if (_deletingKeys.contains(conversation.threadKey)) {
+    if (_busyKeys.contains(conversation.threadKey)) {
       return;
     }
 
@@ -87,7 +100,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     }
 
     setState(() {
-      _deletingKeys.add(conversation.threadKey);
+      _busyKeys.add(conversation.threadKey);
       _conversations = List<ConversationModel>.from(_conversations)
         ..removeAt(originalIndex);
     });
@@ -104,7 +117,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     }
 
     setState(() {
-      _deletingKeys.remove(conversation.threadKey);
+      _busyKeys.remove(conversation.threadKey);
       if (!deleted) {
         final restoredIndex = originalIndex <= _conversations.length
             ? originalIndex
@@ -120,8 +133,55 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     );
   }
 
+  Future<void> _setConversationArchived(
+    ConversationModel conversation, {
+    required bool archived,
+  }) async {
+    if (_busyKeys.contains(conversation.threadKey)) {
+      return;
+    }
+
+    final originalIndex = _conversations.indexWhere(
+      (item) => item.id == conversation.id,
+    );
+    if (originalIndex < 0) {
+      return;
+    }
+
+    setState(() {
+      _busyKeys.add(conversation.threadKey);
+      _conversations = List<ConversationModel>.from(_conversations)
+        ..removeAt(originalIndex);
+    });
+
+    final success = archived
+        ? await ConversationService.archiveConversation(conversation)
+        : await ConversationService.unarchiveConversation(conversation);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _busyKeys.remove(conversation.threadKey);
+      if (!success) {
+        final restoredIndex = originalIndex <= _conversations.length
+            ? originalIndex
+            : _conversations.length;
+        _conversations = List<ConversationModel>.from(_conversations)
+          ..insert(restoredIndex, conversation);
+      }
+    });
+
+    showToast(
+      success
+          ? (archived ? '已归档' : '已取消归档')
+          : (archived ? '归档失败' : '取消归档失败'),
+      type: success ? ToastType.success : ToastType.error,
+    );
+  }
+
   void _openConversation(ConversationModel conversation) {
-    if (_deletingKeys.contains(conversation.threadKey)) {
+    if (_busyKeys.contains(conversation.threadKey)) {
       return;
     }
     GoRouterManager.push(
@@ -142,18 +202,71 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     );
   }
 
+  String get _pageTitle => widget.archivedOnly ? '归档对话' : '聊天记录';
+
+  String get _emptyTitle => widget.archivedOnly ? '暂无归档对话' : '暂无聊天记录';
+
+  List<ConversationSlideAction> _buildActions(ConversationModel conversation) {
+    final primaryAction = ConversationSlideAction(
+      onPressed: () => _setConversationArchived(
+        conversation,
+        archived: !widget.archivedOnly,
+      ),
+      backgroundColor: AppColors.buttonPrimary,
+      child: Center(
+        child: widget.archivedOnly
+            ? const Icon(
+                Icons.unarchive_outlined,
+                color: Colors.white,
+                size: 22,
+              )
+            : SvgPicture.asset(
+                'assets/home/archive_icon.svg',
+                width: 20,
+                height: 20,
+                colorFilter: const ColorFilter.mode(
+                  Colors.white,
+                  BlendMode.srcIn,
+                ),
+              ),
+      ),
+    );
+
+    return [
+      primaryAction,
+      ConversationSlideAction(
+        onPressed: () => _deleteConversation(conversation),
+        backgroundColor: AppColors.alertRed,
+        borderRadius: _deleteActionRadius,
+        child: Center(
+          child: SvgPicture.asset(
+            'assets/memory/memory_delete.svg',
+            width: 20,
+            height: 20,
+            colorFilter: const ColorFilter.mode(
+              Colors.white,
+              BlendMode.srcIn,
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: CommonAppBar(
-        title: '\u804a\u5929\u8bb0\u5f55',
+        title: _pageTitle,
         primary: true,
-        trailing: IconButton(
-          icon: Icon(Icons.add, color: Colors.grey[600], size: 24),
-          onPressed: _createConversation,
-          tooltip: '\u65b0\u5efa\u5bf9\u8bdd',
-        ),
+        trailing: widget.archivedOnly
+            ? null
+            : IconButton(
+                icon: Icon(Icons.add, color: Colors.grey[600], size: 24),
+                onPressed: _createConversation,
+                tooltip: '\u65b0\u5efa\u5bf9\u8bdd',
+              ),
       ),
       body: _buildBody(),
     );
@@ -172,20 +285,50 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       return _buildEmptyState();
     }
 
-    return SlidableAutoCloseBehavior(
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _conversations.length,
-        itemBuilder: (context, index) {
-          final conversation = _conversations[index];
-          return ChatHistoryConversationItem(
-            conversation: conversation,
-            isDeleting: _deletingKeys.contains(conversation.threadKey),
-            onTap: () => _openConversation(conversation),
-            onDelete: () => _deleteConversation(conversation),
-          );
-        },
-      ),
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _conversations.length,
+      itemBuilder: (context, index) {
+        final conversation = _conversations[index];
+        return ChatHistoryConversationItem(
+          conversation: conversation,
+          actions: _buildActions(conversation),
+          isBusy: _busyKeys.contains(conversation.threadKey),
+          showLeadingIcon: !widget.archivedOnly,
+          onTap: () => _openConversation(conversation),
+          onDelete: () => _deleteConversation(conversation),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyHint() {
+    if (!widget.archivedOnly) {
+      return GestureDetector(
+        onTap: _createConversation,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF1930D9), Color(0xFF2CA5F0)],
+            ),
+            borderRadius: BorderRadius.all(Radius.circular(24)),
+          ),
+          child: const Text(
+            '\u5f00\u59cb\u5bf9\u8bdd',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Text(
+      '左滑聊天记录即可归档',
+      style: TextStyle(fontSize: 13, color: Colors.grey[500]),
     );
   }
 
@@ -194,33 +337,20 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[300]),
+          Icon(
+            widget.archivedOnly
+                ? Icons.archive_outlined
+                : Icons.chat_bubble_outline,
+            size: 64,
+            color: Colors.grey[300],
+          ),
           const SizedBox(height: 16),
           Text(
-            '\u6682\u65e0\u804a\u5929\u8bb0\u5f55',
+            _emptyTitle,
             style: TextStyle(fontSize: 16, color: Colors.grey[500]),
           ),
           const SizedBox(height: 24),
-          GestureDetector(
-            onTap: _createConversation,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1930D9), Color(0xFF2CA5F0)],
-                ),
-                borderRadius: BorderRadius.all(Radius.circular(24)),
-              ),
-              child: const Text(
-                '\u5f00\u59cb\u5bf9\u8bdd',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
+          _buildEmptyHint(),
         ],
       ),
     );

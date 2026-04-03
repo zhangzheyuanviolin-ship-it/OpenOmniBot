@@ -142,11 +142,16 @@ List<GoRoute> homeRoutes = [
     },
   ),
 
-  // 聊天历史页
+  // 聊天归档页（保留旧路径兼容）
   GoRoute(
     path: '/home/chat_history',
     name: 'home/chat_history',
-    builder: (context, state) => const ChatHistoryPage(),
+    builder: (context, state) => const ChatHistoryPage(archivedOnly: true),
+  ),
+  GoRoute(
+    path: '/home/archived_conversations',
+    name: 'home/archived_conversations',
+    builder: (context, state) => const ChatHistoryPage(archivedOnly: true),
   ),
 
   // 输入框悬浮窗

@@ -225,7 +225,9 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     final inMemoryMessages = runtime == null || runtime.messages.isEmpty
         ? null
         : List<ChatMessageModel>.from(runtime.messages);
-    final conversations = await ConversationService.getAllConversations();
+    final conversations = await ConversationService.getAllConversations(
+      includeArchived: true,
+    );
     if (!mounted) return;
 
     ConversationModel? conversation;
@@ -532,8 +534,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
   @override
   void didPopNext() {
-    unawaited(_loadNormalChatModelContext());
-    unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
+    unawaited(_handleDidPopNext());
   }
 
   @override
@@ -544,6 +545,14 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
   @override
   void didPushNext() {}
+
+  Future<void> _handleDidPopNext() async {
+    await checkConversationExists();
+    if (!mounted) return;
+    await _loadNormalChatModelContext();
+    if (!mounted) return;
+    await _refreshLiveBrowserSessionSnapshot(syncRuntime: true);
+  }
 
   @override
   void _onFocusChange() {}

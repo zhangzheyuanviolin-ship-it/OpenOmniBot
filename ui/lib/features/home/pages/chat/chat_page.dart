@@ -870,6 +870,15 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   }
 
   @override
+  void onConversationMissing(ConversationMode mode, int conversationId) {
+    final pageMode = _pageModeForConversationMode(mode);
+    _runtimeCoordinator.discardConversationRuntime(
+      conversationId: conversationId,
+      mode: _modeKey(pageMode),
+    );
+  }
+
+  @override
   void onConversationLoaded(
     ConversationMode mode,
     int conversationId,

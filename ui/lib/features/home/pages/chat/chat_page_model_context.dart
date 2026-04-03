@@ -497,6 +497,22 @@ class _ChatModelOverrideSelection {
   });
 }
 
+Widget _buildChatModelIdTooltip({
+  required String modelId,
+  required Widget child,
+}) {
+  return Tooltip(
+    message: modelId,
+    triggerMode: TooltipTriggerMode.longPress,
+    waitDuration: Duration.zero,
+    showDuration: const Duration(seconds: 3),
+    preferBelow: false,
+    textAlign: TextAlign.start,
+    constraints: const BoxConstraints(maxWidth: 320),
+    child: child,
+  );
+}
+
 class _ChatModelMentionPanel extends StatefulWidget {
   final List<ModelProviderProfileSummary> profiles;
   final Map<String, List<ProviderModelOption>> providerModelsByProfileId;
@@ -592,44 +608,49 @@ class _ChatModelMentionPanelState extends State<_ChatModelMentionPanel> {
         widget.currentSelection?.modelId == item.id;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
-      child: InkWell(
-        onTap: () {
-          widget.onSelect(
-            _ChatModelOverrideSelection(
-              providerProfileId: profile.id,
-              modelId: item.id,
+      child: _buildChatModelIdTooltip(
+        modelId: item.id,
+        child: InkWell(
+          onTap: () {
+            widget.onSelect(
+              _ChatModelOverrideSelection(
+                providerProfileId: profile.id,
+                modelId: item.id,
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: selected
+                  ? const Color(0xFFEAF3FF)
+                  : const Color(0xFFF8FAFD),
+              borderRadius: BorderRadius.circular(12),
             ),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  item.id,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF1F2937),
-                    fontWeight: FontWeight.w500,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item.id,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF1F2937),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-              ),
-              if (selected)
-                const Icon(
-                  Icons.check_rounded,
-                  size: 15,
-                  color: Color(0xFF2C7FEB),
-                ),
-            ],
+                if (selected)
+                  const Icon(
+                    Icons.check_rounded,
+                    size: 15,
+                    color: Color(0xFF2C7FEB),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -909,43 +930,48 @@ class _ConversationModelSelectorPopupEntryState
         widget.currentSelection?.modelId == model.id;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
-      child: InkWell(
-        onTap: () {
-          Navigator.of(context).pop(
-            _ChatModelOverrideSelection(
-              providerProfileId: profile.id,
-              modelId: model.id,
+      child: _buildChatModelIdTooltip(
+        modelId: model.id,
+        child: InkWell(
+          onTap: () {
+            Navigator.of(context).pop(
+              _ChatModelOverrideSelection(
+                providerProfileId: profile.id,
+                modelId: model.id,
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: selected
+                  ? const Color(0xFFEAF3FF)
+                  : const Color(0xFFF8FAFD),
+              borderRadius: BorderRadius.circular(12),
             ),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  model.id,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF1F2937),
-                    fontWeight: FontWeight.w500,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    model.id,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF1F2937),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-              ),
-              if (selected)
-                const Icon(
-                  Icons.check_rounded,
-                  size: 15,
-                  color: Color(0xFF2C7FEB),
-                ),
-            ],
+                if (selected)
+                  const Icon(
+                    Icons.check_rounded,
+                    size: 15,
+                    color: Color(0xFF2C7FEB),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

@@ -27,6 +27,7 @@ enum ConversationMode {
 class ConversationModel {
   final int id;
   final ConversationMode mode;
+  final bool isArchived;
   final String title;
   final String? summary;
   final String? contextSummary;
@@ -44,6 +45,7 @@ class ConversationModel {
   ConversationModel({
     required this.id,
     this.mode = ConversationMode.normal,
+    this.isArchived = false,
     required this.title,
     this.summary,
     this.contextSummary,
@@ -63,6 +65,7 @@ class ConversationModel {
     return ConversationModel(
       id: json['id'] as int,
       mode: ConversationMode.fromStorageValue(json['mode'] as String?),
+      isArchived: json['isArchived'] as bool? ?? false,
       title: json['title'] as String,
       summary: json['summary'] as String?,
       contextSummary: json['contextSummary'] as String?,
@@ -85,6 +88,7 @@ class ConversationModel {
     return {
       'id': id,
       'mode': mode.storageValue,
+      'isArchived': isArchived,
       'title': title,
       'summary': summary,
       'contextSummary': contextSummary,
@@ -104,6 +108,7 @@ class ConversationModel {
   ConversationModel copyWith({
     int? id,
     ConversationMode? mode,
+    bool? isArchived,
     String? title,
     String? summary,
     String? contextSummary,
@@ -121,6 +126,7 @@ class ConversationModel {
     return ConversationModel(
       id: id ?? this.id,
       mode: mode ?? this.mode,
+      isArchived: isArchived ?? this.isArchived,
       title: title ?? this.title,
       summary: summary ?? this.summary,
       contextSummary: contextSummary ?? this.contextSummary,

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/chat_history/widgets/chat_history_conversation_item.dart';
+import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/models/conversation_model.dart';
 
 void main() {
@@ -16,6 +17,7 @@ void main() {
       _buildTestApp(
         child: ChatHistoryConversationItem(
           conversation: _conversation(id: 1, title: 'Conversation A'),
+          actions: _deleteActions(() {}),
           onTap: () => tapCount++,
           onDelete: () {},
         ),
@@ -37,6 +39,7 @@ void main() {
       _buildTestApp(
         child: ChatHistoryConversationItem(
           conversation: _conversation(id: 2, title: 'Conversation B'),
+          actions: _deleteActions(() => deleteCount++),
           onTap: () {},
           onDelete: () => deleteCount++,
         ),
@@ -61,6 +64,7 @@ void main() {
       _buildTestApp(
         child: ChatHistoryConversationItem(
           conversation: _conversation(id: 3, title: 'Conversation C'),
+          actions: _deleteActions(() => deleteCount++),
           onTap: () {},
           onDelete: () => deleteCount++,
         ),
@@ -87,6 +91,7 @@ void main() {
             title: 'Conversation D',
             mode: ConversationMode.openclaw,
           ),
+          actions: _deleteActions(() {}),
           onTap: () {},
           onDelete: () {},
         ),
@@ -106,6 +111,16 @@ Widget _buildTestApp({required Widget child}) {
       ),
     ),
   );
+}
+
+List<ConversationSlideAction> _deleteActions(VoidCallback onDelete) {
+  return [
+    ConversationSlideAction(
+      onPressed: onDelete,
+      backgroundColor: const Color(0xFFE53935),
+      child: const Icon(Icons.delete_outline, color: Colors.white),
+    ),
+  ];
 }
 
 ConversationModel _conversation({

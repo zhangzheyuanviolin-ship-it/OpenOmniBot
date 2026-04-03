@@ -56,6 +56,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
     ConversationModel? conversation,
     List<ChatMessageModel> messages,
   ) {}
+  void onConversationMissing(ConversationMode mode, int conversationId) {}
   void onConversationPersisted(
     ConversationMode mode,
     int conversationId,
@@ -200,7 +201,9 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
         conversationId,
         activeConversationModeValue,
       );
-      final conversations = await ConversationService.getAllConversations();
+      final conversations = await ConversationService.getAllConversations(
+        includeArchived: true,
+      );
       ConversationModel? conversation;
       try {
         conversation = conversations.firstWhere(
@@ -232,12 +235,10 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
               mode: activeConversationModeValue,
             )
           : List<ChatMessageModel>.from(inMemoryMessages);
-      if (savedMessages.isNotEmpty) {
-        setState(() {
-          messages.clear();
-          messages.addAll(savedMessages);
-        });
-      }
+      setState(() {
+        messages.clear();
+        messages.addAll(savedMessages);
+      });
       onConversationLoaded(
         activeConversationModeValue,
         conversationId,
@@ -256,7 +257,9 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
     if (currentConversationId == null) return;
 
     try {
-      final allConversations = await ConversationService.getAllConversations();
+      final allConversations = await ConversationService.getAllConversations(
+        includeArchived: true,
+      );
       final exists = allConversations.any(
         (conversation) =>
             conversation.id == currentConversationId &&
@@ -264,19 +267,26 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
       );
 
       if (!exists) {
+        final missingConversationId = currentConversationId!;
         final restored = await _restoreConversationFromMessages(
-          currentConversationId!,
+          missingConversationId,
         );
         if (restored) {
           debugPrint('当前对话不在列表中，已从消息记录恢复: $currentConversationId');
           return;
         }
+        onConversationMissing(
+          activeConversationModeValue,
+          missingConversationId,
+        );
 
-        if (allConversations.isNotEmpty) {
-          final fallbackConversation = allConversations.firstWhere(
-            (conversation) => conversation.mode == activeConversationModeValue,
-            orElse: () => allConversations.first,
-          );
+        final sameModeConversations = allConversations
+            .where(
+              (conversation) => conversation.mode == activeConversationModeValue,
+            )
+            .toList();
+        if (sameModeConversations.isNotEmpty) {
+          final fallbackConversation = sameModeConversations.first;
           await loadConversation(fallbackConversation.id);
           final fallbackTarget = ConversationThreadTarget.existing(
             conversationId: fallbackConversation.id,
@@ -305,6 +315,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
           currentConversationId = null;
           currentConversation = null;
         }
+        onConversationReset(activeConversationModeValue);
         final blankTarget = ConversationThreadTarget.newConversation(
           mode: activeConversationModeValue,
         );
