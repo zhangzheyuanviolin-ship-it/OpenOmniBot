@@ -1,7 +1,9 @@
 package com.alibaba.mnnllm.android.modelmarket
 
+import androidx.annotation.Keep
 import com.google.gson.annotations.SerializedName
 
+@Keep
 data class ModelMarketData(
     val version: String,
     val tagTranslations: Map<String, String>,
@@ -13,6 +15,7 @@ data class ModelMarketData(
     val libs: List<ModelMarketItem>? = emptyList()
 )
 
+@Keep
 data class ModelMarketConfig(
     val version: String,
     val tagTranslations: Map<String, String>,

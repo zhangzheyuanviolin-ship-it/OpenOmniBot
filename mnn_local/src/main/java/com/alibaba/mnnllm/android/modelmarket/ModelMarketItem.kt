@@ -1,8 +1,10 @@
 package com.alibaba.mnnllm.android.modelmarket
 
+import androidx.annotation.Keep
 import com.alibaba.mls.api.download.DownloadInfo
 import com.google.gson.annotations.SerializedName
 
+@Keep
 data class ModelMarketItem(
     val modelName: String,
     val vendor: String,
@@ -23,6 +25,7 @@ data class ModelMarketItem(
         get() = tags.map { TagMapper.getTag(it) }
 }
 
+@Keep
 data class ModelMarketItemWrapper(
     val modelMarketItem: ModelMarketItem,
     var downloadInfo: DownloadInfo

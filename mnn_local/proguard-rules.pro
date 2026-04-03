@@ -19,3 +19,22 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Model market and local market_config parsing rely on Gson reflection.
+# Omnibot's release app enables minification, so these DTO field names must remain stable.
+-keepattributes Signature,*Annotation*
+-keep class com.alibaba.mnnllm.android.modelmarket.ModelMarketData {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+-keep class com.alibaba.mnnllm.android.modelmarket.ModelMarketConfig {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+-keep class com.alibaba.mnnllm.android.modelmarket.ModelMarketItem {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
