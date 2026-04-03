@@ -69,9 +69,8 @@ android {
     }
 }
 
-tasks.register("prepareMnnNativeLibs", Exec) {
-    workingDir rootProject.projectDir
-    commandLine "bash", "${rootProject.projectDir}/scripts/prepare_mnn_android_native.sh"
+tasks.register("prepareMnnNativeLibs") {
+    dependsOn(rootProject.tasks.named("prepareMnnAndroidNativeLibs"))
 }
 
 preBuild.dependsOn prepareMnnNativeLibs

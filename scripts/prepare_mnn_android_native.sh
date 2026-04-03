@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MNN_ROOT="$REPO_ROOT/third_party/mnn_android"
 BUILD_DIR="$MNN_ROOT/project/android/build_64"
 LIB_DIR="$BUILD_DIR/lib"
+LOCK_DIR="$BUILD_DIR/.prepare-native-lock"
 REQUIRED_LIBS=(
   "$LIB_DIR/libMNN.so"
 )
@@ -20,6 +21,17 @@ REQUIRED_SCHEMA_HEADERS=(
   "$MNN_ROOT/schema/current/Tensor_generated.h"
 )
 
+mkdir -p "$BUILD_DIR"
+
+all_present() {
+  for lib in "${REQUIRED_LIBS[@]}"; do
+    if [[ ! -f "$lib" ]]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
 for header in "${REQUIRED_SCHEMA_HEADERS[@]}"; do
   if [[ ! -f "$header" ]]; then
     pushd "$MNN_ROOT/schema" >/dev/null
@@ -29,15 +41,24 @@ for header in "${REQUIRED_SCHEMA_HEADERS[@]}"; do
   fi
 done
 
-all_present=true
-for lib in "${REQUIRED_LIBS[@]}"; do
-  if [[ ! -f "$lib" ]]; then
-    all_present=false
-    break
+if all_present; then
+  exit 0
+fi
+
+while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+  if all_present; then
+    exit 0
   fi
+  sleep 1
 done
 
-if [[ "$all_present" == true ]]; then
+cleanup_lock() {
+  rmdir "$LOCK_DIR" 2>/dev/null || true
+}
+
+trap cleanup_lock EXIT
+
+if all_present; then
   exit 0
 fi
 
@@ -71,7 +92,6 @@ if [[ -z "${NDK_DIR:-}" || ! -d "$NDK_DIR" ]]; then
   exit 1
 fi
 
-mkdir -p "$BUILD_DIR"
 pushd "$BUILD_DIR" >/dev/null
 ANDROID_NDK="$NDK_DIR" bash ../build_64.sh "\
 -DMNN_LOW_MEMORY=true \
