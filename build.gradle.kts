@@ -9,6 +9,15 @@ plugins {
 val forcedCoroutinesVersion = libs.versions.kotlinxCoroutines.get()
 
 subprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven(url = "https://jitpack.io")
+        val storageUrl: String =
+            System.getenv("FLUTTER_STORAGE_BASE_URL") ?: "https://storage.googleapis.com"
+        maven(url = "$storageUrl/download.flutter.io")
+    }
+
     configurations.configureEach {
         resolutionStrategy.force(
             "org.jetbrains.kotlinx:kotlinx-coroutines-core:$forcedCoroutinesVersion",

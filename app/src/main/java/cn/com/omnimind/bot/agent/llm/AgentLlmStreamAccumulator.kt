@@ -16,15 +16,25 @@ import java.util.SortedMap
 import java.util.TreeMap
 
 class AgentLlmStreamAccumulator(
-    private val json: Json
+    private val json: Json,
+    private val preferInlineThinkTags: Boolean = false
 ) {
+    companion object {
+        private const val THINK_OPEN_TAG = "<think>"
+        private const val THINK_CLOSE_TAG = "</think>"
+        private val INLINE_THINK_TAGS = listOf(THINK_OPEN_TAG, THINK_CLOSE_TAG)
+    }
+
     private val contentBuffer = StringBuilder()
     private val reasoningBuffer = StringBuilder()
+    private val inlineTextBuffer = StringBuilder()
     private val toolCallBuilders: SortedMap<Int, MutableToolCallBuilder> = TreeMap()
     private var finishReason: String? = null
     private var usage: ChatCompletionUsage? = null
     private var seenChunk = false
     private var lastChunkPreview: String = ""
+    private var thinkSectionOpen = false
+    private var inlineThinkTagObserved = false
 
     fun consume(rawChunk: String): Boolean {
         val trimmed = rawChunk.trim()
@@ -45,7 +55,7 @@ class AgentLlmStreamAccumulator(
         val root = parseJsonObject(trimmed)
         if (root == null) {
             seenChunk = true
-            contentBuffer.append(trimmed)
+            appendTextChunk(trimmed)
             return false
         }
         return consumeJsonChunk(root)
@@ -160,6 +170,7 @@ class AgentLlmStreamAccumulator(
         if (!seenChunk) {
             throw IllegalStateException("chat completion stream ended without chunks")
         }
+        flushInlineTextBuffer(final = true)
         val toolCalls = toolCallBuilders.entries.map { (index, builder) ->
             val name = builder.name?.trim().orEmpty()
             if (name.isBlank()) {
@@ -349,13 +360,129 @@ class AgentLlmStreamAccumulator(
     }
 
     private fun appendReasoningPayload(element: JsonElement?) {
-        extractText(element)?.let { reasoningBuffer.append(it) }
+        extractText(element)?.let { appendReasoningText(it) }
     }
 
     private fun appendTextPayload(element: JsonElement?): Boolean {
         val text = extractText(element) ?: return false
-        contentBuffer.append(text)
+        appendTextChunk(text)
         return text.isNotEmpty()
+    }
+
+    private fun appendTextChunk(text: String) {
+        if (text.isEmpty()) {
+            return
+        }
+        if (!preferInlineThinkTags) {
+            contentBuffer.append(text)
+            return
+        }
+        inlineTextBuffer.append(text)
+        flushInlineTextBuffer(final = false)
+    }
+
+    private fun flushInlineTextBuffer(final: Boolean) {
+        if (!preferInlineThinkTags) {
+            if (inlineTextBuffer.isNotEmpty()) {
+                appendVisibleText(inlineTextBuffer.toString())
+                inlineTextBuffer.setLength(0)
+            }
+            return
+        }
+
+        while (inlineTextBuffer.isNotEmpty()) {
+            val bufferText = inlineTextBuffer.toString()
+            if (thinkSectionOpen) {
+                val closeIndex = bufferText.indexOf(THINK_CLOSE_TAG)
+                if (closeIndex >= 0) {
+                    appendReasoningText(bufferText.substring(0, closeIndex))
+                    inlineTextBuffer.delete(0, closeIndex + THINK_CLOSE_TAG.length)
+                    thinkSectionOpen = false
+                    inlineThinkTagObserved = true
+                    continue
+                }
+
+                if (final) {
+                    appendReasoningText(bufferText)
+                    inlineTextBuffer.setLength(0)
+                    return
+                }
+
+                val retainedLength = partialInlineTagSuffixLength(bufferText)
+                val safeLength = inlineTextBuffer.length - retainedLength
+                if (safeLength <= 0) {
+                    return
+                }
+                appendReasoningText(bufferText.substring(0, safeLength))
+                inlineTextBuffer.delete(0, safeLength)
+                return
+            }
+
+            val openIndex = bufferText.indexOf(THINK_OPEN_TAG)
+            val closeIndex = bufferText.indexOf(THINK_CLOSE_TAG)
+
+            if (openIndex >= 0 && (closeIndex < 0 || openIndex < closeIndex)) {
+                appendVisibleText(bufferText.substring(0, openIndex))
+                inlineTextBuffer.delete(0, openIndex + THINK_OPEN_TAG.length)
+                thinkSectionOpen = true
+                inlineThinkTagObserved = true
+                continue
+            }
+
+            if (closeIndex >= 0 && contentBuffer.isEmpty()) {
+                appendReasoningText(bufferText.substring(0, closeIndex))
+                inlineTextBuffer.delete(0, closeIndex + THINK_CLOSE_TAG.length)
+                inlineThinkTagObserved = true
+                continue
+            }
+
+            if (final) {
+                appendVisibleText(bufferText)
+                inlineTextBuffer.setLength(0)
+                return
+            }
+
+            if (!inlineThinkTagObserved && contentBuffer.isEmpty()) {
+                return
+            }
+
+            val retainedLength = partialInlineTagSuffixLength(bufferText)
+            val safeLength = inlineTextBuffer.length - retainedLength
+            if (safeLength <= 0) {
+                return
+            }
+            appendVisibleText(bufferText.substring(0, safeLength))
+            inlineTextBuffer.delete(0, safeLength)
+            return
+        }
+    }
+
+    private fun partialInlineTagSuffixLength(text: String): Int {
+        var longest = 0
+        INLINE_THINK_TAGS.forEach { tag ->
+            val upperBound = minOf(text.length, tag.length - 1)
+            for (candidate in upperBound downTo 1) {
+                if (text.endsWith(tag.substring(0, candidate))) {
+                    longest = maxOf(longest, candidate)
+                    break
+                }
+            }
+        }
+        return longest
+    }
+
+    private fun appendVisibleText(text: String) {
+        if (text.isEmpty()) {
+            return
+        }
+        contentBuffer.append(text)
+    }
+
+    private fun appendReasoningText(text: String) {
+        if (text.isEmpty()) {
+            return
+        }
+        reasoningBuffer.append(text)
     }
 
     private fun extractText(element: JsonElement?): String? {

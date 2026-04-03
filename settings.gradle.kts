@@ -20,6 +20,7 @@ dependencyResolutionManagement {
         maven("https://maven.google.com/")
         google()
         mavenCentral()
+        maven("https://jitpack.io")
         maven("$storageUrl/download.flutter.io")
         maven("https://repo1.maven.org/maven2/")
 
@@ -35,6 +36,13 @@ apply(from = File(filePath))
 include(":baselib")
 include(":accessibility")
 include(":omniintelligence")
+include(":mnn_local")
+include(":mnn_tts")
+project(":mnn_tts").projectDir =
+    File(settingsDir, "third_party/mnn_android/apps/frameworks/mnn_tts/android")
+include(":model_downloader")
+project(":model_downloader").projectDir =
+    File(settingsDir, "third_party/mnn_android/apps/frameworks/model_downloader/android")
 include(":uikit")
 include(":core:main")
 project(":core:main").projectDir = File(settingsDir, "ReTerminal/core/main")

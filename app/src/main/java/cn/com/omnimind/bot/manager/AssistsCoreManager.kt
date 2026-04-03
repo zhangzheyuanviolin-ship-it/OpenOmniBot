@@ -26,6 +26,7 @@ import cn.com.omnimind.baselib.llm.ChatCompletionTool
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderProfile
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
+import cn.com.omnimind.baselib.llm.MnnLocalProviderStateStore
 import cn.com.omnimind.baselib.llm.ModelSceneRegistry
 import cn.com.omnimind.baselib.llm.ProviderModelOption
 import cn.com.omnimind.baselib.llm.SceneModelCatalogResolver
@@ -60,6 +61,7 @@ import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
+import cn.com.omnimind.bot.mnnlocal.MnnLocalModelsManager
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
 import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
@@ -1972,13 +1974,37 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     fun fetchProviderModels(call: MethodCall, result: MethodChannel.Result) {
         val baseUrlArg = call.argument<String>("apiBase")?.trim().orEmpty()
         val apiKeyArg = call.argument<String>("apiKey")?.trim().orEmpty()
+        val profileId = call.argument<String>("profileId")?.trim()
 
         workJob.launch {
             try {
                 val currentConfig = ModelProviderConfigStore.getConfig()
-                val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
-                val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
-                val models = HttpController.fetchProviderModels(apiBase, apiKey)
+                val isBuiltinLocalRequest = isBuiltinLocalProviderRequest(
+                    profileId = profileId,
+                    apiBase = baseUrlArg.ifBlank { currentConfig.baseUrl },
+                    fallbackConfigId = currentConfig.id
+                )
+                val models = if (isBuiltinLocalRequest) {
+                    MnnLocalModelsManager.listInstalledModels()
+                        .mapNotNull { item ->
+                            val modelId = item["id"]?.toString()?.trim().orEmpty()
+                            if (modelId.isEmpty()) {
+                                null
+                            } else {
+                                ProviderModelOption(
+                                    id = modelId,
+                                    displayName = item["name"]?.toString()?.trim().ifNullOrBlank { modelId },
+                                    ownedBy = item["category"]?.toString()?.trim().takeIf { !it.isNullOrEmpty() }
+                                )
+                            }
+                        }
+                        .distinctBy { it.id }
+                        .sortedBy { it.id.lowercase() }
+                } else {
+                    val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
+                    val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
+                    HttpController.fetchProviderModels(apiBase, apiKey)
+                }
                 withContext(Dispatchers.Main) {
                     result.success(models.map { it.toMap() })
                 }
@@ -1995,17 +2021,35 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val model = call.argument<String>("model")?.trim() ?: ""
         val baseUrlArg = call.argument<String>("apiBase")?.trim().orEmpty()
         val apiKeyArg = call.argument<String>("apiKey")?.trim().orEmpty()
+        val profileId = call.argument<String>("profileId")?.trim()
 
         workJob.launch {
             try {
                 val currentConfig = ModelProviderConfigStore.getConfig()
-                val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
-                val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
-                val checkResult = HttpController.checkProviderModelAvailability(
-                    model = model,
-                    apiBase = apiBase,
-                    apiKey = apiKey
+                val isBuiltinLocalRequest = isBuiltinLocalProviderRequest(
+                    profileId = profileId,
+                    apiBase = baseUrlArg.ifBlank { currentConfig.baseUrl },
+                    fallbackConfigId = currentConfig.id
                 )
+                val checkResult = if (isBuiltinLocalRequest) {
+                    val installed = MnnLocalModelsManager.listInstalledModels()
+                    val exists = installed.any { item ->
+                        item["id"]?.toString()?.trim() == model
+                    }
+                    HttpController.ModelAvailabilityCheckResult(
+                        available = exists,
+                        code = if (exists) 200 else 404,
+                        message = if (exists) "OK" else "本地模型未安装"
+                    )
+                } else {
+                    val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
+                    val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
+                    HttpController.checkProviderModelAvailability(
+                        model = model,
+                        apiBase = apiBase,
+                        apiKey = apiKey
+                    )
+                }
 
                 withContext(Dispatchers.Main) {
                     result.success(
@@ -2029,6 +2073,29 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             }
         }
+    }
+
+    private fun isBuiltinLocalProviderRequest(
+        profileId: String?,
+        apiBase: String?,
+        fallbackConfigId: String?
+    ): Boolean {
+        if (
+            MnnLocalProviderStateStore.isBuiltinProfileId(profileId) ||
+            MnnLocalProviderStateStore.isBuiltinProfileId(fallbackConfigId)
+        ) {
+            return true
+        }
+        val builtinBase = ModelProviderConfigStore.normalizeBaseUrl(
+            MnnLocalProviderStateStore.getProfile().baseUrl
+        )
+        val requestBase = ModelProviderConfigStore.normalizeBaseUrl(apiBase ?: "")
+        return builtinBase != null && builtinBase == requestBase
+    }
+
+    private fun String?.ifNullOrBlank(fallback: () -> String): String {
+        val normalized = this?.trim().orEmpty()
+        return if (normalized.isEmpty()) fallback() else normalized
     }
 
     fun getSceneModelCatalog(call: MethodCall, result: MethodChannel.Result) {

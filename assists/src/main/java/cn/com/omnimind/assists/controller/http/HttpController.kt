@@ -9,6 +9,7 @@ import cn.com.omnimind.baselib.llm.AssistantToolCallFunction
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionStreamOptions
+import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.util.OmniLog
@@ -314,6 +315,17 @@ object HttpController {
         } else {
             "$base/v1/models"
         }
+    }
+
+    private suspend fun prepareLocalProviderIfNeeded(resolved: ResolvedSceneRequest) {
+        if (resolved.resolvedModel.isBlank()) {
+            return
+        }
+        LocalModelProviderBridge.prepareIfNeeded(
+            profileId = resolved.providerProfileId,
+            apiBase = resolved.apiBase,
+            modelId = resolved.resolvedModel
+        )
     }
 
     private fun buildOpenAIRequestBuilder(
@@ -671,6 +683,7 @@ object HttpController {
         requestBodyJson: String,
         event: EventSourceListener
     ): EventSource = withContext(Dispatchers.IO) {
+        prepareLocalProviderIfNeeded(resolved)
         val base = normalizeApiBase(resolved.apiBase ?: "")
             ?: throw IllegalArgumentException("Invalid apiBase")
         val requestBody = buildRequestBodyWithResolvedModel(
@@ -735,6 +748,7 @@ object HttpController {
     ): EventSource {
         val resolved = resolveSceneRequest(model)
         logSceneProfile(resolved)
+        prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(
             chatRequest = createChatRequestFromText(resolved, text),
             apiBase = resolved.apiBase,
@@ -760,6 +774,7 @@ object HttpController {
     ): EventSource {
         val resolved = resolveSceneRequest(model)
         logSceneProfile(resolved)
+        prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(
             chatRequest = createChatRequestFromMessages(
                 resolved = resolved,
@@ -925,6 +940,7 @@ object HttpController {
             defaultTransport = ModelSceneRegistry.SceneTransport.VLM_CHAT
         )
         logSceneProfile(resolved)
+        prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(
             chatRequest = createChatRequestFromVlmPayload(
                 resolved,
@@ -946,6 +962,7 @@ object HttpController {
             defaultTransport = ModelSceneRegistry.SceneTransport.VLM_CHAT
         )
         logSceneProfile(resolved)
+        prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(
             chatRequest = createChatRequestFromVlmPayload(
                 resolved,
@@ -1016,6 +1033,7 @@ object HttpController {
         request: ChatCompletionRequest,
         retryOnBadRequest: Boolean
     ): SceneChatCompletionResponse = withContext(Dispatchers.IO) {
+        prepareLocalProviderIfNeeded(resolved)
         val base = normalizeApiBase(resolved.apiBase ?: "")
         if (base == null) {
             return@withContext buildFailureSceneResponse(

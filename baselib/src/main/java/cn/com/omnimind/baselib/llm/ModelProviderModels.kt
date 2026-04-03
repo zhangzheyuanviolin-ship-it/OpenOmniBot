@@ -5,7 +5,11 @@ data class ModelProviderConfig(
     val name: String = "",
     val baseUrl: String = "",
     val apiKey: String = "",
-    val source: String = "none"
+    val source: String = "none",
+    val providerType: String = "custom",
+    val readOnly: Boolean = false,
+    val ready: Boolean = true,
+    val statusText: String? = null
 ) {
     fun isConfigured(): Boolean = baseUrl.isNotBlank()
 }
@@ -14,7 +18,11 @@ data class ModelProviderProfile(
     val id: String,
     val name: String,
     val baseUrl: String = "",
-    val apiKey: String = ""
+    val apiKey: String = "",
+    val sourceType: String = "custom",
+    val readOnly: Boolean = false,
+    val ready: Boolean = true,
+    val statusText: String? = null
 ) {
     fun isConfigured(): Boolean = baseUrl.isNotBlank()
 }

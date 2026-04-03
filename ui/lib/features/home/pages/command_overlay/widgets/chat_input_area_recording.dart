@@ -3,27 +3,121 @@ part of 'chat_input_area.dart';
 mixin _ChatInputAreaRecordingMixin on _ChatInputAreaStateBase {
   // ==================== 录音相关方法 ====================
 
+  String _mergeTranscriptText(String current, String incoming) {
+    final left = current.trimRight();
+    final right = incoming.trimLeft();
+    if (left.isEmpty) {
+      return right;
+    }
+    if (right.isEmpty) {
+      return left;
+    }
+    if (left == right) {
+      return left;
+    }
+    if (right.startsWith(left)) {
+      return right;
+    }
+    if (left.startsWith(right)) {
+      return left;
+    }
+
+    final overlap = _longestTranscriptOverlap(left, right);
+    final separator = overlap > 0 ? '' : _transcriptSeparator(left, right);
+    return '$left$separator${right.substring(overlap)}';
+  }
+
+  int _longestTranscriptOverlap(String left, String right) {
+    final maxLength = math.min(left.length, right.length);
+    for (var size = maxLength; size > 0; size--) {
+      if (left.substring(left.length - size) == right.substring(0, size)) {
+        return size;
+      }
+    }
+    return 0;
+  }
+
+  String _transcriptSeparator(String left, String right) {
+    if (left.isEmpty || right.isEmpty) {
+      return '';
+    }
+    final leftLast = left[left.length - 1];
+    final rightFirst = right[0];
+    if (RegExp(r'\s').hasMatch(leftLast) ||
+        RegExp(r'\s').hasMatch(rightFirst)) {
+      return '';
+    }
+    if (_isAsciiWordChar(leftLast) && _isAsciiWordChar(rightFirst)) {
+      return ' ';
+    }
+    if (_isCjkChar(leftLast) || _isCjkChar(rightFirst)) {
+      return '';
+    }
+    return ' ';
+  }
+
+  bool _isAsciiWordChar(String value) {
+    return RegExp(r'[A-Za-z0-9]').hasMatch(value);
+  }
+
+  bool _isCjkChar(String value) {
+    if (value.isEmpty) {
+      return false;
+    }
+    final codePoint = value.runes.first;
+    return (codePoint >= 0x3400 && codePoint <= 0x4DBF) ||
+        (codePoint >= 0x4E00 && codePoint <= 0x9FFF) ||
+        (codePoint >= 0xF900 && codePoint <= 0xFAFF);
+  }
+
+  String _composeRecognizedText(String transcript) {
+    if (_textBeforeRecording.isEmpty) {
+      return transcript;
+    }
+    if (transcript.isEmpty) {
+      return _textBeforeRecording;
+    }
+    final needsSpace =
+        !RegExp(r'\s$').hasMatch(_textBeforeRecording) &&
+        !RegExp(r'^\s').hasMatch(transcript) &&
+        !_isCjkChar(_textBeforeRecording[_textBeforeRecording.length - 1]) &&
+        !_isCjkChar(transcript[0]);
+    return needsSpace
+        ? '$_textBeforeRecording $transcript'
+        : '$_textBeforeRecording$transcript';
+  }
+
   /// 切换录音状态（开始/停止）
   Future<void> toggleRecording() async {
+    final shouldStop = _recordingState != RecordingState.idle;
+
     // Flutter 侧互斥：同一时刻只允许一个 start/stop 逻辑在跑
     if (_toggleInProgress) {
-      _showFastTapToast();
+      if (shouldStop && _recordingState == RecordingState.starting) {
+        _setRecordingState(RecordingState.stopping);
+        return;
+      }
+      if (!shouldStop) {
+        _showFastTapToast();
+      }
       return;
     }
 
-    // Flutter 侧时间窗口限流：频繁点击不下发到原生
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastToggleAcceptedAtMs < _toggleMinIntervalMs) {
-      _showFastTapToast();
-      return;
+    if (!shouldStop) {
+      // Flutter 侧时间窗口限流：频繁点击不下发到原生
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastToggleAcceptedAtMs < _toggleMinIntervalMs) {
+        _showFastTapToast();
+        return;
+      }
+      _lastToggleAcceptedAtMs = now;
     }
-    _lastToggleAcceptedAtMs = now;
 
     _toggleInProgress = true;
     try {
       widget.focusNode.unfocus();
 
-      if (_recordingState == RecordingState.recording) {
+      if (shouldStop) {
         await _stopRecording();
         return;
       }
@@ -89,21 +183,24 @@ mixin _ChatInputAreaRecordingMixin on _ChatInputAreaStateBase {
           .receiveBroadcastStream()
           .listen(
             (transcript) {
+              final transcriptText = transcript.toString().trim();
               debugPrint(
-                "[SpeechRecognition] Received transcript: $transcript",
+                "[SpeechRecognition] Received transcript: $transcriptText",
               );
               if (mounted &&
+                  transcriptText.isNotEmpty &&
                   (_recordingState == RecordingState.recording ||
                       _recordingState == RecordingState.stopping ||
                       _recordingState == RecordingState.waitingServerStop)) {
-                // 直接更新 controller，实时显示识别结果
-                _currentTranscript = transcript;
-                if (_textBeforeRecording.isNotEmpty) {
-                  widget.controller.text =
-                      '$_textBeforeRecording $_currentTranscript';
-                } else {
-                  widget.controller.text = _currentTranscript;
-                }
+                // 本地 ASR 回调的是每一段 endpoint 的最终文本；这里做跨段聚合，
+                // 同时兼容后续可能返回累计文本的 provider。
+                _currentTranscript = _mergeTranscriptText(
+                  _currentTranscript,
+                  transcriptText,
+                );
+                widget.controller.text = _composeRecognizedText(
+                  _currentTranscript,
+                );
                 // 移动光标到末尾
                 widget.controller.selection = TextSelection.fromPosition(
                   TextPosition(offset: widget.controller.text.length),

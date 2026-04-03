@@ -366,8 +366,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           Expanded(
             child: _buildQuickCard(
               title: '技能仓库',
-              subtitle:
-                  '启用 $_enabledSkillCount / $_installedSkillCount 技能',
+              subtitle: '启用 $_enabledSkillCount / $_installedSkillCount 技能',
               gradient: const LinearGradient(
                 begin: Alignment(-0.17, -0.47),
                 end: Alignment(1.48, 1.69),

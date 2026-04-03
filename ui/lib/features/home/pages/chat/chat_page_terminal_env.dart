@@ -385,7 +385,7 @@ class _TerminalEnvironmentEditorPopupEntryState
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
                 child: Text(
-                  '还没有环境变量，添加后终端工具执行命令时会自动带上。',
+                  '还没有环境变量',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,

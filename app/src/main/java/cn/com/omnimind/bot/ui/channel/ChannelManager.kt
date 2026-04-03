@@ -18,6 +18,7 @@ class ChannelManager {
     private var fileSaveChannel: FileSaveChannel = FileSaveChannel()
     private var hideFromRecentsChannel: HideFromRecentsChannel = HideFromRecentsChannel()
     private var appUpdateChannel: AppUpdateChannel = AppUpdateChannel()
+    private var mnnLocalModelsChannel: MnnLocalModelsChannel = MnnLocalModelsChannel()
 
     private var uiRouterChannel: UIRouterChannel = UIRouterChannel()
 
@@ -44,6 +45,7 @@ class ChannelManager {
         fileSaveChannel.setChannel(flutterEngine)
         hideFromRecentsChannel.setChannel(flutterEngine)
         appUpdateChannel.setChannel(flutterEngine)
+        mnnLocalModelsChannel.setChannel(flutterEngine)
         uiRouterChannel.setChannel(flutterEngine)
         mcpServerChannel.setChannel(flutterEngine)
         remoteMcpConfigChannel.setChannel(flutterEngine)
@@ -60,6 +62,7 @@ class ChannelManager {
         fileSaveChannel.onCreate(context)
         hideFromRecentsChannel.onCreate(context)
         appUpdateChannel.onCreate(context)
+        mnnLocalModelsChannel.onCreate(context)
         mcpServerChannel.onCreate(context)
         remoteMcpConfigChannel.onCreate()
     }
@@ -73,6 +76,7 @@ class ChannelManager {
         fileSaveChannel.clear()
         hideFromRecentsChannel.clear()
         appUpdateChannel.clear()
+        mnnLocalModelsChannel.clear()
         uiRouterChannel.clear()
         cacheChannel.clear()
         httpChannel.clear()

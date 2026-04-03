@@ -183,7 +183,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
 
   bool get _shouldAutoSaveDraft {
     final current = _currentProfile;
-    if (current == null) {
+    if (current == null || current.readOnly) {
       return false;
     }
     final normalizedBaseUrl = ModelProviderConfigService.normalizeApiBase(
@@ -214,7 +214,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
 
   Future<void> _persistProfileDraft() async {
     final current = _currentProfile;
-    if (current == null) {
+    if (current == null || current.readOnly) {
       return;
     }
     _autoSaveTimer?.cancel();
@@ -474,7 +474,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
 
   Future<void> _deleteCurrentProfile() async {
     final current = _currentProfile;
-    if (current == null || _profiles.length <= 1) {
+    if (current == null || current.readOnly || _profiles.length <= 1) {
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -532,7 +532,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
 
   Future<void> _promptAddModel() async {
     final current = _currentProfile;
-    if (current == null) {
+    if (current == null || current.readOnly) {
       return;
     }
     final modelId = await showDialog<String>(
@@ -867,7 +867,8 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   }
 
   Widget _buildProviderConfigTitle() {
-    final name = _currentProfile?.name.trim();
+    final current = _currentProfile;
+    final name = current?.name.trim();
     final displayName = (name == null || name.isEmpty) ? 'Provider' : name;
     return Builder(
       builder: (anchorContext) {
@@ -885,18 +886,49 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
               children: [
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 190),
-                  child: Text(
-                    '$displayName 配置',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.text,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'PingFang SC',
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$displayName 配置',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'PingFang SC',
+                        ),
+                      ),
+                      if (current != null &&
+                          (current.readOnly || current.statusText.isNotEmpty))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            current.statusText.isNotEmpty
+                                ? current.statusText
+                                : (current.ready ? '内置 Provider' : '内置 Provider 未就绪'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.text50,
+                              fontSize: 11,
+                              fontFamily: 'PingFang SC',
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
+                if (current?.readOnly == true)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 6),
+                    child: Icon(
+                      Icons.lock_outline,
+                      size: 14,
+                      color: AppColors.text50,
+                    ),
+                  ),
                 const SizedBox(width: 2),
                 const Icon(
                   Icons.keyboard_arrow_down_rounded,
@@ -942,7 +974,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   <path d="M14 11v6"/>
 </svg>
 ''',
-                              onPressed: _profiles.length <= 1
+                              onPressed:
+                                  _profiles.length <= 1 ||
+                                      _currentProfile?.readOnly == true
                                   ? null
                                   : _deleteCurrentProfile,
                             ),
@@ -956,6 +990,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         const SizedBox(height: 12),
                         TextField(
                           controller: _nameController,
+                          enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
                             hint: 'Provider 名称',
                           ),
@@ -963,6 +998,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         const SizedBox(height: 12),
                         TextField(
                           controller: _baseUrlController,
+                          enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
                             hint: '例如：https://api.openai.com 或 https://xxx/v1',
                           ),
@@ -979,6 +1015,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         const SizedBox(height: 14),
                         TextField(
                           controller: _apiKeyController,
+                          enabled: !(_currentProfile?.readOnly ?? false),
                           obscureText: _obscureApiKey,
                           decoration: _buildInputDecoration(
                             hint: '例如：sk-xxxx',
@@ -1045,7 +1082,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             ),
                             _buildModelActionButton(
                               svg: _kPlusSvg,
-                              onPressed: _promptAddModel,
+                              onPressed:
+                                  _currentProfile?.readOnly == true
+                                  ? null
+                                  : _promptAddModel,
                             ),
                             const SizedBox(width: 8),
                             _buildModelActionButton(

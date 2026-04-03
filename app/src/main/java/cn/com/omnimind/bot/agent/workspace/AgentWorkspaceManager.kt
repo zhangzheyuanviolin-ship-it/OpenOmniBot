@@ -205,7 +205,6 @@ class AgentWorkspaceManager(
             - 每条尽量一句话，必要时加日期来源。
 
             ## 长期记忆
-            - （暂无）
         """.trimIndent() + "\n"
     }
 

@@ -345,7 +345,15 @@ class _SettingsPageState extends State<SettingsPage> {
               GoRouterManager.push('/home/scene_model_setting');
             },
           ),
-
+          _SettingItem(
+            icon: Icons.memory_outlined,
+            iconSvg: 'assets/home/local_model_cpu_icon.svg',
+            title: '本地模型服务',
+            subtitle: '管理本地模型、推理、API 服务与语音模型',
+            onTap: () {
+              GoRouterManager.push('/home/local_models?tab=service');
+            },
+          ),
           _SettingItem(
             icon: Icons.cloud_sync_outlined,
             iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',

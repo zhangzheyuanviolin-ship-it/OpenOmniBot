@@ -15,6 +15,7 @@ import cn.com.omnimind.bot.terminal.EmbeddedTerminalInitCoordinator
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.AssistsUtil
+import cn.com.omnimind.bot.mnnlocal.MnnLocalModelsManager
 import cn.com.omnimind.bot.ui.halfScreen.HalfScreenListenerImpl
 import cn.com.omnimind.bot.ui.platformview.AgentBrowserPlatformViewFactory
 import cn.com.omnimind.bot.ui.platformview.EmbeddedTerminalPlatformViewFactory
@@ -79,6 +80,13 @@ class MainActivity : FlutterActivity() {
                 embeddedTerminalAutoStartManager.runEnabledTasksOnAppOpen()
             }.onFailure { error ->
                 OmniLog.e(TAG, "MainActivity auto-start Alpine tasks failed", error)
+            }
+        }
+        lifecycleScope.launch {
+            runCatching {
+                MnnLocalModelsManager.handleAppOpen(this@MainActivity)
+            }.onFailure { error ->
+                OmniLog.e(TAG, "MainActivity auto-start MNN local service failed", error)
             }
         }
         if (savedInstanceState == null) {

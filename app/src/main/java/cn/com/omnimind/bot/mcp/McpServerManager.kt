@@ -16,9 +16,10 @@ import io.ktor.server.auth.UserIdPrincipal
 import io.ktor.server.auth.bearer
 import io.ktor.server.auth.authenticate
 import io.ktor.server.cio.CIO
-import io.ktor.server.engine.ApplicationEngine
+import io.ktor.server.cio.CIOApplicationEngine
+import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.plugins.callloging.CallLogging
+import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receive
 import io.ktor.server.request.host
@@ -52,7 +53,7 @@ object McpServerManager {
     private val serverLock = Any()
 
     @Volatile
-    private var server: ApplicationEngine? = null
+    private var server: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
 
     @Volatile
     private var isRunning: Boolean = false
@@ -157,7 +158,10 @@ object McpServerManager {
         }
     }
 
-    private fun buildServer(context: Context, port: Int): ApplicationEngine {
+    private fun buildServer(
+        context: Context,
+        port: Int
+    ): EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration> {
         val token = ensureToken()
         return embeddedServer(CIO, host = "0.0.0.0", port = port) {
             install(CallLogging)
