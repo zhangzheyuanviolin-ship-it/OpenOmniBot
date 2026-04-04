@@ -1435,7 +1435,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Future<void> _retryLatestInstructionAfterAuth();
 
-  void _removeLatestSystemReplyBeforeAuthRetry();
+  void _removeFailedAttemptMessages();
 
   Widget _buildSlashCommandPanel();
 

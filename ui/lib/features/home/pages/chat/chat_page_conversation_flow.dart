@@ -762,7 +762,11 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         _activeConversationMode == ChatPageMode.openclaw) {
       return;
     }
-    if (latestUserUtterance().trim().isEmpty) return;
+
+    // Save user text and attachments before cleanup
+    final savedUserText = latestUserUtterance().trim();
+    final savedAttachments = await _latestUserAttachments();
+    if (savedUserText.isEmpty && savedAttachments.isEmpty) return;
 
     _isRetryingLatestInstructionAfterAuth = true;
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
@@ -770,10 +774,47 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     final userMessageId = '$timestamp-user';
 
     try {
+      // Remove ALL messages from the failed attempt (AI responses + user message)
       if (mounted) {
         setState(() {
-          _removeLatestSystemReplyBeforeAuthRetry();
+          _removeFailedAttemptMessages();
           _isAiResponding = true;
+        });
+      }
+
+      // Sync cleaned state to Kotlin-side DB so old entries
+      // (user message, permission error, thinking cards) are replaced
+      final conversationId = _currentConversationId;
+      if (conversationId != null) {
+        await ConversationHistoryService.saveConversationMessages(
+          conversationId,
+          _messages,
+          mode: activeConversationModeValue,
+        );
+      }
+
+      // Re-add user message for display and latestUserUtterance()
+      if (mounted) {
+        setState(() {
+          final content = <String, dynamic>{
+            'text': savedUserText,
+            'id': userMessageId,
+          };
+          if (savedAttachments.isNotEmpty) {
+            content['attachments'] = savedAttachments;
+          }
+          _messages.insert(
+            0,
+            ChatMessageModel(
+              id: userMessageId,
+              type: 1,
+              user: 1,
+              content: content,
+              createAt: DateTime.fromMillisecondsSinceEpoch(
+                int.parse(timestamp),
+              ),
+            ),
+          );
         });
       }
 
@@ -789,12 +830,14 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     }
   }
 
+  /// Remove all messages from the latest failed attempt,
+  /// including AI responses, cards, AND the user message that triggered it.
   @override
-  void _removeLatestSystemReplyBeforeAuthRetry() {
+  void _removeFailedAttemptMessages() {
     var removeCount = 0;
     for (final message in _messages) {
-      if (message.user == 1) break;
       removeCount += 1;
+      if (message.user == 1) break;
     }
     if (removeCount <= 0) return;
     _messages.removeRange(0, removeCount);
