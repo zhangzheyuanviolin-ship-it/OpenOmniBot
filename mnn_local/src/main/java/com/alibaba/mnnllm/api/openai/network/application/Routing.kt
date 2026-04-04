@@ -1,3 +1,5 @@
+@file:androidx.annotation.Keep
+
 package com.alibaba.mnnllm.api.openai.network.application
 
 import com.alibaba.mnnllm.api.openai.network.routes.anthropicRoutes

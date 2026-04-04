@@ -83,3 +83,26 @@
     <methods>;
     public <init>(...);
 }
+
+# The local OpenAI-compatible API service relies on Android manifest entry points, Ktor runtime wiring,
+# and kotlinx.serialization serializers. Keeping this package stable avoids release-only startup regressions.
+-keep class com.alibaba.mnnllm.api.openai.** {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+
+# The API service boots MNN runtime sessions from these classes and passes structured config into JNI.
+-keep class com.alibaba.mnnllm.android.llm.** {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+
+# Optional transitive dependencies referenced by Ktor/CIO or leftover shaded artifacts should not fail R8.
+-dontwarn io.netty.**
+-dontwarn io.netty.internal.tcnative.**
+-dontwarn org.apache.log4j.**
+-dontwarn org.apache.logging.log4j.**
+-dontwarn org.eclipse.jetty.npn.**
+-dontwarn reactor.blockhound.integration.**

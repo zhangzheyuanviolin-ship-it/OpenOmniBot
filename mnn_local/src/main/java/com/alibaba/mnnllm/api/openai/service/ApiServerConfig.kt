@@ -1,10 +1,12 @@
 package com.alibaba.mnnllm.api.openai.service
 
 import android.content.Context
+import androidx.annotation.Keep
 import cn.com.omnimind.bot.mnnlocal.MnnLocalConfigStore
 import timber.log.Timber
 
 /** * APIserviceconfigmanagingclass * responsible for managingserviceconfigparameter,includingport,IPaddress,CORSandauthenticationsettings*/
+@Keep
 object ApiServerConfig {
     private const val TAG = "ApiServerConfig"
 

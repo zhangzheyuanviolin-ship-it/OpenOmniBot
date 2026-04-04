@@ -1,5 +1,6 @@
 package com.alibaba.mnnllm.api.openai.manager
 
+import androidx.annotation.Keep
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStarted
 import io.ktor.server.application.ApplicationStarting
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
 
 /** * serviceeventmanager * useKtoreventsystemto manageservicestate,providereactivestateupdate*/
+@Keep
 class ServerEventManager {
 
     private val _serverState = MutableStateFlow(ServerState.STOPPED)
