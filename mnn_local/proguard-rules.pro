@@ -75,3 +75,11 @@
     <methods>;
     public <init>(...);
 }
+
+# Sherpa ASR JNI reads Kotlin object fields by their original names via GetFieldID/GetObjectField.
+# Release minification must not rename or strip these classes, fields, or constructors.
+-keep class com.k2fsa.sherpa.mnn.** {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}

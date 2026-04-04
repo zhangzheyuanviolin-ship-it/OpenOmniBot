@@ -1,5 +1,8 @@
 package com.k2fsa.sherpa.mnn
 
+import androidx.annotation.Keep
+
+@Keep
 data class FeatureConfig(
     var sampleRate: Int = 16000,
     var featureDim: Int = 80,

@@ -1,5 +1,8 @@
 package com.k2fsa.sherpa.mnn
 
+import androidx.annotation.Keep
+
+@Keep
 class OnlineStream(var ptr: Long = 0) {
     fun acceptWaveform(samples: FloatArray, sampleRate: Int) =
         acceptWaveform(ptr, samples, sampleRate)

@@ -2,38 +2,46 @@ package com.k2fsa.sherpa.mnn
 
 import android.content.res.AssetManager
 import android.util.Log
+import androidx.annotation.Keep
 
+@Keep
 data class EndpointRule(
     var mustContainNonSilence: Boolean,
     var minTrailingSilence: Float,
     var minUtteranceLength: Float,
 )
 
+@Keep
 data class EndpointConfig(
     var rule1: EndpointRule = EndpointRule(false, 2.4f, 0.0f),
     var rule2: EndpointRule = EndpointRule(true, 1.4f, 0.0f),
     var rule3: EndpointRule = EndpointRule(false, 0.0f, 20.0f)
 )
 
+@Keep
 data class OnlineTransducerModelConfig(
     var encoder: String = "",
     var decoder: String = "",
     var joiner: String = "",
 )
 
+@Keep
 data class OnlineParaformerModelConfig(
     var encoder: String = "",
     var decoder: String = "",
 )
 
+@Keep
 data class OnlineZipformer2CtcModelConfig(
     var model: String = "",
 )
 
+@Keep
 data class OnlineNeMoCtcModelConfig(
     var model: String = "",
 )
 
+@Keep
 data class OnlineModelConfig(
     var transducer: OnlineTransducerModelConfig = OnlineTransducerModelConfig(),
     var paraformer: OnlineParaformerModelConfig = OnlineParaformerModelConfig(),
@@ -48,17 +56,20 @@ data class OnlineModelConfig(
     var bpeVocab: String = "",
 )
 
+@Keep
 data class OnlineLMConfig(
     var model: String = "",
     var scale: Float = 0.5f,
 )
 
+@Keep
 data class OnlineCtcFstDecoderConfig(
     var graph: String = "",
     var maxActive: Int = 3000,
 )
 
 
+@Keep
 data class OnlineRecognizerConfig(
     var featConfig: FeatureConfig = FeatureConfig(),
     var modelConfig: OnlineModelConfig = OnlineModelConfig(),
@@ -75,6 +86,7 @@ data class OnlineRecognizerConfig(
     var blankPenalty: Float = 0.0f,
 )
 
+@Keep
 data class OnlineRecognizerResult(
     val text: String,
     val tokens: Array<String>,
@@ -82,6 +94,7 @@ data class OnlineRecognizerResult(
     // TODO(fangjun): Add more fields
 )
 
+@Keep
 class OnlineRecognizer(
     assetManager: AssetManager? = null,
     val config: OnlineRecognizerConfig,
@@ -227,4 +240,3 @@ fun getEndpointConfig(): EndpointConfig {
 }
 
 /*useexample： //1. settingcustommodeldirectory setAsrModelDir("/path/to/your/models") //2. getcurrentmodeldirectory val currentDir = getAsrModelDir() //3. at AsrService inuse val asrService = AsrService(activity, "/path/to/your/models") //4. orusedefaultdirectory val asrService = AsrService(activity) //usedefault /data/local/tmp/asr_models*/
-

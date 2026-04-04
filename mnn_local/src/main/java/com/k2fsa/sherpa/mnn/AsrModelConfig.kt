@@ -4,10 +4,12 @@
 package com.k2fsa.sherpa.mnn
 
 import android.util.Log
+import androidx.annotation.Keep
 import org.json.JSONObject
 import java.io.File
 
 /** * ASR modelconfigdataclass - correspond tosinglemodeldirectoryunder config.json*/
+@Keep
 data class AsrModelConfig(
     val modelType: String,
     val transducer: TransducerConfig,
@@ -17,12 +19,14 @@ data class AsrModelConfig(
     val lm: LmConfig? = null
 )
 
+@Keep
 data class TransducerConfig(
     val encoder: String,
     val decoder: String,
     val joiner: String
 )
 
+@Keep
 data class LmConfig(
     val model: String,
     val scale: Float = 0.5f
