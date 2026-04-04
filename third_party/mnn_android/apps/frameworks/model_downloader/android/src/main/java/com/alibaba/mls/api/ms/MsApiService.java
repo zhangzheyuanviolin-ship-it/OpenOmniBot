@@ -3,10 +3,12 @@
 
 package com.alibaba.mls.api.ms;
 
+import androidx.annotation.Keep;
 import retrofit2.Call;
 import retrofit2.http.GET;
 import retrofit2.http.Path;
 
+@Keep
 public interface MsApiService {
     @GET("api/v1/models/{modelGroup}/{modelPath}/repo/files?Recursive=1")
     Call<MsRepoInfo> getModelFiles(

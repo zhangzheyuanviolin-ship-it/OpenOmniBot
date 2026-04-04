@@ -2,10 +2,13 @@
 // Copyright (c) 2024 Alibaba Group Holding Limited. All rights reserved.
 package com.alibaba.mls.api
 
+import androidx.annotation.Keep
+
 /**
  * Represents a single item in the HuggingFace tree API response.
  * The /api/models/{repo}/tree/{revision} endpoint returns an array of these items.
  */
+@Keep
 class HfTreeItem {
     var type: String? = null  // "file" or "directory"
     var oid: String? = null   // object ID (commit SHA)
@@ -13,6 +16,7 @@ class HfTreeItem {
     var path: String? = null  // relative file path
     var lfs: LfsInfo? = null  // LFS metadata if file is stored in LFS
     
+    @Keep
     class LfsInfo {
         var oid: String? = null
         var size: Long = 0

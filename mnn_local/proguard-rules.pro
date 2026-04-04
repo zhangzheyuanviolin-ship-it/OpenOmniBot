@@ -38,3 +38,40 @@
     <methods>;
     public <init>(...);
 }
+
+# Additional Gson-backed config/cache DTOs that are read from disk in release builds.
+-keep class com.alibaba.mnnllm.android.modelsettings.JinjaContext {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+-keep class com.alibaba.mnnllm.android.modelsettings.Jinja {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+-keep class com.alibaba.mnnllm.android.modelsettings.ModelConfig {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+-keep class com.alibaba.mnnllm.android.modelist.ModelListManager$ModelItemCacheDTO {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+-keep class com.alibaba.mnnllm.android.modelist.ModelListManager$ModelListCache {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+-keep class com.alibaba.mnnllm.android.utils.FileSplitter$SplitInfo {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+-keep class com.alibaba.mnnllm.android.utils.FileSplitter$ChunkInfo {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}

@@ -3,6 +3,7 @@ package com.alibaba.mnnllm.android.modelist
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
+import androidx.annotation.Keep
 import com.alibaba.mls.api.ModelItem
 import com.alibaba.mls.api.download.DownloadPersistentData
 import com.alibaba.mnnllm.android.chat.model.ChatDataManager
@@ -123,6 +124,7 @@ object ModelListManager {
     }
 
     // DTO for disk caching
+    @Keep
     data class ModelItemCacheDTO(
         @SerializedName("modelId") val modelId: String,
         @SerializedName("modelPath") val modelPath: String?,
@@ -243,6 +245,7 @@ object ModelListManager {
         }
     }
 
+    @Keep
     data class ModelListCache(
         @SerializedName("models") val models: List<ModelItemCacheDTO>,
         @SerializedName("timestamp") val timestamp: Long,

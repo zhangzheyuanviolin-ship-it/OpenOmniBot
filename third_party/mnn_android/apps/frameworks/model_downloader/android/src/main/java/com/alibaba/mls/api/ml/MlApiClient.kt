@@ -3,6 +3,7 @@
 
 package com.alibaba.mls.api.ml
 
+import androidx.annotation.Keep
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Call
@@ -39,6 +40,7 @@ class MlApiClient {
         return okHttpClient
     }
 
+    @Keep
     interface MlApiService {
         @GET("api/v1/file/{modelGroup}/{modelPath}")
         fun getModelFiles(
