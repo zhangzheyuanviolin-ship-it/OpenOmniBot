@@ -1,6 +1,7 @@
 package com.alibaba.mnnllm.api.openai.service
 
 import android.content.Context
+import androidx.annotation.Keep
 import com.alibaba.mnnllm.android.llm.LlmSession
 import com.alibaba.mnnllm.api.openai.di.ServiceLocator
 import com.alibaba.mnnllm.api.openai.manager.ApiNotificationManager
@@ -13,6 +14,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /** * unifiedschedulingmanager,responsible for coordinatingnotificationbarserviceandservicelifecycle*/
+@Keep
 class ApiServiceCoordinator(private val context: Context) {
     private val TAG = this::class.java.simpleName
     private val stateLock = Any()

@@ -1,3 +1,5 @@
+@file:androidx.annotation.Keep
+
 package com.alibaba.mnnllm.api.openai.network.application
 
 import android.content.Context
@@ -82,4 +84,3 @@ fun Application.configureHTTP(context: Context) {
 
 
 }
-

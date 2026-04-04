@@ -1,12 +1,14 @@
 package com.alibaba.mnnllm.api.openai.network.application
 
+import androidx.annotation.Keep
 
 import android.content.Context
 import io.ktor.server.application.Application
 
+import io.ktor.server.cio.CIO
+import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.netty.Netty
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,9 +26,10 @@ import com.alibaba.mnnllm.api.openai.network.logging.LogCollector
 import io.ktor.server.application.ApplicationStarted
 
 
+@Keep
 class OpenAIApplication(private val lifecycleScope: CoroutineScope, private val context: Context) {
     private val mutex = Mutex()
-    private var server: EmbeddedServer<*, *>? = null
+    private var server: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
     private val serverEventManager = ServerEventManager.getInstance()
     
     init {
@@ -55,7 +58,7 @@ class OpenAIApplication(private val lifecycleScope: CoroutineScope, private val 
             checkPortAvailability(port)
 
             server = lifecycleScope.embeddedServer(
-                Netty,
+                CIO,
                 port = port,
                 host = ipAddress,
                 module = { module(context, ipAddress, port) }

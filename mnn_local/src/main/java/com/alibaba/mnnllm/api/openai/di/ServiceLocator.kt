@@ -1,11 +1,13 @@
 package com.alibaba.mnnllm.api.openai.di
 
+import androidx.annotation.Keep
 import com.alibaba.mnnllm.api.openai.interfaces.ChatSessionProvider
 import com.alibaba.mnnllm.api.openai.providers.ChatSessionProviderImpl
 import com.alibaba.mnnllm.api.openai.runtime.DefaultLlmRuntimeController
 import com.alibaba.mnnllm.api.openai.runtime.LlmRuntimeController
 
 /** * Service Locator * for managingapi.openaimoduledependencyinjection * * thisclassprovide asimpledependencyinjectionmechanism, * avoidhard-codeddependency,fortestandmodularization*/
+@Keep
 object ServiceLocator {
     
     private var _chatSessionProvider: ChatSessionProvider? = null

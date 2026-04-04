@@ -9,6 +9,7 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import androidx.annotation.Keep
 import androidx.core.content.ContextCompat
 import com.alibaba.mnnllm.api.openai.di.ServiceLocator
 import com.alibaba.mnnllm.api.openai.manager.ApiNotificationManager
@@ -21,6 +22,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
+@Keep
 class OpenAIService : Service() {
     private val TAG = this::class.java.simpleName
     private lateinit var coordinator: ApiServiceCoordinator

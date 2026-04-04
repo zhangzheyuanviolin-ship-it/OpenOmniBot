@@ -1,5 +1,6 @@
 package com.alibaba.mnnllm.api.openai.manager
 
+import androidx.annotation.Keep
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStarted
 import io.ktor.server.application.ApplicationStarting
@@ -8,6 +9,7 @@ import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.ServerReady
 import timber.log.Timber
 
+@Keep
 class ServerEventMonitor(private val application: Application) {
     private val serverEventManager = ServerEventManager.getInstance()
 

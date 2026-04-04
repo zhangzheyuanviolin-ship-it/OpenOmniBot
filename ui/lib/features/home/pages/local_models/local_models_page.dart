@@ -634,7 +634,8 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     if (_matchesApiServiceTarget(latestConfig, enable)) {
       return latestConfig;
     }
-    for (var attempt = 0; attempt < 12; attempt++) {
+    final maxAttempts = enable ? 120 : 20;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
       await Future<void>.delayed(const Duration(milliseconds: 250));
       latestConfig = await MnnLocalModelsService.getConfig();
       if (_matchesApiServiceTarget(latestConfig, enable)) {

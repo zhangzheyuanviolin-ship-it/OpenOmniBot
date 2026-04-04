@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import androidx.annotation.Keep
 import androidx.core.app.NotificationCompat
 import com.alibaba.mnnllm.api.openai.network.compat.EndpointUrlBuilder
 import com.alibaba.mnnllm.api.openai.service.ApiServerConfig
@@ -18,6 +19,7 @@ import timber.log.Timber
  * Responsible for creating, updating and canceling system notifications related to API service
  * @property context Android context object
  */
+@Keep
 class ApiNotificationManager(private val context: Context) {
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     
