@@ -2,7 +2,11 @@
 // Copyright (c) 2024 Alibaba Group Holding Limited. All rights reserved.
 package com.alibaba.mls.api
 
+import androidx.annotation.Keep
+
+@Keep
 class HfRepoInfo {
+    @Keep
     class SiblingItem {
         @JvmField
         var rfilename: String? = null

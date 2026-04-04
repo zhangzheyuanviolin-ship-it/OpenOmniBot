@@ -2,6 +2,7 @@
 // Copyright (c) 2024 Alibaba Group Holding Limited All rights reserved.
 package com.alibaba.mls.api
 
+import androidx.annotation.Keep
 import retrofit2.Call
 import retrofit2.http.GET
 import retrofit2.http.Path
@@ -10,6 +11,7 @@ import retrofit2.http.Query
 /**
  * Minimal HuggingFace API service for the framework
  */
+@Keep
 interface HfApiService {
     /**
      * Get the file tree of a model repository.

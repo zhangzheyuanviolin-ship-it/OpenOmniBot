@@ -4,6 +4,7 @@
 package com.alibaba.mnnllm.android.utils
 
 import android.util.Log
+import androidx.annotation.Keep
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import java.io.File
@@ -21,6 +22,7 @@ object FileSplitter {
     /**
      * Information about file splits
      */
+    @Keep
     data class SplitInfo(
         val originalFileName: String,
         val originalFileSize: Long,
@@ -29,6 +31,7 @@ object FileSplitter {
         val chunks: List<ChunkInfo>
     )
     
+    @Keep
     data class ChunkInfo(
         val chunkIndex: Int,
         val chunkFileName: String,

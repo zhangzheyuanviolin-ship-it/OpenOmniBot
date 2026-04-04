@@ -4,6 +4,7 @@
 package com.alibaba.mnnllm.android.modelsettings
 
 import android.util.Log
+import androidx.annotation.Keep
 import com.alibaba.mls.api.ApplicationProvider
 import com.alibaba.mls.api.download.ModelDownloadManager
 import com.alibaba.mnnllm.android.model.ModelUtils
@@ -15,14 +16,17 @@ import com.google.gson.JsonParser
 import java.io.File
 import com.google.gson.annotations.SerializedName
 
+@Keep
 data class JinjaContext(
     @SerializedName("enable_thinking") var enableThinking: Boolean = false
 )
 
+@Keep
 data class Jinja(
     @SerializedName("context") var context: JinjaContext? = null
 )
 
+@Keep
 data class ModelConfig(
     @SerializedName("llm_model") var llmModel: String?,
     @SerializedName("llm_weight") var llmWeight: String?,

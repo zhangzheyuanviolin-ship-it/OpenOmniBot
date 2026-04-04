@@ -3,18 +3,23 @@
 
 package com.alibaba.mls.api.ml
 
+import androidx.annotation.Keep
+
+@Keep
 data class MlRepoInfo(
     val code: String,
     val msg: String,
     val data: MlRepoData
 )
 
+@Keep
 data class MlRepoData(
     val tree: List<FileInfo>,
     val last_commit: LastCommitInfo?,
     val commit_count: Int
 )
 
+@Keep
 data class FileInfo(
     val name: String,
     val path: String,
@@ -27,6 +32,7 @@ data class FileInfo(
     val file_scan: FileScanInfo?
 )
 
+@Keep
 data class CommitInfo(
     val message: String,
     val commit_sha: String,
@@ -34,6 +40,7 @@ data class CommitInfo(
     val created: String
 )
 
+@Keep
 data class FileScanInfo(
     val status: String,
     val virus: String,
@@ -42,11 +49,13 @@ data class FileScanInfo(
     val moderation_result: String
 )
 
+@Keep
 data class LastCommitInfo(
     val commit: CommitInfo?,
     val author: AuthorInfo?
 )
 
+@Keep
 data class AuthorInfo(
     val name: String,
     val avatar_url: String
