@@ -7,10 +7,13 @@ object McpResponseBuilder {
     
     fun buildFinishedResponse(state: TaskState): Map<String, Any?> {
         val recentActivity = state.chatMessages.takeLast(5).joinToString("\n") { "- $it" }
+        val recentActivityList = state.chatMessages.takeLast(5)
         val summary = state.summaryText?.takeIf { it.isNotBlank() }
+        val finishedContent = state.finishedContent?.takeIf { it.isNotBlank() }
         val summaryBlock = when {
             summary != null -> "\n\nSummary:\n$summary"
-            state.needSummary -> "\n\nSummary:\n(pending or unavailable)"
+            state.needSummary && state.summaryUnavailable -> "\n\nSummary:\n(unavailable)"
+            state.needSummary -> "\n\nSummary:\n(pending)"
             else -> ""
         }
         return mapOf(
@@ -22,12 +25,18 @@ Task ID: ${state.taskId}
 Goal: ${state.goal}
 Status: FINISHED
 ${if (state.message.isNotBlank()) "Message: ${state.message}" else ""}
+${if (!finishedContent.isNullOrBlank()) "Finished Content: $finishedContent" else ""}
 $summaryBlock
 
 Recent activity:
 $recentActivity""".trimIndent()
             )),
-            "summary" to summary
+            "status" to "FINISHED",
+            "finishedContent" to finishedContent,
+            "summary" to summary,
+            "summaryUnavailable" to state.summaryUnavailable,
+            "feedback" to state.feedback,
+            "recentActivity" to recentActivityList
         )
     }
     
@@ -41,6 +50,12 @@ Task ID: ${state.taskId}
 Goal: ${state.goal}
 Error: ${state.message}""".trimIndent()
             )),
+            "status" to "ERROR",
+            "finishedContent" to state.finishedContent,
+            "summary" to state.summaryText,
+            "summaryUnavailable" to state.summaryUnavailable,
+            "feedback" to state.feedback,
+            "recentActivity" to state.chatMessages.takeLast(5),
             "isError" to true
         )
     }
@@ -66,7 +81,14 @@ Example scenarios:
 - If asked for a verification code, reply with the code
 - If asked which song to play, reply with the song name
 - If asked to confirm an action, reply "确认" or provide specific instructions""".trimIndent()
-            ))
+            )),
+            "status" to "WAITING_INPUT",
+            "waitingQuestion" to state.waitingQuestion,
+            "finishedContent" to state.finishedContent,
+            "summary" to state.summaryText,
+            "summaryUnavailable" to state.summaryUnavailable,
+            "feedback" to state.feedback,
+            "recentActivity" to state.chatMessages.takeLast(5)
         )
     }
     
@@ -81,7 +103,9 @@ Goal: ${state.goal}
 
 The user has manually paused this task on the device.
 The task will resume when the user continues it from the device UI.""".trimIndent()
-            ))
+            )),
+            "status" to "USER_PAUSED",
+            "recentActivity" to state.chatMessages.takeLast(5)
         )
     }
 
@@ -111,7 +135,9 @@ Goal: ${state.goal}
 Status: SCREEN_LOCKED
 
 $actionText""".trimIndent()
-            ))
+            )),
+            "status" to "SCREEN_LOCKED",
+            "recentActivity" to state.chatMessages.takeLast(5)
         )
     }
     
@@ -131,7 +157,13 @@ The task continues running on the device. You can:
 
 Recent activity:
 ${state?.chatMessages?.takeLast(5)?.joinToString("\n") { "- $it" } ?: "No activity yet"}""".trimIndent()
-            ))
+            )),
+            "status" to "TIMEOUT",
+            "finishedContent" to state?.finishedContent,
+            "summary" to state?.summaryText,
+            "summaryUnavailable" to (state?.summaryUnavailable ?: false),
+            "feedback" to state?.feedback,
+            "recentActivity" to (state?.chatMessages?.takeLast(5) ?: emptyList<String>())
         )
     }
     
@@ -146,7 +178,8 @@ Goal: $goal
 
 The screen was not unlocked within the timeout period.
 Please ask the user to unlock the phone and try again with 'task_wait_unlock'.""".trimIndent()
-            ))
+            )),
+            "status" to "TIMEOUT"
         )
     }
     
@@ -158,9 +191,18 @@ Please ask the user to unlock the phone and try again with 'task_wait_unlock'.""
             if (state.message.isNotBlank()) {
                 appendLine("Message: ${state.message}")
             }
+            val finishedContent = state.finishedContent?.takeIf { it.isNotBlank() }
+            if (finishedContent != null) {
+                appendLine("Finished Content: $finishedContent")
+            }
             val summaryValue = state.summaryText?.takeIf { it.isNotBlank() }
             if (state.needSummary || summaryValue != null) {
-                appendLine("Summary: ${summaryValue ?: "pending"}")
+                appendLine(
+                    "Summary: ${summaryValue ?: if (state.summaryUnavailable) "unavailable" else "pending"}"
+                )
+            }
+            state.feedback?.takeIf { it.isNotBlank() }?.let { feedback ->
+                appendLine("Feedback: $feedback")
             }
             if (state.status == TaskStatus.WAITING_INPUT && state.waitingQuestion != null) {
                 appendLine("")
@@ -175,7 +217,16 @@ Please ask the user to unlock the phone and try again with 'task_wait_unlock'.""
                 state.chatMessages.takeLast(5).forEach { appendLine("- $it") }
             }
         }
-        return mapOf("content" to listOf(mapOf("type" to "text", "text" to statusText)))
+        return mapOf(
+            "content" to listOf(mapOf("type" to "text", "text" to statusText)),
+            "status" to state.status.name,
+            "waitingQuestion" to state.waitingQuestion,
+            "finishedContent" to state.finishedContent,
+            "summary" to state.summaryText,
+            "summaryUnavailable" to state.summaryUnavailable,
+            "feedback" to state.feedback,
+            "recentActivity" to state.chatMessages.takeLast(5)
+        )
     }
     
     fun buildErrorText(message: String): Map<String, Any?> {

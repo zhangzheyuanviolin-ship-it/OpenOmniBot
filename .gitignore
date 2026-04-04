@@ -19,3 +19,5 @@ release.jks
 *.keystore
 
 testbot/build
+
+log.txt

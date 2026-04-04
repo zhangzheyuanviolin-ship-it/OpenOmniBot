@@ -176,7 +176,10 @@ object AgentToolDefinitions {
             put("name", "vlm_task")
             put("displayName", "视觉执行")
             put("toolType", "builtin")
-            put("description", "使用视觉语言模型执行手机屏幕操作任务。")
+            put(
+                "description",
+                "使用视觉语言模型执行手机屏幕操作任务。该工具会阻塞等待到任务完成、需要用户输入、屏幕锁定或超时，再把终态结果返回给模型。若需要最终整理文本，必须设置 needSummary=true。"
+            )
             putJsonObject("parameters") {
                 put("type", "object")
                 putJsonObject("properties") {
@@ -190,7 +193,7 @@ object AgentToolDefinitions {
                     }
                     putJsonObject("needSummary") {
                         put("type", "boolean")
-                        put("description", "是否在结束后生成总结。")
+                        put("description", "是否在结束后生成总结。设为 true 时，工具结果会尽量直接返回最终整理文本。")
                     }
                     putJsonObject("startFromCurrent") {
                         put("type", "boolean")

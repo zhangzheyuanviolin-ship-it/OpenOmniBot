@@ -2,11 +2,11 @@ package cn.com.omnimind.bot.agent
 
 import android.content.Context
 import android.provider.Settings
-import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.RemoteMcpClient
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.mcp.RemoteMcpToolDescriptor
+import cn.com.omnimind.bot.mcp.VlmTaskRequest
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalSessionRegistry
 import com.ai.assistance.operit.terminal.TerminalManager
@@ -17,6 +17,8 @@ import cn.com.omnimind.bot.termux.TermuxCommandSpec
 import cn.com.omnimind.bot.termux.TermuxCommandBuilder
 import cn.com.omnimind.bot.termux.TermuxCommandRunner
 import cn.com.omnimind.bot.util.AssistsUtil
+import cn.com.omnimind.bot.vlm.VlmToolCoordinator
+import cn.com.omnimind.bot.vlm.VlmToolOutcomeStatus
 import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
 import kotlinx.coroutines.CancellationException
@@ -54,7 +56,6 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 
 class AgentToolRouter(
     private val context: Context,
@@ -464,47 +465,64 @@ class AgentToolRouter(
             }
 
             ensureRunActive()
-            val taskId = UUID.randomUUID().toString()
-            AssistsUtil.Core.createVLMOperationTask(
+            val outcome = VlmToolCoordinator.executeNewTask(
                 context = context,
-                goal = safeArgs.goal,
-                model = "scene.vlm.operation.primary",
-                maxSteps = null,
-                packageName = if (safeArgs.startFromCurrent) null else safeArgs.packageName,
-                onMessagePushListener = object : OnMessagePushListener {
-                    private val finishNotified = AtomicBoolean(false)
-
-                    private fun notifyVlmFinishedOnce(source: String) {
-                        if (!finishNotified.compareAndSet(false, true)) return
-                        scope.launch {
-                            try {
-                                callback.onVlmTaskFinished()
-                            } catch (e: Exception) {
-                                OmniLog.e(tag, "notify onVlmTaskFinished failed[$source]: ${e.message}")
-                            }
-                        }
-                    }
-
-                    override suspend fun onChatMessage(taskID: String, content: String, type: String?) = Unit
-                    override suspend fun onChatMessageEnd(taskID: String) = Unit
-                    override fun onTaskFinish() {
-                        notifyVlmFinishedOnce("onTaskFinish")
-                    }
-
-                    override fun onVLMTaskFinish() {
-                        notifyVlmFinishedOnce("onVLMTaskFinish")
-                    }
-
-                    override fun onVLMRequestUserInput(question: String) {
-                        scope.launch { callback.onClarifyRequired(question, null) }
-                    }
-                },
-                needSummary = safeArgs.needSummary,
-                skipGoHome = safeArgs.startFromCurrent,
-                stepSkillGuidance = resolvedSkills.joinToString("\n\n") { it.stepGuidance() }
+                request = VlmTaskRequest(
+                    goal = safeArgs.goal,
+                    model = "scene.vlm.operation.primary",
+                    maxSteps = null,
+                    packageName = if (safeArgs.startFromCurrent) null else safeArgs.packageName,
+                    needSummary = safeArgs.needSummary,
+                    skipGoHome = safeArgs.startFromCurrent,
+                    stepSkillGuidance = resolvedSkills.joinToString("\n\n") { it.stepGuidance() }
+                ),
+                scope = scope,
+                progressReporter = { progress, extras ->
+                    reportToolProgress(callback, "vlm_task", progress, extras)
+                }
             )
-
-            ToolExecutionResult.VlmTaskStarted(taskId, safeArgs.goal)
+            val payloadJson = json.encodeToString(mapToJsonElement(outcome.toPayload()))
+            when (outcome.status) {
+                VlmToolOutcomeStatus.WAITING_INPUT -> {
+                    val question = outcome.waitingQuestion
+                        ?: outcome.message.ifBlank { "请提供继续执行所需的信息。" }
+                    callback.onClarifyRequired(question, null)
+                    ToolExecutionResult.Clarify(question, null)
+                }
+                VlmToolOutcomeStatus.SCREEN_LOCKED -> {
+                    callback.onClarifyRequired(outcome.message, null)
+                    ToolExecutionResult.Clarify(outcome.message, null)
+                }
+                VlmToolOutcomeStatus.ERROR,
+                VlmToolOutcomeStatus.CANCELLED -> {
+                    callback.onVlmTaskFinished()
+                    ToolExecutionResult.Error(
+                        "vlm_task",
+                        outcome.errorMessage ?: outcome.message.ifBlank { "视觉执行失败" }
+                    )
+                }
+                VlmToolOutcomeStatus.FINISHED -> {
+                    callback.onVlmTaskFinished()
+                    ToolExecutionResult.ContextResult(
+                        toolName = "vlm_task",
+                        summaryText = outcome.finishedContent
+                            ?: outcome.summaryText
+                            ?: outcome.message.ifBlank { "视觉任务已完成" },
+                        previewJson = payloadJson,
+                        rawResultJson = payloadJson,
+                        success = true
+                    )
+                }
+                VlmToolOutcomeStatus.TIMEOUT -> {
+                    ToolExecutionResult.ContextResult(
+                        toolName = "vlm_task",
+                        summaryText = "视觉任务超时，设备上可能仍在继续执行",
+                        previewJson = payloadJson,
+                        rawResultJson = payloadJson,
+                        success = true
+                    )
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

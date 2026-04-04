@@ -2,6 +2,8 @@ package cn.com.omnimind.assists.task.vlmserver
 
 import android.content.Context
 import cn.com.omnimind.assists.TaskManager
+import cn.com.omnimind.assists.api.bean.VlmTaskTerminalResult
+import cn.com.omnimind.assists.api.bean.VlmTaskTerminalStatus
 import cn.com.omnimind.assists.api.enums.TaskFinishType
 import cn.com.omnimind.assists.api.enums.TaskType
 import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
@@ -21,6 +23,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
 /**
@@ -34,6 +37,10 @@ open class VLMOperationTask(
     override val taskManager: TaskManager
 ) : Task(taskChangeListener,taskManager), DeviceOperator {
     private val Tag = "VLMOperationTask"
+    private companion object {
+        private const val SUMMARY_GENERATION_TIMEOUT_MS = 20_000L
+    }
+
     private lateinit var vlmOperationService: VLMOperationService
     private lateinit var androidDeviceOperator: AndroidDeviceOperator
     private lateinit var onTaskFinishListener: () -> Unit?
@@ -122,6 +129,14 @@ open class VLMOperationTask(
         AccessibilityController.restoreKeyboard()
 
         onTaskStop(TaskFinishType.WAITING_INPUT, infoMessage)
+        notifyTerminalResult(
+            VlmTaskTerminalResult(
+                status = VlmTaskTerminalStatus.WAITING_INPUT,
+                message = infoMessage,
+                needSummary = needSummary || hasSummaryIntent(goal),
+                waitingQuestion = infoMessage
+            )
+        )
 
         if (onMessagePushListener != null) {
             try {
@@ -215,6 +230,30 @@ open class VLMOperationTask(
         }
     }
 
+    private fun notifyTerminalResult(result: VlmTaskTerminalResult) {
+        try {
+            onMessagePushListener?.onVlmTaskResult(result)
+        } catch (e: Exception) {
+            OmniLog.e(Tag, "通知VLM终态结果失败: ${e.message}")
+        }
+    }
+
+    private fun extractFinishedContent(report: TaskExecutionReport): String {
+        val finishedStep = report.executionTrace.lastOrNull { it.action is FinishedAction }
+        val fromResult = finishedStep?.result?.trim().orEmpty()
+        if (fromResult.isNotEmpty()) return fromResult
+
+        val fromAction = (finishedStep?.action as? FinishedAction)?.content?.trim().orEmpty()
+        if (fromAction.isNotEmpty()) return fromAction
+
+        val lastResult = report.executionTrace.asReversed()
+            .mapNotNull { it.result?.trim()?.takeIf { value -> value.isNotEmpty() } }
+            .firstOrNull()
+        if (!lastResult.isNullOrEmpty()) return lastResult
+
+        return "任务完成"
+    }
+
     fun start(
         context: Context,
         goal: String,
@@ -294,27 +333,79 @@ open class VLMOperationTask(
                     "VLM task terminal state: finishType=$finishType success=${taskExecutionReport.success} error=${taskExecutionReport.error.orEmpty()}"
                 )
 
-                if (shouldSummary && (taskExecutionReport.summaryScreenshotList != null)) {
-                    taskScope.launch {
-                        pushSummary(
-                            goal = goal,
-                            model = model,
-                            report = taskExecutionReport
+                val summaryResult = if (shouldSummary && taskExecutionReport.summaryScreenshotList != null) {
+                    pushSummary(
+                        goal = goal,
+                        model = model,
+                        report = taskExecutionReport
+                    )
+                } else {
+                    SummaryPushResult()
+                }
+
+                if (taskExecutionReport.success) {
+                    notifyTerminalResult(
+                        VlmTaskTerminalResult(
+                            status = VlmTaskTerminalStatus.FINISHED,
+                            message = extractFinishedContent(taskExecutionReport),
+                            finishedContent = extractFinishedContent(taskExecutionReport),
+                            summaryText = summaryResult.summaryText,
+                            needSummary = shouldSummary,
+                            feedback = taskExecutionReport.feedback,
+                            summaryUnavailable = summaryResult.summaryUnavailable
                         )
-                    }
+                    )
+                } else {
+                    val errorMessage = finishMessage.ifBlank { "任务执行失败" }
+                    notifyTerminalResult(
+                        VlmTaskTerminalResult(
+                            status = VlmTaskTerminalStatus.ERROR,
+                            message = errorMessage,
+                            finishedContent = null,
+                            summaryText = summaryResult.summaryText,
+                            errorMessage = errorMessage,
+                            needSummary = shouldSummary,
+                            feedback = taskExecutionReport.feedback,
+                            summaryUnavailable = summaryResult.summaryUnavailable
+                        )
+                    )
                 }
                 onTaskStop(finishType, finishMessage)
                 onTaskDestroy()
             } catch (e: PrivacyBlockedException) {
+                notifyTerminalResult(
+                    VlmTaskTerminalResult(
+                        status = VlmTaskTerminalStatus.ERROR,
+                        message = e.message ?: "应用未授权，已被隐私设置限制",
+                        errorMessage = e.message ?: "应用未授权，已被隐私设置限制",
+                        needSummary = needSummary || hasSummaryIntent(goal)
+                    )
+                )
                 onTaskStop(TaskFinishType.ERROR, e.message ?: "应用未授权，已被隐私设置限制")
                 onTaskDestroy()
             } catch (e: Http429Exception) {
+                notifyTerminalResult(
+                    VlmTaskTerminalResult(
+                        status = VlmTaskTerminalStatus.ERROR,
+                        message = e.message ?: "请求过于频繁",
+                        errorMessage = e.message ?: "请求过于频繁",
+                        needSummary = needSummary || hasSummaryIntent(goal)
+                    )
+                )
                 onTaskStop(TaskFinishType.ERROR, e.message)
                 onTaskDestroy()
             } catch (e: CancellationException) {
                 OmniLog.i(Tag, "VLM Operation Task cancelled")
             } catch (e: Exception) {
                 OmniLog.e(Tag, "VLM Operation Task Error: ${e.message}")
+                notifyTerminalResult(
+                    VlmTaskTerminalResult(
+                        status = VlmTaskTerminalStatus.ERROR,
+                        message = e.message ?: "任务执行异常",
+                        errorMessage = e.message ?: "任务执行异常",
+                        needSummary = needSummary || hasSummaryIntent(goal)
+                    )
+                )
                 onTaskStop(TaskFinishType.ERROR, e.message ?: "任务执行异常")
                 onTaskDestroy()
             }
@@ -504,8 +595,15 @@ open class VLMOperationTask(
             .replace(Regex("[\\s\\p{Punct}，。！？；：、“”‘’（）【】《》·`~@#%^&*_+=|<>/\\\\-]+"), "")
     }
 
-    private suspend fun pushSummary(goal: String, model: String?, report: TaskExecutionReport) {
-        val listener = onMessagePushListener ?: return
+    private data class SummaryPushResult(
+        val summaryText: String? = null,
+        val summaryUnavailable: Boolean = false
+    )
+
+    private suspend fun pushSummary(goal: String, model: String?, report: TaskExecutionReport): SummaryPushResult {
+        val listener = onMessagePushListener ?: return SummaryPushResult(summaryUnavailable = true)
+        var summaryTaskId: String? = null
+        var summaryStarted = false
 
         try {
             val steps = report.executionTrace.takeLast(20)
@@ -551,33 +649,38 @@ $goal
                 model = modelToUse, text = prompt, images = report.summaryScreenshotList!!
             )
 
-            // 1. 等待主聊天页面准备就绪的回调
-            OmniLog.d(Tag, "等待主聊天页面准备就绪通知...")
-            summarySheetReadyChannel.receive()
-            OmniLog.d(Tag, "主聊天页面已准备就绪，开始推送总结...")
+            val summaryText = withTimeoutOrNull(SUMMARY_GENERATION_TIMEOUT_MS) {
+                // 1. 等待主聊天页面准备就绪的回调
+                OmniLog.d(Tag, "等待主聊天页面准备就绪通知...")
+                summarySheetReadyChannel.receive()
+                OmniLog.d(Tag, "主聊天页面已准备就绪，开始推送总结...")
 
-            // 2. 先推送"总结开始"消息，让前端显示"总结中"状态
-            val summaryTaskId = "vlm-summary-${System.currentTimeMillis()}"
-            listener.onChatMessage(summaryTaskId, "", "summary_start")
-            OmniLog.d(Tag, "已推送 summary_start，前端应显示'总结中'状态")
+                // 2. 先推送"总结开始"消息，让前端显示"总结中"状态
+                summaryTaskId = "vlm-summary-${System.currentTimeMillis()}"
+                summaryStarted = true
+                listener.onChatMessage(summaryTaskId!!, "", "summary_start")
+                OmniLog.d(Tag, "已推送 summary_start，前端应显示'总结中'状态")
 
-            // 3. 调用VLM API获取总结（这一步可能需要较长时间）
-            OmniLog.d(Tag, "开始调用VLM API生成总结...")
-            val response = HttpController.postVLMRequest(vlmPayload)
-            val summaryText = response.message.ifBlank { traceSummary }
+                // 3. 调用VLM API获取总结（这一步可能需要较长时间）
+                OmniLog.d(Tag, "开始调用VLM API生成总结...")
+                val response = HttpController.postVLMRequest(vlmPayload)
+                response.message.ifBlank { traceSummary }
+            }
+
+            if (summaryText == null) {
+                OmniLog.w(Tag, "pushSummary timeout after ${SUMMARY_GENERATION_TIMEOUT_MS}ms")
+                return SummaryPushResult(summaryUnavailable = true)
+            }
 
             if (summaryText.isBlank()) {
                 OmniLog.w(Tag, "pushSummary: empty summaryText, skip.")
-                // 即使没有内容也要发送结束消息
-                listener.onChatMessageEnd(summaryTaskId)
-                return
+                return SummaryPushResult(summaryUnavailable = true)
             }
             OmniLog.d(Tag, "VLM API返回总结内容，长度: ${summaryText.length}")
 
             // 4. 推送总结消息内容
             val payload = JSONObject().apply { put("text", summaryText) }.toString()
-            listener.onChatMessage(summaryTaskId, payload, null)
-            listener.onChatMessageEnd(summaryTaskId)
+            listener.onChatMessage(summaryTaskId!!, payload, null)
 
             // 5. 更新执行记录的总结内容（使用记录 ID 精确更新，避免覆盖历史记录）
             if (executionRecordId > 0) {
@@ -593,7 +696,7 @@ $goal
             // 6. 保存到Message表，包含在聊天上下文中
             if (summaryText.isNotBlank()) {
                 DatabaseHelper.insertTaskResultMessage(
-                    messageId = summaryTaskId,
+                    messageId = summaryTaskId!!,
                     taskType = "vlm_summary",
                     content = summaryText,
                     executionRecordId = executionRecordId,
@@ -601,10 +704,20 @@ $goal
                 )
                 OmniLog.d(Tag, "VLM总结已保存到Message表")
             }
+            return SummaryPushResult(summaryText = summaryText)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             OmniLog.e(Tag, "pushSummary error: ${e.message}")
+            return SummaryPushResult(summaryUnavailable = true)
+        } finally {
+            if (summaryStarted && summaryTaskId != null) {
+                try {
+                    listener.onChatMessageEnd(summaryTaskId!!)
+                } catch (e: Exception) {
+                    OmniLog.e(Tag, "pushSummary end callback error: ${e.message}")
+                }
+            }
         }
     }
 
@@ -685,6 +798,13 @@ $goal
     fun finishTask() {
         OmniLog.d(Tag, "Finishing VLM Operation Task")
         isCancellationRequested = true
+        notifyTerminalResult(
+            VlmTaskTerminalResult(
+                status = VlmTaskTerminalStatus.CANCELLED,
+                message = "任务已取消",
+                needSummary = needSummary || hasSummaryIntent(goal)
+            )
+        )
         super.finishTask {
         }
         taskScope.cancel()
@@ -693,6 +813,13 @@ $goal
     fun cancelTask() {
         OmniLog.d(Tag, "Cancelling VLM Operation Task - cancelling taskScope immediately")
         isCancellationRequested = true
+        notifyTerminalResult(
+            VlmTaskTerminalResult(
+                status = VlmTaskTerminalStatus.CANCELLED,
+                message = "任务已取消",
+                needSummary = needSummary || hasSummaryIntent(goal)
+            )
+        )
         taskScope.cancel("Task cancelled by user")
     }
 

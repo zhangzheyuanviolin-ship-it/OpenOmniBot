@@ -1,28 +1,20 @@
 package cn.com.omnimind.bot.mcp
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
-import cn.com.omnimind.accessibility.util.ScreenStateUtil
-import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
 import cn.com.omnimind.baselib.util.OmniLog
+import cn.com.omnimind.bot.vlm.VlmToolCoordinator
+import cn.com.omnimind.bot.vlm.VlmToolOutcome
+import cn.com.omnimind.bot.vlm.VlmToolOutcomeStatus
 import cn.com.omnimind.bot.util.AssistsUtil
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.util.UUID
 
 /**
  * MCP 工具执行器
  */
 object McpToolExecutors {
     private const val TAG = "[McpToolExecutors]"
-    private const val SUMMARY_WAIT_GRACE_MS = 20_000L
-    
-    private val mainHandler = Handler(Looper.getMainLooper())
     
     /**
      * 执行 VLM 任务（阻塞等待完成）
@@ -39,59 +31,23 @@ object McpToolExecutors {
 
         val needSummaryArg = args?.get("needSummary") as? Boolean
         val shouldSummary = shouldEnableSummary(goal, needSummaryArg)
-        
-        // 检查屏幕状态，如果屏幕锁定则创建任务并返回提示
-        if (!ScreenStateUtil.isOperable()) {
-            val taskId = UUID.randomUUID().toString()
-            val taskState = McpTaskManager.createTask(
-                taskId = taskId,
-                goal = goal,
-                status = TaskStatus.SCREEN_LOCKED,
-                needSummary = shouldSummary
-            )
-            taskState.message = "屏幕锁定，等待解锁"
-            OmniLog.d(TAG, "Screen locked, created pending task: $taskId")
-            // 返回提示，让 LLM 告知用户解锁并调用 task_wait_unlock
-            return@withContext McpResponseBuilder.buildScreenLockedResponse(taskState, isInitial = true)
-        }
-        
+
         val request = VlmTaskRequest(
             goal = goal,
             model = args["model"] as? String,
             packageName = args["packageName"] as? String,
             needSummary = shouldSummary
         )
-        val taskId = UUID.randomUUID().toString()
-        
-        // 创建任务状态
-        val taskState = McpTaskManager.createTask(
-            taskId = taskId,
-            goal = request.goal,
-            status = TaskStatus.RUNNING,
-            needSummary = shouldSummary
-        )
-        
-        OmniLog.d(TAG, "Starting VLM task: $taskId, goal: ${request.goal}")
-        
-        try {
-            // 启动 VLM 任务
-            val result = startVlmTaskInternal(context, request, taskId, taskState, scope)
-            if (result.isFailure) {
-                val err = result.exceptionOrNull()?.message ?: "Unknown error"
-                return@withContext McpResponseBuilder.buildErrorText("Error: $err")
-            }
 
-            if (shouldSummary) {
-                val notified = notifySummarySheetReadyWithRetry()
-                OmniLog.d(TAG, "Summary sheet ready notify (needSummary=$shouldSummary) => $notified")
-            }
-            
-            // 阻塞等待任务完成或状态变化
-            return@withContext waitForTaskStateChange(taskId, goal)
-            
+        try {
+            val outcome = VlmToolCoordinator.executeNewTask(
+                context = context,
+                request = request,
+                scope = scope
+            )
+            return@withContext outcomeToMcpResponse(outcome)
         } catch (e: Exception) {
             OmniLog.e(TAG, "Error executing VLM task: ${e.message}")
-            McpTaskManager.markTaskError(taskId, e.message ?: "Unknown error")
             return@withContext McpResponseBuilder.buildErrorText("VLM task failed: ${e.message}")
         }
     }
@@ -128,10 +84,13 @@ object McpToolExecutors {
         // 更新状态并等待下一个状态变更
         taskState.status = TaskStatus.RUNNING
         taskState.waitingQuestion = null
+        taskState.message = "继续执行中"
         taskState.addChatMessage("User replied: $reply")
+        taskState.markStateChanged()
         
         // 阻塞等待任务完成或再次需要输入
-        return@withContext waitForTaskStateChange(taskId, taskState.goal)
+        val outcome = VlmToolCoordinator.waitForTask(taskId, taskState.goal)
+        return@withContext outcomeToMcpResponse(outcome)
     }
     
     /**
@@ -173,46 +132,26 @@ object McpToolExecutors {
                 TaskStatus.FINISHED -> McpResponseBuilder.buildFinishedResponse(taskState)
                 TaskStatus.ERROR -> McpResponseBuilder.buildErrorResponse(taskState)
                 TaskStatus.WAITING_INPUT -> McpResponseBuilder.buildWaitingInputResponse(taskState)
-                TaskStatus.RUNNING -> waitForTaskStateChange(taskId, taskState.goal)
+                TaskStatus.RUNNING -> outcomeToMcpResponse(
+                    VlmToolCoordinator.waitForTask(taskId, taskState.goal)
+                )
                 else -> McpResponseBuilder.buildTextResponse("Task status: ${taskState.status}")
             }
         }
         
         OmniLog.d(TAG, "Waiting for screen unlock for task $taskId")
-        
-        // 等待屏幕解锁
-        val startTime = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startTime < McpTaskManager.MAX_WAIT_TIME_MS) {
-            if (ScreenStateUtil.isOperable()) {
-                // 屏幕已解锁
-                taskState.addChatMessage("[SYSTEM] Screen unlocked, starting task...")
 
-                // 启动实际的VLM任务
-                val req = VlmTaskRequest(goal = taskState.goal, needSummary = taskState.needSummary)
-                taskState.status = TaskStatus.RUNNING
-                taskState.message = "屏幕已解锁，任务启动中"
-
-                val result = startVlmTaskInternal(context, req, taskId, taskState, scope)
-                if (result.isFailure) {
-                    val err = result.exceptionOrNull()?.message ?: "Unknown error"
-                    taskState.status = TaskStatus.ERROR
-                    taskState.message = err
-                    return@withContext McpResponseBuilder.buildErrorResponse(taskState)
-                }
-
-                if (taskState.needSummary) {
-                    val notified = notifySummarySheetReadyWithRetry()
-                    OmniLog.d(TAG, "Summary sheet ready notify after unlock => $notified")
-                }
-                
-                // 等待任务完成或需要输入
-                return@withContext waitForTaskStateChange(taskId, taskState.goal)
-            }
-            kotlinx.coroutines.delay(McpTaskManager.POLL_INTERVAL_MS)
+        val outcome = VlmToolCoordinator.resumeAfterUnlock(
+            context = context,
+            taskId = taskId,
+            taskState = taskState,
+            scope = scope
+        )
+        return@withContext if (outcome.status == VlmToolOutcomeStatus.TIMEOUT) {
+            McpResponseBuilder.buildUnlockTimeoutResponse(taskId, taskState.goal)
+        } else {
+            outcomeToMcpResponse(outcome)
         }
-        
-        // 超时仍未解锁
-        return@withContext McpResponseBuilder.buildUnlockTimeoutResponse(taskId, taskState.goal)
     }
 
     /**
@@ -300,70 +239,29 @@ object McpToolExecutors {
         }
     }
     
-    /**
-     * 阻塞等待任务状态变更（完成/需要输入/超时）
-     * 在息屏时会等待解锁后继续轮询
-     */
-    private suspend fun waitForTaskStateChange(taskId: String, goal: String): Map<String, Any?> {
-        val startWaitTime = System.currentTimeMillis()
-        var lastScreenState = ScreenStateUtil.isOperable()
-        var summaryWaitStart: Long? = null
-        
-        while (System.currentTimeMillis() - startWaitTime < McpTaskManager.MAX_WAIT_TIME_MS) {
-            val state = McpTaskManager.getTask(taskId)
-            if (state == null) {
-                return McpResponseBuilder.buildErrorText("Task not found: $taskId")
+    private fun outcomeToMcpResponse(outcome: VlmToolOutcome): Map<String, Any?> {
+        val state = McpTaskManager.getTask(outcome.taskId)
+        return when (outcome.status) {
+            VlmToolOutcomeStatus.FINISHED -> {
+                state?.let(McpResponseBuilder::buildFinishedResponse)
+                    ?: McpResponseBuilder.buildTextResponse("Task completed: ${outcome.message}")
             }
-            
-            // 检测屏幕状态变化
-            val currentScreenState = ScreenStateUtil.isOperable()
-            if (!currentScreenState && lastScreenState) {
-                // 屏幕刚刚锁定
-                state.status = TaskStatus.SCREEN_LOCKED
-                state.message = "屏幕锁定，等待解锁"
-                state.addChatMessage("[SYSTEM] Screen locked, waiting for unlock...")
-                OmniLog.d(TAG, "Screen locked during task, waiting for unlock...")
-            } else if (currentScreenState && !lastScreenState && state.status == TaskStatus.SCREEN_LOCKED) {
-                // 屏幕刚刚解锁，恢复运行状态
-                state.status = TaskStatus.RUNNING
-                state.message = "屏幕解锁，任务继续"
-                state.addChatMessage("[SYSTEM] Screen unlocked, task resuming")
-                OmniLog.d(TAG, "Screen unlocked, task resuming")
+            VlmToolOutcomeStatus.WAITING_INPUT -> {
+                state?.let(McpResponseBuilder::buildWaitingInputResponse)
+                    ?: McpResponseBuilder.buildTextResponse(outcome.message)
             }
-            lastScreenState = currentScreenState
-            
-            when (state.status) {
-                TaskStatus.FINISHED -> {
-                    if (state.needSummary && state.summaryText.isNullOrBlank()) {
-                        if (summaryWaitStart == null) {
-                            summaryWaitStart = System.currentTimeMillis()
-                            OmniLog.d(TAG, "Summary pending for task $taskId, waiting briefly...")
-                        }
-                        if (System.currentTimeMillis() - summaryWaitStart < SUMMARY_WAIT_GRACE_MS) {
-                            kotlinx.coroutines.delay(McpTaskManager.POLL_INTERVAL_MS)
-                            continue
-                        }
-                    }
-                    return McpResponseBuilder.buildFinishedResponse(state)
-                }
-                TaskStatus.ERROR -> return McpResponseBuilder.buildErrorResponse(state)
-                TaskStatus.CANCELLED -> return McpResponseBuilder.buildErrorText("Task was cancelled.")
-                TaskStatus.WAITING_INPUT -> return McpResponseBuilder.buildWaitingInputResponse(state)
-                TaskStatus.USER_PAUSED -> return McpResponseBuilder.buildUserPausedResponse(state)
-                TaskStatus.SCREEN_LOCKED -> {
-                    // 息屏时返回提示，让 LLM 告知用户解锁并调用 task_wait_unlock
-                    return McpResponseBuilder.buildScreenLockedResponse(state, isInitial = false)
-                }
-                TaskStatus.RUNNING -> kotlinx.coroutines.delay(McpTaskManager.POLL_INTERVAL_MS)
+            VlmToolOutcomeStatus.SCREEN_LOCKED -> {
+                state?.let { McpResponseBuilder.buildScreenLockedResponse(it, isInitial = false) }
+                    ?: McpResponseBuilder.buildTextResponse(outcome.message)
+            }
+            VlmToolOutcomeStatus.ERROR, VlmToolOutcomeStatus.CANCELLED -> {
+                state?.let(McpResponseBuilder::buildErrorResponse)
+                    ?: McpResponseBuilder.buildErrorText(outcome.errorMessage ?: outcome.message)
+            }
+            VlmToolOutcomeStatus.TIMEOUT -> {
+                McpResponseBuilder.buildTimeoutResponse(outcome.taskId, outcome.goal, state)
             }
         }
-        
-        // 超时但任务仍在运行
-        val state = McpTaskManager.getTask(taskId)
-        if (state?.status == TaskStatus.FINISHED) {
-            return McpResponseBuilder.buildFinishedResponse(state)
-        }
-        return McpResponseBuilder.buildTimeoutResponse(taskId, goal, state)
     }
 
     private fun buildFileTransferResponse(record: McpFileRecord): Map<String, Any?> {
@@ -400,107 +298,6 @@ object McpToolExecutors {
         )
     }
 
-    /**
-     * 内部方法：启动VLM任务
-     */
-    private suspend fun startVlmTaskInternal(
-        context: Context,
-        payload: VlmTaskRequest,
-        taskId: String,
-        taskState: TaskState,
-        scope: CoroutineScope
-    ): Result<Unit> {
-        val deferred = CompletableDeferred<Result<Unit>>()
-        mainHandler.post {
-            scope.launch(Dispatchers.Main) {
-                try {
-                    AssistsUtil.Core.createVLMOperationTask(
-                        context = context,
-                        goal = payload.goal,
-                        model = payload.model,
-                        maxSteps = payload.maxSteps,
-                        packageName = payload.packageName,
-                        onMessagePushListener = buildListener(taskId, taskState, scope),
-                        needSummary = payload.needSummary ?: false,
-                    )
-                    deferred.complete(Result.success(Unit))
-                } catch (e: Exception) {
-                    taskState.status = TaskStatus.ERROR
-                    taskState.message = e.message ?: "Unknown error"
-                    deferred.complete(Result.failure(e))
-                }
-            }
-        }
-        return deferred.await()
-    }
-
-    /**
-     * 构建 VLM 任务消息监听器
-     */
-    private fun buildListener(taskId: String, taskState: TaskState, scope: CoroutineScope): OnMessagePushListener {
-        return object : OnMessagePushListener {
-            override suspend fun onChatMessage(taskID: String, content: String, type: String?) {
-                OmniLog.v(TAG, "MCP[$taskId] chat: $content type: $type")
-                if (content.isNotBlank()) {
-                    if (isSummaryMessage(taskID)) {
-                        val summary = extractSummaryText(content) ?: content
-                        if (summary.isNotBlank()) {
-                            taskState.updateSummary(summary)
-                        }
-                    } else {
-                        taskState.addChatMessage(content)
-                    }
-                }
-            }
-
-            override suspend fun onChatMessageEnd(taskID: String) {
-                OmniLog.v(TAG, "MCP[$taskId] chat end")
-            }
-
-            override fun onTaskFinish() {
-                OmniLog.d(TAG, "MCP[$taskId] task finished")
-                taskState.status = TaskStatus.FINISHED
-                taskState.message = "任务完成"
-                McpTaskManager.scheduleTaskCleanup(taskId, scope)
-            }
-
-            override fun onVLMTaskFinish() {
-                OmniLog.d(TAG, "MCP[$taskId] vlm finished")
-                if (taskState.status == TaskStatus.RUNNING) {
-                    taskState.status = TaskStatus.FINISHED
-                    taskState.message = "VLM任务执行完成"
-                }
-                McpTaskManager.scheduleTaskCleanup(taskId, scope)
-            }
-
-            override fun onVLMRequestUserInput(question: String) {
-                OmniLog.d(TAG, "MCP[$taskId] request input: $question")
-                taskState.status = TaskStatus.WAITING_INPUT
-                taskState.waitingQuestion = question
-                taskState.message = "等待用户输入"
-                taskState.addChatMessage("[AGENT QUESTION] $question")
-            }
-        }
-    }
-
-    private fun isSummaryMessage(taskId: String): Boolean {
-        val normalized = taskId.lowercase()
-        return normalized.startsWith("vlm-summary-")
-    }
-
-    private fun extractSummaryText(content: String): String? {
-        val trimmed = content.trim()
-        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
-            return null
-        }
-        return try {
-            val json = JSONObject(trimmed)
-            json.optString("text", "").takeIf { it.isNotBlank() }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
     private fun shouldEnableSummary(goal: String, needSummaryArg: Boolean?): Boolean {
         return (needSummaryArg == true) || hasSummaryIntent(goal)
     }
@@ -514,14 +311,4 @@ object McpToolExecutors {
         return keywords.any { goal.contains(it, ignoreCase = true) }
     }
 
-    private suspend fun notifySummarySheetReadyWithRetry(): Boolean {
-        var notified = AssistsUtil.Core.notifySummarySheetReady()
-        if (notified) return true
-        repeat(3) {
-            kotlinx.coroutines.delay(300L)
-            notified = AssistsUtil.Core.notifySummarySheetReady()
-            if (notified) return true
-        }
-        return false
-    }
 }

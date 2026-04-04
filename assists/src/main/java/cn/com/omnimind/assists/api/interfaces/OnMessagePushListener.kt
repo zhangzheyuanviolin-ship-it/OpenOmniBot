@@ -1,5 +1,7 @@
 package cn.com.omnimind.assists.api.interfaces
 
+import cn.com.omnimind.assists.api.bean.VlmTaskTerminalResult
+
 interface OnMessagePushListener {
     /**
      * 大模型消息
@@ -28,5 +30,10 @@ interface OnMessagePushListener {
      * VLM任务请求用户输入（INFO动作）
      */
     fun onVLMRequestUserInput(question: String)
+
+    /**
+     * VLM任务终态/交互态结果
+     */
+    fun onVlmTaskResult(result: VlmTaskTerminalResult) {}
 
 }

@@ -1,5 +1,8 @@
 package cn.com.omnimind.bot.mcp
 
+import cn.com.omnimind.assists.api.bean.VlmTaskTerminalResult
+import cn.com.omnimind.assists.api.bean.VlmTaskTerminalStatus
+
 /**
  * MCP 服务器状态
  */
@@ -28,6 +31,8 @@ data class VlmTaskRequest(
     val maxSteps: Int? = null,
     val packageName: String? = null,
     val needSummary: Boolean? = null,
+    val skipGoHome: Boolean = false,
+    val stepSkillGuidance: String = "",
 )
 
 /**
@@ -54,7 +59,10 @@ data class TaskState(
     var message: String = "",
     var waitingQuestion: String? = null,
     var chatMessages: MutableList<String> = mutableListOf(),
+    @Volatile var finishedContent: String? = null,
     @Volatile var summaryText: String? = null,
+    @Volatile var feedback: String? = null,
+    @Volatile var summaryUnavailable: Boolean = false,
     val startTime: Long = System.currentTimeMillis(),
     @Volatile var stateChanged: Boolean = false
 ) {
@@ -74,7 +82,10 @@ data class TaskState(
         "message" to message,
         "waitingQuestion" to waitingQuestion,
         "recentMessages" to chatMessages.takeLast(10),
+        "finishedContent" to finishedContent,
         "summary" to summaryText,
+        "feedback" to feedback,
+        "summaryUnavailable" to summaryUnavailable,
         "elapsedMs" to (System.currentTimeMillis() - startTime)
     )
     
@@ -89,5 +100,27 @@ data class TaskState(
 
     fun updateSummary(summary: String) {
         summaryText = summary
+    }
+
+    fun applyTerminalResult(result: VlmTaskTerminalResult) {
+        status = when (result.status) {
+            VlmTaskTerminalStatus.WAITING_INPUT -> TaskStatus.WAITING_INPUT
+            VlmTaskTerminalStatus.FINISHED -> TaskStatus.FINISHED
+            VlmTaskTerminalStatus.ERROR -> TaskStatus.ERROR
+            VlmTaskTerminalStatus.CANCELLED -> TaskStatus.CANCELLED
+        }
+        message = result.message.ifBlank {
+            result.errorMessage
+                ?: result.finishedContent
+                ?: result.waitingQuestion
+                ?: result.feedback
+                ?: message
+        }
+        waitingQuestion = result.waitingQuestion
+        finishedContent = result.finishedContent?.takeIf { it.isNotBlank() } ?: finishedContent
+        summaryText = result.summaryText?.takeIf { it.isNotBlank() } ?: summaryText
+        feedback = result.feedback?.takeIf { it.isNotBlank() } ?: feedback
+        summaryUnavailable = summaryUnavailable || result.summaryUnavailable
+        markStateChanged()
     }
 }
