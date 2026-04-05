@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:ui/services/office_preview_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/widgets/image_preview_overlay.dart';
 import 'package:video_player/video_player.dart';
 
 class OmnibotInlineResourceEmbed extends StatelessWidget {
@@ -161,8 +162,19 @@ class _OmnibotInlineImageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final heroTag = 'img_preview_${metadata.path}';
     return InkWell(
-      onTap: () => _openMetadata(metadata),
+      onTap: () {
+        if (metadata.exists) {
+          ImagePreviewOverlay.show(
+            context,
+            source: FileImageSource(metadata.path),
+            heroTag: heroTag,
+          );
+        } else {
+          _openMetadata(metadata);
+        }
+      },
       borderRadius: BorderRadius.circular(16),
       child: Ink(
         decoration: BoxDecoration(
@@ -175,14 +187,17 @@ class _OmnibotInlineImageCard extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: metadata.exists
-              ? Image.file(
-                  File(metadata.path),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _MissingResourceCard(
-                    metadata: metadata,
-                    icon: Icons.broken_image_outlined,
-                    subtitle: '图片加载失败',
-                    plainStyle: plainStyle,
+              ? Hero(
+                  tag: heroTag,
+                  child: Image.file(
+                    File(metadata.path),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _MissingResourceCard(
+                      metadata: metadata,
+                      icon: Icons.broken_image_outlined,
+                      subtitle: '图片加载失败',
+                      plainStyle: plainStyle,
+                    ),
                   ),
                 )
               : _MissingResourceCard(

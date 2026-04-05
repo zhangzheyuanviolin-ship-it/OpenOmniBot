@@ -8,6 +8,7 @@ import '../../../../../widgets/streaming_text.dart';
 import 'thinking_dots_indicator.dart';
 import 'cards/card_widget_factory.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:ui/widgets/image_preview_overlay.dart';
 
 export 'package:ui/widgets/streaming_text.dart'
     show kThinkingText, kSummarizingText, kSummaryCompleteText;
@@ -133,7 +134,7 @@ class MessageBubble extends StatelessWidget {
               if (text.isNotEmpty) _buildUserText(text),
               if (attachments.isNotEmpty) ...[
                 if (text.isNotEmpty) const SizedBox(height: 8),
-                _buildUserAttachmentList(attachments),
+                _buildUserAttachmentList(context, attachments),
               ],
             ],
           ),
@@ -151,7 +152,7 @@ class MessageBubble extends StatelessWidget {
       children: [
         if (text.isNotEmpty) _buildAiText(text),
         if (text.isNotEmpty) const SizedBox(height: 8),
-        _buildUserAttachmentList(attachments),
+        _buildUserAttachmentList(context, attachments),
       ],
     );
   }
@@ -165,36 +166,95 @@ class MessageBubble extends StatelessWidget {
         .toList();
   }
 
-  Widget _buildUserAttachmentList(List<Map<String, dynamic>> attachments) {
+  Widget _buildUserAttachmentList(
+    BuildContext context,
+    List<Map<String, dynamic>> attachments,
+  ) {
+    // Collect all image sources for multi-image preview
+    final imageAttachments =
+        attachments.where(_isImageAttachment).toList();
+    final imageSources = imageAttachments
+        .map(_resolveImageSource)
+        .whereType<ImagePreviewSource>()
+        .toList();
+    final heroTags = List.generate(
+      imageSources.length,
+      (i) => 'img_preview_${message.id}_$i',
+    );
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: attachments.map(_buildAttachmentItem).toList(),
+      children: attachments.map((item) {
+        if (_isImageAttachment(item)) {
+          final imageIndex = imageAttachments.indexOf(item);
+          return _buildImageAttachmentTile(
+            context, item, imageSources, imageIndex, heroTags,
+          );
+        }
+        return _buildFileAttachmentChip(item);
+      }).toList(),
     );
   }
 
-  Widget _buildAttachmentItem(Map<String, dynamic> item) {
-    if (_isImageAttachment(item)) {
-      return _buildImageAttachmentTile(item);
-    }
-    return _buildFileAttachmentChip(item);
-  }
-
-  Widget _buildImageAttachmentTile(Map<String, dynamic> item) {
-    return Container(
-      width: 84,
-      height: 84,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: visualProfile.attachmentSurfaceColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: visualProfile.attachmentBorderColor,
-          width: 1,
+  Widget _buildImageAttachmentTile(
+    BuildContext context,
+    Map<String, dynamic> item,
+    List<ImagePreviewSource> allSources,
+    int tappedIndex,
+    List<String> heroTags,
+  ) {
+    final heroTag = heroTags[tappedIndex];
+    return GestureDetector(
+      onTap: () {
+        if (allSources.isNotEmpty) {
+          ImagePreviewOverlay.showAll(
+            context,
+            sources: allSources,
+            initialIndex: tappedIndex.clamp(0, allSources.length - 1),
+            heroTags: heroTags,
+          );
+        }
+      },
+      child: Container(
+        width: 84,
+        height: 84,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: visualProfile.attachmentSurfaceColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: visualProfile.attachmentBorderColor,
+            width: 1,
+          ),
+        ),
+        child: Hero(
+          tag: heroTag,
+          child: _buildAttachmentImageWidget(item),
         ),
       ),
-      child: _buildAttachmentImageWidget(item),
     );
+  }
+
+  ImagePreviewSource? _resolveImageSource(Map<String, dynamic> item) {
+    final dataUrl = (item['dataUrl'] as String? ?? '').trim();
+    if (dataUrl.startsWith('data:')) {
+      final bytes = _decodeDataUrlBytes(dataUrl);
+      if (bytes != null) return MemoryImageSource(bytes);
+    }
+    final url = (item['url'] as String? ?? '').trim();
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return NetworkImageSource(url);
+    }
+    if (url.startsWith('data:')) {
+      final bytes = _decodeDataUrlBytes(url);
+      if (bytes != null) return MemoryImageSource(bytes);
+    }
+    final path = (item['path'] as String? ?? '').trim();
+    if (path.isNotEmpty && !path.startsWith('http')) {
+      return FileImageSource(path);
+    }
+    return null;
   }
 
   Widget _buildAttachmentImageWidget(Map<String, dynamic> item) {
@@ -205,6 +265,7 @@ class MessageBubble extends StatelessWidget {
         return Image.memory(
           bytes,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (_, __, ___) => _buildImageFallback(),
         );
       }
@@ -215,6 +276,7 @@ class MessageBubble extends StatelessWidget {
       return Image.network(
         url,
         fit: BoxFit.cover,
+        gaplessPlayback: true,
         errorBuilder: (_, __, ___) => _buildImageFallback(),
       );
     }
@@ -224,6 +286,7 @@ class MessageBubble extends StatelessWidget {
         return Image.memory(
           bytes,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (_, __, ___) => _buildImageFallback(),
         );
       }
@@ -234,6 +297,7 @@ class MessageBubble extends StatelessWidget {
       return Image.file(
         File(path),
         fit: BoxFit.cover,
+        gaplessPlayback: true,
         errorBuilder: (_, __, ___) => _buildImageFallback(),
       );
     }
@@ -339,12 +403,27 @@ class MessageBubble extends StatelessWidget {
     return '附件';
   }
 
-  Uint8List? _decodeDataUrlBytes(String value) {
+  /// Cache decoded data-URL bytes so that repeated [build] calls reuse
+  /// the same [Uint8List] instance.  This prevents [Image.memory] from
+  /// treating each rebuild as a brand-new image (cache-miss → flicker).
+  static final Map<int, Uint8List> _dataUrlBytesCache = {};
+  static const int _maxCacheEntries = 200;
+
+  static Uint8List? _decodeDataUrlBytes(String value) {
+    final key = value.hashCode;
+    final cached = _dataUrlBytesCache[key];
+    if (cached != null) return cached;
+
     final comma = value.indexOf(',');
     if (comma < 0 || comma + 1 >= value.length) return null;
     final base64Part = value.substring(comma + 1);
     try {
-      return base64Decode(base64Part);
+      final bytes = base64Decode(base64Part);
+      if (_dataUrlBytesCache.length >= _maxCacheEntries) {
+        _dataUrlBytesCache.remove(_dataUrlBytesCache.keys.first);
+      }
+      _dataUrlBytesCache[key] = bytes;
+      return bytes;
     } catch (_) {
       return null;
     }
