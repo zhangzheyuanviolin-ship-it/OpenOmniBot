@@ -96,6 +96,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         '无障碍权限': kAccessibilityPermissionId,
         '悬浮窗权限': kOverlayPermissionId,
         '应用列表读取权限': kInstalledAppsPermissionId,
+        '公共文件访问': kPublicStoragePermissionId,
       };
 
   String _agentTextBaseId(String taskId) => '$taskId-text';
