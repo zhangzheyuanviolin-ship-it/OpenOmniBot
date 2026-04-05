@@ -22,6 +22,9 @@ class MemoryImageSource extends ImagePreviewSource {
 }
 
 /// Lightweight full-screen image preview overlay with pinch-to-zoom and swipe.
+///
+/// Supports Hero-based zoom transition when [heroTag] is provided.
+/// Wrap the source thumbnail in a [Hero] widget with the same tag.
 class ImagePreviewOverlay {
   ImagePreviewOverlay._();
 
@@ -29,8 +32,14 @@ class ImagePreviewOverlay {
   static Future<void> show(
     BuildContext context, {
     required ImagePreviewSource source,
+    String? heroTag,
   }) {
-    return showAll(context, sources: [source], initialIndex: 0);
+    return showAll(
+      context,
+      sources: [source],
+      initialIndex: 0,
+      heroTag: heroTag,
+    );
   }
 
   /// Show preview for multiple images with swipe navigation.
@@ -38,39 +47,85 @@ class ImagePreviewOverlay {
     BuildContext context, {
     required List<ImagePreviewSource> sources,
     int initialIndex = 0,
+    String? heroTag,
   }) {
     assert(sources.isNotEmpty);
-    return showGeneralDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierLabel: 'Close image preview',
-      barrierColor: Colors.black87,
-      transitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (_, __, ___) => _ImagePreviewDialog(
+    return Navigator.of(context).push(
+      _ImagePreviewRoute(
         sources: sources,
         initialIndex: initialIndex,
+        heroTag: heroTag,
       ),
-      transitionBuilder: (_, animation, __, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
     );
   }
 }
 
-class _ImagePreviewDialog extends StatefulWidget {
+/// Custom route that supports Hero transitions with a transparent background.
+class _ImagePreviewRoute extends PageRoute<void> {
   final List<ImagePreviewSource> sources;
   final int initialIndex;
+  final String? heroTag;
 
-  const _ImagePreviewDialog({
+  _ImagePreviewRoute({
     required this.sources,
     required this.initialIndex,
+    this.heroTag,
   });
 
   @override
-  State<_ImagePreviewDialog> createState() => _ImagePreviewDialogState();
+  bool get opaque => false;
+
+  @override
+  bool get barrierDismissible => false;
+
+  @override
+  Color? get barrierColor => null;
+
+  @override
+  String? get barrierLabel => null;
+
+  @override
+  bool get maintainState => true;
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 300);
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 250);
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
+    return _ImagePreviewPage(
+      sources: sources,
+      initialIndex: initialIndex,
+      heroTag: heroTag,
+      animation: animation,
+    );
+  }
 }
 
-class _ImagePreviewDialogState extends State<_ImagePreviewDialog> {
+class _ImagePreviewPage extends StatefulWidget {
+  final List<ImagePreviewSource> sources;
+  final int initialIndex;
+  final String? heroTag;
+  final Animation<double> animation;
+
+  const _ImagePreviewPage({
+    required this.sources,
+    required this.initialIndex,
+    this.heroTag,
+    required this.animation,
+  });
+
+  @override
+  State<_ImagePreviewPage> createState() => _ImagePreviewPageState();
+}
+
+class _ImagePreviewPageState extends State<_ImagePreviewPage> {
   late final PageController _pageController;
   late int _currentIndex;
   bool _isZoomed = false;
@@ -94,12 +149,17 @@ class _ImagePreviewDialogState extends State<_ImagePreviewDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
+    return AnimatedBuilder(
+      animation: widget.animation,
+      builder: (context, child) {
+        return ColoredBox(
+          color: Color.fromRGBO(0, 0, 0, 0.87 * widget.animation.value),
+          child: child,
+        );
+      },
+      child: Stack(
         children: [
           // Image page view (swipeable)
           PageView.builder(
@@ -110,21 +170,19 @@ class _ImagePreviewDialogState extends State<_ImagePreviewDialog> {
                 : const BouncingScrollPhysics(),
             onPageChanged: (index) => setState(() => _currentIndex = index),
             itemBuilder: (context, index) {
+              // Only apply hero to the initially tapped image while it's visible
+              final shouldHero = index == widget.initialIndex &&
+                  _currentIndex == widget.initialIndex &&
+                  widget.heroTag != null;
               return _InteractiveImagePage(
                 source: widget.sources[index],
                 onTap: _dismiss,
                 onScaleChanged: (zoomed) {
                   if (_isZoomed != zoomed) setState(() => _isZoomed = zoomed);
                 },
+                heroTag: shouldHero ? widget.heroTag : null,
               );
             },
-          ),
-
-          // Close button
-          Positioned(
-            top: topPadding + 8,
-            right: 12,
-            child: _buildCloseButton(),
           ),
 
           // Page indicator
@@ -133,28 +191,12 @@ class _ImagePreviewDialogState extends State<_ImagePreviewDialog> {
               bottom: bottomPadding + 20,
               left: 0,
               right: 0,
-              child: _buildPageIndicator(),
+              child: FadeTransition(
+                opacity: widget.animation,
+                child: _buildPageIndicator(),
+              ),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCloseButton() {
-    return GestureDetector(
-      onTap: _dismiss,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: const BoxDecoration(
-          color: Colors.black45,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          Icons.close_rounded,
-          color: Colors.white,
-          size: 20,
-        ),
       ),
     );
   }
@@ -184,11 +226,13 @@ class _InteractiveImagePage extends StatefulWidget {
   final ImagePreviewSource source;
   final VoidCallback onTap;
   final ValueChanged<bool> onScaleChanged;
+  final String? heroTag;
 
   const _InteractiveImagePage({
     required this.source,
     required this.onTap,
     required this.onScaleChanged,
+    this.heroTag,
   });
 
   @override
@@ -207,6 +251,32 @@ class _InteractiveImagePageState extends State<_InteractiveImagePage> {
 
   @override
   Widget build(BuildContext context) {
+    Widget image = _buildImage(widget.source);
+
+    if (widget.heroTag != null) {
+      image = Hero(
+        tag: widget.heroTag!,
+        // Animate border radius from rounded thumbnail to full-screen
+        flightShuttleBuilder: (_, animation, __, ___, ____) {
+          return AnimatedBuilder(
+            animation: animation,
+            builder: (context, child) {
+              return ClipRRect(
+                borderRadius: BorderRadius.lerp(
+                  BorderRadius.circular(12),
+                  BorderRadius.zero,
+                  animation.value,
+                )!,
+                child: child,
+              );
+            },
+            child: _buildImage(widget.source),
+          );
+        },
+        child: image,
+      );
+    }
+
     return GestureDetector(
       onTap: widget.onTap,
       // Double-tap to toggle zoom
@@ -219,7 +289,7 @@ class _InteractiveImagePageState extends State<_InteractiveImagePage> {
           final scale = _transformController.value.getMaxScaleOnAxis();
           widget.onScaleChanged(scale > 1.05);
         },
-        child: Center(child: _buildImage(widget.source)),
+        child: Center(child: image),
       ),
     );
   }

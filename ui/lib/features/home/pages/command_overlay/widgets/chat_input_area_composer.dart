@@ -415,11 +415,13 @@ mixin _ChatInputAreaComposerMixin
     List<ImagePreviewSource> allSources,
     int tappedIndex,
   ) {
+    final heroTag = 'img_preview_input_${item.id}';
     return GestureDetector(
       onTap: () => ImagePreviewOverlay.showAll(
         context,
         sources: allSources,
         initialIndex: tappedIndex.clamp(0, allSources.length - 1),
+        heroTag: heroTag,
       ),
       child: Stack(
         children: [
@@ -432,14 +434,17 @@ mixin _ChatInputAreaComposerMixin
               color: const Color(0xFFF1F6FF),
             ),
             clipBehavior: Clip.antiAlias,
-            child: Image.file(
-              File(item.path),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Center(
-                child: Icon(
-                  Icons.image_not_supported_outlined,
-                  size: 20,
-                  color: Color(0xFF6A83AA),
+            child: Hero(
+              tag: heroTag,
+              child: Image.file(
+                File(item.path),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Center(
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    size: 20,
+                    color: Color(0xFF6A83AA),
+                  ),
                 ),
               ),
             ),

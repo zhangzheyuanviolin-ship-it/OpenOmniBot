@@ -162,12 +162,14 @@ class _OmnibotInlineImageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final heroTag = 'img_preview_${metadata.path}';
     return InkWell(
       onTap: () {
         if (metadata.exists) {
           ImagePreviewOverlay.show(
             context,
             source: FileImageSource(metadata.path),
+            heroTag: heroTag,
           );
         } else {
           _openMetadata(metadata);
@@ -185,14 +187,17 @@ class _OmnibotInlineImageCard extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: metadata.exists
-              ? Image.file(
-                  File(metadata.path),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _MissingResourceCard(
-                    metadata: metadata,
-                    icon: Icons.broken_image_outlined,
-                    subtitle: '图片加载失败',
-                    plainStyle: plainStyle,
+              ? Hero(
+                  tag: heroTag,
+                  child: Image.file(
+                    File(metadata.path),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _MissingResourceCard(
+                      metadata: metadata,
+                      icon: Icons.broken_image_outlined,
+                      subtitle: '图片加载失败',
+                      plainStyle: plainStyle,
+                    ),
                   ),
                 )
               : _MissingResourceCard(

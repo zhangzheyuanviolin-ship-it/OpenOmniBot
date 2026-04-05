@@ -199,6 +199,7 @@ class MessageBubble extends StatelessWidget {
     List<ImagePreviewSource> allSources,
     int tappedIndex,
   ) {
+    final heroTag = 'img_preview_${message.id}_$tappedIndex';
     return GestureDetector(
       onTap: () {
         if (allSources.isNotEmpty) {
@@ -206,6 +207,7 @@ class MessageBubble extends StatelessWidget {
             context,
             sources: allSources,
             initialIndex: tappedIndex.clamp(0, allSources.length - 1),
+            heroTag: heroTag,
           );
         }
       },
@@ -221,7 +223,10 @@ class MessageBubble extends StatelessWidget {
             width: 1,
           ),
         ),
-        child: _buildAttachmentImageWidget(item),
+        child: Hero(
+          tag: heroTag,
+          child: _buildAttachmentImageWidget(item),
+        ),
       ),
     );
   }
