@@ -11,22 +11,6 @@ import 'package:ui/widgets/common_app_bar.dart';
 
 const double _kSceneSelectionPopupMaxHeight = 420;
 
-Widget _buildSceneModelIdTooltip({
-  required String modelId,
-  required Widget child,
-}) {
-  return Tooltip(
-    message: modelId,
-    triggerMode: TooltipTriggerMode.longPress,
-    waitDuration: Duration.zero,
-    showDuration: const Duration(seconds: 3),
-    preferBelow: false,
-    textAlign: TextAlign.start,
-    constraints: const BoxConstraints(maxWidth: 320),
-    child: child,
-  );
-}
-
 class SceneModelSettingPage extends StatefulWidget {
   const SceneModelSettingPage({super.key});
 
@@ -35,6 +19,8 @@ class SceneModelSettingPage extends StatefulWidget {
 }
 
 class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
+  static const bool _showManualRefreshButton = false;
+
   static const List<String> _sceneOrder = [
     'scene.dispatch.model',
     'scene.vlm.operation.primary',
@@ -79,9 +65,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   void initState() {
     super.initState();
     _loadData();
-    _configChangedSubscription = AssistsMessageService
-        .agentAiConfigChangedStream
-        .listen((event) {
+    _configChangedSubscription =
+        AssistsMessageService.agentAiConfigChangedStream.listen((event) {
           if (event.source != 'file' || !mounted) {
             return;
           }
@@ -96,7 +81,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   }
 
   List<SceneCatalogItem> get _orderedCatalog {
-    final map = {for (final item in _catalog) item.sceneId: item};
+    final map = {
+      for (final item in _catalog) item.sceneId: item,
+    };
 
     final ordered = <SceneCatalogItem>[];
     for (final sceneId in _sceneOrder) {
@@ -110,7 +97,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   }
 
   Map<String, SceneModelBindingEntry> get _bindingMap {
-    return {for (final item in _bindings) item.sceneId: item};
+    return {
+      for (final item in _bindings) item.sceneId: item,
+    };
   }
 
   String _sceneDisplayName(String sceneId) {
@@ -164,6 +153,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         _profiles = profilesPayload.profiles;
         _providerModelsByProfileId = enriched;
       });
+      if (_profiles.any((profile) => profile.configured)) {
+        unawaited(_refreshProviderModels());
+      }
     } catch (_) {
       if (!mounted) return;
       showToast('加载场景配置失败', type: ToastType.error);
@@ -204,6 +196,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     try {
       final nextModels = <String, List<ProviderModelOption>>{};
       var refreshedCount = 0;
+      final failedProfiles = <String>[];
       for (final profile in _profiles) {
         if (!profile.configured) {
           nextModels[profile.id] =
@@ -212,33 +205,55 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
               );
           continue;
         }
-        final remoteModels = await ModelProviderConfigService.fetchModels(
-          apiBase: profile.baseUrl,
-          apiKey: profile.apiKey,
-          profileId: profile.id,
-        );
-        final manualModelIds =
-            await ModelProviderConfigService.getManualModelIds(
-              profileId: profile.id,
-            );
-        nextModels[profile.id] = ModelProviderConfigService.mergeModelOptions(
-          remoteModels: remoteModels,
-          manualModelIds: manualModelIds,
-        );
-        refreshedCount += remoteModels.length;
+        try {
+          final remoteModels = await ModelProviderConfigService.fetchModels(
+            apiBase: profile.baseUrl,
+            apiKey: profile.apiKey,
+            profileId: profile.id,
+          );
+          final manualModelIds =
+              await ModelProviderConfigService.getManualModelIds(
+                profileId: profile.id,
+              );
+          nextModels[profile.id] = ModelProviderConfigService.mergeModelOptions(
+            remoteModels: remoteModels,
+            manualModelIds: manualModelIds,
+          );
+          refreshedCount += remoteModels.length;
+        } catch (e) {
+          //允许部分成功，不让一个 Provider 的失败拖垮整次刷新。
+          nextModels[profile.id] =
+              await ModelProviderConfigService.getStoredModelOptionsForProfile(
+                profile.id,
+              );
+          failedProfiles.add(
+            '${profile.name}: ${_compactRefreshErrorMessage(e)}',
+          );
+        }
       }
 
       if (!mounted) return;
+      // 一次性更新页面模型数据
       setState(() {
         _providerModelsByProfileId = _mergeBindingModels(
           providerModelsByProfileId: nextModels,
           bindings: _bindings,
         );
       });
-      showToast(
-        refreshedCount == 0 ? '当前没有可用模型' : '已更新 $refreshedCount 个模型',
-        type: refreshedCount == 0 ? ToastType.warning : ToastType.success,
-      );
+      if (failedProfiles.isEmpty) {
+        showToast(
+          refreshedCount == 0 ? '当前没有可用模型' : '已更新 $refreshedCount 个模型',
+          type: refreshedCount == 0 ? ToastType.warning : ToastType.success,
+        );
+      } else {
+        final preview = failedProfiles.take(2).join('；');
+        final extraCount = failedProfiles.length - 2;
+        final suffix = extraCount > 0 ? '，另有 $extraCount 个 Provider' : '';
+        showToast(
+          '已部分更新，但有 Provider 失败：$preview$suffix',
+          type: ToastType.warning,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       showToast('刷新模型列表失败：$e', type: ToastType.error);
@@ -247,6 +262,24 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         setState(() => _isRefreshingModels = false);
       }
     }
+  }
+
+  // 把任意异常对象转成可读的短错误文案。
+  String _compactRefreshErrorMessage(Object error) {
+    final raw = error.toString().trim();
+    if (raw.isEmpty) {
+      return '未知错误';
+    }
+    final normalized = raw
+        .replaceAll('\n', ' ')
+        .replaceAll('\r', ' ')
+        .replaceFirst('PlatformException(', '')
+        .replaceFirst(RegExp(r'\)$'), '')
+        .trim();
+    if (normalized.length <= 90) {
+      return normalized;
+    }
+    return '${normalized.substring(0, 90)}...';
   }
 
   Future<void> _saveSceneBinding({
@@ -288,10 +321,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      showToast(
-        '保存 ${_sceneDisplayName(sceneId)} 配置失败：$e',
-        type: ToastType.error,
-      );
+      showToast('保存 ${_sceneDisplayName(sceneId)} 配置失败：$e', type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -323,10 +353,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      showToast(
-        '清除 ${_sceneDisplayName(sceneId)} 配置失败：$e',
-        type: ToastType.error,
-      );
+      showToast('清除 ${_sceneDisplayName(sceneId)} 配置失败：$e', type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -370,7 +397,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       context: context,
       color: Colors.white,
       elevation: 8,
-      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
+      constraints: BoxConstraints(
+        minWidth: popupWidth,
+        maxWidth: popupWidth,
+      ),
       position: position,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       items: [
@@ -418,9 +448,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     if (binding == null) {
       return '默认：${scene.defaultModel}';
     }
-    final profile = _profiles.where(
-      (item) => item.id == binding.providerProfileId,
-    );
+    final profile = _profiles.where((item) => item.id == binding.providerProfileId);
     final profileName = profile.isEmpty ? 'Provider 已失效' : profile.first.name;
     return '$profileName / ${binding.modelId}';
   }
@@ -473,15 +501,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
             child: Builder(
               builder: (fieldContext) {
                 return InkWell(
-                  onTap: isSaving
-                      ? null
-                      : () => _openSceneSelector(scene, fieldContext),
+                  onTap: isSaving ? null : () => _openSceneSelector(scene, fieldContext),
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 11,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
@@ -556,21 +579,22 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                                 ),
                               ),
                             ),
-                            OutlinedButton.icon(
-                              onPressed: _isRefreshingModels
-                                  ? null
-                                  : _refreshProviderModels,
-                              icon: _isRefreshingModels
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.refresh, size: 16),
-                              label: const Text('刷新模型列表'),
-                            ),
+                            if (_showManualRefreshButton)
+                              OutlinedButton.icon(
+                                onPressed: _isRefreshingModels
+                                    ? null
+                                    : _refreshProviderModels,
+                                icon: _isRefreshingModels
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh, size: 16),
+                                label: const Text('刷新模型列表'),
+                              ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -605,8 +629,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                               final scene = _orderedCatalog[index];
                               return _buildSceneRow(scene);
                             },
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 8),
+                            separatorBuilder: (_, _) => const SizedBox(height: 8),
                           ),
                       ],
                     ),
@@ -624,9 +647,9 @@ class _SceneSelectionAction {
   final String modelId;
 
   const _SceneSelectionAction.restore()
-    : restoreDefault = true,
-      providerProfileId = '',
-      modelId = '';
+      : restoreDefault = true,
+        providerProfileId = '',
+        modelId = '';
 
   const _SceneSelectionAction.select({
     required this.providerProfileId,
@@ -662,7 +685,8 @@ class _SceneSelectionPopupEntry extends PopupMenuEntry<_SceneSelectionAction> {
       _SceneSelectionPopupEntryState();
 }
 
-class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
+class _SceneSelectionPopupEntryState
+    extends State<_SceneSelectionPopupEntry> {
   final TextEditingController _searchController = TextEditingController();
   late final Set<String> _expandedProfileIds;
 
@@ -672,8 +696,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
   void initState() {
     super.initState();
     _expandedProfileIds = <String>{
-      if (widget.currentBinding != null)
-        widget.currentBinding!.providerProfileId,
+      if (widget.currentBinding != null) widget.currentBinding!.providerProfileId,
     };
     if (_expandedProfileIds.isEmpty && widget.profiles.isNotEmpty) {
       _expandedProfileIds.add(widget.profiles.first.id);
@@ -862,8 +885,8 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                 _hasSearchQuery
                     ? Icons.unfold_more_rounded
                     : expanded
-                    ? Icons.expand_less_rounded
-                    : Icons.expand_more_rounded,
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
                 size: 16,
                 color: const Color(0xFF94A3B8),
               ),
@@ -883,49 +906,44 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
         widget.currentBinding?.modelId == item.id;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
-      child: _buildSceneModelIdTooltip(
-        modelId: item.id,
-        child: InkWell(
-          onTap: () {
-            Navigator.of(context).pop(
-              _SceneSelectionAction.select(
-                providerProfileId: profile.id,
-                modelId: item.id,
-              ),
-            );
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: selected
-                  ? const Color(0xFFEAF3FF)
-                  : const Color(0xFFF8FAFD),
-              borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).pop(
+            _SceneSelectionAction.select(
+              providerProfileId: profile.id,
+              modelId: item.id,
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    item.id,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.text,
-                      fontWeight: FontWeight.w500,
-                      fontFamily: 'PingFang SC',
-                    ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.id,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
                   ),
                 ),
-                if (selected)
-                  const Icon(
-                    Icons.check_rounded,
-                    size: 15,
-                    color: Color(0xFF2C7FEB),
-                  ),
-              ],
-            ),
+              ),
+              if (selected)
+                const Icon(
+                  Icons.check_rounded,
+                  size: 15,
+                  color: Color(0xFF2C7FEB),
+                ),
+            ],
           ),
         ),
       ),
@@ -994,30 +1012,25 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                           if (expanded)
                             profile.configured
                                 ? models.isEmpty
-                                      ? const Padding(
-                                          padding: EdgeInsets.fromLTRB(
-                                            12,
-                                            4,
-                                            12,
-                                            8,
+                                    ? const Padding(
+                                        padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
+                                        child: Text(
+                                          '当前 Provider 没有可选模型',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Color(0xFF94A3B8),
+                                            fontFamily: 'PingFang SC',
                                           ),
-                                          child: Text(
-                                            '当前 Provider 没有可选模型',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Color(0xFF94A3B8),
-                                              fontFamily: 'PingFang SC',
-                                            ),
-                                          ),
-                                        )
-                                      : Column(
-                                          children: models.map((item) {
-                                            return _buildModelRow(
-                                              profile: profile,
-                                              item: item,
-                                            );
-                                          }).toList(),
-                                        )
+                                        ),
+                                      )
+                                    : Column(
+                                        children: models.map((item) {
+                                          return _buildModelRow(
+                                            profile: profile,
+                                            item: item,
+                                          );
+                                        }).toList(),
+                                      )
                                 : const Padding(
                                     padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
                                     child: Text(
