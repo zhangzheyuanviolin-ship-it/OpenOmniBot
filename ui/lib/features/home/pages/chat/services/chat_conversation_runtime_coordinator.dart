@@ -834,8 +834,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     } else {
       final existing = runtime.messages[index];
       final content = Map<String, dynamic>.from(existing.content ?? {});
-      content['text'] = message;
-      runtime.messages[index] = existing.copyWith(content: content);
+      final currentText = (content['text'] ?? '').toString();
+      if (!_shouldIgnoreRegressiveAgentSnapshot(currentText, message)) {
+        content['text'] = message;
+        runtime.messages[index] = existing.copyWith(content: content);
+      }
     }
     if (isFinal) {
       runtime.isAiResponding = false;
@@ -859,6 +862,13 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         mode: binding.mode,
       );
     }
+  }
+
+  bool _shouldIgnoreRegressiveAgentSnapshot(String current, String incoming) {
+    if (current.isEmpty || incoming.isEmpty) {
+      return false;
+    }
+    return incoming.length < current.length && current.startsWith(incoming);
   }
 
   void _handleAgentContextCompactionStateChanged(

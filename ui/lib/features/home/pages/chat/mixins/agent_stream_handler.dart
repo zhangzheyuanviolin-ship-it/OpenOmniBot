@@ -254,8 +254,11 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
       } else {
         final existing = messages[index];
         final content = Map<String, dynamic>.from(existing.content ?? {});
-        content['text'] = message;
-        messages[index] = existing.copyWith(content: content);
+        final currentText = (content['text'] ?? '').toString();
+        if (!_shouldIgnoreRegressiveAgentSnapshot(currentText, message)) {
+          content['text'] = message;
+          messages[index] = existing.copyWith(content: content);
+        }
       }
       if (isFinal) {
         isAiResponding = false;
@@ -268,6 +271,13 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     if (isFinal) {
       _persistAgentConversationSafely();
     }
+  }
+
+  bool _shouldIgnoreRegressiveAgentSnapshot(String current, String incoming) {
+    if (current.isEmpty || incoming.isEmpty) {
+      return false;
+    }
+    return incoming.length < current.length && current.startsWith(incoming);
   }
 
   void handleAgentClarifyRequired(String question, List<String> missingFields) {
