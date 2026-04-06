@@ -257,6 +257,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   Timer? _companionCountdownTimer;
   AppUpdateStatus? _appUpdateStatus;
   ModalRoute<dynamic>? _subscribedRoute;
+  StreamSubscription<Map<String, dynamic>>?
+  _conversationListChangedSubscription;
+  StreamSubscription<Map<String, dynamic>>?
+  _conversationMessagesChangedSubscription;
   ChatBrowserSessionSnapshot? _liveBrowserSessionSnapshot;
   bool _isBrowserOverlayVisible = false;
   bool _isBrowserOverlayInitialized = false;

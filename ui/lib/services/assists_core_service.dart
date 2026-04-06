@@ -237,6 +237,15 @@ class AssistsMessageService {
   static final StreamController<AgentAiConfigChangedEvent>
   _agentAiConfigChangedController =
       StreamController<AgentAiConfigChangedEvent>.broadcast();
+  static final StreamController<Map<String, dynamic>>
+  _conversationListChangedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  static final StreamController<Map<String, dynamic>>
+  _conversationMessagesChangedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  static final StreamController<Map<String, dynamic>>
+  _browserSessionSnapshotChangedController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // 改为回调列表，支持多个监听器
   static final List<VLMTaskFinishEndCallBack> _onVLMTaskFinishCallBacks = [];
@@ -245,6 +254,12 @@ class AssistsMessageService {
 
   static Stream<AgentAiConfigChangedEvent> get agentAiConfigChangedStream =>
       _agentAiConfigChangedController.stream;
+  static Stream<Map<String, dynamic>> get conversationListChangedStream =>
+      _conversationListChangedController.stream;
+  static Stream<Map<String, dynamic>> get conversationMessagesChangedStream =>
+      _conversationMessagesChangedController.stream;
+  static Stream<Map<String, dynamic>> get browserSessionSnapshotChangedStream =>
+      _browserSessionSnapshotChangedController.stream;
 
   static void initialize() {
     assistCore.setMethodCallHandler(_handleMethod);
@@ -270,6 +285,27 @@ class AssistsMessageService {
           );
           _agentAiConfigChangedController.add(
             AgentAiConfigChangedEvent.fromMap(data),
+          );
+          break;
+        case 'onConversationListChanged':
+          _conversationListChangedController.add(
+            Map<String, dynamic>.from(
+              (call.arguments as Map?) ?? const <String, dynamic>{},
+            ),
+          );
+          break;
+        case 'onConversationMessagesChanged':
+          _conversationMessagesChangedController.add(
+            Map<String, dynamic>.from(
+              (call.arguments as Map?) ?? const <String, dynamic>{},
+            ),
+          );
+          break;
+        case 'onBrowserSessionSnapshotUpdated':
+          _browserSessionSnapshotChangedController.add(
+            Map<String, dynamic>.from(
+              (call.arguments as Map?) ?? const <String, dynamic>{},
+            ),
           );
           break;
         case 'onChatMessage':

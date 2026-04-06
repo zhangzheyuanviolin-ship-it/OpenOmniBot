@@ -42,6 +42,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URI
@@ -373,6 +374,27 @@ class BrowserUseEngine(
             "title" to (tab.title ?: ""),
             "userAgentProfile" to tab.userAgentProfile.wireName
         )
+    }
+
+    suspend fun captureActiveFramePng(): ByteArray? {
+        val tab = activeTabId?.let { tabs[it] } ?: tabs.values.lastOrNull() ?: return null
+        activeTabId = tab.tabId
+        return withContext(Dispatchers.Main.immediate) {
+            layoutWebView(tab.webView)
+            val bitmap = Bitmap.createBitmap(
+                viewportWidth,
+                viewportHeight,
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = Canvas(bitmap)
+            tab.webView.draw(canvas)
+            val bytes = ByteArrayOutputStream().use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                stream.toByteArray()
+            }
+            bitmap.recycle()
+            bytes
+        }
     }
 
     fun attachActiveTabTo(

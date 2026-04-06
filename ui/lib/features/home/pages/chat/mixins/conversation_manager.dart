@@ -191,16 +191,23 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
   }
 
   /// 加载对话
-  Future<void> loadConversation(int conversationId) async {
+  Future<void> loadConversation(
+    int conversationId, {
+    bool preferInMemory = true,
+  }) async {
     try {
-      final inMemoryConversation = getInMemoryConversationForConversation(
-        conversationId,
-        activeConversationModeValue,
-      );
-      final inMemoryMessages = getInMemoryMessagesForConversation(
-        conversationId,
-        activeConversationModeValue,
-      );
+      final inMemoryConversation = preferInMemory
+          ? getInMemoryConversationForConversation(
+              conversationId,
+              activeConversationModeValue,
+            )
+          : null;
+      final inMemoryMessages = preferInMemory
+          ? getInMemoryMessagesForConversation(
+              conversationId,
+              activeConversationModeValue,
+            )
+          : null;
       final conversations = await ConversationService.getAllConversations(
         includeArchived: true,
       );
@@ -282,7 +289,8 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
 
         final sameModeConversations = allConversations
             .where(
-              (conversation) => conversation.mode == activeConversationModeValue,
+              (conversation) =>
+                  conversation.mode == activeConversationModeValue,
             )
             .toList();
         if (sameModeConversations.isNotEmpty) {

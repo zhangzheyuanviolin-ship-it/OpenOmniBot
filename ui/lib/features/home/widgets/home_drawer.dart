@@ -9,6 +9,7 @@ import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/widgets/conversation_mode_badge.dart';
 import 'package:ui/services/agent_skill_store_service.dart';
+import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
@@ -41,6 +42,8 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   List<ConversationModel> conversations = [];
   final Set<String> _busyConversationKeys = <String>{};
   bool isLoadingConversations = true;
+  StreamSubscription<Map<String, dynamic>>?
+  _conversationListChangedSubscription;
   static const BorderRadius _drawerTrailingActionRadius = BorderRadius.only(
     topRight: Radius.circular(4),
     bottomRight: Radius.circular(4),
@@ -130,8 +133,19 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   @override
   void initState() {
     super.initState();
+    _conversationListChangedSubscription = AssistsMessageService
+        .conversationListChangedStream
+        .listen((_) {
+          unawaited(_loadConversations());
+        });
     _syncMemoryCount();
     _loadConversations();
+  }
+
+  @override
+  void dispose() {
+    _conversationListChangedSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -804,7 +818,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         ..removeAt(originalIndex);
     });
 
-    final archived = await ConversationService.archiveConversation(conversation);
+    final archived = await ConversationService.archiveConversation(
+      conversation,
+    );
     if (!mounted) {
       return;
     }
@@ -838,10 +854,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             'assets/memory/memory_delete.svg',
             width: _conversationActionIconSize,
             height: _conversationActionIconSize,
-            colorFilter: const ColorFilter.mode(
-              Colors.white,
-              BlendMode.srcIn,
-            ),
+            colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
           ),
         ),
       ),
@@ -854,10 +867,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             'assets/home/archive_icon.svg',
             width: _conversationActionIconSize,
             height: _conversationActionIconSize,
-            colorFilter: const ColorFilter.mode(
-              Colors.white,
-              BlendMode.srcIn,
-            ),
+            colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
           ),
         ),
       ),
@@ -865,9 +875,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 
   Widget _buildSwipeConversationItem(ConversationModel conversation) {
-    final isBusy = _busyConversationKeys.contains(
-      conversation.threadKey,
-    );
+    final isBusy = _busyConversationKeys.contains(conversation.threadKey);
 
     return ConversationSlidable(
       itemKey: conversation.threadKey,
@@ -889,10 +897,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             onTap: () => _openConversationFromDrawer(conversation),
             borderRadius: BorderRadius.circular(8),
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 9,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               child: Row(
                 children: [
                   Expanded(
@@ -936,98 +941,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
   }
 
-  Widget _buildConversationItem(ConversationModel conversation) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: () {
-            Navigator.pop(context);
-            // 使用 pushReplacement 替换当前页面，避免路由栈堆积
-            GoRouterManager.pushReplacement(
-              '/home/chat',
-              extra: ConversationThreadTarget.existing(
-                conversationId: conversation.id,
-                mode: conversation.mode,
-              ),
-            );
-          },
-          onLongPress: () => _showDeleteDialog(conversation),
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        conversation.summary ?? conversation.title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.text,
-                          fontFamily: 'PingFang SC',
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: 8),
-                Text(
-                  conversation.timeDisplay,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.text.withOpacity(0.4),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showDeleteDialog(ConversationModel conversation) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除对话'),
-        content: Text('确定要删除这个对话吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('取消'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final success = await ConversationService.deleteConversation(
-                conversation.id,
-                mode: conversation.mode,
-              );
-              if (success) {
-                setState(() {
-                  conversations.removeWhere((c) => c.id == conversation.id);
-                });
-              }
-            },
-            child: Text('删除', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// 菜单项数据模型

@@ -234,7 +234,7 @@ class _SettingsPageState extends State<SettingsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '本机 MCP 服务',
+                '本机服务',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
@@ -382,8 +382,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.cloud_outlined,
             iconSvg: 'assets/home/local_mcp_service_setting_icon.svg',
-            title: '本机 MCP 服务',
-            subtitle: '在局域网内访问当前手机提供的 MCP 服务',
+            title: '本机服务',
+            subtitle: '在局域网内访问小万 MCP 和 webchat服务',
             trailing: _buildSwitchTrailing(
               value: _mcpEnabled,
               enabled: _mcpLoaded && !_mcpBusy,

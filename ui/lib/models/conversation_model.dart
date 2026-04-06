@@ -63,24 +63,26 @@ class ConversationModel {
 
   factory ConversationModel.fromJson(Map<String, dynamic> json) {
     return ConversationModel(
-      id: json['id'] as int,
+      id: (json['id'] as num?)?.toInt() ?? 0,
       mode: ConversationMode.fromStorageValue(json['mode'] as String?),
       isArchived: json['isArchived'] as bool? ?? false,
-      title: json['title'] as String,
+      title: (json['title'] ?? '').toString(),
       summary: json['summary'] as String?,
       contextSummary: json['contextSummary'] as String?,
       contextSummaryCutoffEntryDbId:
           (json['contextSummaryCutoffEntryDbId'] as num?)?.toInt(),
-      contextSummaryUpdatedAt: json['contextSummaryUpdatedAt'] as int? ?? 0,
-      status: json['status'] as int? ?? 0,
+      contextSummaryUpdatedAt:
+          (json['contextSummaryUpdatedAt'] as num?)?.toInt() ?? 0,
+      status: (json['status'] as num?)?.toInt() ?? 0,
       lastMessage: json['lastMessage'] as String?,
-      messageCount: json['messageCount'] as int? ?? 0,
-      latestPromptTokens: json['latestPromptTokens'] as int? ?? 0,
-      promptTokenThreshold: json['promptTokenThreshold'] as int? ?? 128000,
+      messageCount: (json['messageCount'] as num?)?.toInt() ?? 0,
+      latestPromptTokens: (json['latestPromptTokens'] as num?)?.toInt() ?? 0,
+      promptTokenThreshold:
+          (json['promptTokenThreshold'] as num?)?.toInt() ?? 128000,
       latestPromptTokensUpdatedAt:
-          json['latestPromptTokensUpdatedAt'] as int? ?? 0,
-      createdAt: json['createdAt'] as int? ?? 0,
-      updatedAt: json['updatedAt'] as int? ?? 0,
+          (json['latestPromptTokensUpdatedAt'] as num?)?.toInt() ?? 0,
+      createdAt: (json['createdAt'] as num?)?.toInt() ?? 0,
+      updatedAt: (json['updatedAt'] as num?)?.toInt() ?? 0,
     );
   }
 
