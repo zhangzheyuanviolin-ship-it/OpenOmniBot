@@ -8,6 +8,7 @@ import 'package:ui/features/home/pages/chat_history/widgets/chat_history_convers
 import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
+import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/cache_util.dart';
@@ -15,10 +16,7 @@ import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
 class ChatHistoryPage extends StatefulWidget {
-  const ChatHistoryPage({
-    super.key,
-    this.archivedOnly = false,
-  });
+  const ChatHistoryPage({super.key, this.archivedOnly = false});
 
   final bool archivedOnly;
 
@@ -35,6 +33,8 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   List<ConversationModel> _conversations = const [];
   final Set<String> _busyKeys = <String>{};
   bool _isLoading = true;
+  StreamSubscription<Map<String, dynamic>>?
+  _conversationListChangedSubscription;
 
   Future<void> _triggerDeleteHaptic() async {
     try {
@@ -54,7 +54,18 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   @override
   void initState() {
     super.initState();
+    _conversationListChangedSubscription = AssistsMessageService
+        .conversationListChangedStream
+        .listen((_) {
+          unawaited(_loadConversations());
+        });
     _loadConversations();
+  }
+
+  @override
+  void dispose() {
+    _conversationListChangedSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadConversations() async {
@@ -65,10 +76,9 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     }
 
     try {
-      final loadedConversations =
-          await ConversationService.getAllConversations(
-            archivedOnly: widget.archivedOnly,
-          );
+      final loadedConversations = await ConversationService.getAllConversations(
+        archivedOnly: widget.archivedOnly,
+      );
       if (!mounted) {
         return;
       }
@@ -173,9 +183,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     });
 
     showToast(
-      success
-          ? (archived ? '已归档' : '已取消归档')
-          : (archived ? '归档失败' : '取消归档失败'),
+      success ? (archived ? '已归档' : '已取消归档') : (archived ? '归档失败' : '取消归档失败'),
       type: success ? ToastType.success : ToastType.error,
     );
   }
@@ -243,10 +251,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
             'assets/memory/memory_delete.svg',
             width: 20,
             height: 20,
-            colorFilter: const ColorFilter.mode(
-              Colors.white,
-              BlendMode.srcIn,
-            ),
+            colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
           ),
         ),
       ),

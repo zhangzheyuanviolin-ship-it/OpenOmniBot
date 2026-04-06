@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
@@ -7,6 +9,7 @@ import '../features/memory/pages/memory_center/memory_center_page.dart';
 import '../features/home/widgets/conversation_mode_badge.dart';
 import '../models/conversation_model.dart';
 import '../models/conversation_thread_target.dart';
+import '../services/assists_core_service.dart';
 import '../services/conversation_service.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 
@@ -31,12 +34,25 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
 
   List<ConversationModel> conversations = [];
   bool isLoadingConversations = true;
+  StreamSubscription<Map<String, dynamic>>?
+  _conversationListChangedSubscription;
 
   @override
   void initState() {
     super.initState();
+    _conversationListChangedSubscription = AssistsMessageService
+        .conversationListChangedStream
+        .listen((_) {
+          unawaited(_loadConversations());
+        });
     _loadUserData();
     _loadConversations();
+  }
+
+  @override
+  void dispose() {
+    _conversationListChangedSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadUserData() async {

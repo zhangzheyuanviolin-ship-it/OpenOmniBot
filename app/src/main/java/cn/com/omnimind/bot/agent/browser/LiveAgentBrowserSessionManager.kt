@@ -57,6 +57,14 @@ object LiveAgentBrowserSessionManager {
         return store.current()?.liveSessionSnapshot() ?: BrowserUseEngine.unavailableSnapshot()
     }
 
+    suspend fun executeCurrent(request: BrowserUseRequest): BrowserUseOutcome? {
+        return store.current()?.execute(request)
+    }
+
+    suspend fun captureCurrentFramePng(): ByteArray? {
+        return store.current()?.captureActiveFramePng()
+    }
+
     fun attachActiveTabTo(
         container: ViewGroup,
         hostContext: Context,

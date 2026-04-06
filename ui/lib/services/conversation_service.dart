@@ -1,7 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
-import 'package:ui/services/conversation_archive_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 
 class ConversationService {
@@ -39,9 +38,7 @@ class ConversationService {
         'getConversations',
       );
       if (result == null) return [];
-      final conversations = await ConversationArchiveService.applyArchiveState(
-        _normalizeConversations(result),
-      );
+      final conversations = _normalizeConversations(result);
       if (archivedOnly) {
         return conversations.where((item) => item.isArchived).toList();
       }
@@ -118,13 +115,11 @@ class ConversationService {
     required int promptTokenThreshold,
   }) async {
     try {
-      final result = await _assistCore.invokeMethod<dynamic>(
-        'updateConversationPromptTokenThreshold',
-        {
-          'conversationId': conversationId,
-          'promptTokenThreshold': promptTokenThreshold,
-        },
-      );
+      final result = await _assistCore
+          .invokeMethod<dynamic>('updateConversationPromptTokenThreshold', {
+            'conversationId': conversationId,
+            'promptTokenThreshold': promptTokenThreshold,
+          });
       return result == 'SUCCESS';
     } on PlatformException catch (e) {
       print('更新对话压缩阈值失败: ${e.message}');
@@ -155,10 +150,6 @@ class ConversationService {
         conversationId,
         mode: mode ?? ConversationMode.normal,
       );
-      await ConversationArchiveService.forgetConversation(
-        conversationId: conversationId,
-        mode: mode,
-      );
       await ConversationHistoryService.clearConversationThreadReferences(
         conversationId,
         mode: mode,
@@ -176,10 +167,11 @@ class ConversationService {
     }
   }
 
-  static Future<bool> archiveConversation(ConversationModel conversation) async {
-    final archived = await ConversationArchiveService.setConversationArchived(
-      conversation,
-      archived: true,
+  static Future<bool> archiveConversation(
+    ConversationModel conversation,
+  ) async {
+    final archived = await updateConversation(
+      conversation.copyWith(isArchived: true),
     );
     if (!archived) {
       return false;
@@ -193,10 +185,7 @@ class ConversationService {
   static Future<bool> unarchiveConversation(
     ConversationModel conversation,
   ) async {
-    return ConversationArchiveService.setConversationArchived(
-      conversation,
-      archived: false,
-    );
+    return updateConversation(conversation.copyWith(isArchived: false));
   }
 
   static Future<bool> updateConversationTitle({
@@ -205,14 +194,12 @@ class ConversationService {
     ConversationMode mode = ConversationMode.normal,
   }) async {
     try {
-      final result = await _assistCore.invokeMethod<dynamic>(
-        'updateConversationTitle',
-        {
-          'conversationId': conversationId,
-          'newTitle': newTitle,
-          'mode': mode.storageValue,
-        },
-      );
+      final result = await _assistCore
+          .invokeMethod<dynamic>('updateConversationTitle', {
+            'conversationId': conversationId,
+            'newTitle': newTitle,
+            'mode': mode.storageValue,
+          });
       return result == 'SUCCESS';
     } on PlatformException catch (e) {
       print('更新对话标题失败: ${e.message}');
@@ -246,10 +233,13 @@ class ConversationService {
     ConversationMode? mode,
   }) async {
     try {
-      final result = await _assistCore.invokeMethod<dynamic>('completeConversation', {
-        'conversationId': conversationId,
-        if (mode != null) 'mode': mode.storageValue,
-      });
+      final result = await _assistCore.invokeMethod<dynamic>(
+        'completeConversation',
+        {
+          'conversationId': conversationId,
+          if (mode != null) 'mode': mode.storageValue,
+        },
+      );
       return result == 'SUCCESS';
     } on PlatformException catch (e) {
       print('完成对话失败: ${e.message}');

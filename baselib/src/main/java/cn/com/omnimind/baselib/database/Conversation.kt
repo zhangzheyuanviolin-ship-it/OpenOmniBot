@@ -15,6 +15,9 @@ data class Conversation(
     // 对话模式
     val mode: String = "normal",
 
+    // 是否已归档
+    val isArchived: Boolean = false,
+
     // 对话摘要（AI生成，6个字左右）
     val summary: String? = null,
 
