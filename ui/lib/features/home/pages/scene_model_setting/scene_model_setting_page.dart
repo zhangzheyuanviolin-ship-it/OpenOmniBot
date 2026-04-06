@@ -35,6 +35,8 @@ class SceneModelSettingPage extends StatefulWidget {
 }
 
 class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
+  static const bool _showManualRefreshButton = false;
+
   static const List<String> _sceneOrder = [
     'scene.dispatch.model',
     'scene.vlm.operation.primary',
@@ -164,6 +166,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         _profiles = profilesPayload.profiles;
         _providerModelsByProfileId = enriched;
       });
+      if (_profiles.any((profile) => profile.configured)) {
+        unawaited(_refreshProviderModels());
+      }
     } catch (_) {
       if (!mounted) return;
       showToast('加载场景配置失败', type: ToastType.error);
@@ -204,6 +209,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     try {
       final nextModels = <String, List<ProviderModelOption>>{};
       var refreshedCount = 0;
+      final failedProfiles = <String>[];
       for (final profile in _profiles) {
         if (!profile.configured) {
           nextModels[profile.id] =
@@ -212,29 +218,49 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
               );
           continue;
         }
-        final remoteModels = await ModelProviderConfigService.fetchModels(
-          apiBase: profile.baseUrl,
-          apiKey: profile.apiKey,
-          profileId: profile.id,
-        );
-        final manualModelIds =
-            await ModelProviderConfigService.getManualModelIds(
-              profileId: profile.id,
-            );
-        nextModels[profile.id] = ModelProviderConfigService.mergeModelOptions(
-          remoteModels: remoteModels,
-          manualModelIds: manualModelIds,
-        );
-        refreshedCount += remoteModels.length;
+        try {
+          final remoteModels = await ModelProviderConfigService.fetchModels(
+            apiBase: profile.baseUrl,
+            apiKey: profile.apiKey,
+            profileId: profile.id,
+          );
+          final manualModelIds =
+              await ModelProviderConfigService.getManualModelIds(
+                profileId: profile.id,
+              );
+          nextModels[profile.id] = ModelProviderConfigService.mergeModelOptions(
+            remoteModels: remoteModels,
+            manualModelIds: manualModelIds,
+          );
+          refreshedCount += remoteModels.length;
+        } catch (e) {
+          //允许部分成功，不让一个 Provider 的失败拖垮整次刷新。
+          nextModels[profile.id] =
+              await ModelProviderConfigService.getStoredModelOptionsForProfile(
+                profile.id,
+              );
+          failedProfiles.add(profile.name);
+        }
       }
 
       if (!mounted) return;
+      // 一次性更新页面模型数据
       setState(() {
         _providerModelsByProfileId = _mergeBindingModels(
           providerModelsByProfileId: nextModels,
           bindings: _bindings,
         );
       });
+      if (failedProfiles.isNotEmpty) {
+        final preview = failedProfiles.take(2).join(', ');
+        final extraCount = failedProfiles.length - 2;
+        final suffix = extraCount > 0 ? ' (+$extraCount)' : '';
+        showToast(
+          '已部分更新，但有 Provider 失败：$preview$suffix',
+          type: ToastType.warning,
+        );
+        return;
+      }
       showToast(
         refreshedCount == 0 ? '当前没有可用模型' : '已更新 $refreshedCount 个模型',
         type: refreshedCount == 0 ? ToastType.warning : ToastType.success,
@@ -556,7 +582,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                                 ),
                               ),
                             ),
-                            OutlinedButton.icon(
+                            if (_showManualRefreshButton)
+                              OutlinedButton.icon(
                               onPressed: _isRefreshingModels
                                   ? null
                                   : _refreshProviderModels,
