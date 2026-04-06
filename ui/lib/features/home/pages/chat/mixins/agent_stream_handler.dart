@@ -124,6 +124,9 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
   void handleAgentThinkingUpdate(String thinking) {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
     if (taskId == null) return;
+    if (_shouldIgnoreRegressiveSnapshot(deepThinkingContent, thinking)) {
+      return;
+    }
 
     if (_pendingThinkingRoundSplit) {
       if (thinking.trim().isEmpty) {
@@ -254,8 +257,11 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
       } else {
         final existing = messages[index];
         final content = Map<String, dynamic>.from(existing.content ?? {});
-        content['text'] = message;
-        messages[index] = existing.copyWith(content: content);
+        final currentText = (content['text'] ?? '').toString();
+        if (!_shouldIgnoreRegressiveSnapshot(currentText, message)) {
+          content['text'] = message;
+          messages[index] = existing.copyWith(content: content);
+        }
       }
       if (isFinal) {
         isAiResponding = false;
@@ -268,6 +274,13 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     if (isFinal) {
       _persistAgentConversationSafely();
     }
+  }
+
+  bool _shouldIgnoreRegressiveSnapshot(String current, String incoming) {
+    if (current.isEmpty || incoming.isEmpty) {
+      return false;
+    }
+    return incoming.length < current.length && current.startsWith(incoming);
   }
 
   void handleAgentClarifyRequired(String question, List<String> missingFields) {

@@ -3163,6 +3163,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                     override suspend fun onThinkingUpdate(thinking: String) {
                         val normalizedThinking = thinking.trim()
+                        if (shouldIgnoreRegressiveSnapshot(latestThinkingContent, normalizedThinking)) {
+                            OmniLog.d(
+                                TAG,
+                                "ignore stale thinking snapshot: incoming=${normalizedThinking.length}, current=${latestThinkingContent.length}"
+                            )
+                            return
+                        }
                         if (pendingThinkingRoundSplit && normalizedThinking.isNotEmpty()) {
                             finalizeThinkingCardIfNeeded(publish = false)
                             thinkingRound += 1
@@ -3348,7 +3355,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             ?.content
                             ?.trim()
                             .orEmpty()
-                        val finalText = streamed.ifEmpty { fallback }.ifEmpty {
+                        val finalText = resolveAssistantFinalText(
+                            streamed = streamed,
+                            fallback = fallback
+                        ).ifEmpty {
                             if (isSuccess && outputKind == "none" && !hasUserVisibleOutput) {
                                 "暂时无法生成回复，请重试。"
                             } else {
@@ -3412,6 +3422,14 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     ) {
                         val normalizedMessage = message.trim()
                         if (normalizedMessage.isNotEmpty()) {
+                            val currentSnapshot = scheduledAssistantBuffer.toString().trim()
+                            if (shouldIgnoreRegressiveSnapshot(currentSnapshot, normalizedMessage)) {
+                                OmniLog.d(
+                                    TAG,
+                                    "ignore stale agent snapshot: incoming=${normalizedMessage.length}, current=${currentSnapshot.length}, final=$isFinal"
+                                )
+                                return
+                            }
                             // Agent 回调 message 是当前轮次的“完整文本快照”，这里必须覆盖而不是追加，
                             // 否则会把同一段内容在流式阶段重复拼接。
                             scheduledAssistantBuffer.setLength(0)
@@ -3428,6 +3446,33 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 "isFinal" to isFinal
                             )
                         )
+                    }
+
+                    private fun shouldIgnoreRegressiveSnapshot(
+                        current: String,
+                        incoming: String
+                    ): Boolean {
+                        if (current.isEmpty() || incoming.isEmpty()) {
+                            return false
+                        }
+                        return incoming.length < current.length && current.startsWith(incoming)
+                    }
+
+                    private fun resolveAssistantFinalText(
+                        streamed: String,
+                        fallback: String
+                    ): String {
+                        if (fallback.isEmpty()) {
+                            return streamed
+                        }
+                        if (streamed.isEmpty()) {
+                            return fallback
+                        }
+                        return when {
+                            fallback.length >= streamed.length && fallback.startsWith(streamed) -> fallback
+                            streamed.length > fallback.length && streamed.startsWith(fallback) -> streamed
+                            else -> fallback
+                        }
                     }
 
                     private suspend fun sendEvent(method: String, args: Map<String, Any?>) {
