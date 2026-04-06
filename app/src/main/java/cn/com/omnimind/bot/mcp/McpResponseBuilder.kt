@@ -36,7 +36,9 @@ $recentActivity""".trimIndent()
             "summary" to summary,
             "summaryUnavailable" to state.summaryUnavailable,
             "feedback" to state.feedback,
-            "recentActivity" to recentActivityList
+            "recentActivity" to recentActivityList,
+            "compileStatus" to state.compileStatus,
+            "executionRoute" to state.executionRoute
         )
     }
     
@@ -56,6 +58,8 @@ Error: ${state.message}""".trimIndent()
             "summaryUnavailable" to state.summaryUnavailable,
             "feedback" to state.feedback,
             "recentActivity" to state.chatMessages.takeLast(5),
+            "compileStatus" to state.compileStatus,
+            "executionRoute" to state.executionRoute,
             "isError" to true
         )
     }
@@ -88,7 +92,9 @@ Example scenarios:
             "summary" to state.summaryText,
             "summaryUnavailable" to state.summaryUnavailable,
             "feedback" to state.feedback,
-            "recentActivity" to state.chatMessages.takeLast(5)
+            "recentActivity" to state.chatMessages.takeLast(5),
+            "compileStatus" to state.compileStatus,
+            "executionRoute" to state.executionRoute
         )
     }
     
@@ -105,7 +111,9 @@ The user has manually paused this task on the device.
 The task will resume when the user continues it from the device UI.""".trimIndent()
             )),
             "status" to "USER_PAUSED",
-            "recentActivity" to state.chatMessages.takeLast(5)
+            "recentActivity" to state.chatMessages.takeLast(5),
+            "compileStatus" to state.compileStatus,
+            "executionRoute" to state.executionRoute
         )
     }
 
@@ -137,7 +145,9 @@ Status: SCREEN_LOCKED
 $actionText""".trimIndent()
             )),
             "status" to "SCREEN_LOCKED",
-            "recentActivity" to state.chatMessages.takeLast(5)
+            "recentActivity" to state.chatMessages.takeLast(5),
+            "compileStatus" to state.compileStatus,
+            "executionRoute" to state.executionRoute
         )
     }
     
@@ -163,7 +173,9 @@ ${state?.chatMessages?.takeLast(5)?.joinToString("\n") { "- $it" } ?: "No activi
             "summary" to state?.summaryText,
             "summaryUnavailable" to (state?.summaryUnavailable ?: false),
             "feedback" to state?.feedback,
-            "recentActivity" to (state?.chatMessages?.takeLast(5) ?: emptyList<String>())
+            "recentActivity" to (state?.chatMessages?.takeLast(5) ?: emptyList<String>()),
+            "compileStatus" to state?.compileStatus,
+            "executionRoute" to state?.executionRoute
         )
     }
     
@@ -225,7 +237,9 @@ Please ask the user to unlock the phone and try again with 'task_wait_unlock'.""
             "summary" to state.summaryText,
             "summaryUnavailable" to state.summaryUnavailable,
             "feedback" to state.feedback,
-            "recentActivity" to state.chatMessages.takeLast(5)
+            "recentActivity" to state.chatMessages.takeLast(5),
+            "compileStatus" to state.compileStatus,
+            "executionRoute" to state.executionRoute
         )
     }
     

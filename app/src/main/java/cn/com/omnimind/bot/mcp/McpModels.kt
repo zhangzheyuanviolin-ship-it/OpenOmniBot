@@ -63,6 +63,8 @@ data class TaskState(
     @Volatile var summaryText: String? = null,
     @Volatile var feedback: String? = null,
     @Volatile var summaryUnavailable: Boolean = false,
+    @Volatile var compileStatus: String = "",
+    @Volatile var executionRoute: String = "",
     val startTime: Long = System.currentTimeMillis(),
     @Volatile var stateChanged: Boolean = false
 ) {
@@ -86,6 +88,8 @@ data class TaskState(
         "summary" to summaryText,
         "feedback" to feedback,
         "summaryUnavailable" to summaryUnavailable,
+        "compileStatus" to compileStatus,
+        "executionRoute" to executionRoute,
         "elapsedMs" to (System.currentTimeMillis() - startTime)
     )
     

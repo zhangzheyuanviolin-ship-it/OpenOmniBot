@@ -16,6 +16,7 @@ import cn.com.omnimind.bot.termux.TermuxCommandResult
 import cn.com.omnimind.bot.termux.TermuxCommandSpec
 import cn.com.omnimind.bot.termux.TermuxCommandBuilder
 import cn.com.omnimind.bot.termux.TermuxCommandRunner
+import cn.com.omnimind.bot.utg.UtgBridge
 import cn.com.omnimind.bot.util.AssistsUtil
 import cn.com.omnimind.bot.vlm.VlmToolCoordinator
 import cn.com.omnimind.bot.vlm.VlmToolOutcomeStatus
@@ -465,6 +466,7 @@ class AgentToolRouter(
             }
 
             ensureRunActive()
+            val taskId = UUID.randomUUID().toString()
             val outcome = VlmToolCoordinator.executeNewTask(
                 context = context,
                 request = VlmTaskRequest(
@@ -477,6 +479,10 @@ class AgentToolRouter(
                     stepSkillGuidance = resolvedSkills.joinToString("\n\n") { it.stepGuidance() }
                 ),
                 scope = scope,
+                taskId = taskId,
+                onTaskRunLogReady = { payload ->
+                    UtgBridge.cacheVlmTaskRunLog(taskId = taskId, payload = payload)
+                },
                 progressReporter = { progress, extras ->
                     reportToolProgress(callback, "vlm_task", progress, extras)
                 }

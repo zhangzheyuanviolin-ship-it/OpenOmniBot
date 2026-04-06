@@ -3,6 +3,8 @@ package cn.com.omnimind.bot.vlm
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import cn.com.omnimind.assists.api.bean.VLMTaskPreHookResult
+import cn.com.omnimind.assists.api.bean.VLMTaskRunLogPayload
 import cn.com.omnimind.accessibility.util.ScreenStateUtil
 import cn.com.omnimind.assists.api.bean.VlmTaskTerminalResult
 import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
@@ -43,6 +45,8 @@ data class VlmToolOutcome(
     val feedback: String? = null,
     val summaryUnavailable: Boolean = false,
     val recentActivity: List<String> = emptyList(),
+    val compileStatus: String = "",
+    val executionRoute: String = "",
 ) {
     fun toPayload(): Map<String, Any?> = linkedMapOf(
         "taskId" to taskId,
@@ -56,7 +60,9 @@ data class VlmToolOutcome(
         "errorMessage" to errorMessage,
         "feedback" to feedback,
         "summaryUnavailable" to summaryUnavailable,
-        "recentActivity" to recentActivity
+        "recentActivity" to recentActivity,
+        "compileStatus" to compileStatus,
+        "executionRoute" to executionRoute
     )
 }
 
@@ -72,9 +78,11 @@ object VlmToolCoordinator {
         context: Context,
         request: VlmTaskRequest,
         scope: CoroutineScope,
+        taskId: String = UUID.randomUUID().toString(),
+        onCompileGateResolved: (suspend (VLMTaskPreHookResult) -> Unit)? = null,
+        onTaskRunLogReady: (suspend (VLMTaskRunLogPayload) -> Unit)? = null,
         progressReporter: VlmToolProgressReporter = { _, _ -> }
     ): VlmToolOutcome = withContext(Dispatchers.IO) {
-        val taskId = UUID.randomUUID().toString()
         val needSummary = request.needSummary == true
 
         if (!ScreenStateUtil.isOperable()) {
@@ -115,7 +123,16 @@ object VlmToolCoordinator {
             mapOf("summary" to "正在启动视觉执行任务")
         )
 
-        val startResult = startVlmTaskInternal(context, request, taskId, taskState, scope)
+        val startResult = startVlmTaskInternal(
+            context = context,
+            payload = request,
+            taskId = taskId,
+            taskState = taskState,
+            scope = scope,
+            onCompileGateResolved = onCompileGateResolved,
+            onTaskRunLogReady = onTaskRunLogReady,
+            progressReporter = progressReporter
+        )
         if (startResult.isFailure) {
             val error = startResult.exceptionOrNull()?.message ?: "Unknown error"
             taskState.status = TaskStatus.ERROR
@@ -164,6 +181,9 @@ object VlmToolCoordinator {
         taskId: String,
         taskState: TaskState,
         scope: CoroutineScope,
+        request: VlmTaskRequest = VlmTaskRequest(goal = taskState.goal, needSummary = taskState.needSummary),
+        onCompileGateResolved: (suspend (VLMTaskPreHookResult) -> Unit)? = null,
+        onTaskRunLogReady: (suspend (VLMTaskRunLogPayload) -> Unit)? = null,
         progressReporter: VlmToolProgressReporter = { _, _ -> }
     ): VlmToolOutcome = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
@@ -179,8 +199,16 @@ object VlmToolCoordinator {
                 taskState.addChatMessage("[SYSTEM] Screen unlocked, starting task...")
                 taskState.status = TaskStatus.RUNNING
                 taskState.message = "屏幕已解锁，任务启动中"
-                val request = VlmTaskRequest(goal = taskState.goal, needSummary = taskState.needSummary)
-                val startResult = startVlmTaskInternal(context, request, taskId, taskState, scope)
+                val startResult = startVlmTaskInternal(
+                    context = context,
+                    payload = request,
+                    taskId = taskId,
+                    taskState = taskState,
+                    scope = scope,
+                    onCompileGateResolved = onCompileGateResolved,
+                    onTaskRunLogReady = onTaskRunLogReady,
+                    progressReporter = progressReporter
+                )
                 if (startResult.isFailure) {
                     val error = startResult.exceptionOrNull()?.message ?: "Unknown error"
                     taskState.status = TaskStatus.ERROR
@@ -272,7 +300,9 @@ object VlmToolCoordinator {
                         "summary" to state.message.ifBlank { progress },
                         "waitingQuestion" to state.waitingQuestion,
                         "finishedContent" to state.finishedContent,
-                        "summaryUnavailable" to state.summaryUnavailable
+                        "summaryUnavailable" to state.summaryUnavailable,
+                        "compileStatus" to state.compileStatus,
+                        "executionRoute" to state.executionRoute
                     )
                 )
                 lastProgress = progress
@@ -339,7 +369,10 @@ object VlmToolCoordinator {
         payload: VlmTaskRequest,
         taskId: String,
         taskState: TaskState,
-        scope: CoroutineScope
+        scope: CoroutineScope,
+        onCompileGateResolved: (suspend (VLMTaskPreHookResult) -> Unit)?,
+        onTaskRunLogReady: (suspend (VLMTaskRunLogPayload) -> Unit)?,
+        progressReporter: VlmToolProgressReporter
     ): Result<Unit> {
         val deferred = CompletableDeferred<Result<Unit>>()
         mainHandler.post {
@@ -355,6 +388,37 @@ object VlmToolCoordinator {
                         needSummary = payload.needSummary ?: false,
                         skipGoHome = payload.skipGoHome,
                         stepSkillGuidance = payload.stepSkillGuidance,
+                        onCompileGateResolved = { gateResult ->
+                            taskState.compileStatus = gateResult.kind
+                            taskState.executionRoute = when (gateResult.kind) {
+                                "hit" -> "utg"
+                                "hard_fail" -> "blocked"
+                                else -> "vlm"
+                            }
+                            if (gateResult.summary.isNotBlank()) {
+                                taskState.message = gateResult.summary
+                            }
+                            taskState.markStateChanged()
+                            emitProgress(
+                                progressReporter,
+                                taskId,
+                                taskState.status,
+                                when (gateResult.kind) {
+                                    "hit" -> "OmniFlow 执行中"
+                                    "hard_fail" -> "执行失败"
+                                    else -> "VLM 执行中"
+                                },
+                                mapOf(
+                                    "summary" to gateResult.summary.ifBlank { taskState.message },
+                                    "compileStatus" to taskState.compileStatus,
+                                    "executionRoute" to taskState.executionRoute
+                                )
+                            )
+                            onCompileGateResolved?.invoke(gateResult)
+                        },
+                        onTaskRunLogReady = { payloadRunLog ->
+                            onTaskRunLogReady?.invoke(payloadRunLog)
+                        }
                     )
                     deferred.complete(Result.success(Unit))
                 } catch (e: Exception) {
@@ -474,7 +538,9 @@ object VlmToolCoordinator {
             errorMessage = errorMessage,
             feedback = feedback,
             summaryUnavailable = summaryUnavailable,
-            recentActivity = chatMessages.takeLast(5)
+            recentActivity = chatMessages.takeLast(5),
+            compileStatus = compileStatus,
+            executionRoute = executionRoute
         )
     }
 
