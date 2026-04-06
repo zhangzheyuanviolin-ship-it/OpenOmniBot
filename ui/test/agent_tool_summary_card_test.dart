@@ -89,6 +89,29 @@ void main() {
     },
   );
 
+  testWidgets('timeout status shows dedicated timeout badge and icon', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AgentToolSummaryCard(
+            cardData: {
+              'status': 'timeout',
+              'displayName': '终端执行',
+              'toolType': 'terminal',
+              'summary': '终端命令等待超时',
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('超时'), findsOneWidget);
+    expect(find.byIcon(Icons.hourglass_top_rounded), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
   testWidgets('tool card falls back to args tool_title when field missing', (
     tester,
   ) async {

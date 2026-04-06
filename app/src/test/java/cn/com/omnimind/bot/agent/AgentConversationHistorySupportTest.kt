@@ -60,6 +60,37 @@ class AgentConversationHistorySupportTest {
     }
 
     @Test
+    fun `mergeToolPayload preserves timeout metadata`() {
+        val runningPayload = mapOf(
+            "toolName" to "terminal_execute",
+            "displayName" to "终端执行",
+            "toolType" to "terminal",
+            "status" to AgentConversationHistoryRepository.STATUS_RUNNING,
+            "terminalOutput" to "hello\n"
+        )
+        val timeoutPayload = mapOf(
+            "status" to AgentConversationHistoryRepository.STATUS_TIMEOUT,
+            "summary" to "终端命令等待超时，可能仍在后台继续运行。",
+            "timedOut" to true,
+            "terminalOutputDelta" to "world\n"
+        )
+
+        val merged = AgentConversationHistorySupport.mergeToolPayload(
+            existing = runningPayload,
+            incoming = timeoutPayload,
+            fallbackStatus = AgentConversationHistoryRepository.STATUS_TIMEOUT,
+            fallbackSummary = "终端命令等待超时，可能仍在后台继续运行。"
+        )
+
+        assertEquals(
+            AgentConversationHistoryRepository.STATUS_TIMEOUT,
+            merged["status"]
+        )
+        assertEquals(true, merged["timedOut"])
+        assertEquals("hello\nworld\n", merged["terminalOutput"])
+    }
+
+    @Test
     fun `buildPromptSeedFromEntries replays per-tool summaries in chronological order`() {
         val userEntry = AgentConversationEntry(
             id = 1,

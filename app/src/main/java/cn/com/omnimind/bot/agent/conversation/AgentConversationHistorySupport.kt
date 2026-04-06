@@ -261,6 +261,10 @@ internal object AgentConversationHistorySupport {
             return source[key]?.toString()?.trim().orEmpty()
         }
 
+        fun rawText(source: Map<String, Any?>, key: String): String {
+            return source[key]?.toString().orEmpty()
+        }
+
         fun chooseText(key: String, fallback: String = ""): String {
             return text(incoming, key).ifEmpty {
                 text(existing, key).ifEmpty { fallback }
@@ -272,10 +276,10 @@ internal object AgentConversationHistorySupport {
         }
 
         val toolType = chooseText("toolType", "builtin")
-        val existingTerminalOutput = text(existing, "terminalOutput")
-        val terminalOutputDelta = text(incoming, "terminalOutputDelta")
+        val existingTerminalOutput = rawText(existing, "terminalOutput")
+        val terminalOutputDelta = rawText(incoming, "terminalOutputDelta")
         val terminalOutput = if (toolType == "terminal") {
-            text(incoming, "terminalOutput").ifEmpty {
+            rawText(incoming, "terminalOutput").ifEmpty {
                 if (terminalOutputDelta.isNotEmpty()) {
                     existingTerminalOutput + terminalOutputDelta
                 } else {
@@ -304,6 +308,7 @@ internal object AgentConversationHistorySupport {
             "terminalOutputDelta" to terminalOutputDelta,
             "terminalSessionId" to chooseAny("terminalSessionId"),
             "terminalStreamState" to chooseText("terminalStreamState"),
+            "timedOut" to (incoming["timedOut"] ?: existing["timedOut"] ?: false),
             "workspaceId" to chooseAny("workspaceId"),
             "artifacts" to toListOfStringAnyMap(incoming["artifacts"]).ifEmpty {
                 toListOfStringAnyMap(existing["artifacts"])
@@ -448,6 +453,9 @@ internal object AgentConversationHistorySupport {
         }
         payload["terminalSessionId"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
             content["terminalSessionId"] = it
+        }
+        if (payload["timedOut"] == true) {
+            content["timedOut"] = true
         }
 
         return gson.toJson(content)

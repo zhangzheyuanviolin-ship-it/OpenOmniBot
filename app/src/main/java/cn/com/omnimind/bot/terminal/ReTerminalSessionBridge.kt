@@ -11,6 +11,7 @@ import com.rk.terminal.ui.screens.settings.WorkingMode
 import com.termux.terminal.TerminalSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -181,6 +182,17 @@ object ReTerminalSessionBridge {
             withTimeout(BIND_TIMEOUT_MS) {
                 deferred.await()
             }
+        } catch (error: TimeoutCancellationException) {
+            bindMutex.withLock {
+                if (bindDeferred === deferred) {
+                    bindDeferred = null
+                }
+            }
+            clearCachedBinding(context.applicationContext)
+            throw IllegalStateException(
+                "SessionService bind timed out after ${BIND_TIMEOUT_MS}ms.",
+                error
+            )
         } catch (error: Throwable) {
             bindMutex.withLock {
                 if (bindDeferred === deferred) {

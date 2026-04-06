@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/chat/tool_activity_utils.dart';
+import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_transcript.dart';
 import 'package:ui/services/app_background_service.dart';
-import 'package:ui/theme/app_colors.dart';
-
-const Color _interruptedStatusColor = Color(0xFFFFAA2C);
 
 class AgentToolSummaryCard extends StatelessWidget {
   const AgentToolSummaryCard({
@@ -24,7 +22,7 @@ class AgentToolSummaryCard extends StatelessWidget {
     final statusLabel = resolveAgentToolStatusLabel(cardData);
     final preview = resolveAgentToolPreview(cardData);
     final typeLabel = resolveAgentToolTypeLabel(cardData);
-    final statusColor = _resolvedStatusColor(status);
+    final statusColor = resolveAgentToolStatusColor(status);
 
     final tooltipLines = <String>[title];
     if (preview.isNotEmpty && preview != title) {
@@ -102,7 +100,7 @@ class _StatusIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _resolvedStatusColor(status);
+    final color = resolveAgentToolStatusColor(status);
     return Container(
       width: 16,
       height: 16,
@@ -121,59 +119,11 @@ class _StatusIcon extends StatelessWidget {
                 ),
               )
             : Icon(
-                _resolvedStatusIcon(status, (toolType ?? '').toString()),
+                resolveAgentToolStatusIcon(status, (toolType ?? '').toString()),
                 size: 10,
                 color: color,
               ),
       ),
     );
-  }
-}
-
-IconData _resolvedStatusIcon(String status, String toolType) {
-  if (status == 'interrupted') {
-    return Icons.stop_circle_outlined;
-  }
-  if (status == 'error') {
-    return Icons.error_outline_rounded;
-  }
-  if (toolType == 'terminal') {
-    return Icons.terminal_rounded;
-  }
-  if (toolType == 'browser') {
-    return Icons.language_rounded;
-  }
-  if (toolType == 'calendar') {
-    return Icons.calendar_month_rounded;
-  }
-  if (toolType == 'alarm' || toolType == 'schedule') {
-    return Icons.alarm_rounded;
-  }
-  if (toolType == 'memory') {
-    return Icons.psychology_alt_rounded;
-  }
-  if (toolType == 'workspace') {
-    return Icons.folder_outlined;
-  }
-  if (toolType == 'subagent') {
-    return Icons.hub_outlined;
-  }
-  if (toolType == 'mcp') {
-    return Icons.extension_outlined;
-  }
-  return Icons.check_circle_outline_rounded;
-}
-
-Color _resolvedStatusColor(String status) {
-  if (status == 'interrupted') {
-    return _interruptedStatusColor;
-  }
-  switch (status) {
-    case 'success':
-      return const Color(0xFF2F8F4E);
-    case 'error':
-      return AppColors.alertRed;
-    default:
-      return AppColors.primaryBlue;
   }
 }
