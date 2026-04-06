@@ -645,6 +645,12 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final resolvedTaskId =
         runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (resolvedTaskId == null || resolvedTaskId != taskId) return;
+    if (_shouldIgnoreRegressiveSnapshot(
+      runtime.deepThinkingContent,
+      thinking,
+    )) {
+      return;
+    }
 
     if (runtime.pendingThinkingRoundSplit) {
       if (thinking.trim().isEmpty) {
@@ -835,7 +841,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       final existing = runtime.messages[index];
       final content = Map<String, dynamic>.from(existing.content ?? {});
       final currentText = (content['text'] ?? '').toString();
-      if (!_shouldIgnoreRegressiveAgentSnapshot(currentText, message)) {
+      if (!_shouldIgnoreRegressiveSnapshot(currentText, message)) {
         content['text'] = message;
         runtime.messages[index] = existing.copyWith(content: content);
       }
@@ -864,7 +870,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     }
   }
 
-  bool _shouldIgnoreRegressiveAgentSnapshot(String current, String incoming) {
+  bool _shouldIgnoreRegressiveSnapshot(String current, String incoming) {
     if (current.isEmpty || incoming.isEmpty) {
       return false;
     }

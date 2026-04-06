@@ -124,6 +124,9 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
   void handleAgentThinkingUpdate(String thinking) {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
     if (taskId == null) return;
+    if (_shouldIgnoreRegressiveSnapshot(deepThinkingContent, thinking)) {
+      return;
+    }
 
     if (_pendingThinkingRoundSplit) {
       if (thinking.trim().isEmpty) {
@@ -255,7 +258,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
         final existing = messages[index];
         final content = Map<String, dynamic>.from(existing.content ?? {});
         final currentText = (content['text'] ?? '').toString();
-        if (!_shouldIgnoreRegressiveAgentSnapshot(currentText, message)) {
+        if (!_shouldIgnoreRegressiveSnapshot(currentText, message)) {
           content['text'] = message;
           messages[index] = existing.copyWith(content: content);
         }
@@ -273,7 +276,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     }
   }
 
-  bool _shouldIgnoreRegressiveAgentSnapshot(String current, String incoming) {
+  bool _shouldIgnoreRegressiveSnapshot(String current, String incoming) {
     if (current.isEmpty || incoming.isEmpty) {
       return false;
     }

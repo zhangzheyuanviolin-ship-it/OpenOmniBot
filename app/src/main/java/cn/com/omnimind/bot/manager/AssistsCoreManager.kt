@@ -3163,6 +3163,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                     override suspend fun onThinkingUpdate(thinking: String) {
                         val normalizedThinking = thinking.trim()
+                        if (shouldIgnoreRegressiveSnapshot(latestThinkingContent, normalizedThinking)) {
+                            OmniLog.d(
+                                TAG,
+                                "ignore stale thinking snapshot: incoming=${normalizedThinking.length}, current=${latestThinkingContent.length}"
+                            )
+                            return
+                        }
                         if (pendingThinkingRoundSplit && normalizedThinking.isNotEmpty()) {
                             finalizeThinkingCardIfNeeded(publish = false)
                             thinkingRound += 1
@@ -3416,7 +3423,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         val normalizedMessage = message.trim()
                         if (normalizedMessage.isNotEmpty()) {
                             val currentSnapshot = scheduledAssistantBuffer.toString().trim()
-                            if (shouldIgnoreRegressiveAssistantSnapshot(currentSnapshot, normalizedMessage)) {
+                            if (shouldIgnoreRegressiveSnapshot(currentSnapshot, normalizedMessage)) {
                                 OmniLog.d(
                                     TAG,
                                     "ignore stale agent snapshot: incoming=${normalizedMessage.length}, current=${currentSnapshot.length}, final=$isFinal"
@@ -3441,7 +3448,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         )
                     }
 
-                    private fun shouldIgnoreRegressiveAssistantSnapshot(
+                    private fun shouldIgnoreRegressiveSnapshot(
                         current: String,
                         incoming: String
                     ): Boolean {
