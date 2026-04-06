@@ -2920,8 +2920,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 val executor = OmniAgentExecutor(context, agentRunScope, scheduleBridge)
                 val activeToolArgs = mutableMapOf<String, ArrayDeque<String>>()
                 val activeToolEntryIds = mutableMapOf<String, ArrayDeque<String>>()
+                val thinkingCardStartTimes = mutableMapOf<String, Long>()
                 val scheduledAssistantBuffer = StringBuilder()
                 var toolSequence = 0
+                var activeThinkingEntryId: String? = null
+                var thinkingRound = 0
+                var pendingThinkingRoundSplit = false
+                var latestThinkingContent = ""
 
                 fun pushToolValue(
                     store: MutableMap<String, ArrayDeque<String>>,
@@ -2968,6 +2973,76 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         conversationId = normalizedConversationId,
                         mode = resolvedConversationMode,
                         reason = "messages_replaced"
+                    )
+                }
+
+                fun resolveThinkingEntryId(round: Int): String {
+                    return if (round <= 1) {
+                        "$taskId-thinking"
+                    } else {
+                        "$taskId-thinking-$round"
+                    }
+                }
+
+                fun buildDeepThinkingCardData(
+                    thinkingContent: String,
+                    isLoading: Boolean,
+                    stage: Int,
+                    startTime: Long,
+                    endTime: Long?
+                ): Map<String, Any?> {
+                    return linkedMapOf(
+                        "type" to "deep_thinking",
+                        "isLoading" to isLoading,
+                        "thinkingContent" to thinkingContent,
+                        "stage" to stage,
+                        "taskID" to taskId,
+                        "startTime" to startTime,
+                        "endTime" to endTime,
+                        "isCollapsible" to true
+                    )
+                }
+
+                suspend fun upsertThinkingCard(
+                    entryId: String,
+                    thinkingContent: String,
+                    isLoading: Boolean,
+                    stage: Int,
+                    createdAt: Long = thinkingCardStartTimes[entryId] ?: System.currentTimeMillis(),
+                    endTime: Long? = null,
+                    publish: Boolean = true
+                ) {
+                    val normalizedConversationId = conversationId ?: return
+                    if (entryId.isBlank()) return
+                    val startTime = thinkingCardStartTimes.getOrPut(entryId) { createdAt }
+                    historyRepository.upsertUiCard(
+                        conversationId = normalizedConversationId,
+                        conversationMode = resolvedConversationMode,
+                        entryId = entryId,
+                        cardData = buildDeepThinkingCardData(
+                            thinkingContent = thinkingContent,
+                            isLoading = isLoading,
+                            stage = stage,
+                            startTime = startTime,
+                            endTime = endTime
+                        ),
+                        createdAt = startTime
+                    )
+                    if (publish) {
+                        publishConversationMessagesSync()
+                    }
+                }
+
+                suspend fun finalizeThinkingCardIfNeeded(publish: Boolean = true) {
+                    val entryId = activeThinkingEntryId ?: return
+                    pendingThinkingRoundSplit = false
+                    upsertThinkingCard(
+                        entryId = entryId,
+                        thinkingContent = latestThinkingContent,
+                        isLoading = false,
+                        stage = 4,
+                        endTime = System.currentTimeMillis(),
+                        publish = publish
                     )
                 }
 
@@ -3064,10 +3139,64 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 // 3. 创建回调
                 val callback = object : AgentCallback {
                     override suspend fun onThinkingStart() {
+                        if (thinkingRound == 0) {
+                            thinkingRound = 1
+                            val entryId = resolveThinkingEntryId(thinkingRound)
+                            activeThinkingEntryId = entryId
+                            val startTime = System.currentTimeMillis()
+                            thinkingCardStartTimes.putIfAbsent(entryId, startTime)
+                            upsertThinkingCard(
+                                entryId = entryId,
+                                thinkingContent = latestThinkingContent,
+                                isLoading = true,
+                                stage = 1,
+                                createdAt = startTime
+                            )
+                        } else {
+                            pendingThinkingRoundSplit = true
+                        }
                         sendEvent("onAgentThinkingStart", emptyMap())
                     }
 
                     override suspend fun onThinkingUpdate(thinking: String) {
+                        val normalizedThinking = thinking.trim()
+                        if (pendingThinkingRoundSplit && normalizedThinking.isNotEmpty()) {
+                            finalizeThinkingCardIfNeeded(publish = false)
+                            thinkingRound += 1
+                            val entryId = resolveThinkingEntryId(thinkingRound)
+                            activeThinkingEntryId = entryId
+                            val startTime = System.currentTimeMillis()
+                            thinkingCardStartTimes[entryId] = startTime
+                            latestThinkingContent = normalizedThinking
+                            pendingThinkingRoundSplit = false
+                            upsertThinkingCard(
+                                entryId = entryId,
+                                thinkingContent = latestThinkingContent,
+                                isLoading = true,
+                                stage = 1,
+                                createdAt = startTime
+                            )
+                        } else {
+                            val entryId = activeThinkingEntryId ?: run {
+                                if (thinkingRound <= 0) {
+                                    thinkingRound = 1
+                                }
+                                resolveThinkingEntryId(thinkingRound).also { generated ->
+                                    activeThinkingEntryId = generated
+                                    thinkingCardStartTimes.putIfAbsent(
+                                        generated,
+                                        System.currentTimeMillis()
+                                    )
+                                }
+                            }
+                            latestThinkingContent = normalizedThinking
+                            upsertThinkingCard(
+                                entryId = entryId,
+                                thinkingContent = latestThinkingContent,
+                                isLoading = true,
+                                stage = 1
+                            )
+                        }
                         sendEvent("onAgentThinkingUpdate", mapOf("thinking" to thinking))
                     }
 
@@ -3186,6 +3315,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         question: String,
                         missingFields: List<String>?
                     ) {
+                        finalizeThinkingCardIfNeeded()
                         upsertClarifyMessage(question)
                         sendEvent(
                             "onAgentClarifyRequired",
@@ -3214,6 +3344,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 ""
                             }
                         }
+                        finalizeThinkingCardIfNeeded(publish = finalText.isBlank())
                         if (finalText.isNotBlank()) {
                             upsertAssistantSnapshot(finalText, isError = !isSuccess)
                         }
@@ -3244,6 +3375,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         val finalText = streamed.ifEmpty {
                             error.trim().ifEmpty { "暂时无法生成回复，请重试。" }
                         }
+                        finalizeThinkingCardIfNeeded(publish = finalText.isBlank())
                         if (finalText.isNotBlank()) {
                             upsertAssistantSnapshot(finalText, isError = true)
                         }
@@ -3254,6 +3386,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     }
 
                     override suspend fun onPermissionRequired(missing: List<String>) {
+                        finalizeThinkingCardIfNeeded()
                         upsertPermissionState(missing)
                         sendEvent("onAgentPermissionRequired", mapOf("missing" to missing))
                     }

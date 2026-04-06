@@ -2,16 +2,51 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:math' as math;
 import 'dart:html' as html;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:ui/features/home/pages/chat/tool_activity_utils.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/webchat/web_backends.dart';
 
 enum _ShellSection { chat, workspace, browser }
+
+const Color _kPageBackground = Color(0xFFF4F7FC);
+const Color _kPanelSurface = Color(0xFFF9FCFF);
+const Color _kPanelBorder = Color(0xFFD9E6FB);
+const Color _kUserBubble = Color(0xCCF1F8FF);
+const Color _kPrimaryText = Color(0xFF353E53);
+const Color _kSecondaryText = Color(0xFF617390);
+const Color _kSubtleText = Color(0xFF9DA9BB);
+const Color _kAttachmentSurface = Color(0xFFE4EEFF);
+const Color _kAttachmentBorder = Color(0xFFD0DEFA);
+const Color _kAttachmentIcon = Color(0xFF375EAF);
+const Color _kAttachmentText = Color(0xFF35517A);
+const Color _kAccentBlue = Color(0xFF4F83FF);
+const Color _kAccentGreen = Color(0xFF52C41A);
+const double _kDesktopDividerHitWidth = 18;
+const double _kDesktopLeftPaneMinWidth = 256;
+const double _kDesktopLeftPaneMaxWidth = 420;
+const double _kDesktopCenterPaneMinWidth = 520;
+const double _kDesktopRightPaneMinWidth = 320;
+const double _kDesktopRightPaneMaxWidth = 520;
+
+class _DesktopPaneLayout {
+  const _DesktopPaneLayout({
+    required this.leftWidth,
+    required this.centerWidth,
+    required this.rightWidth,
+  });
+
+  final double leftWidth;
+  final double centerWidth;
+  final double rightWidth;
+}
 
 class WebChatApp extends StatelessWidget {
   const WebChatApp({super.key});
@@ -27,7 +62,7 @@ class WebChatApp extends StatelessWidget {
           seedColor: const Color(0xFF2E6AE6),
           brightness: Brightness.light,
         ),
-        scaffoldBackgroundColor: const Color(0xFFF4F7FC),
+        scaffoldBackgroundColor: _kPageBackground,
         fontFamily: 'PingFang SC',
       ),
       home: const _WebChatHome(),
@@ -94,12 +129,12 @@ class _WebChatHomeState extends State<_WebChatHome> {
   String? _activeClarifyTaskId;
   int _browserFrameSeed = 0;
   _ShellSection _mobileSection = _ShellSection.chat;
+  double _desktopLeftPaneWidth = 320;
+  double _desktopRightPaneWidth = 360;
 
   List<ConversationModel> _conversations = <ConversationModel>[];
   ConversationModel? _selectedConversation;
   List<ChatMessageModel> _messages = <ChatMessageModel>[];
-  final Map<String, ChatMessageModel> _ephemeralThinkingCards =
-      <String, ChatMessageModel>{};
   final List<_PendingAttachment> _pendingAttachments = <_PendingAttachment>[];
   List<Map<String, dynamic>> _workspaceItems = <Map<String, dynamic>>[];
   Map<String, dynamic>? _workspaceInfo;
@@ -108,6 +143,8 @@ class _WebChatHomeState extends State<_WebChatHome> {
   @override
   void initState() {
     super.initState();
+    _restoreDesktopPanePreferences();
+    _messageController.addListener(_handleComposerChanged);
     _workspaceEditorController.addListener(() {
       if (_workspaceSelectedFilePath != null) {
         setState(() {
@@ -129,6 +166,58 @@ class _WebChatHomeState extends State<_WebChatHome> {
     _browserUrlController.dispose();
     _chatScrollController.dispose();
     super.dispose();
+  }
+
+  void _handleComposerChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  KeyEventResult _handleComposerKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.enter) {
+      return KeyEventResult.ignored;
+    }
+    final isComposing =
+        _messageController.value.composing.isValid &&
+        !_messageController.value.composing.isCollapsed;
+    if (isComposing ||
+        HardwareKeyboard.instance.isShiftPressed ||
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isAltPressed ||
+        HardwareKeyboard.instance.isMetaPressed) {
+      return KeyEventResult.ignored;
+    }
+    final hasPayload =
+        _messageController.text.trim().isNotEmpty ||
+        _pendingAttachments.isNotEmpty;
+    if (_sendingMessage || !hasPayload) {
+      return KeyEventResult.handled;
+    }
+    unawaited(_submitComposer());
+    return KeyEventResult.handled;
+  }
+
+  void _restoreDesktopPanePreferences() {
+    final rawLeft = html.window.localStorage['omnibot_webchat_left_pane_width'];
+    final rawRight =
+        html.window.localStorage['omnibot_webchat_right_pane_width'];
+    final parsedLeft = double.tryParse(rawLeft ?? '');
+    final parsedRight = double.tryParse(rawRight ?? '');
+    if (parsedLeft != null && parsedLeft.isFinite) {
+      _desktopLeftPaneWidth = parsedLeft;
+    }
+    if (parsedRight != null && parsedRight.isFinite) {
+      _desktopRightPaneWidth = parsedRight;
+    }
+  }
+
+  void _persistDesktopPanePreferences() {
+    html.window.localStorage['omnibot_webchat_left_pane_width'] =
+        _desktopLeftPaneWidth.toStringAsFixed(0);
+    html.window.localStorage['omnibot_webchat_right_pane_width'] =
+        _desktopRightPaneWidth.toStringAsFixed(0);
   }
 
   Future<void> _tryBootstrapFromSavedToken() async {
@@ -200,10 +289,16 @@ class _WebChatHomeState extends State<_WebChatHome> {
     setState(() {
       _loadingConversations = true;
     });
-    final conversations = await _client.listConversations(
-      includeArchived: true,
-      archivedOnly: _archivedOnly,
-    );
+    final conversations =
+        (await _client.listConversations(
+            includeArchived: _archivedOnly,
+            archivedOnly: _archivedOnly,
+          )).where((conversation) {
+            return _archivedOnly
+                ? conversation.isArchived
+                : !conversation.isArchived;
+          }).toList()
+          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
     ConversationModel? nextSelection;
     if (preserveSelection && _selectedConversation != null) {
       for (final conversation in conversations) {
@@ -239,6 +334,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
       _selectedConversation = conversation;
       _messages = messages;
     });
+    _scrollChatToBottom();
   }
 
   Future<void> _createConversation() async {
@@ -293,12 +389,29 @@ class _WebChatHomeState extends State<_WebChatHome> {
       setState(() {
         _sendingMessage = false;
       });
+      _scrollChatToBottom(animate: true);
     } catch (error) {
       setState(() {
         _sendingMessage = false;
         _error = error.toString();
       });
     }
+  }
+
+  Future<void> _submitComposer() async {
+    if (_activeClarifyTaskId != null) {
+      final text = _messageController.text.trim();
+      if (text.isEmpty) {
+        return;
+      }
+      await _client.clarifyTask(_activeClarifyTaskId!, text);
+      _messageController.clear();
+      setState(() {
+        _activeClarifyTaskId = null;
+      });
+      return;
+    }
+    await _sendMessage();
   }
 
   Future<void> _pickAttachments() async {
@@ -348,7 +461,6 @@ class _WebChatHomeState extends State<_WebChatHome> {
     final conversation = _selectedConversation;
     if (conversation == null) return;
     await _client.deleteConversation(conversation.id);
-    _ephemeralThinkingCards.remove(_conversationKey(conversation));
     await _loadConversations(preserveSelection: false);
   }
 
@@ -475,14 +587,17 @@ class _WebChatHomeState extends State<_WebChatHome> {
             setState(() {
               _messages = messages;
             });
+            _scrollChatToBottom();
           }
         }
         break;
-      case 'agent_thinking_start':
-      case 'agent_thinking_update':
       case 'agent_complete':
       case 'agent_error':
-        _applyThinkingEvent(event);
+        if (mounted) {
+          setState(() {
+            _activeClarifyTaskId = null;
+          });
+        }
         break;
       case 'browser_snapshot_updated':
         final snapshot = Map<String, dynamic>.from(
@@ -508,56 +623,6 @@ class _WebChatHomeState extends State<_WebChatHome> {
     }
   }
 
-  void _applyThinkingEvent(WebChatEvent event) {
-    final key = _conversationKeyFromPayload(event.data);
-    final taskId = event.data['taskId']?.toString();
-    if (key == null || taskId == null || taskId.isEmpty) {
-      return;
-    }
-    final existing = _ephemeralThinkingCards[key];
-    final existingCardData = Map<String, dynamic>.from(
-      existing?.cardData ?? const <String, dynamic>{},
-    );
-    final cardData = <String, dynamic>{
-      ...existingCardData,
-      'type': 'deep_thinking',
-      'taskID': taskId,
-      'startTime':
-          existingCardData['startTime'] ??
-          event.data['timestamp'] ??
-          DateTime.now().millisecondsSinceEpoch,
-      'thinkingContent': existingCardData['thinkingContent'] ?? '',
-      'isCollapsible': true,
-    };
-    if (event.event == 'agent_thinking_update') {
-      cardData['thinkingContent'] = (event.data['thinking'] ?? '').toString();
-      cardData['isLoading'] = true;
-      cardData['stage'] = 1;
-    } else if (event.event == 'agent_thinking_start') {
-      cardData['isLoading'] = true;
-      cardData['stage'] = 1;
-    } else if (event.event == 'agent_complete') {
-      cardData['isLoading'] = false;
-      cardData['stage'] = 4;
-      _activeClarifyTaskId = null;
-    } else if (event.event == 'agent_error') {
-      cardData['isLoading'] = false;
-      cardData['stage'] = 5;
-      _activeClarifyTaskId = null;
-    }
-    _ephemeralThinkingCards[key] =
-        ChatMessageModel.cardMessage(cardData, id: '$taskId-thinking').copyWith(
-          createAt: DateTime.fromMillisecondsSinceEpoch(
-            (event.data['timestamp'] as num?)?.toInt() ??
-                DateTime.now().millisecondsSinceEpoch,
-          ),
-        );
-    if (_selectedConversation != null &&
-        key == _conversationKey(_selectedConversation!)) {
-      setState(() {});
-    }
-  }
-
   String? _conversationKeyFromPayload(Map<String, dynamic> payload) {
     final conversationId = (payload['conversationId'] as num?)?.toInt();
     final rawMode =
@@ -572,16 +637,30 @@ class _WebChatHomeState extends State<_WebChatHome> {
     return '${conversation.mode.storageValue}:${conversation.id}';
   }
 
+  void _scrollChatToBottom({bool animate = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_chatScrollController.hasClients) {
+        return;
+      }
+      final target = _chatScrollController.position.maxScrollExtent;
+      if (animate) {
+        _chatScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+        return;
+      }
+      _chatScrollController.jumpTo(target);
+    });
+  }
+
   List<ChatMessageModel> get _displayMessages {
     final conversation = _selectedConversation;
     if (conversation == null) {
       return _messages.reversed.toList();
     }
-    final merged = <ChatMessageModel>[
-      ..._messages,
-      if (_ephemeralThinkingCards.containsKey(_conversationKey(conversation)))
-        _ephemeralThinkingCards[_conversationKey(conversation)]!,
-    ];
+    final merged = <ChatMessageModel>[..._messages];
     merged.sort((a, b) => a.createAt.compareTo(b.createAt));
     return merged;
   }
@@ -601,7 +680,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
         if (!isDesktop) {
           return _buildMobileShell(context);
         }
-        return _buildDesktopShell(context);
+        return _buildDesktopShell(context, constraints.maxWidth);
       },
     );
   }
@@ -657,17 +736,124 @@ class _WebChatHomeState extends State<_WebChatHome> {
     );
   }
 
-  Widget _buildDesktopShell(BuildContext context) {
+  _DesktopPaneLayout _resolveDesktopLayout(double maxWidth) {
+    final availableWidth = math.max(
+      0,
+      maxWidth - (_kDesktopDividerHitWidth * 2),
+    );
+
+    var leftWidth = _desktopLeftPaneWidth.clamp(
+      _kDesktopLeftPaneMinWidth,
+      _kDesktopLeftPaneMaxWidth,
+    );
+    var rightWidth = _desktopRightPaneWidth.clamp(
+      _kDesktopRightPaneMinWidth,
+      _kDesktopRightPaneMaxWidth,
+    );
+
+    final maxLeftBySpace = math.max(
+      _kDesktopLeftPaneMinWidth,
+      availableWidth - rightWidth - _kDesktopCenterPaneMinWidth,
+    );
+    leftWidth = leftWidth.clamp(_kDesktopLeftPaneMinWidth, maxLeftBySpace);
+
+    final maxRightBySpace = math.max(
+      _kDesktopRightPaneMinWidth,
+      availableWidth - leftWidth - _kDesktopCenterPaneMinWidth,
+    );
+    rightWidth = rightWidth.clamp(_kDesktopRightPaneMinWidth, maxRightBySpace);
+
+    var centerWidth = availableWidth - leftWidth - rightWidth;
+    if (centerWidth < _kDesktopCenterPaneMinWidth) {
+      final rightFlexible = rightWidth - _kDesktopRightPaneMinWidth;
+      if (rightFlexible > 0) {
+        final delta = math.min(
+          _kDesktopCenterPaneMinWidth - centerWidth,
+          rightFlexible,
+        );
+        rightWidth -= delta;
+        centerWidth += delta;
+      }
+    }
+    if (centerWidth < _kDesktopCenterPaneMinWidth) {
+      final leftFlexible = leftWidth - _kDesktopLeftPaneMinWidth;
+      if (leftFlexible > 0) {
+        final delta = math.min(
+          _kDesktopCenterPaneMinWidth - centerWidth,
+          leftFlexible,
+        );
+        leftWidth -= delta;
+        centerWidth += delta;
+      }
+    }
+
+    return _DesktopPaneLayout(
+      leftWidth: leftWidth,
+      centerWidth: centerWidth,
+      rightWidth: rightWidth,
+    );
+  }
+
+  Widget _buildDesktopShell(BuildContext context, double maxWidth) {
+    final layout = _resolveDesktopLayout(maxWidth);
     return Scaffold(
       body: SafeArea(
-        child: Row(
-          children: [
-            SizedBox(width: 320, child: _buildConversationSidebar(context)),
-            Expanded(child: _buildChatPane(context)),
-            SizedBox(width: 360, child: _buildSidePanels(context)),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              SizedBox(
+                width: layout.leftWidth,
+                child: _buildPaneSurface(
+                  child: _buildConversationSidebar(context),
+                ),
+              ),
+              _PaneResizeHandle(
+                onDragUpdate: (delta) {
+                  setState(() {
+                    _desktopLeftPaneWidth = layout.leftWidth + delta;
+                    _persistDesktopPanePreferences();
+                  });
+                },
+              ),
+              SizedBox(
+                width: layout.centerWidth,
+                child: _buildPaneSurface(child: _buildChatPane(context)),
+              ),
+              _PaneResizeHandle(
+                onDragUpdate: (delta) {
+                  setState(() {
+                    _desktopRightPaneWidth = layout.rightWidth - delta;
+                    _persistDesktopPanePreferences();
+                  });
+                },
+              ),
+              SizedBox(
+                width: layout.rightWidth,
+                child: _buildPaneSurface(child: _buildSidePanels(context)),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPaneSurface({required Widget child}) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: _kPanelSurface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _kPanelBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x121A2433),
+            blurRadius: 28,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(24), child: child),
     );
   }
 
@@ -683,7 +869,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
         child: switch (_mobileSection) {
           _ShellSection.chat => Column(
             children: [
-              SizedBox(height: 164, child: _buildConversationSidebar(context)),
+              SizedBox(height: 220, child: _buildConversationSidebar(context)),
               Expanded(child: _buildChatPane(context)),
             ],
           ),
@@ -717,128 +903,217 @@ class _WebChatHomeState extends State<_WebChatHome> {
   }
 
   Widget _buildConversationSidebar(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          right: BorderSide(color: Color(0xFFE3EAF7)),
-          bottom: BorderSide(color: Color(0xFFE3EAF7)),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '聊天记录',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: _kPrimaryText,
+                      ),
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _createConversation,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('新建'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _kAccentBlue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<bool>(
+                style: SegmentedButton.styleFrom(
+                  selectedBackgroundColor: const Color(0xFFEAF3FF),
+                  selectedForegroundColor: _kPrimaryText,
+                  foregroundColor: _kSecondaryText,
+                  side: const BorderSide(color: _kPanelBorder),
+                ),
+                segments: const [
+                  ButtonSegment<bool>(value: false, label: Text('进行中')),
+                  ButtonSegment<bool>(value: true, label: Text('归档')),
+                ],
+                selected: <bool>{_archivedOnly},
+                onSelectionChanged: (selection) {
+                  setState(() {
+                    _archivedOnly = selection.first;
+                  });
+                  unawaited(_loadConversations(preserveSelection: false));
+                },
+              ),
+            ],
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment<bool>(value: false, label: Text('进行中')),
-                      ButtonSegment<bool>(value: true, label: Text('归档')),
-                    ],
-                    selected: <bool>{_archivedOnly},
-                    onSelectionChanged: (selection) {
-                      setState(() {
-                        _archivedOnly = selection.first;
-                      });
-                      unawaited(_loadConversations(preserveSelection: false));
-                    },
+        if (_loadingConversations) const LinearProgressIndicator(minHeight: 2),
+        Expanded(
+          child: _conversations.isEmpty
+              ? Center(
+                  child: Text(
+                    _archivedOnly ? '暂无归档对话' : '开始一个新的对话吧',
+                    style: const TextStyle(color: _kSecondaryText),
                   ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: _createConversation,
-                  icon: const Icon(Icons.add),
-                  label: const Text('新建'),
-                ),
-              ],
-            ),
-          ),
-          if (_loadingConversations)
-            const LinearProgressIndicator(minHeight: 2),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _conversations.length,
-              itemBuilder: (context, index) {
-                final conversation = _conversations[index];
-                final selected =
-                    _selectedConversation?.threadKey == conversation.threadKey;
-                return ListTile(
-                  selected: selected,
-                  title: Text(
-                    conversation.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    conversation.summary?.isNotEmpty == true
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                  itemCount: _conversations.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 4),
+                  itemBuilder: (context, index) {
+                    final conversation = _conversations[index];
+                    final selected =
+                        _selectedConversation?.threadKey ==
+                        conversation.threadKey;
+                    final preview = conversation.summary?.isNotEmpty == true
                         ? conversation.summary!
-                        : conversation.lastMessage?.toString() ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (value) {
-                      switch (value) {
-                        case 'archive':
-                          unawaited(
-                            _client
-                                .updateConversation(
-                                  conversation.copyWith(isArchived: true),
-                                )
-                                .then(
-                                  (_) => _loadConversations(
-                                    preserveSelection: true,
+                        : conversation.lastMessage?.toString() ?? '';
+                    return Material(
+                      color: selected
+                          ? const Color(0xFFEAF3FF)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(18),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () =>
+                            unawaited(_selectConversation(conversation)),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            conversation.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: _kPrimaryText,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          conversation.timeDisplay,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: _kSubtleText,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (preview.trim().isNotEmpty) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        preview,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: _kSecondaryText,
+                                          height: 1.45,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              PopupMenuButton<String>(
+                                splashRadius: 18,
+                                onSelected: (value) {
+                                  switch (value) {
+                                    case 'archive':
+                                      unawaited(
+                                        _client
+                                            .updateConversation(
+                                              conversation.copyWith(
+                                                isArchived: true,
+                                              ),
+                                            )
+                                            .then(
+                                              (_) => _loadConversations(
+                                                preserveSelection: true,
+                                              ),
+                                            ),
+                                      );
+                                      break;
+                                    case 'unarchive':
+                                      unawaited(
+                                        _client
+                                            .updateConversation(
+                                              conversation.copyWith(
+                                                isArchived: false,
+                                              ),
+                                            )
+                                            .then(
+                                              (_) => _loadConversations(
+                                                preserveSelection: true,
+                                              ),
+                                            ),
+                                      );
+                                      break;
+                                    case 'delete':
+                                      unawaited(
+                                        _client
+                                            .deleteConversation(conversation.id)
+                                            .then(
+                                              (_) => _loadConversations(
+                                                preserveSelection: false,
+                                              ),
+                                            ),
+                                      );
+                                      break;
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem<String>(
+                                    value: conversation.isArchived
+                                        ? 'unarchive'
+                                        : 'archive',
+                                    child: Text(
+                                      conversation.isArchived ? '取消归档' : '归档',
+                                    ),
+                                  ),
+                                  const PopupMenuItem<String>(
+                                    value: 'delete',
+                                    child: Text('删除'),
+                                  ),
+                                ],
+                                child: const Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: Icon(
+                                    Icons.more_horiz_rounded,
+                                    color: _kSecondaryText,
                                   ),
                                 ),
-                          );
-                          break;
-                        case 'unarchive':
-                          unawaited(
-                            _client
-                                .updateConversation(
-                                  conversation.copyWith(isArchived: false),
-                                )
-                                .then(
-                                  (_) => _loadConversations(
-                                    preserveSelection: true,
-                                  ),
-                                ),
-                          );
-                          break;
-                        case 'delete':
-                          unawaited(
-                            _client
-                                .deleteConversation(conversation.id)
-                                .then(
-                                  (_) => _loadConversations(
-                                    preserveSelection: false,
-                                  ),
-                                ),
-                          );
-                          break;
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      PopupMenuItem<String>(
-                        value: conversation.isArchived
-                            ? 'unarchive'
-                            : 'archive',
-                        child: Text(conversation.isArchived ? '取消归档' : '归档'),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      const PopupMenuItem<String>(
-                        value: 'delete',
-                        child: Text('删除'),
-                      ),
-                    ],
-                  ),
-                  onTap: () => unawaited(_selectConversation(conversation)),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -846,18 +1121,38 @@ class _WebChatHomeState extends State<_WebChatHome> {
     return Column(
       children: [
         Container(
-          height: 64,
+          height: 72,
           padding: const EdgeInsets.symmetric(horizontal: 20),
           decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Color(0xFFE3EAF7))),
+            border: Border(bottom: BorderSide(color: _kPanelBorder)),
           ),
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  _selectedConversation?.title ?? '选择一个对话开始聊天',
-                  style: Theme.of(context).textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _selectedConversation?.title ?? '选择一个对话开始聊天',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: _kPrimaryText,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _selectedConversation == null
+                          ? '支持完整聊天、工具调用、工作区与浏览器镜像'
+                          : _selectedConversation!.mode.displayLabel,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: _kSecondaryText,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (_selectedConversation != null) ...[
@@ -869,12 +1164,16 @@ class _WebChatHomeState extends State<_WebChatHome> {
                     _selectedConversation!.isArchived
                         ? Icons.unarchive_outlined
                         : Icons.archive_outlined,
+                    color: _kSecondaryText,
                   ),
                 ),
                 IconButton(
                   tooltip: '删除',
                   onPressed: _deleteSelectedConversation,
-                  icon: const Icon(Icons.delete_outline),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: _kSecondaryText,
+                  ),
                 ),
               ],
             ],
@@ -891,95 +1190,279 @@ class _WebChatHomeState extends State<_WebChatHome> {
             ),
           ),
         Expanded(
-          child: ListView.builder(
-            controller: _chatScrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
-            itemCount: _displayMessages.length,
-            itemBuilder: (context, index) {
-              final message = _displayMessages[index];
-              return _buildMessageBubble(context, message);
-            },
-          ),
+          child: _displayMessages.isEmpty
+              ? const Center(
+                  child: Text(
+                    '有什么可以帮助你的？',
+                    style: TextStyle(color: _kSecondaryText, fontSize: 14),
+                  ),
+                )
+              : ListView.builder(
+                  controller: _chatScrollController,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  itemCount: _displayMessages.length,
+                  itemBuilder: (context, index) {
+                    final message = _displayMessages[index];
+                    final isOldestMessage = index == 0;
+                    final needTopPadding = isOldestMessage && message.user != 1;
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        top: needTopPadding ? 24 : 0,
+                        bottom: index == _displayMessages.length - 1 ? 10 : 0,
+                      ),
+                      child: _buildMessageBubble(context, message),
+                    );
+                  },
+                ),
         ),
         if (_activeClarifyTaskId != null)
           Container(
+            width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final text = _messageController.text.trim();
-                if (text.isEmpty) {
-                  return;
-                }
-                await _client.clarifyTask(_activeClarifyTaskId!, text);
-                _messageController.clear();
-                setState(() {
-                  _activeClarifyTaskId = null;
-                });
-              },
-              icon: const Icon(Icons.help_outline),
-              label: const Text('将输入内容作为澄清回复发送'),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF3FF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _kPanelBorder),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.help_outline, size: 18, color: _kAccentBlue),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '当前 Agent 需要你的澄清回复，发送输入内容后会继续执行。',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _kPrimaryText,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           decoration: const BoxDecoration(
-            border: Border(top: BorderSide(color: Color(0xFFE3EAF7))),
-            color: Colors.white,
+            border: Border(top: BorderSide(color: _kPanelBorder)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: _buildChatComposer(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChatComposer(BuildContext context) {
+    final hasPayload =
+        _messageController.text.trim().isNotEmpty ||
+        _pendingAttachments.isNotEmpty;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 72),
+      padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: _kPanelSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _kPanelBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A2F7BFF),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_pendingAttachments.isNotEmpty) ...[
+            _buildComposerAttachmentPreview(),
+            const SizedBox(height: 8),
+          ],
+          Focus(
+            onKeyEvent: (_, event) => _handleComposerKeyEvent(event),
+            child: TextField(
+              controller: _messageController,
+              minLines: 1,
+              maxLines: 6,
+              textInputAction: TextInputAction.send,
+              style: const TextStyle(
+                fontSize: 14,
+                color: _kPrimaryText,
+                height: 1.5,
+              ),
+              decoration: const InputDecoration(
+                hintText: '直接和 Agent 对话...',
+                hintStyle: TextStyle(color: _kSubtleText),
+                border: InputBorder.none,
+                isCollapsed: true,
+              ),
+              onSubmitted: (_) {
+                if (!_sendingMessage && hasPayload) {
+                  _submitComposer();
+                }
+              },
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
             children: [
-              if (_pendingAttachments.isNotEmpty)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _pendingAttachments.map((attachment) {
-                    return InputChip(
-                      label: Text(attachment.name),
-                      onDeleted: () {
-                        setState(() {
-                          _pendingAttachments.remove(attachment);
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-              if (_pendingAttachments.isNotEmpty) const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  IconButton(
-                    onPressed: _pickAttachments,
-                    icon: const Icon(Icons.attach_file),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      minLines: 1,
-                      maxLines: 6,
-                      decoration: const InputDecoration(
-                        hintText: '直接和 Agent 对话...',
-                        border: OutlineInputBorder(),
-                      ),
+              IconButton(
+                onPressed: _pickAttachments,
+                icon: const Icon(Icons.add_rounded, color: _kSecondaryText),
+                tooltip: '添加附件',
+              ),
+              const Spacer(),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: hasPayload || _sendingMessage ? 1 : 0.38,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: _sendingMessage || !hasPayload
+                      ? null
+                      : _submitComposer,
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF3FF),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFD5E4FF)),
+                    ),
+                    child: Center(
+                      child: _sendingMessage
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: _kAccentBlue,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.arrow_upward_rounded,
+                              size: 18,
+                              color: _kAccentBlue,
+                            ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  FilledButton(
-                    onPressed: _sendingMessage ? null : _sendMessage,
-                    child: _sendingMessage
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('发送'),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComposerAttachmentPreview() {
+    return SizedBox(
+      height: 72,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _pendingAttachments.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final attachment = _pendingAttachments[index];
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              attachment.isImage
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: _buildPendingAttachmentImage(attachment),
+                    )
+                  : Container(
+                      width: 156,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _kAttachmentSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _kAttachmentBorder),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.insert_drive_file_outlined,
+                            color: _kAttachmentIcon,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              attachment.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: _kAttachmentText,
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+              Positioned(
+                top: -4,
+                right: -4,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () {
+                    setState(() {
+                      _pendingAttachments.removeAt(index);
+                    });
+                  },
+                  child: Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF54627A).withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      size: 12,
+                      color: Color(0xFF54627A),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPendingAttachmentImage(_PendingAttachment attachment) {
+    final bytes = _bytesFromDataUrl(attachment.dataUrl);
+    if (bytes == null) {
+      return Container(
+        width: 72,
+        height: 72,
+        color: _kAttachmentSurface,
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.broken_image_outlined,
+          size: 18,
+          color: _kAttachmentIcon,
         ),
-      ],
+      );
+    }
+    return Image.memory(
+      bytes,
+      width: 72,
+      height: 72,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
     );
   }
 
@@ -1201,62 +1684,248 @@ class _WebChatHomeState extends State<_WebChatHome> {
 
   Widget _buildMessageBubble(BuildContext context, ChatMessageModel message) {
     if (message.type == 2) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: _buildCard(message.cardData ?? const <String, dynamic>{}),
+      return Container(
+        margin: const EdgeInsets.only(top: 8, bottom: 0),
+        child: _buildCard(
+          context,
+          message.cardData ?? const <String, dynamic>{},
+        ),
       );
     }
     final isUser = message.user == 1;
     final attachments = _extractAttachments(message);
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: isUser ? const Color(0xFFDDEBFF) : Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: isUser ? const Color(0xFFBBD4FF) : const Color(0xFFE3EAF7),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if ((message.text ?? '').isNotEmpty)
-                SelectableText(
-                  message.text!,
-                  style: const TextStyle(height: 1.55),
+    if (isUser) {
+      return Container(
+        margin: const EdgeInsets.only(top: 24, bottom: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Flexible(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPressStart: (details) => _showUserMessageActions(
+                  context,
+                  message,
+                  details.globalPosition,
                 ),
-              if (attachments.isNotEmpty) ...[
-                if ((message.text ?? '').isNotEmpty) const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: attachments.map(_buildAttachmentChip).toList(),
+                onSecondaryTapDown: (details) => _showUserMessageActions(
+                  context,
+                  message,
+                  details.globalPosition,
                 ),
-              ],
-              if (isUser && (message.text ?? '').isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: () => _sendMessage(overrideText: message.text),
-                    icon: const Icon(Icons.refresh, size: 16),
-                    label: const Text('重试'),
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: math.min(
+                      MediaQuery.of(context).size.width * 0.75,
+                      680,
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
+                  decoration: ShapeDecoration(
+                    color: _kUserBubble,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if ((message.text ?? '').isNotEmpty)
+                        Text(
+                          message.text!,
+                          style: const TextStyle(
+                            color: _kPrimaryText,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            height: 1.43,
+                            letterSpacing: 0.33,
+                          ),
+                        ),
+                      if (attachments.isNotEmpty) ...[
+                        if ((message.text ?? '').isNotEmpty)
+                          const SizedBox(height: 8),
+                        _buildAttachmentWrap(context, attachments),
+                      ],
+                    ],
                   ),
                 ),
-              ],
-            ],
-          ),
+              ),
+            ),
+          ],
         ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 0, right: 18),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (message.isLoading && (message.text ?? '').trim().isEmpty)
+                  _buildThinkingIndicator()
+                else if ((message.text ?? '').isNotEmpty)
+                  _buildAssistantText(context, message),
+                if (attachments.isNotEmpty) ...[
+                  if ((message.text ?? '').isNotEmpty)
+                    const SizedBox(height: 8),
+                  _buildAttachmentWrap(context, attachments),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildCard(Map<String, dynamic> cardData) {
+  Future<void> _showUserMessageActions(
+    BuildContext context,
+    ChatMessageModel message,
+    Offset globalPosition,
+  ) async {
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        globalPosition.dx,
+        globalPosition.dy,
+      ),
+      items: const [PopupMenuItem<String>(value: 'retry', child: Text('重试消息'))],
+    );
+    if (selected == 'retry') {
+      await _retryMessage(message);
+    }
+  }
+
+  Future<void> _retryMessage(ChatMessageModel message) async {
+    final attachments = _extractAttachments(message)
+        .map(
+          (item) => _PendingAttachment(
+            name: (item['fileName'] ?? item['name'] ?? '附件').toString(),
+            mimeType: (item['mimeType'] ?? 'application/octet-stream')
+                .toString(),
+            size: (item['size'] as num?)?.toInt() ?? 0,
+            dataUrl: (item['dataUrl'] ?? '').toString(),
+            isImage: item['isImage'] == true,
+          ),
+        )
+        .where((item) => item.dataUrl.isNotEmpty)
+        .toList();
+    await _sendMessage(
+      overrideText: message.text ?? '',
+      overrideAttachments: attachments,
+    );
+  }
+
+  Widget _buildAssistantText(BuildContext context, ChatMessageModel message) {
+    if (message.isSummarizing && (message.text ?? '').trim().isEmpty) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.auto_awesome_rounded, size: 16, color: _kAccentBlue),
+          SizedBox(width: 6),
+          Text(
+            '总结中',
+            style: TextStyle(
+              fontSize: 14,
+              color: _kAccentBlue,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      );
+    }
+
+    final text = message.text ?? '';
+    final style = const TextStyle(
+      fontSize: 14,
+      color: _kPrimaryText,
+      height: 1.57,
+    );
+    final isSummaryContent =
+        message.id.startsWith('vlm-summary-') ||
+        message.id.startsWith('task-summary-');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (isSummaryContent) ...[
+          const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_outline_rounded,
+                size: 16,
+                color: _kAccentGreen,
+              ),
+              SizedBox(width: 6),
+              Text(
+                '总结如下',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: _kAccentGreen,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+        MarkdownBody(
+          data: text,
+          selectable: true,
+          styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+            p: style,
+            code: style.copyWith(
+              fontFamily: 'monospace',
+              fontSize: 13,
+              backgroundColor: Colors.transparent,
+            ),
+            codeblockDecoration: BoxDecoration(
+              color: const Color(0xFFF2F5FB),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            blockquoteDecoration: const BoxDecoration(
+              color: Color(0xFFF3F7FE),
+              border: Border(left: BorderSide(color: _kAccentBlue, width: 4)),
+            ),
+            blockquotePadding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            tableHead: style.copyWith(fontWeight: FontWeight.w600),
+            tableBody: style,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThinkingIndicator() {
+    return const _ThinkingDots();
+  }
+
+  Widget _buildAttachmentWrap(
+    BuildContext context,
+    List<Map<String, dynamic>> attachments,
+  ) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: attachments
+          .map((item) => _buildAttachmentChip(context, item))
+          .toList(),
+    );
+  }
+
+  Widget _buildCard(BuildContext context, Map<String, dynamic> cardData) {
     final type = (cardData['type'] ?? '').toString();
     switch (type) {
       case 'deep_thinking':
@@ -1276,8 +1945,13 @@ class _WebChatHomeState extends State<_WebChatHome> {
                   const Icon(Icons.psychology_alt_outlined, size: 18),
                   const SizedBox(width: 8),
                   Text(
-                    '思考中',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    (cardData['stage'] == 4 || cardData['isLoading'] == false)
+                        ? '思考完成'
+                        : '正在思考',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: _kPrimaryText,
+                    ),
                   ),
                   const Spacer(),
                   if (cardData['isLoading'] == true)
@@ -1293,43 +1967,105 @@ class _WebChatHomeState extends State<_WebChatHome> {
                 (cardData['thinkingContent'] ?? '').toString().trim().isEmpty
                     ? '正在生成思考内容...'
                     : (cardData['thinkingContent'] ?? '').toString(),
-                style: const TextStyle(color: Color(0xFF55657F), height: 1.55),
+                style: const TextStyle(color: _kSecondaryText, height: 1.55),
               ),
             ],
           ),
         );
       case 'agent_tool_summary':
         final status = (cardData['status'] ?? 'running').toString();
+        final title = resolveAgentToolTitle(cardData);
+        final statusLabel = resolveAgentToolStatusLabel(cardData);
+        final typeLabel = resolveAgentToolTypeLabel(cardData);
         final color = switch (status) {
-          'success' => const Color(0xFF1E9C53),
-          'error' => const Color(0xFFC73E1D),
-          'interrupted' => const Color(0xFFF0A429),
-          _ => const Color(0xFF2E6AE6),
+          'success' => const Color(0xFF2F8F4E),
+          'error' => const Color(0xFFFF6464),
+          'interrupted' => const Color(0xFFFFAA2C),
+          _ => const Color(0xFF00AEFF),
         };
         return Align(
           alignment: Alignment.centerLeft,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(999),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.78,
+              minHeight: 34,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.auto_awesome_outlined, size: 16, color: color),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    (cardData['summary'] ??
-                            cardData['toolTitle'] ??
-                            cardData['displayName'] ??
-                            '正在调用工具')
-                        .toString(),
-                    overflow: TextOverflow.ellipsis,
+            child: Container(
+              margin: const EdgeInsets.only(top: 6, bottom: 2),
+              padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: status == 'running'
+                          ? SizedBox(
+                              width: 8,
+                              height: 8,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.4,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  color,
+                                ),
+                              ),
+                            )
+                          : Icon(
+                              status == 'error'
+                                  ? Icons.error_outline_rounded
+                                  : status == 'interrupted'
+                                  ? Icons.stop_circle_outlined
+                                  : Icons.check_circle_outline_rounded,
+                              size: 10,
+                              color: color,
+                            ),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _kPrimaryText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        height: 1.15,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.78),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      status == 'running' ? typeLabel : statusLabel,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -1358,7 +2094,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
         .toList();
   }
 
-  Widget _buildAttachmentChip(Map<String, dynamic> item) {
+  Widget _buildAttachmentChip(BuildContext context, Map<String, dynamic> item) {
     final dataUrl = (item['dataUrl'] ?? '').toString();
     final fileName = (item['fileName'] ?? item['name'] ?? item['path'] ?? '附件')
         .toString();
@@ -1366,20 +2102,87 @@ class _WebChatHomeState extends State<_WebChatHome> {
     if (dataUrl.startsWith('data:image/')) {
       final bytes = _bytesFromDataUrl(dataUrl);
       if (bytes != null) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(bytes, width: 92, height: 92, fit: BoxFit.cover),
+        return GestureDetector(
+          onTap: () => _openImagePreview(context, bytes),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(
+              bytes,
+              width: 84,
+              height: 84,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+            ),
+          ),
         );
       }
     }
-    return Chip(
-      avatar: Icon(
-        mimeType.startsWith('image/')
-            ? Icons.image_outlined
-            : Icons.insert_drive_file_outlined,
-        size: 18,
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 220, minHeight: 40),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _kAttachmentSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _kAttachmentBorder),
       ),
-      label: Text(fileName, overflow: TextOverflow.ellipsis),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            mimeType.startsWith('image/')
+                ? Icons.image_outlined
+                : Icons.insert_drive_file_outlined,
+            size: 15,
+            color: _kAttachmentIcon,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              fileName,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _kAttachmentText,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openImagePreview(BuildContext context, Uint8List bytes) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(24),
+          child: Stack(
+            children: [
+              InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 4,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.memory(bytes, fit: BoxFit.contain),
+                ),
+              ),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: IconButton.filledTonal(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1410,5 +2213,91 @@ class _WebChatHomeState extends State<_WebChatHome> {
       default:
         return 'application/octet-stream';
     }
+  }
+}
+
+class _PaneResizeHandle extends StatelessWidget {
+  const _PaneResizeHandle({required this.onDragUpdate});
+
+  final ValueChanged<double> onDragUpdate;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (details) => onDragUpdate(details.delta.dx),
+        child: SizedBox(
+          width: _kDesktopDividerHitWidth,
+          child: Center(
+            child: Container(
+              width: 4,
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD7E5FB),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThinkingDots extends StatefulWidget {
+  const _ThinkingDots();
+
+  @override
+  State<_ThinkingDots> createState() => _ThinkingDotsState();
+}
+
+class _ThinkingDotsState extends State<_ThinkingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 960),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) {
+            final phase = ((_controller.value + (index * 0.18)) % 1.0);
+            final opacity =
+                0.28 + ((1 - (phase - 0.5).abs() * 2).clamp(0.0, 1.0) * 0.72);
+            return Opacity(
+              opacity: opacity,
+              child: Container(
+                width: 6,
+                height: 6,
+                margin: EdgeInsets.only(right: index == 2 ? 0 : 6),
+                decoration: const BoxDecoration(
+                  color: _kSecondaryText,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
   }
 }

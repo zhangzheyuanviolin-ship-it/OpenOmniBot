@@ -572,7 +572,11 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     if (!mounted || conversationId == null) {
       return;
     }
-    await loadConversation(conversationId);
+    final runtime = _runtimeForMode(_activeMode);
+    await loadConversation(
+      conversationId,
+      preferInMemory: runtime?.hasInFlightTask == true,
+    );
     if (!mounted) return;
     setState(() {});
   }
@@ -592,7 +596,11 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         changedMode != activeConversationModeValue) {
       return;
     }
-    await loadConversation(conversationId);
+    final runtime = _runtimeForMode(_activeMode);
+    await loadConversation(
+      conversationId,
+      preferInMemory: runtime?.hasInFlightTask == true,
+    );
     if (!mounted) return;
     setState(() {});
   }
