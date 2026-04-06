@@ -6,6 +6,8 @@ import io.flutter.plugin.common.MethodChannel
 import cn.com.omnimind.bot.manager.AssistsCoreManager
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -33,7 +35,7 @@ class AgentRunService(
             "terminalEnvironment" to normalizeMap(request["terminalEnvironment"]),
             "modelOverride" to normalizeMap(request["modelOverride"])
         )
-        invokeManager("createAgentTask", arguments) {
+        invokeManagerNonBlocking("createAgentTask", arguments) {
             manager.createAgentTask(it, this)
         }
         return mapOf(
@@ -108,6 +110,46 @@ class AgentRunService(
             }
             result.block(call)
         }
+    }
+
+    private fun invokeManagerNonBlocking(
+        method: String,
+        arguments: Map<String, Any?>?,
+        block: MethodChannel.Result.(MethodCall) -> Unit
+    ) {
+        val returned = AtomicBoolean(false)
+        val syncFailure = AtomicReference<Throwable?>(null)
+        val call = MethodCall(method, arguments)
+        val result = object : MethodChannel.Result {
+            override fun success(result: Any?) {
+                // Non-blocking invocation only cares about synchronous validation failures.
+            }
+
+            override fun error(
+                errorCode: String,
+                errorMessage: String?,
+                errorDetails: Any?
+            ) {
+                if (!returned.get()) {
+                    syncFailure.set(
+                        IllegalStateException(
+                            "$errorCode: ${errorMessage ?: "native bridge error"}"
+                        )
+                    )
+                }
+            }
+
+            override fun notImplemented() {
+                if (!returned.get()) {
+                    syncFailure.set(
+                        NotImplementedError("Method not implemented: $method")
+                    )
+                }
+            }
+        }
+        result.block(call)
+        returned.set(true)
+        syncFailure.get()?.let { throw it }
     }
 
     private fun normalizeConversationMode(rawMode: String?): String {
