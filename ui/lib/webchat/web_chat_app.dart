@@ -48,6 +48,18 @@ class _DesktopPaneLayout {
   final double rightWidth;
 }
 
+class _WorkspaceBreadcrumbSegment {
+  const _WorkspaceBreadcrumbSegment({
+    required this.label,
+    required this.path,
+    required this.isCurrent,
+  });
+
+  final String label;
+  final String path;
+  final bool isCurrent;
+}
+
 class WebChatApp extends StatelessWidget {
   const WebChatApp({super.key});
 
@@ -114,12 +126,14 @@ class _WebChatHomeState extends State<_WebChatHome> {
   final ScrollController _chatScrollController = ScrollController();
 
   StreamSubscription<WebChatEvent>? _eventsSubscription;
+  Timer? _workspaceAutoRefreshTimer;
 
   bool _booting = true;
   bool _authenticated = false;
   bool _loadingConversations = false;
   bool _sendingMessage = false;
   bool _workspaceBusy = false;
+  bool _workspaceReloading = false;
   bool _browserBusy = false;
   bool _archivedOnly = false;
   bool _workspaceDirty = false;
@@ -127,6 +141,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
   String? _workspaceCurrentPath;
   String? _workspaceSelectedFilePath;
   String? _activeClarifyTaskId;
+  int _workspaceReloadRequestSerial = 0;
   int _browserFrameSeed = 0;
   _ShellSection _mobileSection = _ShellSection.chat;
   double _desktopLeftPaneWidth = 320;
@@ -158,6 +173,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
   @override
   void dispose() {
     _eventsSubscription?.cancel();
+    _workspaceAutoRefreshTimer?.cancel();
     _events.dispose();
     _client.dispose();
     _tokenController.dispose();
@@ -267,10 +283,12 @@ class _WebChatHomeState extends State<_WebChatHome> {
       _browserUrlController.text = (browser['currentUrl'] ?? '').toString();
       await _loadConversations(preserveSelection: false);
       _connectEvents();
+      _startWorkspaceAutoRefresh();
       setState(() {
         _authenticated = true;
         _booting = false;
       });
+      unawaited(_reloadWorkspace(reportError: false));
     } catch (error) {
       setState(() {
         _error = error.toString();
@@ -334,6 +352,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
       _selectedConversation = conversation;
       _messages = messages;
     });
+    _refreshBrowserSnapshotForMessages(messages);
     _scrollChatToBottom();
   }
 
@@ -464,16 +483,138 @@ class _WebChatHomeState extends State<_WebChatHome> {
     await _loadConversations(preserveSelection: false);
   }
 
-  Future<void> _reloadWorkspace({String? path}) async {
-    final payload = await _client.list(path: path ?? _workspaceCurrentPath);
-    setState(() {
-      _workspaceCurrentPath = (payload['path'] ?? _workspaceCurrentPath ?? '')
-          .toString();
-      _workspaceItems = ((payload['items'] as List?) ?? const <dynamic>[])
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList();
+  void _startWorkspaceAutoRefresh() {
+    _workspaceAutoRefreshTimer?.cancel();
+    _workspaceAutoRefreshTimer = Timer.periodic(const Duration(seconds: 2), (
+      _,
+    ) {
+      if (!_authenticated ||
+          !mounted ||
+          _workspaceBusy ||
+          _workspaceReloading ||
+          html.document.hidden == true) {
+        return;
+      }
+      if ((_workspaceCurrentPath ?? '').trim().isEmpty) {
+        return;
+      }
+      unawaited(_reloadWorkspace(reportError: false));
     });
+  }
+
+  String _normalizeWorkspacePath(String path) {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty || trimmed == '/') {
+      return '/';
+    }
+    return trimmed.replaceFirst(RegExp(r'/+$'), '');
+  }
+
+  String? get _workspaceRootPath {
+    final root = (_workspaceInfo?['rootPath'] ?? '').toString().trim();
+    if (root.isNotEmpty) {
+      return _normalizeWorkspacePath(root);
+    }
+    final current = (_workspaceCurrentPath ?? '').trim();
+    if (current.isEmpty) {
+      return null;
+    }
+    return _normalizeWorkspacePath(current);
+  }
+
+  bool _isWorkspacePathUnderRoot(String path, String rootPath) {
+    if (path == rootPath) return true;
+    if (rootPath == '/') return path.startsWith('/');
+    return path.startsWith('$rootPath/');
+  }
+
+  List<_WorkspaceBreadcrumbSegment> get _workspaceBreadcrumbs {
+    final currentPath = (_workspaceCurrentPath ?? '').trim();
+    if (currentPath.isEmpty) {
+      return const <_WorkspaceBreadcrumbSegment>[];
+    }
+
+    final normalizedCurrent = _normalizeWorkspacePath(currentPath);
+    final normalizedRoot =
+        _workspaceRootPath ?? _normalizeWorkspacePath(normalizedCurrent);
+
+    if (!_isWorkspacePathUnderRoot(normalizedCurrent, normalizedRoot)) {
+      return <_WorkspaceBreadcrumbSegment>[
+        _WorkspaceBreadcrumbSegment(
+          label: normalizedCurrent,
+          path: normalizedCurrent,
+          isCurrent: true,
+        ),
+      ];
+    }
+
+    final segments = <_WorkspaceBreadcrumbSegment>[
+      _WorkspaceBreadcrumbSegment(
+        label: normalizedRoot,
+        path: normalizedRoot,
+        isCurrent: normalizedCurrent == normalizedRoot,
+      ),
+    ];
+
+    final relative = normalizedCurrent == normalizedRoot
+        ? ''
+        : normalizedCurrent.substring(
+            normalizedRoot == '/' ? 1 : normalizedRoot.length + 1,
+          );
+    if (relative.isEmpty) {
+      return segments;
+    }
+
+    final parts = relative
+        .split('/')
+        .where((segment) => segment.trim().isNotEmpty)
+        .toList(growable: false);
+    var runningPath = normalizedRoot;
+    for (final part in parts) {
+      runningPath = runningPath == '/' ? '/$part' : '$runningPath/$part';
+      segments.add(
+        _WorkspaceBreadcrumbSegment(
+          label: part,
+          path: runningPath,
+          isCurrent: runningPath == normalizedCurrent,
+        ),
+      );
+    }
+    return segments;
+  }
+
+  Future<void> _reloadWorkspace({String? path, bool reportError = true}) async {
+    final targetPath = path ?? _workspaceCurrentPath;
+    if ((targetPath ?? '').trim().isEmpty) {
+      return;
+    }
+    final requestId = ++_workspaceReloadRequestSerial;
+    _workspaceReloading = true;
+    try {
+      final payload = await _client.list(path: targetPath);
+      if (!mounted || requestId != _workspaceReloadRequestSerial) return;
+      setState(() {
+        _workspaceCurrentPath = (payload['path'] ?? _workspaceCurrentPath ?? '')
+            .toString();
+        _workspaceItems = ((payload['items'] as List?) ?? const <dynamic>[])
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      });
+    } catch (error) {
+      if (!mounted ||
+          !reportError ||
+          requestId != _workspaceReloadRequestSerial) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+      });
+    } finally {
+      if (requestId == _workspaceReloadRequestSerial) {
+        _workspaceReloading = false;
+      }
+    }
   }
 
   Future<void> _openWorkspaceEntry(Map<String, dynamic> entry) async {
@@ -527,6 +668,50 @@ class _WebChatHomeState extends State<_WebChatHome> {
           _workspaceBusy = false;
         });
       }
+    }
+  }
+
+  Future<void> _refreshBrowserSnapshot({bool reportError = true}) async {
+    try {
+      final snapshot = await _client.snapshot();
+      if (!mounted) return;
+      setState(() {
+        _browserSnapshot = snapshot;
+        _browserUrlController.text = (snapshot['currentUrl'] ?? '').toString();
+        _browserFrameSeed++;
+      });
+    } catch (error) {
+      if (!mounted || !reportError) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+      });
+    }
+  }
+
+  bool _containsBrowserToolCard(List<ChatMessageModel> messages) {
+    for (final message in messages) {
+      if (message.type != 2) {
+        continue;
+      }
+      final cardData = message.cardData;
+      if (cardData == null) {
+        continue;
+      }
+      if ((cardData['type'] ?? '').toString() != 'agent_tool_summary') {
+        continue;
+      }
+      if ((cardData['toolType'] ?? '').toString() == 'browser') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _refreshBrowserSnapshotForMessages(List<ChatMessageModel> messages) {
+    if (_containsBrowserToolCard(messages)) {
+      unawaited(_refreshBrowserSnapshot(reportError: false));
     }
   }
 
@@ -591,6 +776,11 @@ class _WebChatHomeState extends State<_WebChatHome> {
           }
         }
         break;
+      case 'agent_tool_complete':
+        if ((data['toolType'] ?? '').toString().trim() == 'browser') {
+          unawaited(_refreshBrowserSnapshot(reportError: false));
+        }
+        break;
       case 'agent_complete':
       case 'agent_error':
         if (mounted) {
@@ -612,7 +802,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
         break;
       case 'workspace_changed':
         if (_workspaceCurrentPath != null) {
-          unawaited(_reloadWorkspace());
+          unawaited(_reloadWorkspace(reportError: false));
         }
         break;
       case 'agent_clarify_required':
@@ -942,7 +1132,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
                   side: const BorderSide(color: _kPanelBorder),
                 ),
                 segments: const [
-                  ButtonSegment<bool>(value: false, label: Text('进行中')),
+                  ButtonSegment<bool>(value: false, label: Text('活跃')),
                   ButtonSegment<bool>(value: true, label: Text('归档')),
                 ],
                 selected: <bool>{_archivedOnly},
@@ -1494,6 +1684,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
   }
 
   Widget _buildWorkspacePanel(BuildContext context) {
+    final breadcrumbs = _workspaceBreadcrumbs;
     return Column(
       children: [
         Container(
@@ -1503,16 +1694,62 @@ class _WebChatHomeState extends State<_WebChatHome> {
             color: Colors.white,
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(
-                  _workspaceCurrentPath ?? '工作区',
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '工作区',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _kPrimaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    breadcrumbs.isEmpty
+                        ? const Text(
+                            '加载工作区中...',
+                            style: TextStyle(color: _kSecondaryText),
+                          )
+                        : Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 2,
+                            runSpacing: 2,
+                            children: [
+                              for (
+                                var index = 0;
+                                index < breadcrumbs.length;
+                                index++
+                              ) ...[
+                                if (index > 0)
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 2,
+                                    ),
+                                    child: Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 16,
+                                      color: _kSubtleText,
+                                    ),
+                                  ),
+                                _buildWorkspaceBreadcrumbChip(
+                                  breadcrumbs[index],
+                                ),
+                              ],
+                            ],
+                          ),
+                  ],
                 ),
               ),
               IconButton(
-                onPressed: () => _reloadWorkspace(),
+                onPressed: _workspaceReloading
+                    ? null
+                    : () => _reloadWorkspace(),
                 icon: const Icon(Icons.refresh),
+                tooltip: '立即刷新',
               ),
               if (_workspaceSelectedFilePath != null)
                 FilledButton(
@@ -1578,6 +1815,28 @@ class _WebChatHomeState extends State<_WebChatHome> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildWorkspaceBreadcrumbChip(_WorkspaceBreadcrumbSegment segment) {
+    final labelStyle = TextStyle(
+      fontSize: 12,
+      fontWeight: segment.isCurrent ? FontWeight.w700 : FontWeight.w500,
+      color: segment.isCurrent ? _kPrimaryText : _kAccentBlue,
+    );
+    return Material(
+      color: segment.isCurrent ? const Color(0xFFEAF3FF) : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: segment.isCurrent
+            ? null
+            : () => unawaited(_reloadWorkspace(path: segment.path)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Text(segment.label, style: labelStyle),
+        ),
+      ),
     );
   }
 

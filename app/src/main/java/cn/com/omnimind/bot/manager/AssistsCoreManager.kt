@@ -53,6 +53,7 @@ import cn.com.omnimind.bot.agent.AgentConversationHistoryRepository
 import cn.com.omnimind.bot.agent.AgentRuntimeContextRepository
 import cn.com.omnimind.bot.agent.AgentScheduleToolBridge
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
+import cn.com.omnimind.bot.agent.LiveAgentBrowserSessionManager
 import cn.com.omnimind.bot.agent.OmniAgentExecutor
 import cn.com.omnimind.bot.agent.SkillIndexEntry
 import cn.com.omnimind.bot.agent.SkillIndexService
@@ -81,7 +82,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -2884,11 +2884,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         registerActiveAgentJob(taskId, agentRunJob)
 
         agentRunScope.launch {
+            var historyRepository: AgentConversationHistoryRepository? = null
             try {
                 // 1. 获取当前包名
                 val currentPackageName = AssistsCore.getCurrentPackageName()
                 val runtimeContextRepository = AgentRuntimeContextRepository(context)
-                val historyRepository = conversationHistoryRepository()
+                historyRepository = conversationHistoryRepository()
+                val repository = historyRepository ?: return@launch
 
                 val scheduleBridge = object : AgentScheduleToolBridge {
                     override suspend fun createTask(arguments: Map<String, Any?>): Map<String, Any?> {
@@ -2957,7 +2959,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                 suspend fun publishConversationMessagesSync() {
                     val normalizedConversationId = conversationId ?: return
-                    val messages = historyRepository.listConversationMessages(
+                    val repository = historyRepository ?: return
+                    val messages = repository.listConversationMessages(
                         conversationId = normalizedConversationId,
                         conversationMode = resolvedConversationMode
                     )
@@ -3015,7 +3018,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val normalizedConversationId = conversationId ?: return
                     if (entryId.isBlank()) return
                     val startTime = thinkingCardStartTimes.getOrPut(entryId) { createdAt }
-                    historyRepository.upsertUiCard(
+                    repository.upsertUiCard(
                         conversationId = normalizedConversationId,
                         conversationMode = resolvedConversationMode,
                         entryId = entryId,
@@ -3050,7 +3053,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val normalizedConversationId = conversationId ?: return
                     val normalizedText = text.trim()
                     if (normalizedText.isEmpty()) return
-                    historyRepository.upsertAssistantMessage(
+                    repository.upsertAssistantMessage(
                         conversationId = normalizedConversationId,
                         conversationMode = resolvedConversationMode,
                         entryId = "$taskId-assistant",
@@ -3064,7 +3067,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val normalizedConversationId = conversationId ?: return
                     val normalizedQuestion = question.trim()
                     if (normalizedQuestion.isEmpty()) return
-                    historyRepository.upsertAssistantMessage(
+                    repository.upsertAssistantMessage(
                         conversationId = normalizedConversationId,
                         conversationMode = resolvedConversationMode,
                         entryId = "$taskId-clarify",
@@ -3082,7 +3085,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     } else {
                         "执行任务前，请先开启：${names.joinToString("、")}"
                     }
-                    historyRepository.upsertAssistantMessage(
+                    repository.upsertAssistantMessage(
                         conversationId = normalizedConversationId,
                         conversationMode = resolvedConversationMode,
                         entryId = "$taskId-text",
@@ -3091,7 +3094,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     )
                     val permissionIds = resolveRequiredPermissionIds(names)
                     if (permissionIds.isNotEmpty()) {
-                        historyRepository.upsertUiCard(
+                        repository.upsertUiCard(
                             conversationId = normalizedConversationId,
                             conversationMode = resolvedConversationMode,
                             entryId = "$taskId-permission",
@@ -3109,7 +3112,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 ) {
                     val normalizedConversationId = conversationId ?: return
                     if (entryId.isBlank()) return
-                    historyRepository.upsertToolEvent(
+                    repository.upsertToolEvent(
                         conversationId = normalizedConversationId,
                         conversationMode = resolvedConversationMode,
                         entryId = entryId,
@@ -3124,7 +3127,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                 conversationId?.let { normalizedConversationId ->
                     if (userMessage.isNotBlank() || attachments.isNotEmpty()) {
-                        historyRepository.upsertUserMessage(
+                        repository.upsertUserMessage(
                             conversationId = normalizedConversationId,
                             conversationMode = resolvedConversationMode,
                             entryId = "$taskId-user",
@@ -3273,6 +3276,14 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             "onAgentToolCallComplete",
                             payload
                         )
+                        if (payload["toolType"]?.toString() == "browser") {
+                            val snapshot = LiveAgentBrowserSessionManager.currentSnapshot()
+                            RealtimeHub.publish(
+                                "browser_snapshot_updated",
+                                mapOf("snapshot" to snapshot)
+                            )
+                            FlutterChatSyncBridge.dispatchBrowserSnapshotUpdated(snapshot)
+                        }
                     }
 
                     override suspend fun onChatMessage(message: String) {
@@ -3460,24 +3471,72 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     terminalEnvironment,
                     callback
                 )
-
-                withContext(Dispatchers.Main) {
-                    result.success("SUCCESS")
-                }
             } catch (e: CancellationException) {
                 OmniLog.i(TAG, "createAgentTask cancelled: ${e.message}")
-                withContext(NonCancellable + Dispatchers.Main) {
-                    result.success("SUCCESS")
-                }
             } catch (e: Exception) {
                 OmniLog.e(TAG, "createAgentTask error: ${e.message}")
-                withContext(Dispatchers.Main) {
-                    result.error("CREATE_AGENT_TASK_ERROR", e.message, null)
+                val errorMessage = e.message?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                    "Agent execution failed: $it"
+                } ?: "Agent execution failed"
+                runCatching {
+                    val normalizedConversationId = conversationId ?: return@runCatching
+                    val failureRepository =
+                        historyRepository ?: conversationHistoryRepository().also {
+                            historyRepository = it
+                        }
+                    failureRepository.upsertAssistantMessage(
+                        conversationId = normalizedConversationId,
+                        conversationMode = resolvedConversationMode,
+                        entryId = "$taskId-assistant",
+                        text = errorMessage,
+                        isError = true
+                    )
+                    val messages = failureRepository.listConversationMessages(
+                        conversationId = normalizedConversationId,
+                        conversationMode = resolvedConversationMode
+                    )
+                    RealtimeHub.publish(
+                        "messages_replaced",
+                        mapOf(
+                            "conversationId" to normalizedConversationId,
+                            "mode" to resolvedConversationMode,
+                            "messages" to messages
+                        )
+                    )
+                    FlutterChatSyncBridge.dispatchConversationMessagesChanged(
+                        conversationId = normalizedConversationId,
+                        mode = resolvedConversationMode,
+                        reason = "messages_replaced"
+                    )
+                }.onFailure {
+                    OmniLog.w(TAG, "persist agent startup failure failed: ${it.message}")
+                }
+                scheduledSubagentMeta?.let { meta ->
+                    runCatching {
+                        notifyScheduledSubagentCompletion(meta, errorMessage)
+                    }.onFailure {
+                        OmniLog.w(TAG, "notify scheduled subagent failure failed: ${it.message}")
+                    }
+                }
+                runCatching {
+                    val payload = mapOf(
+                        "taskId" to taskId,
+                        "conversationId" to conversationId,
+                        "conversationMode" to resolvedConversationMode,
+                        "error" to errorMessage
+                    )
+                    RealtimeHub.publish("agent_error", payload)
+                    withContext(Dispatchers.Main) {
+                        invokeFlutterEventSafely("onAgentError", payload)
+                    }
+                }.onFailure {
+                    OmniLog.w(TAG, "dispatch agent startup failure failed: ${it.message}")
                 }
             } finally {
                 clearActiveAgentJob(taskId, agentRunJob)
             }
         }
+        result.success("SUCCESS")
     }
 
     fun agentSkillList(call: MethodCall, result: MethodChannel.Result) {
