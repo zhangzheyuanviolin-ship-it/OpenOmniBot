@@ -676,6 +676,9 @@ internal object AgentConversationHistorySupport {
         if (entry.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT) {
             return null
         }
+        if (entry.entryId.endsWith("-assistant")) {
+            return null
+        }
         return extractTaskIdFromEntryId(entry.entryId)
             ?.takeIf { !entry.entryId.endsWith("-user") }
     }

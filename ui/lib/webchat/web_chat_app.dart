@@ -141,6 +141,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
   String? _workspaceCurrentPath;
   String? _workspaceSelectedFilePath;
   String? _activeClarifyTaskId;
+  int _workspaceReloadRequestSerial = 0;
   int _browserFrameSeed = 0;
   _ShellSection _mobileSection = _ShellSection.chat;
   double _desktopLeftPaneWidth = 320;
@@ -587,10 +588,11 @@ class _WebChatHomeState extends State<_WebChatHome> {
     if ((targetPath ?? '').trim().isEmpty) {
       return;
     }
+    final requestId = ++_workspaceReloadRequestSerial;
     _workspaceReloading = true;
     try {
       final payload = await _client.list(path: targetPath);
-      if (!mounted) return;
+      if (!mounted || requestId != _workspaceReloadRequestSerial) return;
       setState(() {
         _workspaceCurrentPath = (payload['path'] ?? _workspaceCurrentPath ?? '')
             .toString();
@@ -600,14 +602,18 @@ class _WebChatHomeState extends State<_WebChatHome> {
             .toList();
       });
     } catch (error) {
-      if (!mounted || !reportError) {
+      if (!mounted ||
+          !reportError ||
+          requestId != _workspaceReloadRequestSerial) {
         return;
       }
       setState(() {
         _error = error.toString();
       });
     } finally {
-      _workspaceReloading = false;
+      if (requestId == _workspaceReloadRequestSerial) {
+        _workspaceReloading = false;
+      }
     }
   }
 
@@ -766,7 +772,6 @@ class _WebChatHomeState extends State<_WebChatHome> {
             setState(() {
               _messages = messages;
             });
-            _refreshBrowserSnapshotForMessages(messages);
             _scrollChatToBottom();
           }
         }
