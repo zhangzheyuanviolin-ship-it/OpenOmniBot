@@ -53,6 +53,7 @@ import cn.com.omnimind.bot.agent.AgentConversationHistoryRepository
 import cn.com.omnimind.bot.agent.AgentRuntimeContextRepository
 import cn.com.omnimind.bot.agent.AgentScheduleToolBridge
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
+import cn.com.omnimind.bot.agent.LiveAgentBrowserSessionManager
 import cn.com.omnimind.bot.agent.OmniAgentExecutor
 import cn.com.omnimind.bot.agent.SkillIndexEntry
 import cn.com.omnimind.bot.agent.SkillIndexService
@@ -3273,6 +3274,14 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             "onAgentToolCallComplete",
                             payload
                         )
+                        if (payload["toolType"]?.toString() == "browser") {
+                            val snapshot = LiveAgentBrowserSessionManager.currentSnapshot()
+                            RealtimeHub.publish(
+                                "browser_snapshot_updated",
+                                mapOf("snapshot" to snapshot)
+                            )
+                            FlutterChatSyncBridge.dispatchBrowserSnapshotUpdated(snapshot)
+                        }
                     }
 
                     override suspend fun onChatMessage(message: String) {

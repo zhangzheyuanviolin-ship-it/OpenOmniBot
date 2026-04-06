@@ -12,6 +12,16 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 internal object AgentConversationHistorySupport {
+    private data class ThinkingEntryRef(
+        val index: Int,
+        val entry: AgentConversationEntry,
+        val taskId: String,
+        val payload: Map<String, Any?>,
+        val cardData: Map<String, Any?>,
+        val startTime: Long,
+        val sequenceRank: Int
+    )
+
     data class CompactionSelection(
         val entriesToCompact: List<AgentConversationEntry>,
         val cutoffEntryDbId: Long
@@ -212,7 +222,7 @@ internal object AgentConversationHistorySupport {
         entries: List<AgentConversationEntry>
     ): List<AgentConversationEntry> {
         if (entries.isEmpty()) return entries
-        return entries.map { entry ->
+        val normalized = entries.map { entry ->
             if (
                 entry.entryType != AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT ||
                 entry.status != AgentConversationHistoryRepository.STATUS_RUNNING
@@ -238,6 +248,7 @@ internal object AgentConversationHistorySupport {
                 )
             }
         }
+        return normalizeStaleThinkingEntries(normalized)
     }
 
     fun mergeToolPayload(
@@ -530,6 +541,194 @@ internal object AgentConversationHistorySupport {
     private fun trimText(value: String, maxChars: Int): String {
         val normalized = value.trim()
         return if (normalized.length <= maxChars) normalized else normalized.take(maxChars) + "..."
+    }
+
+    private fun normalizeStaleThinkingEntries(
+        entries: List<AgentConversationEntry>
+    ): List<AgentConversationEntry> {
+        if (entries.isEmpty()) return entries
+
+        val terminalEntryTimeByTask = linkedMapOf<String, Long>()
+        val thinkingEntriesByTask = linkedMapOf<String, MutableList<ThinkingEntryRef>>()
+
+        entries.forEachIndexed { index, entry ->
+            val payload = readMap(entry.payloadJson)
+            val cardData = deepThinkingCardData(payload)
+            if (cardData != null) {
+                val taskId = deepThinkingTaskId(entry, cardData) ?: return@forEachIndexed
+                val startTime = parseLong(cardData["startTime"]) ?: entry.createdAt
+                thinkingEntriesByTask.getOrPut(taskId) { mutableListOf() }
+                    .add(
+                        ThinkingEntryRef(
+                            index = index,
+                            entry = entry,
+                            taskId = taskId,
+                            payload = payload,
+                            cardData = cardData,
+                            startTime = startTime,
+                            sequenceRank = thinkingSequenceRank(entry.entryId)
+                        )
+                    )
+                return@forEachIndexed
+            }
+
+            val taskId = terminalTaskId(entry) ?: return@forEachIndexed
+            val current = terminalEntryTimeByTask[taskId] ?: 0L
+            terminalEntryTimeByTask[taskId] = maxOf(current, entry.createdAt)
+        }
+
+        if (thinkingEntriesByTask.isEmpty()) {
+            return entries
+        }
+
+        val updatedEntries = entries.toMutableList()
+        thinkingEntriesByTask.values.forEach { candidates ->
+            val ordered = candidates.sortedWith(
+                compareBy<ThinkingEntryRef> { it.startTime }
+                    .thenBy { it.sequenceRank }
+                    .thenBy { it.entry.createdAt }
+                    .thenBy { it.index }
+            )
+            val latest = ordered.lastOrNull()
+            val terminalTime = latest?.taskId?.let { terminalEntryTimeByTask[it] }
+
+            ordered.forEach { thinkingEntry ->
+                val shouldFinalize = when {
+                    latest == null -> false
+                    thinkingEntry.index != latest.index -> true
+                    terminalTime != null && terminalTime >= thinkingEntry.startTime -> true
+                    else -> false
+                }
+                if (!shouldFinalize) {
+                    return@forEach
+                }
+                val normalized = finalizeThinkingEntry(
+                    entry = thinkingEntry.entry,
+                    payload = thinkingEntry.payload,
+                    cardData = thinkingEntry.cardData,
+                    endTime = maxOf(
+                        thinkingEntry.startTime,
+                        terminalTime ?: System.currentTimeMillis()
+                    )
+                )
+                if (normalized != null) {
+                    updatedEntries[thinkingEntry.index] = normalized
+                }
+            }
+        }
+
+        return updatedEntries
+    }
+
+    private fun finalizeThinkingEntry(
+        entry: AgentConversationEntry,
+        payload: Map<String, Any?>,
+        cardData: Map<String, Any?>,
+        endTime: Long
+    ): AgentConversationEntry? {
+        val currentStage = parseInt(cardData["stage"]) ?: 1
+        val currentLoading = parseBoolean(cardData["isLoading"], currentStage != 4)
+        if (!currentLoading && currentStage == 4) {
+            return null
+        }
+
+        val content = linkedMapOf<String, Any?>().apply {
+            putAll(toStringAnyMap(payload["content"]))
+        }
+        val nextCardData = linkedMapOf<String, Any?>().apply {
+            putAll(cardData)
+            put("isLoading", false)
+            put("stage", 4)
+            if (parseLong(cardData["endTime"]) == null) {
+                put("endTime", endTime)
+            }
+        }
+        content["cardData"] = nextCardData
+        val nextPayload = linkedMapOf<String, Any?>().apply {
+            putAll(payload)
+            put("content", content)
+        }
+        return entry.copy(
+            payloadJson = gson.toJson(nextPayload),
+            updatedAt = entry.updatedAt
+        )
+    }
+
+    private fun deepThinkingCardData(payload: Map<String, Any?>): Map<String, Any?>? {
+        val content = toStringAnyMap(payload["content"])
+        val cardData = toStringAnyMap(content["cardData"])
+        return if (cardData["type"]?.toString() == "deep_thinking") {
+            cardData
+        } else {
+            null
+        }
+    }
+
+    private fun deepThinkingTaskId(
+        entry: AgentConversationEntry,
+        cardData: Map<String, Any?>
+    ): String? {
+        return cardData["taskID"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            ?: extractTaskIdFromEntryId(entry.entryId)
+    }
+
+    private fun terminalTaskId(entry: AgentConversationEntry): String? {
+        if (entry.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT) {
+            return null
+        }
+        return extractTaskIdFromEntryId(entry.entryId)
+            ?.takeIf { !entry.entryId.endsWith("-user") }
+    }
+
+    private fun extractTaskIdFromEntryId(entryId: String): String? {
+        val normalized = entryId.trim()
+        return when {
+            normalized.endsWith("-assistant") ->
+                normalized.removeSuffix("-assistant").takeIf { it.isNotBlank() }
+            normalized.endsWith("-clarify") ->
+                normalized.removeSuffix("-clarify").takeIf { it.isNotBlank() }
+            normalized.endsWith("-permission") ->
+                normalized.removeSuffix("-permission").takeIf { it.isNotBlank() }
+            normalized.endsWith("-text") ->
+                normalized.removeSuffix("-text").takeIf { it.isNotBlank() }
+            normalized.contains("-text-") ->
+                normalized.substringBefore("-text-").takeIf { it.isNotBlank() }
+            normalized.endsWith("-thinking") ->
+                normalized.removeSuffix("-thinking").takeIf { it.isNotBlank() }
+            normalized.contains("-thinking-") ->
+                normalized.substringBefore("-thinking-").takeIf { it.isNotBlank() }
+            else -> null
+        }
+    }
+
+    private fun thinkingSequenceRank(entryId: String): Int {
+        val normalized = entryId.trim()
+        return when {
+            normalized.contains("-thinking-") ->
+                normalized.substringAfterLast("-thinking-").toIntOrNull() ?: 1
+            normalized.endsWith("-thinking") -> 1
+            else -> 0
+        }
+    }
+
+    private fun parseLong(value: Any?): Long? {
+        return when (value) {
+            is Long -> value
+            is Int -> value.toLong()
+            is Number -> value.toLong()
+            is String -> value.trim().toLongOrNull()
+            else -> null
+        }
+    }
+
+    private fun parseInt(value: Any?): Int? {
+        return when (value) {
+            is Int -> value
+            is Long -> value.toInt()
+            is Number -> value.toInt()
+            is String -> value.trim().toIntOrNull()
+            else -> null
+        }
     }
 
     private fun parseBoolean(value: Any?, default: Boolean): Boolean {

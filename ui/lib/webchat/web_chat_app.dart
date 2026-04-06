@@ -351,6 +351,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
       _selectedConversation = conversation;
       _messages = messages;
     });
+    _refreshBrowserSnapshotForMessages(messages);
     _scrollChatToBottom();
   }
 
@@ -664,6 +665,50 @@ class _WebChatHomeState extends State<_WebChatHome> {
     }
   }
 
+  Future<void> _refreshBrowserSnapshot({bool reportError = true}) async {
+    try {
+      final snapshot = await _client.snapshot();
+      if (!mounted) return;
+      setState(() {
+        _browserSnapshot = snapshot;
+        _browserUrlController.text = (snapshot['currentUrl'] ?? '').toString();
+        _browserFrameSeed++;
+      });
+    } catch (error) {
+      if (!mounted || !reportError) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+      });
+    }
+  }
+
+  bool _containsBrowserToolCard(List<ChatMessageModel> messages) {
+    for (final message in messages) {
+      if (message.type != 2) {
+        continue;
+      }
+      final cardData = message.cardData;
+      if (cardData == null) {
+        continue;
+      }
+      if ((cardData['type'] ?? '').toString() != 'agent_tool_summary') {
+        continue;
+      }
+      if ((cardData['toolType'] ?? '').toString() == 'browser') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _refreshBrowserSnapshotForMessages(List<ChatMessageModel> messages) {
+    if (_containsBrowserToolCard(messages)) {
+      unawaited(_refreshBrowserSnapshot(reportError: false));
+    }
+  }
+
   Future<void> _navigateBrowser() async {
     final url = _browserUrlController.text.trim();
     if (url.isEmpty) return;
@@ -721,8 +766,14 @@ class _WebChatHomeState extends State<_WebChatHome> {
             setState(() {
               _messages = messages;
             });
+            _refreshBrowserSnapshotForMessages(messages);
             _scrollChatToBottom();
           }
+        }
+        break;
+      case 'agent_tool_complete':
+        if ((data['toolType'] ?? '').toString().trim() == 'browser') {
+          unawaited(_refreshBrowserSnapshot(reportError: false));
         }
         break;
       case 'agent_complete':
