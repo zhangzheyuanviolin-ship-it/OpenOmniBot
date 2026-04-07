@@ -176,6 +176,11 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <service
+            android:name="cn.com.omnimind.bot.agent.AgentMusicPlaybackService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- 透明剪贴板辅助Activity，用于在前台获取焦点访问剪贴板 -->
         <activity

@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/utils/ui.dart';
@@ -285,13 +284,23 @@ class _OmnibotArtifactPreviewPageState
   Widget _buildInlineResourcePreview(BuildContext context) {
     final metadata = _currentMetadata();
     final maxWidth = MediaQuery.sizeOf(context).width - 32;
+    final preview = OmnibotInlineResourceEmbed(
+      metadata: metadata,
+      maxWidth: maxWidth,
+      preferredHeight: metadata.previewKind == 'pdf'
+          ? (MediaQuery.sizeOf(context).height - 220).clamp(320.0, 960.0)
+          : null,
+    );
+    if (metadata.previewKind == 'pdf') {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(child: preview),
+      );
+    }
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: OmnibotInlineResourceEmbed(
-          metadata: metadata,
-          maxWidth: maxWidth,
-        ),
+        child: preview,
       ),
     );
   }
@@ -365,27 +374,13 @@ class _OmnibotArtifactPreviewPageState
         );
       case 'audio':
       case 'video':
+      case 'pdf':
+      case 'html':
         return _buildInlineResourcePreview(context);
       case 'office_word':
       case 'office_sheet':
       case 'office_slide':
         return _buildInlineResourcePreview(context);
-      case 'html':
-        return Center(
-          child: FilledButton.icon(
-            onPressed: () {
-              GoRouterManager.push(
-                '/webview/webview_page',
-                extra: <String, dynamic>{
-                  'url': Uri.file(widget.path).toString(),
-                  'title': widget.title,
-                },
-              );
-            },
-            icon: const Icon(Icons.language_outlined),
-            label: const Text('在 WebView 中打开'),
-          ),
-        );
       case 'text':
       case 'code':
         if (_loadingText && _textContent == null) {
