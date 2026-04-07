@@ -24,10 +24,16 @@ class HomeDrawer extends ConsumerStatefulWidget {
     super.key,
     this.memoryCount,
     this.newConversationMode = ConversationMode.normal,
+    this.embedded = false,
+    this.closeOnNavigate = true,
+    this.onThreadTargetSelected,
   });
 
   final int? memoryCount;
   final ConversationMode newConversationMode;
+  final bool embedded;
+  final bool closeOnNavigate;
+  final ValueChanged<ConversationThreadTarget>? onThreadTargetSelected;
 
   @override
   ConsumerState<HomeDrawer> createState() => HomeDrawerState();
@@ -247,11 +253,32 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
   }
 
-  void _openNewConversation() {
+  bool get _shouldCloseOnNavigate => widget.closeOnNavigate && !widget.embedded;
+
+  void _maybeCloseDrawer() {
+    if (!_shouldCloseOnNavigate || !Navigator.of(context).canPop()) {
+      return;
+    }
     Navigator.pop(context);
-    GoRouterManager.pushReplacement(
-      '/home/chat',
-      extra: ConversationThreadTarget.newConversation(
+  }
+
+  void _openThreadTarget(ConversationThreadTarget target) {
+    if (widget.embedded && widget.onThreadTargetSelected != null) {
+      widget.onThreadTargetSelected!(target);
+      return;
+    }
+    _maybeCloseDrawer();
+    GoRouterManager.pushReplacement('/home/chat', extra: target);
+  }
+
+  void _navigateTo(String route) {
+    _maybeCloseDrawer();
+    GoRouterManager.push(route);
+  }
+
+  void _openNewConversation() {
+    _openThreadTarget(
+      ConversationThreadTarget.newConversation(
         mode: widget.newConversationMode,
         requestKey: DateTime.now().microsecondsSinceEpoch.toString(),
       ),
@@ -275,9 +302,8 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    return Drawer(
-      width: MediaQuery.of(context).size.width * 0.8,
-      backgroundColor: AppColors.background,
+    final content = ColoredBox(
+      color: AppColors.background,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,13 +320,13 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             _buildMenuItem(
               icon: 'assets/home/task_record_icon.svg',
               title: '任务记录',
-              onTap: () => GoRouterManager.push('/task/execution_history'),
+              onTap: () => _navigateTo('/task/execution_history'),
             ),
 
             _buildMenuItem(
               icon: 'assets/common/schedule_icon.svg',
               title: '定时',
-              onTap: () => GoRouterManager.push('/task/scheduled_tasks'),
+              onTap: () => _navigateTo('/task/scheduled_tasks'),
             ),
             const SizedBox(height: 16),
 
@@ -311,16 +337,21 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
               _DrawerMenuItem(
                 icon: 'assets/home/setting_icon.svg',
                 title: '设置',
-                onTap: () {
-                  Navigator.pop(context);
-                  GoRouterManager.push('/home/settings');
-                },
+                onTap: () => _navigateTo('/home/settings'),
               ),
             ]),
             const SizedBox(height: 16),
           ],
         ),
       ),
+    );
+    if (widget.embedded) {
+      return content;
+    }
+    return Drawer(
+      width: MediaQuery.of(context).size.width * 0.8,
+      backgroundColor: AppColors.background,
+      child: content,
     );
   }
 
@@ -372,7 +403,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                 colors: [Color(0xFF0056FA), Color(0xB2609CF7)],
               ),
               onTap: () {
-                GoRouterManager.push("/memory/memory_center_page");
+                _navigateTo("/memory/memory_center_page");
               },
             ),
           ),
@@ -387,7 +418,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                 colors: [Color(0xFF0056FA), Color(0xB2609CF7)],
               ),
               onTap: () {
-                GoRouterManager.push('/home/skill_store');
+                _navigateTo('/home/skill_store');
               },
             ),
           ),
@@ -603,10 +634,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                   children: [
                     _buildIconActionButton(
                       iconPath: 'assets/home/archive_icon.svg',
-                      onTap: () {
-                        Navigator.pop(context);
-                        GoRouterManager.push('/home/archived_conversations');
-                      },
+                      onTap: () => _navigateTo('/home/archived_conversations'),
                     ),
                     const SizedBox(width: 12),
                     _buildIconActionButton(
@@ -743,11 +771,8 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     if (_busyConversationKeys.contains(conversation.threadKey)) {
       return;
     }
-
-    Navigator.pop(context);
-    GoRouterManager.pushReplacement(
-      '/home/chat',
-      extra: ConversationThreadTarget.existing(
+    _openThreadTarget(
+      ConversationThreadTarget.existing(
         conversationId: conversation.id,
         mode: conversation.mode,
       ),
@@ -940,7 +965,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       ),
     );
   }
-
 }
 
 /// 菜单项数据模型

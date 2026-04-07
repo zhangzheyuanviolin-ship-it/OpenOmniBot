@@ -6,6 +6,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     super.initState();
 
     WidgetsBinding.instance.addObserver(this);
+    _loadHdPadPanePreferences();
     _checkCompanionTaskState();
     AssistsMessageService.setOnTaskFinishCallback(() {
       if (!mounted || _isCompanionToggleLoading) return;
@@ -47,6 +48,16 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final mediaQuery = MediaQuery.maybeOf(context);
+    if (mediaQuery != null &&
+        _isHdPadLandscapeForMediaQuery(mediaQuery) &&
+        _activeSurfaceMode == ChatSurfaceMode.workspace) {
+      _activeSurfaceMode = ChatSurfaceMode.normal;
+      _setChatIslandDisplayLayerForMode(
+        ChatPageMode.normal,
+        ChatIslandDisplayLayer.model,
+      );
+    }
     final route = ModalRoute.of(context);
     if (route is PageRoute && route != _subscribedRoute) {
       if (_subscribedRoute != null) {
@@ -635,14 +646,14 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
   @override
   int _pageIndexForSurface(ChatSurfaceMode mode) => switch (mode) {
-    ChatSurfaceMode.workspace => 0,
-    ChatSurfaceMode.normal => 1,
-    ChatSurfaceMode.openclaw => 1,
+    ChatSurfaceMode.normal => 0,
+    ChatSurfaceMode.workspace => 1,
+    ChatSurfaceMode.openclaw => 0,
   };
 
   @override
   ChatSurfaceMode _surfaceForPageIndex(int pageIndex) => switch (pageIndex) {
-    0 => ChatSurfaceMode.workspace,
+    1 => ChatSurfaceMode.workspace,
     _ => ChatSurfaceMode.normal,
   };
 

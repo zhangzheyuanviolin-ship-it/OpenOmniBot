@@ -119,13 +119,13 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
   double _pageVerticalDragDelta = 0;
 
   int _pageIndexForSurface(ChatSurfaceMode mode) => switch (mode) {
-    ChatSurfaceMode.workspace => 0,
-    ChatSurfaceMode.normal => 1,
+    ChatSurfaceMode.normal => 0,
+    ChatSurfaceMode.workspace => 1,
     ChatSurfaceMode.openclaw => 2,
   };
 
   ChatSurfaceMode _surfaceForPageIndex(int pageIndex) => switch (pageIndex) {
-    0 => ChatSurfaceMode.workspace,
+    1 => ChatSurfaceMode.workspace,
     2 => ChatSurfaceMode.openclaw,
     _ => ChatSurfaceMode.normal,
   };
@@ -431,7 +431,7 @@ Future<void> _tapModeSegment(WidgetTester tester, int index) async {
   final slider = find.byType(ChatModeSlider);
   final box = tester.renderObject<RenderBox>(slider);
   final topLeft = box.localToGlobal(Offset.zero);
-  final segmentWidth = box.size.width / 3;
+  final segmentWidth = box.size.width / 2;
   final tapOffset =
       topLeft + Offset(segmentWidth * (index + 0.5), box.size.height / 2);
   await tester.tapAt(tapOffset);
@@ -450,6 +450,36 @@ void main() {
 
     expect(find.text('layer:model'), findsOneWidget);
     expect(find.text('gpt-5.4'), findsOneWidget);
+  });
+
+  testWidgets('uses chat-left workspace-right surface order', (tester) async {
+    await tester.pumpWidget(const _SurfaceTransitionHarness());
+
+    await _tapModeSegment(tester, 1);
+    await _pumpSurfaceSwitch(tester);
+    expect(find.text('active:workspace'), findsOneWidget);
+
+    await _tapModeSegment(tester, 0);
+    await _pumpSurfaceSwitch(tester);
+    expect(find.text('active:normal'), findsOneWidget);
+  });
+
+  testWidgets('content swipe matches chat-left workspace-right order', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const _SurfaceTransitionHarness());
+
+    await _tapModeSegment(tester, 0);
+    await _pumpSurfaceSwitch(tester);
+    expect(find.text('active:normal'), findsOneWidget);
+
+    await tester.fling(find.byType(PageView), const Offset(-640, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.text('active:workspace'), findsOneWidget);
+
+    await tester.fling(find.byType(PageView), const Offset(640, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.text('active:normal'), findsOneWidget);
   });
 
   testWidgets('shows app update indicator next to companion button', (
@@ -563,6 +593,35 @@ void main() {
     expect(find.text('layer:model'), findsOneWidget);
   });
 
+  testWidgets('hides surface switcher when disabled', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: _SvgTestAssetBundle(),
+          child: Scaffold(
+            body: ChatAppBar(
+              onMenuTap: () {},
+              onCompanionTap: () {},
+              activeMode: ChatSurfaceMode.normal,
+              onModeChanged: (_) {},
+              activeModelId: 'gpt-5.4',
+              displayLayer: ChatIslandDisplayLayer.mode,
+              onDisplayLayerChanged: (_) {},
+              onTerminalEnvironmentTap: (_) {},
+              onTerminalTap: () {},
+              onBrowserTap: () {},
+              showMenuButton: false,
+              showSurfaceSwitcher: false,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(ChatModeSlider), findsNothing);
+    expect(find.text('gpt-5.4'), findsOneWidget);
+  });
+
   testWidgets(
     'reveals model only after normal surface settles and stays idle',
     (tester) async {
@@ -570,7 +629,7 @@ void main() {
 
       expect(find.text('active:openclaw'), findsOneWidget);
 
-      await _tapModeSegment(tester, 1);
+      await _tapModeSegment(tester, 0);
       await _pumpSurfaceSwitch(tester);
 
       expect(find.text('active:normal'), findsOneWidget);
@@ -617,7 +676,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const _SurfaceTransitionHarness());
 
-    await _tapModeSegment(tester, 1);
+    await _tapModeSegment(tester, 0);
     await _pumpSurfaceSwitch(tester);
     expect(find.text('active:normal'), findsOneWidget);
     expect(find.text('layer:mode'), findsOneWidget);
