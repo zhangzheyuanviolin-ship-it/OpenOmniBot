@@ -72,6 +72,7 @@ object EmbeddedTerminalRuntime {
         val completed: Boolean,
         val success: Boolean,
         val exitCode: Int?,
+        val timedOut: Boolean = false,
         val output: String,
         val transcript: String,
         val currentDirectory: String,
@@ -92,6 +93,12 @@ object EmbeddedTerminalRuntime {
         val currentDirectory: String,
         val transcript: String,
         val message: String
+    )
+
+    internal data class SessionLiveOutputUpdate(
+        val visibleOutput: String,
+        val outputDelta: String,
+        val exitCode: Int?
     )
 
     private data class SessionHandle(
@@ -543,10 +550,31 @@ object EmbeddedTerminalRuntime {
             workingDirectory = workingDirectory,
             environment = environment
         )
+        var streamedVisibleOutput = false
         val hiddenResult = terminalManager(context).executeHiddenCommand(
             command = wrappedCommand,
             executorKey = buildExecutorKey(workingDirectory),
-            timeoutMs = timeoutSeconds * 1000L
+            timeoutMs = timeoutSeconds * 1000L,
+            onOutputChunk = { chunk ->
+                val cleanedChunk = sanitizeTerminalNoise(chunk)
+                if (cleanedChunk.isBlank()) {
+                    return@executeHiddenCommand
+                }
+                streamedVisibleOutput = true
+                val normalizedChunk = if (cleanedChunk.endsWith("\n")) {
+                    cleanedChunk
+                } else {
+                    "$cleanedChunk\n"
+                }
+                onLiveUpdate(
+                    TermuxLiveUpdate(
+                        sessionId = liveSessionId,
+                        summary = summarizeLiveTerminalChunk(normalizedChunk),
+                        outputDelta = normalizedChunk,
+                        streamState = "running"
+                    )
+                )
+            }
         )
         val cleanedOutput = sanitizeTerminalNoise(hiddenResult.output)
         val trimmedOutput = trimTerminalOutput(cleanedOutput)
@@ -559,7 +587,7 @@ object EmbeddedTerminalRuntime {
             else -> null
         }
 
-        if (trimmedOutput.isNotBlank()) {
+        if (trimmedOutput.isNotBlank() && !streamedVisibleOutput) {
             onLiveUpdate(
                 TermuxLiveUpdate(
                     sessionId = liveSessionId,
@@ -585,6 +613,20 @@ object EmbeddedTerminalRuntime {
                 put("basePackagesReady", status.basePackagesReady)
             }
         )
+    }
+
+    private fun summarizeLiveTerminalChunk(chunk: String): String {
+        return chunk.lineSequence()
+            .map { it.trim() }
+            .lastOrNull { it.isNotEmpty() }
+            ?.let { line ->
+                if (line.length <= 120) {
+                    line
+                } else {
+                    line.take(119).trimEnd() + "…"
+                }
+            }
+            ?: "终端输出更新中"
     }
 
     suspend fun startSession(
@@ -650,7 +692,8 @@ object EmbeddedTerminalRuntime {
         command: String,
         workingDirectory: String?,
         timeoutSeconds: Int,
-        environment: Map<String, String> = emptyMap()
+        environment: Map<String, String> = emptyMap(),
+        onLiveUpdate: suspend (TermuxLiveUpdate) -> Unit = {}
     ): SessionCommandResult {
         val handle = sessionHandles[sessionId]
             ?: return SessionCommandResult(
@@ -711,7 +754,8 @@ object EmbeddedTerminalRuntime {
                 handle = handle,
                 command = command,
                 timeoutSeconds = timeoutSeconds,
-                environment = environment
+                environment = environment,
+                onLiveUpdate = onLiveUpdate
             ).copy(sessionId = sessionId)
         }
     }
@@ -841,7 +885,8 @@ object EmbeddedTerminalRuntime {
         handle: SessionHandle,
         command: String,
         timeoutSeconds: Int,
-        environment: Map<String, String> = emptyMap()
+        environment: Map<String, String> = emptyMap(),
+        onLiveUpdate: suspend (TermuxLiveUpdate) -> Unit = {}
     ): SessionCommandResult {
         val token = UUID.randomUUID().toString()
         val sessionAccess = ReTerminalSessionBridge.ensureHeadlessSession(
@@ -865,17 +910,32 @@ object EmbeddedTerminalRuntime {
         )
 
         var completionTranscript: String? = null
+        var previousVisibleOutput = ""
         withTimeoutOrNull(timeoutSeconds * 1000L) {
             while (completionTranscript == null) {
                 val currentTranscript = ReTerminalSessionBridge.getSession(
                     context = context,
                     sessionId = handle.externalSessionId
                 )?.getTranscriptText().orEmpty()
-                val parsed = parsePersistentCommandOutput(
+                val liveOutput = buildSessionLiveOutputUpdate(
+                    previousVisibleOutput = previousVisibleOutput,
                     rawOutput = currentTranscript.safeSubstring(transcriptStart),
                     token = token
                 )
-                if (parsed.exitCode != null) {
+                if (liveOutput.visibleOutput != previousVisibleOutput) {
+                    previousVisibleOutput = liveOutput.visibleOutput
+                }
+                if (liveOutput.outputDelta.isNotBlank()) {
+                    onLiveUpdate(
+                        TermuxLiveUpdate(
+                            sessionId = handle.externalSessionId,
+                            summary = summarizeLiveTerminalChunk(liveOutput.outputDelta),
+                            outputDelta = liveOutput.outputDelta,
+                            streamState = "running"
+                        )
+                    )
+                }
+                if (liveOutput.exitCode != null) {
                     completionTranscript = currentTranscript
                     continue
                 }
@@ -889,6 +949,7 @@ object EmbeddedTerminalRuntime {
                 completed = false,
                 success = false,
                 exitCode = null,
+                timedOut = true,
                 output = "",
                 transcript = snapshot.transcript,
                 currentDirectory = snapshot.currentDirectory,
@@ -912,10 +973,31 @@ object EmbeddedTerminalRuntime {
             completed = true,
             success = parsed.exitCode == 0,
             exitCode = parsed.exitCode,
+            timedOut = false,
             output = cleanedOutput,
             transcript = snapshot.transcript,
             currentDirectory = snapshot.currentDirectory,
             errorMessage = if (parsed.exitCode == 0) null else "终端会话命令执行失败（exit=${parsed.exitCode})"
+        )
+    }
+
+    internal fun buildSessionLiveOutputUpdate(
+        previousVisibleOutput: String,
+        rawOutput: String,
+        token: String
+    ): SessionLiveOutputUpdate {
+        val parsed = parsePersistentCommandOutput(
+            rawOutput = rawOutput,
+            token = token
+        )
+        val visibleOutput = sanitizeTerminalNoise(parsed.output)
+        return SessionLiveOutputUpdate(
+            visibleOutput = visibleOutput,
+            outputDelta = extractTerminalOutputDelta(
+                previousVisibleOutput = previousVisibleOutput,
+                currentVisibleOutput = visibleOutput
+            ),
+            exitCode = parsed.exitCode
         )
     }
 
@@ -1308,6 +1390,25 @@ object EmbeddedTerminalRuntime {
             output = cleaned,
             exitCode = exitCode
         )
+    }
+
+    private fun extractTerminalOutputDelta(
+        previousVisibleOutput: String,
+        currentVisibleOutput: String
+    ): String {
+        if (currentVisibleOutput.isEmpty() || currentVisibleOutput == previousVisibleOutput) {
+            return ""
+        }
+        if (previousVisibleOutput.isEmpty()) {
+            return currentVisibleOutput
+        }
+        if (currentVisibleOutput.startsWith(previousVisibleOutput)) {
+            return currentVisibleOutput.substring(previousVisibleOutput.length)
+        }
+        val commonPrefixLength = previousVisibleOutput
+            .commonPrefixWith(currentVisibleOutput)
+            .length
+        return currentVisibleOutput.safeSubstring(commonPrefixLength)
     }
 
     private fun buildExecutorKey(workingDirectory: String?): String {

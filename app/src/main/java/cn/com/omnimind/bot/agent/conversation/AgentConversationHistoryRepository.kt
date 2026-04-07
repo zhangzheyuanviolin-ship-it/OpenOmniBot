@@ -34,6 +34,7 @@ class AgentConversationHistoryRepository(
         const val STATUS_RUNNING = "running"
         const val STATUS_SUCCESS = "success"
         const val STATUS_ERROR = "error"
+        const val STATUS_TIMEOUT = "timeout"
         const val STATUS_INTERRUPTED = "interrupted"
 
     }
@@ -459,6 +460,7 @@ class AgentConversationHistoryRepository(
             "terminalOutputDelta" to payload["terminalOutputDelta"]?.toString().orEmpty(),
             "terminalSessionId" to payload["terminalSessionId"],
             "terminalStreamState" to payload["terminalStreamState"]?.toString().orEmpty(),
+            "timedOut" to (payload["timedOut"] == true),
             "workspaceId" to payload["workspaceId"],
             "artifacts" to toListOfStringAnyMap(payload["artifacts"]),
             "actions" to toListOfStringAnyMap(payload["actions"]),

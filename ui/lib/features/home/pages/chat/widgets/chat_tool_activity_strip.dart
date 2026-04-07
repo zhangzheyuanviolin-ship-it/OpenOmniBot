@@ -1,8 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:ui/features/home/pages/chat/tool_activity_utils.dart';
+import 'package:ui/features/home/pages/chat/tool_activity_utils.dart'
+    hide buildAgentToolTranscript;
 import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail_gesture_gate.dart';
+import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_transcript.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/terminal_output_utils.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/theme/app_colors.dart';
@@ -22,11 +24,11 @@ const ValueKey<String> kChatToolActivityToggleKey = ValueKey<String>(
 
 const double _kToolActivityRowHeight = 32;
 const double _kToolActivitySurfaceRadius = 18;
-const double _kToolActivityPreviewWidth = 102;
-const double _kToolActivityPreviewHeight = 56;
-const double _kToolActivityPreviewOverlap = 31;
+const double _kToolActivityPreviewWidth = 94;
+const double _kToolActivityPreviewHeight = 54;
+const double _kToolActivityPreviewOverlap = 30;
 const double _kToolActivitySurfaceHorizontalInset = 20;
-const double _kToolActivityDrawerMaxHeight = 228;
+const double _kToolActivityDrawerMaxHeight = 264;
 const double _kToolActivityTypeSlotWidth = 34;
 const double _kToolActivityStatusSlotWidth = 42;
 const double _kToolActivityTrailingSlotWidth = 18;
@@ -84,6 +86,7 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
         .toList(growable: false);
     final canExpand = historyCards.isNotEmpty;
     final isExpanded = _resolvedExpanded && canExpand;
+    final activeTranscript = buildAgentToolTranscript(activeCard);
     if (!canExpand && _resolvedExpanded) {
       _scheduleExpandedResetIfNeeded();
     }
@@ -157,7 +160,7 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
                     ? const SizedBox.shrink(key: ValueKey('hidden-preview'))
                     : _TerminalThumbnail(
                         key: kChatToolActivityPreviewKey,
-                        previewText: _buildPreviewText(activeCard),
+                        transcript: activeTranscript,
                         onTap: () => _openCardDetailDialog(
                           context,
                           cardData: activeCard,
@@ -199,34 +202,6 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
       (cardData['toolTitle'] ?? '').toString(),
       (cardData['status'] ?? '').toString(),
     ].join('|');
-  }
-
-  String _buildPreviewText(Map<String, dynamic> activeCard) {
-    final toolType = (activeCard['toolType'] ?? '').toString();
-    if (toolType == 'terminal') {
-      final output = resolveAgentToolTerminalOutput(activeCard).trim();
-      if (output.isNotEmpty) {
-        final lines = output
-            .split('\n')
-            .map((line) => line.trimRight())
-            .where((line) => line.isNotEmpty)
-            .toList(growable: false);
-        if (lines.isNotEmpty) {
-          final previewLines = lines.length > 4
-              ? lines.sublist(lines.length - 4)
-              : lines;
-          return previewLines.join('\n');
-        }
-      }
-    }
-
-    final title = resolveAgentToolTitle(activeCard);
-    final preview = resolveAgentToolPreview(activeCard);
-    final meta = resolveAgentToolTypeLabel(activeCard);
-    return [
-      '\$ $title',
-      '> $meta · $preview',
-    ].where((line) => line.trim().isNotEmpty).join('\n');
   }
 
   double _resolveHistoryHeight(List<Map<String, dynamic>> cards) {
@@ -305,128 +280,11 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
     });
   }
 
-  String _buildCardDetailText(Map<String, dynamic> cardData) {
-    final toolType = (cardData['toolType'] ?? '').toString();
-    if (toolType == 'terminal') {
-      final output = resolveAgentToolTerminalOutput(cardData).trimRight();
-      if (output.isNotEmpty) {
-        return output;
-      }
-    }
-
-    final title = resolveAgentToolTitle(cardData);
-    final statusLabel = resolveAgentToolStatusLabel(cardData);
-    final preview = resolveAgentToolPreview(cardData).trim();
-    final summary = (cardData['summary'] ?? '').toString().trim();
-    final progress = (cardData['progress'] ?? '').toString().trim();
-    final sections = <String>[];
-
-    if (progress.isNotEmpty && progress != title) {
-      sections.add(progress);
-    }
-    if (summary.isNotEmpty &&
-        summary != title &&
-        summary != progress &&
-        !sections.contains(summary)) {
-      sections.add(summary);
-    }
-    if (preview.isNotEmpty &&
-        preview != title &&
-        preview != progress &&
-        preview != summary &&
-        preview != statusLabel &&
-        !sections.contains(preview)) {
-      sections.add(preview);
-    }
-    if (sections.isEmpty) {
-      sections.add('暂无工具调用信息');
-    }
-    return sections.join('\n\n');
-  }
-
   Future<void> _openCardDetailDialog(
     BuildContext context, {
     required Map<String, dynamic> cardData,
   }) {
-    final title = resolveAgentToolTitle(cardData);
-    final typeLabel = resolveAgentToolTypeLabel(cardData);
-    final statusLabel = resolveAgentToolStatusLabel(cardData);
-    final status = (cardData['status'] ?? 'running').toString();
-    final displayText = _buildCardDetailText(cardData);
-    return showDialog<void>(
-      context: context,
-      useRootNavigator: false,
-      builder: (dialogContext) {
-        return Dialog(
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 30,
-          ),
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(dialogContext).size.height * 0.72,
-            ),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0C1220),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFF1E314F)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x6610182B),
-                  blurRadius: 28,
-                  offset: Offset(0, 18),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFFF2F7FF),
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      _DialogMetaTag(label: typeLabel),
-                      const SizedBox(width: 6),
-                      _DialogStatusTag(status: status, label: statusLabel),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-                    child: SelectableText.rich(
-                      AnsiTextSpanBuilder.build(
-                        displayText,
-                        const TextStyle(
-                          color: Color(0xFFCBE3CF),
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                          height: 1.45,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    return showAgentToolDetailDialog(context, cardData: cardData);
   }
 }
 
@@ -633,58 +491,73 @@ class ToolActivityRow extends StatelessWidget {
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.fromLTRB(10 + leadingInset, 0, 8, 0),
-        child: Row(
-          children: [
-            _StatusDot(status: status),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                resolveAgentToolTitle(card),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.text,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                  height: 1.05,
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            SizedBox(
-              width: _kToolActivityTypeSlotWidth,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  toolTypeLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    color: Color(0xFF7C8DA5),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.1,
-                    height: 1.05,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final showTypeLabel =
+                constraints.maxWidth >=
+                _kToolActivityTypeSlotWidth +
+                    _kToolActivityStatusSlotWidth +
+                    _kToolActivityTrailingSlotWidth +
+                    28;
+            return Row(
+              children: [
+                _StatusDot(status: status),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    resolveAgentToolTitle(card),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                      height: 1.05,
+                    ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 4),
-            SizedBox(
-              width: _kToolActivityStatusSlotWidth,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: _StatusTag(status: status, label: statusLabel),
-              ),
-            ),
-            const SizedBox(width: 4),
-            SizedBox(
-              width: _kToolActivityTrailingSlotWidth,
-              child: Align(alignment: Alignment.centerRight, child: trailing),
-            ),
-          ],
+                SizedBox(width: showTypeLabel ? 6 : 0),
+                SizedBox(
+                  width: showTypeLabel ? _kToolActivityTypeSlotWidth : 0,
+                  child: showTypeLabel
+                      ? Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            toolTypeLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              color: Color(0xFF7C8DA5),
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.1,
+                              height: 1.05,
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: _kToolActivityStatusSlotWidth,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: _StatusTag(status: status, label: statusLabel),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: _kToolActivityTrailingSlotWidth,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: trailing,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -698,7 +571,7 @@ class _StatusDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _statusColor(status);
+    final color = resolveAgentToolStatusColor(status);
     return Container(
       width: 8,
       height: 8,
@@ -725,7 +598,7 @@ class _StatusTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _statusColor(status);
+    final color = resolveAgentToolStatusColor(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
@@ -748,86 +621,18 @@ class _StatusTag extends StatelessWidget {
   }
 }
 
-class _DialogMetaTag extends StatelessWidget {
-  const _DialogMetaTag({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFF152133),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFF273752)),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Color(0xFF9FB1C8),
-          fontSize: 9.2,
-          fontWeight: FontWeight.w700,
-          height: 1,
-        ),
-      ),
-    );
-  }
-}
-
-class _DialogStatusTag extends StatelessWidget {
-  const _DialogStatusTag({required this.status, required this.label});
-
-  final String status;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _statusColor(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.32)),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: color.withValues(alpha: 0.96),
-          fontSize: 9.2,
-          fontWeight: FontWeight.w700,
-          height: 1,
-        ),
-      ),
-    );
-  }
-}
-
 class _TerminalThumbnail extends StatelessWidget {
   const _TerminalThumbnail({
     super.key,
-    required this.previewText,
+    required this.transcript,
     required this.onTap,
   });
 
-  final String previewText;
+  final AgentToolTranscript transcript;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final lines = _thumbnailText(previewText)
-        .split('\n')
-        .map((line) => line.trimRight())
-        .where((line) => line.isNotEmpty)
-        .toList(growable: false);
-    final headline = lines.isEmpty ? '\$ idle' : lines.first;
-    final body = lines.length > 1 ? lines.sublist(1).join('\n') : '';
-
     return PhysicalModel(
       color: const Color(0xFF12161E),
       borderRadius: _kToolActivityPreviewBorderRadius,
@@ -841,44 +646,46 @@ class _TerminalThumbnail extends StatelessWidget {
           child: Ink(
             width: _kToolActivityPreviewWidth,
             height: _kToolActivityPreviewHeight,
-            padding: const EdgeInsets.fromLTRB(12, 10, 11, 10),
+            padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF1D212B), Color(0xFF12161E)],
+                colors: [Color(0xFF1A2231), Color(0xFF0E1422)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: _kToolActivityPreviewBorderRadius,
-              border: Border.all(color: const Color(0xFF2C3240)),
+              border: Border.all(color: const Color(0xFF2C3B52)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  headline,
+                  transcript.promptLine,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFFF4F7FB),
-                    fontSize: 7.8,
+                    fontSize: 6.9,
                     height: 1.05,
                     fontWeight: FontWeight.w600,
                     fontFamily: 'monospace',
                   ),
                 ),
-                if (body.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+                if (transcript.previewText.trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
                   Expanded(
-                    child: Text(
-                      body,
+                    child: Text.rich(
+                      AnsiTextSpanBuilder.build(
+                        transcript.previewText,
+                        const TextStyle(
+                          color: Color(0xFF88EEA6),
+                          fontSize: 5.7,
+                          height: 1.08,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
                       maxLines: 3,
                       overflow: TextOverflow.clip,
-                      style: const TextStyle(
-                        color: Color(0xFF88EEA6),
-                        fontSize: 6.8,
-                        height: 1.16,
-                        fontFamily: 'monospace',
-                      ),
                     ),
                   ),
                 ] else
@@ -889,27 +696,6 @@ class _TerminalThumbnail extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _thumbnailText(String previewText) {
-    final preferred = previewText.trim();
-    if (preferred.isNotEmpty) {
-      return preferred;
-    }
-    return '\$ idle';
-  }
-}
-
-Color _statusColor(String status) {
-  switch (status) {
-    case 'success':
-      return const Color(0xFF2F8F4E);
-    case 'error':
-      return AppColors.alertRed;
-    case 'interrupted':
-      return const Color(0xFFFFAA2C);
-    default:
-      return const Color(0xFF2C7FEB);
   }
 }
 

@@ -124,6 +124,7 @@ class AgentEventAdapter(
                 "displayName" to descriptor.displayName,
                 "toolType" to descriptor.toolType,
                 "success" to result.success,
+                "timedOut" to result.timedOut,
                 "summary" to result.summaryText,
                 "previewJson" to result.previewJson,
                 "rawResultJson" to result.rawResultJson,

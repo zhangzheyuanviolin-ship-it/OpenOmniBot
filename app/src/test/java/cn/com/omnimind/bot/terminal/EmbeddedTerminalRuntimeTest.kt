@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.terminal
 
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,5 +40,35 @@ class EmbeddedTerminalRuntimeTest {
         assertTrue(exports.contains("export OPENAI_API_KEY='sk-test'\"'\"'value'"))
         assertTrue(exports.contains("export PATH='/tmp/bin'"))
         assertFalse(exports.contains("1INVALID"))
+    }
+
+    @Test
+    fun buildSessionLiveOutputUpdateStreamsOnlyNewSessionOutput() {
+        val token = "session-token"
+
+        val update = EmbeddedTerminalRuntime.buildSessionLiveOutputUpdate(
+            previousVisibleOutput = "line 1",
+            rawOutput = "line 1\nline 2",
+            token = token
+        )
+
+        assertEquals("line 1\nline 2", update.visibleOutput)
+        assertEquals("\nline 2", update.outputDelta)
+        assertEquals(null, update.exitCode)
+    }
+
+    @Test
+    fun buildSessionLiveOutputUpdateRemovesCompletionMarkerAndPrompt() {
+        val token = "session-token"
+
+        val update = EmbeddedTerminalRuntime.buildSessionLiveOutputUpdate(
+            previousVisibleOutput = "",
+            rawOutput = "done\n__OMNIBOT_SESSION_DONE__:$token:0\n~ $ ",
+            token = token
+        )
+
+        assertEquals("done", update.visibleOutput)
+        assertEquals("done", update.outputDelta)
+        assertEquals(0, update.exitCode)
     }
 }

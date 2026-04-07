@@ -129,6 +129,7 @@ sealed class ToolExecutionResult {
         val previewJson: String,
         val rawResultJson: String,
         val success: Boolean = true,
+        val timedOut: Boolean = false,
         val terminalOutput: String = "",
         val terminalSessionId: String? = null,
         val terminalStreamState: String = "completed",

@@ -610,6 +610,7 @@ class AgentToolRouter(
                     )
                 ),
                 success = false,
+                timedOut = false,
                 terminalOutput = e.message ?: "终端命令执行失败",
                 terminalStreamState = "error",
                 workspaceId = workspace.id
@@ -658,6 +659,7 @@ class AgentToolRouter(
                 previewJson = json.encodeToString(mapToJsonElement(payload)),
                 rawResultJson = json.encodeToString(mapToJsonElement(payload)),
                 success = true,
+                timedOut = false,
                 terminalOutput = "",
                 terminalSessionId = sessionId,
                 terminalStreamState = "ready",
@@ -703,7 +705,16 @@ class AgentToolRouter(
             val shellWorkingDirectory = parsedArgs.workingDirectory?.let {
                 resolveShellWorkingDirectory(it, workspace)
             }
-            reportToolProgress(callback, toolName, "正在向终端会话发送命令")
+            reportToolProgress(
+                callback,
+                toolName,
+                "正在向终端会话发送命令",
+                mapOf(
+                    "summary" to "正在向终端会话发送命令",
+                    "terminalSessionId" to sessionId,
+                    "terminalStreamState" to "starting"
+                )
+            )
             val result = EmbeddedTerminalRuntime.executeSessionCommand(
                 context = context,
                 sessionId = sessionId,
@@ -711,6 +722,20 @@ class AgentToolRouter(
                 workingDirectory = shellWorkingDirectory,
                 timeoutSeconds = parsedArgs.timeoutSeconds,
                 environment = terminalEnvironment,
+                onLiveUpdate = { update ->
+                    val summary = update.summary.ifBlank { "终端输出更新中" }
+                    reportToolProgress(
+                        callback,
+                        toolName,
+                        summary,
+                        mapOf<String, Any?>(
+                            "summary" to summary,
+                            "terminalSessionId" to update.sessionId,
+                            "terminalOutputDelta" to update.outputDelta,
+                            "terminalStreamState" to update.streamState
+                        )
+                    )
+                }
             )
             val terminalStreamState = when {
                 !result.completed -> "running"
@@ -725,6 +750,7 @@ class AgentToolRouter(
                 "command" to parsedArgs.command,
                 "exitCode" to result.exitCode,
                 "completed" to result.completed,
+                "timedOut" to result.timedOut,
                 "logPath" to logArtifact.workspacePath,
                 "androidLogPath" to logArtifact.androidPath,
                 "logUri" to logArtifact.uri,
@@ -749,6 +775,7 @@ class AgentToolRouter(
                 previewJson = json.encodeToString(mapToJsonElement(rawResult)),
                 rawResultJson = json.encodeToString(mapToJsonElement(rawResult)),
                 success = result.completed && result.success && result.errorMessage == null,
+                timedOut = result.timedOut,
                 terminalOutput = if (result.completed) result.output else result.transcript,
                 terminalSessionId = sessionId,
                 terminalStreamState = terminalStreamState,
@@ -802,6 +829,7 @@ class AgentToolRouter(
                 previewJson = json.encodeToString(mapToJsonElement(payload)),
                 rawResultJson = json.encodeToString(mapToJsonElement(payload)),
                 success = true,
+                timedOut = false,
                 terminalOutput = content,
                 terminalSessionId = sessionId,
                 terminalStreamState = if (readResult.commandRunning) "running" else "completed",
@@ -846,6 +874,7 @@ class AgentToolRouter(
                 previewJson = json.encodeToString(mapToJsonElement(payload)),
                 rawResultJson = json.encodeToString(mapToJsonElement(payload)),
                 success = result,
+                timedOut = false,
                 terminalOutput = if (result) "session_stopped:$sessionId" else "session_not_found:$sessionId",
                 terminalSessionId = sessionId,
                 terminalStreamState = if (result) "stopped" else "error",
@@ -2749,6 +2778,7 @@ class AgentToolRouter(
             previewJson = json.encodeToString(mapToJsonElement(previewMap)),
             rawResultJson = json.encodeToString(mapToJsonElement(rawResultMap)),
             success = result.success,
+            timedOut = result.timedOut,
             terminalOutput = result.terminalOutput,
             terminalSessionId = result.liveSessionId,
             terminalStreamState = result.liveStreamState,

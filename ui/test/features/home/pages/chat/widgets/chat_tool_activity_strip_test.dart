@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/chat/widgets/chat_tool_activity_strip.dart';
@@ -69,16 +71,23 @@ void main() {
         'type': 'agent_tool_summary',
         'status': 'success',
         'toolType': 'terminal',
+        'toolName': 'terminal_execute',
         'toolTitle': '查看日志',
         'summary': '终端执行完成',
+        'argsJson': jsonEncode({
+          'command': 'tail -n 2 app.log',
+          'workingDirectory': '/workspace',
+        }),
         'terminalOutput': 'line 1\nline 2',
       }),
       ChatMessageModel.cardMessage({
         'type': 'agent_tool_summary',
         'status': 'success',
         'toolType': 'browser',
+        'toolName': 'browser_use',
         'toolTitle': '打开官网',
         'summary': '页面已加载',
+        'argsJson': jsonEncode({'url': 'https://omnimind.ai'}),
       }),
     ];
 
@@ -89,15 +98,45 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(
+      find.descendant(
+        of: find.byKey(kChatToolActivityPreviewKey),
+        matching: find.text(r'$ cd /workspace && tail -n 2 app.log'),
+      ),
+      findsOneWidget,
+    );
+
     await tester.tap(find.byKey(kChatToolActivityPreviewKey));
     await tester.pumpAndSettle();
 
     final dialog = find.byType(Dialog);
 
-    expect(find.text('查看日志'), findsWidgets);
-    expect(find.textContaining('line 2'), findsWidgets);
-    expect(find.text('打开官网'), findsNothing);
-    expect(find.text('页面已加载'), findsNothing);
+    expect(
+      find.descendant(of: dialog, matching: find.text('查看日志')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining('tail -n 2 app.log', findRichText: true),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining('line 2', findRichText: true),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialog, matching: find.text('打开官网')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: dialog, matching: find.text('页面已加载')),
+      findsNothing,
+    );
     expect(find.byIcon(Icons.close_rounded), findsNothing);
     expect(
       find.descendant(of: dialog, matching: find.text('终端')),
@@ -119,16 +158,30 @@ void main() {
         'type': 'agent_tool_summary',
         'status': 'success',
         'toolType': 'terminal',
+        'toolName': 'terminal_execute',
         'toolTitle': '查看日志',
         'summary': '终端执行完成',
+        'argsJson': jsonEncode({
+          'command': 'tail -n 2 app.log',
+          'workingDirectory': '/workspace',
+        }),
         'terminalOutput': 'line 1\nline 2',
       }),
       ChatMessageModel.cardMessage({
         'type': 'agent_tool_summary',
         'status': 'success',
         'toolType': 'browser',
+        'toolName': 'browser_use',
         'toolTitle': '打开官网',
         'summary': '页面已加载',
+        'argsJson': jsonEncode({
+          'url': 'https://omnimind.ai/docs',
+          'query': 'docs',
+        }),
+        'resultPreviewJson': jsonEncode({
+          'currentUrl': 'https://omnimind.ai/docs',
+          'title': 'Omnimind Docs',
+        }),
       }),
     ];
 
@@ -146,14 +199,112 @@ void main() {
 
     final dialog = find.byType(Dialog);
 
-    expect(find.text('页面已加载'), findsOneWidget);
-    expect(find.textContaining('line 2'), findsNothing);
+    expect(
+      find.descendant(of: dialog, matching: find.text('打开官网')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining(
+          'browser_use --url https://omnimind.ai/docs --query docs',
+          findRichText: true,
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining(
+          'currentUrl: https://omnimind.ai/docs',
+          findRichText: true,
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining(
+          'title: Omnimind Docs',
+          findRichText: true,
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining('line 2', findRichText: true),
+      ),
+      findsNothing,
+    );
     expect(
       find.descendant(of: dialog, matching: find.text('浏览器')),
       findsOneWidget,
     );
     expect(
       find.descendant(of: dialog, matching: find.text('成功')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('timeout thumbnail and detail dialog render dedicated status', (
+    tester,
+  ) async {
+    final messages = [
+      ChatMessageModel.cardMessage({
+        'type': 'agent_tool_summary',
+        'status': 'timeout',
+        'toolType': 'terminal',
+        'toolName': 'terminal_execute',
+        'toolTitle': '等待超时',
+        'summary': '终端命令等待超时，可能仍在后台继续运行。',
+        'argsJson': jsonEncode({
+          'command': 'sleep 10',
+          'workingDirectory': '/workspace',
+        }),
+        'terminalOutput': 'still running',
+      }),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ChatToolActivityStrip(messages: messages)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(kChatToolActivityPreviewKey),
+        matching: find.text(r'$ cd /workspace && sleep 10'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(kChatToolActivityPreviewKey));
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(Dialog);
+
+    expect(
+      find.descendant(of: dialog, matching: find.text('超时')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining('sleep 10', findRichText: true),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining('still running', findRichText: true),
+      ),
       findsOneWidget,
     );
   });
