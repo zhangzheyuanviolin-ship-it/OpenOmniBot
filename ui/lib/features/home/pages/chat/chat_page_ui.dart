@@ -741,10 +741,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     const shellPadding = EdgeInsets.fromLTRB(8, 10, 8, 10);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final availableWidth = math.max(
-          0,
-          constraints.maxWidth - shellPadding.horizontal,
-        ).toDouble();
+        final availableWidth = math
+            .max(0, constraints.maxWidth - shellPadding.horizontal)
+            .toDouble();
         final expandedLayout = _hdPadPaneLayoutResolver.resolve(
           availableWidth,
           preferredLeftWidth: _hdPadLeftPaneWidth,
@@ -786,6 +785,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                               key: _drawerKey,
                               embedded: true,
                               closeOnNavigate: false,
+                              activeThreadTarget: _visibleThreadTarget,
                               newConversationMode: _conversationModeForPageMode(
                                 _activeMode,
                               ),
@@ -938,6 +938,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                     ? null
                     : HomeDrawer(
                         key: _drawerKey,
+                        activeThreadTarget: _visibleThreadTarget,
                         newConversationMode: _conversationModeForPageMode(
                           _activeMode,
                         ),
