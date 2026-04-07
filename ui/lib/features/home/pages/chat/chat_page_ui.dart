@@ -708,59 +708,22 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               internalRootPath:
                   '/data/user/0/cn.com.omnimind.bot/workspace/.omnibot',
             );
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      '文件夹',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF24324A),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: _workspaceBrowserCanGoUp
-                        ? () {
-                            _hdPadWorkspaceBrowserKey.currentState
-                                ?.openParentDirectory();
-                          }
-                        : null,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 32,
-                      height: 32,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.arrow_upward_rounded),
-                    tooltip: '返回上级目录',
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, thickness: 1),
-            Expanded(
-              child: OmnibotWorkspaceBrowser(
-                key: _hdPadWorkspaceBrowserKey,
-                workspacePath: paths.rootPath,
-                workspaceShellPath: paths.shellRootPath,
-                enableSystemBackHandler: false,
-                translucentSurfaces: backgroundActive,
-                onCanGoUpChanged: (canGoUp) {
-                  if (_workspaceBrowserCanGoUp == canGoUp || !mounted) return;
-                  setState(() {
-                    _workspaceBrowserCanGoUp = canGoUp;
-                  });
-                },
-              ),
-            ),
-          ],
+        return OmnibotWorkspaceBrowser(
+          key: _hdPadWorkspaceBrowserKey,
+          workspacePath: paths.rootPath,
+          workspaceShellPath: paths.shellRootPath,
+          enableSystemBackHandler: false,
+          translucentSurfaces: backgroundActive,
+          showBreadcrumbHeader: true,
+          showHeaderTitle: false,
+          enableInlineDirectoryExpansion: false,
+          inlineFilePreview: true,
+          onCanGoUpChanged: (canGoUp) {
+            if (_workspaceBrowserCanGoUp == canGoUp || !mounted) return;
+            setState(() {
+              _workspaceBrowserCanGoUp = canGoUp;
+            });
+          },
         );
       },
     );
