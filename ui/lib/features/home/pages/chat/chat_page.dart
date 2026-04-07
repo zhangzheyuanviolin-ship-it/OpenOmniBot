@@ -293,6 +293,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   double? _hdPadLeftPaneWidth;
   double? _hdPadRightPaneWidth;
   bool _hdPadLeftPaneCollapsed = false;
+  bool _isHdPadPaneDragging = false;
   final GlobalKey<OmnibotWorkspaceBrowserState> _hdPadWorkspaceBrowserKey =
       GlobalKey<OmnibotWorkspaceBrowserState>();
 

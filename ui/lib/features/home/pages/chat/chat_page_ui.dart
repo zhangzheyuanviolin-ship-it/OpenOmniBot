@@ -755,13 +755,17 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           preferredRightWidth: _hdPadRightPaneWidth,
           collapseLeftPane: _hdPadLeftPaneCollapsed,
         );
+        final paneDuration = _isHdPadPaneDragging
+            ? Duration.zero
+            : const Duration(milliseconds: 280);
+        const paneCurve = Curves.easeInOutCubic;
         return Padding(
           padding: shellPadding,
           child: Row(
             children: [
               AnimatedContainer(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeInOutCubic,
+                duration: paneDuration,
+                curve: paneCurve,
                 width: layout.leftWidth,
                 child: ClipRect(
                   child: OverflowBox(
@@ -799,25 +803,31 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 ),
               ),
               AnimatedContainer(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeInOutCubic,
+                duration: paneDuration,
+                curve: paneCurve,
                 width: _hdPadLeftPaneCollapsed
                     ? 0
                     : HdPadPaneLayoutResolver.dividerHitWidth,
                 child: _hdPadLeftPaneCollapsed
                     ? const SizedBox.shrink()
                     : _PaneResizeHandle(
+                        onDragStart: () {
+                          setState(() => _isHdPadPaneDragging = true);
+                        },
                         onDragUpdate: (delta) {
                           setState(() {
                             _hdPadLeftPaneWidth = layout.leftWidth + delta;
                           });
+                        },
+                        onDragEnd: () {
+                          setState(() => _isHdPadPaneDragging = false);
                           _persistHdPadPanePreferences();
                         },
                       ),
               ),
               AnimatedContainer(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeInOutCubic,
+                duration: paneDuration,
+                curve: paneCurve,
                 width: layout.centerWidth,
                 child: _buildPaneSurface(
                   translucent: backgroundActive,
@@ -855,16 +865,22 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 ),
               ),
               _PaneResizeHandle(
+                onDragStart: () {
+                  setState(() => _isHdPadPaneDragging = true);
+                },
                 onDragUpdate: (delta) {
                   setState(() {
                     _hdPadRightPaneWidth = layout.rightWidth - delta;
                   });
+                },
+                onDragEnd: () {
+                  setState(() => _isHdPadPaneDragging = false);
                   _persistHdPadPanePreferences();
                 },
               ),
               AnimatedContainer(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeInOutCubic,
+                duration: paneDuration,
+                curve: paneCurve,
                 width: layout.rightWidth,
                 child: _buildPaneSurface(
                   translucent: backgroundActive,
@@ -1385,15 +1401,24 @@ class _UserMessageQuickMenuEntryState
 }
 
 class _PaneResizeHandle extends StatelessWidget {
-  const _PaneResizeHandle({required this.onDragUpdate});
+  const _PaneResizeHandle({
+    required this.onDragUpdate,
+    this.onDragStart,
+    this.onDragEnd,
+  });
 
   final ValueChanged<double> onDragUpdate;
+  final VoidCallback? onDragStart;
+  final VoidCallback? onDragEnd;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
+      onHorizontalDragStart: (_) => onDragStart?.call(),
       onHorizontalDragUpdate: (details) => onDragUpdate(details.delta.dx),
+      onHorizontalDragEnd: (_) => onDragEnd?.call(),
+      onHorizontalDragCancel: () => onDragEnd?.call(),
       child: const SizedBox(
         width: HdPadPaneLayoutResolver.dividerHitWidth,
         child: Center(
