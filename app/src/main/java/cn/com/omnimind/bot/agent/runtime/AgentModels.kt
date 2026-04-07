@@ -144,6 +144,7 @@ sealed class ToolExecutionResult {
         val previewJson: String,
         val rawResultJson: String,
         val success: Boolean = true,
+        val imageDataUrl: String? = null,
         override val artifacts: List<ArtifactRef> = emptyList(),
         override val workspaceId: String? = null,
         override val actions: List<ArtifactAction> = emptyList()
