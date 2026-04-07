@@ -379,7 +379,27 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   void _handleEmbeddedDrawerThreadTargetSelected(
     ConversationThreadTarget target,
   ) {
-    unawaited(_applyConversationThreadTarget(target));
+    unawaited(_applyEmbeddedDrawerThreadTarget(target));
+  }
+
+  Future<void> _applyEmbeddedDrawerThreadTarget(
+    ConversationThreadTarget target,
+  ) async {
+    final currentVisibleTarget = _visibleThreadTarget;
+    final shouldPersistCurrentDraft =
+        currentVisibleTarget?.isNewConversation == true &&
+        _currentConversationId == null &&
+        _messages.isNotEmpty;
+    if (shouldPersistCurrentDraft) {
+      await persistConversationSnapshot(
+        generateSummary: false,
+        markComplete: false,
+      );
+      if (!mounted) {
+        return;
+      }
+    }
+    await _applyConversationThreadTarget(target);
   }
 
   void _toggleHdPadLeftPaneCollapsed() {
