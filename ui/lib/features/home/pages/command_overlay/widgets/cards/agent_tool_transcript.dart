@@ -272,9 +272,14 @@ String _buildTerminalOutputText(Map<String, dynamic> cardData) {
     return output;
   }
 
+  final status = (cardData['status'] ?? '').toString().trim();
   final summary = (cardData['summary'] ?? '').toString().trim();
   final progress = (cardData['progress'] ?? '').toString().trim();
-  return progress.isNotEmpty ? progress : summary;
+  final fallback = progress.isNotEmpty ? progress : summary;
+  if (status == 'running' && _isGenericTerminalProgressMessage(fallback)) {
+    return '';
+  }
+  return fallback;
 }
 
 String _buildStructuredOutputText(
@@ -625,6 +630,16 @@ String _truncateInline(String value, {int maxLength = 140}) {
     return collapsed;
   }
   return '${collapsed.substring(0, maxLength - 1).trimRight()}…';
+}
+
+bool _isGenericTerminalProgressMessage(String value) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) {
+    return true;
+  }
+  return normalized == '正在调用内嵌 Alpine 终端执行命令' ||
+      normalized == '正在执行内嵌 Alpine 终端命令' ||
+      normalized == '终端输出更新中';
 }
 
 String _firstNonBlank(Map<String, dynamic> value, List<String> keys) {

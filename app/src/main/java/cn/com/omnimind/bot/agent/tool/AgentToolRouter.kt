@@ -705,7 +705,16 @@ class AgentToolRouter(
             val shellWorkingDirectory = parsedArgs.workingDirectory?.let {
                 resolveShellWorkingDirectory(it, workspace)
             }
-            reportToolProgress(callback, toolName, "正在向终端会话发送命令")
+            reportToolProgress(
+                callback,
+                toolName,
+                "正在向终端会话发送命令",
+                mapOf(
+                    "summary" to "正在向终端会话发送命令",
+                    "terminalSessionId" to sessionId,
+                    "terminalStreamState" to "starting"
+                )
+            )
             val result = EmbeddedTerminalRuntime.executeSessionCommand(
                 context = context,
                 sessionId = sessionId,
@@ -713,6 +722,20 @@ class AgentToolRouter(
                 workingDirectory = shellWorkingDirectory,
                 timeoutSeconds = parsedArgs.timeoutSeconds,
                 environment = terminalEnvironment,
+                onLiveUpdate = { update ->
+                    val summary = update.summary.ifBlank { "终端输出更新中" }
+                    reportToolProgress(
+                        callback,
+                        toolName,
+                        summary,
+                        mapOf<String, Any?>(
+                            "summary" to summary,
+                            "terminalSessionId" to update.sessionId,
+                            "terminalOutputDelta" to update.outputDelta,
+                            "terminalStreamState" to update.streamState
+                        )
+                    )
+                }
             )
             val terminalStreamState = when {
                 !result.completed -> "running"

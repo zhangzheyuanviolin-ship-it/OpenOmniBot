@@ -56,4 +56,26 @@ void main() {
       expect(transcript.previewText, 'On branch main');
     },
   );
+
+  test(
+    'buildAgentToolTranscript hides generic running placeholder for terminal output area',
+    () {
+      final transcript = buildAgentToolTranscript({
+        'toolName': 'terminal_execute',
+        'displayName': '终端执行',
+        'toolType': 'terminal',
+        'argsJson': jsonEncode({
+          'command': 'npm install',
+          'workingDirectory': '/workspace',
+        }),
+        'status': 'running',
+        'summary': '正在调用内嵌 Alpine 终端执行命令',
+        'progress': '终端输出更新中',
+      });
+
+      expect(transcript.promptLine, r'$ cd /workspace && npm install');
+      expect(transcript.outputText, isEmpty);
+      expect(transcript.previewText, isEmpty);
+    },
+  );
 }
