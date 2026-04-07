@@ -8,7 +8,6 @@
         <item name="android:statusBarColor">@android:color/white</item>
         <item name="android:navigationBarColor">@android:color/white</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:screenOrientation">portrait</item>
     </style>
 
     <!-- 一键登录Activity主题：禁用返回手势 -->
@@ -56,7 +55,6 @@
         <item name="android:navigationBarColor">@android:color/white</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:screenOrientation">portrait</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:backgroundDimEnabled">true</item>

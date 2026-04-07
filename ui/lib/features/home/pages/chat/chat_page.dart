@@ -94,7 +94,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _normalMessageScrollController = ScrollController();
   final ScrollController _openClawMessageScrollController = ScrollController();
-  final PageController _modePageController = PageController(initialPage: 1);
+  final PageController _modePageController = PageController(initialPage: 0);
   final FocusNode _inputFocusNode = FocusNode();
   final TextEditingController _vlmAnswerController = TextEditingController();
 
@@ -243,6 +243,12 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   static const String _openClawWaitingHint = '等待龙虾烹饪';
   static const String _openClawWaitingStatusKey = 'openclaw_waiting';
   static const String _openClawSessionKeyPrefix = 'openclaw';
+  static const String _hdPadLeftPaneWidthStorageKey =
+      'chat_hd_pad_left_pane_width';
+  static const String _hdPadRightPaneWidthStorageKey =
+      'chat_hd_pad_right_pane_width';
+  static const double _hdPadLandscapeMinShortestSide = 600;
+  static const double _hdPadLandscapeMinWidth = 960;
   static const Duration _normalSurfaceModelRevealDelay = Duration(
     milliseconds: 1700,
   );
@@ -282,6 +288,13 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _normalSurfaceModelRevealInterrupted = false;
   int _surfaceSwitchRequestId = 0;
   bool _isSurfacePageScrolling = false;
+  final HdPadPaneLayoutResolver _hdPadPaneLayoutResolver =
+      const HdPadPaneLayoutResolver();
+  double? _hdPadLeftPaneWidth;
+  double? _hdPadRightPaneWidth;
+  bool _hdPadLeftPaneCollapsed = false;
+  final GlobalKey<OmnibotWorkspaceBrowserState> _hdPadWorkspaceBrowserKey =
+      GlobalKey<OmnibotWorkspaceBrowserState>();
 
   ChatPageMode get _activeMode => _activeConversationMode;
   ConversationMode _conversationModeForPageMode(ChatPageMode mode) {
@@ -331,6 +344,50 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
+  bool _isHdPadLandscapeForMediaQuery(MediaQueryData mediaQuery) {
+    final size = mediaQuery.size;
+    final shortestSide = math.min(size.width, size.height);
+    return shortestSide >= _hdPadLandscapeMinShortestSide &&
+        size.width > size.height &&
+        size.width >= _hdPadLandscapeMinWidth;
+  }
+
+  void _loadHdPadPanePreferences() {
+    _hdPadLeftPaneWidth = StorageService.getDouble(
+      _hdPadLeftPaneWidthStorageKey,
+    );
+    _hdPadRightPaneWidth = StorageService.getDouble(
+      _hdPadRightPaneWidthStorageKey,
+    );
+  }
+
+  void _persistHdPadPanePreferences() {
+    final leftWidth = _hdPadLeftPaneWidth;
+    final rightWidth = _hdPadRightPaneWidth;
+    if (leftWidth != null) {
+      unawaited(
+        StorageService.setDouble(_hdPadLeftPaneWidthStorageKey, leftWidth),
+      );
+    }
+    if (rightWidth != null) {
+      unawaited(
+        StorageService.setDouble(_hdPadRightPaneWidthStorageKey, rightWidth),
+      );
+    }
+  }
+
+  void _handleEmbeddedDrawerThreadTargetSelected(
+    ConversationThreadTarget target,
+  ) {
+    unawaited(_applyConversationThreadTarget(target));
+  }
+
+  void _toggleHdPadLeftPaneCollapsed() {
+    setState(() {
+      _hdPadLeftPaneCollapsed = !_hdPadLeftPaneCollapsed;
+    });
+  }
+
   ConversationThreadTarget get _threadTargetForMode {
     final conversationMode = _conversationModeForPageMode(_activeMode);
     final conversationId = _currentConversationIdByMode[_activeMode];

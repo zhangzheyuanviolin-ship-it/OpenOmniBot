@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,22 @@ import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
+import 'package:ui/widgets/omnibot_markdown_body.dart';
+import 'package:ui/widgets/omnibot_resource_widgets.dart';
+
+class _WorkspaceBreadcrumbSegment {
+  const _WorkspaceBreadcrumbSegment({
+    required this.label,
+    required this.path,
+    required this.isCurrent,
+    this.isFile = false,
+  });
+
+  final String label;
+  final String path;
+  final bool isCurrent;
+  final bool isFile;
+}
 
 enum _WorkspaceEntryAction { edit, rename, delete }
 
@@ -25,6 +42,10 @@ class OmnibotWorkspaceBrowser extends StatefulWidget {
   final bool enableSystemBackHandler;
   final bool translucentSurfaces;
   final ValueChanged<bool>? onCanGoUpChanged;
+  final bool showBreadcrumbHeader;
+  final bool showHeaderTitle;
+  final bool enableInlineDirectoryExpansion;
+  final bool inlineFilePreview;
 
   const OmnibotWorkspaceBrowser({
     super.key,
@@ -33,6 +54,10 @@ class OmnibotWorkspaceBrowser extends StatefulWidget {
     this.enableSystemBackHandler = true,
     this.translucentSurfaces = false,
     this.onCanGoUpChanged,
+    this.showBreadcrumbHeader = false,
+    this.showHeaderTitle = true,
+    this.enableInlineDirectoryExpansion = true,
+    this.inlineFilePreview = false,
   });
 
   @override
@@ -76,6 +101,9 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   final Map<String, List<FileSystemEntity>> _directoryChildrenCache =
       <String, List<FileSystemEntity>>{};
   String? _dragHoverTargetPath;
+  OmnibotResourceMetadata? _selectedFileMetadata;
+  final GlobalKey<_WorkspaceInlineFilePreviewState> _inlinePreviewKey =
+      GlobalKey<_WorkspaceInlineFilePreviewState>();
 
   Color _surfaceColor({double opacity = 0.8}) {
     return backgroundSurfaceColor(
@@ -125,6 +153,19 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       nextChildrenCache[path] = _sortedEntriesFor(dir);
     }
 
+    final previousCanGoUp = canGoUp;
+    final selectedFileMetadata = _selectedFileMetadata;
+    final nextSelectedFileMetadata = selectedFileMetadata == null
+        ? null
+        : OmnibotResourceService.describePath(
+            selectedFileMetadata.path,
+            uri: selectedFileMetadata.uri,
+            shellPath: selectedFileMetadata.shellPath,
+            title: selectedFileMetadata.title,
+            previewKind: selectedFileMetadata.previewKind,
+            mimeType: selectedFileMetadata.mimeType,
+          );
+
     setState(() {
       _entries = nextEntries;
       _expandedDirectoryPaths
@@ -133,20 +174,23 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       _directoryChildrenCache
         ..clear()
         ..addAll(nextChildrenCache);
+      _selectedFileMetadata = nextSelectedFileMetadata?.exists == true
+          ? nextSelectedFileMetadata
+          : null;
     });
+    if (previousCanGoUp != canGoUp) {
+      _notifyCanGoUpChanged();
+    }
   }
 
-  bool get canGoUp => _directory.path != _rootDirectory.path;
+  bool get _isPreviewingFile =>
+      widget.inlineFilePreview && _selectedFileMetadata != null;
+
+  bool get canGoUp =>
+      _isPreviewingFile || _directory.path != _rootDirectory.path;
 
   void openParentDirectory() {
-    if (!canGoUp) return;
-    setState(() {
-      _directory = _directory.parent;
-      _expandedDirectoryPaths.clear();
-      _directoryChildrenCache.clear();
-    });
-    _notifyCanGoUpChanged();
-    _refresh();
+    unawaited(_handleOpenParentDirectory());
   }
 
   void _openDirectory(Directory directory) {
@@ -154,9 +198,232 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       _directory = directory;
       _expandedDirectoryPaths.clear();
       _directoryChildrenCache.clear();
+      _selectedFileMetadata = null;
     });
     _notifyCanGoUpChanged();
     _refresh();
+  }
+
+  void _openDirectoryPath(String path) {
+    final normalized = _normalizePath(path);
+    if (!_isInsideWorkspace(normalized)) return;
+    if (_directory.path == normalized && !_isPreviewingFile) return;
+    _openDirectory(Directory(normalized));
+  }
+
+  void _openInlineFilePreview(
+    FileSystemEntity entry, {
+    String? currentShellPath,
+  }) {
+    final name = _entryNameFromPath(entry.path);
+    final shellPath =
+        OmnibotResourceService.shellPathForAndroidPath(entry.path) ??
+        (currentShellPath == null ? null : '$currentShellPath/$name');
+    setState(() {
+      _selectedFileMetadata = OmnibotResourceService.describePath(
+        entry.path,
+        title: name,
+        shellPath: shellPath,
+      );
+    });
+    _notifyCanGoUpChanged();
+  }
+
+  Future<bool> _confirmDiscardPreviewChangesIfNeeded() async {
+    final previewState = _inlinePreviewKey.currentState;
+    if (previewState == null) {
+      return true;
+    }
+    return previewState.confirmDiscardIfNeeded();
+  }
+
+  Future<void> _handleOpenParentDirectory() async {
+    if (_isPreviewingFile) {
+      final shouldClose = await _confirmDiscardPreviewChangesIfNeeded();
+      if (!shouldClose || !mounted) return;
+      setState(() {
+        _selectedFileMetadata = null;
+      });
+      _notifyCanGoUpChanged();
+      return;
+    }
+    if (!canGoUp) return;
+    setState(() {
+      _directory = _directory.parent;
+      _expandedDirectoryPaths.clear();
+      _directoryChildrenCache.clear();
+      _selectedFileMetadata = null;
+    });
+    _notifyCanGoUpChanged();
+    _refresh();
+  }
+
+  Future<void> _handleBreadcrumbTap(_WorkspaceBreadcrumbSegment segment) async {
+    if (segment.isCurrent || segment.isFile) return;
+    final shouldNavigate = await _confirmDiscardPreviewChangesIfNeeded();
+    if (!shouldNavigate || !mounted) return;
+    _openDirectoryPath(segment.path);
+  }
+
+  String get _rootBreadcrumbLabel {
+    final shellRoot = (widget.workspaceShellPath ?? '').trim();
+    if (shellRoot.isNotEmpty) {
+      return shellRoot;
+    }
+    return _normalizePath(_rootDirectory.path);
+  }
+
+  List<_WorkspaceBreadcrumbSegment> get _workspaceBreadcrumbs {
+    final targetMetadata = _selectedFileMetadata;
+    final targetPath = _normalizePath(targetMetadata?.path ?? _directory.path);
+    final isFile = targetMetadata != null;
+
+    if (!_isInsideWorkspace(targetPath)) {
+      return <_WorkspaceBreadcrumbSegment>[
+        _WorkspaceBreadcrumbSegment(
+          label: targetMetadata?.shellPath ?? targetPath,
+          path: targetPath,
+          isCurrent: true,
+          isFile: isFile,
+        ),
+      ];
+    }
+
+    final segments = <_WorkspaceBreadcrumbSegment>[
+      _WorkspaceBreadcrumbSegment(
+        label: _rootBreadcrumbLabel,
+        path: _normalizePath(_rootDirectory.path),
+        isCurrent: targetPath == _normalizePath(_rootDirectory.path) && !isFile,
+      ),
+    ];
+
+    if (targetPath == _normalizePath(_rootDirectory.path) && !isFile) {
+      return segments;
+    }
+
+    final relative = targetPath.substring(
+      _normalizePath(_rootDirectory.path).length,
+    );
+    final parts = relative
+        .split('/')
+        .where((segment) => segment.trim().isNotEmpty)
+        .toList(growable: false);
+    var runningPath = _normalizePath(_rootDirectory.path);
+    for (var index = 0; index < parts.length; index++) {
+      final part = parts[index];
+      runningPath = '$runningPath/$part';
+      final isCurrent = runningPath == targetPath;
+      segments.add(
+        _WorkspaceBreadcrumbSegment(
+          label: part,
+          path: runningPath,
+          isCurrent: isCurrent,
+          isFile: isCurrent && isFile,
+        ),
+      );
+    }
+    return segments;
+  }
+
+  Widget _buildBreadcrumbHeader() {
+    final breadcrumbs = _workspaceBreadcrumbs;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(
+          alpha: widget.translucentSurfaces ? 0.3 : 0.72,
+        ),
+        border: Border(
+          bottom: BorderSide(color: AppColors.text.withValues(alpha: 0.08)),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.showHeaderTitle) ...[
+            const Text(
+              '工作区',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.text,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          if (breadcrumbs.isEmpty)
+            Text(
+              '加载工作区中...',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.text.withValues(alpha: 0.55),
+              ),
+            )
+          else
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 2,
+              runSpacing: 4,
+              children: [
+                for (var index = 0; index < breadcrumbs.length; index++) ...[
+                  if (index > 0)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 2),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: Color(0xFF98A2B3),
+                      ),
+                    ),
+                  _buildWorkspaceBreadcrumbChip(breadcrumbs[index]),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkspaceBreadcrumbChip(_WorkspaceBreadcrumbSegment segment) {
+    final labelStyle = TextStyle(
+      fontSize: 12,
+      fontWeight: segment.isCurrent ? FontWeight.w700 : FontWeight.w500,
+      color: segment.isCurrent ? AppColors.text : const Color(0xFF1F4ED8),
+    );
+    return Material(
+      color: segment.isCurrent ? const Color(0xFFEAF3FF) : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: segment.isCurrent
+            ? null
+            : () => unawaited(_handleBreadcrumbTap(segment)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              segment.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: labelStyle,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInlineFilePreview() {
+    final metadata = _selectedFileMetadata;
+    if (metadata == null) {
+      return const SizedBox.shrink();
+    }
+    return _WorkspaceInlineFilePreview(
+      key: _inlinePreviewKey,
+      metadata: metadata,
+    );
   }
 
   List<FileSystemEntity> _sortedEntriesFor(Directory directory) {
@@ -205,13 +472,13 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   Widget build(BuildContext context) {
     final exists = _directory.existsSync();
     final currentShellPath = _currentShellPath();
-    final canGoUp = _directory.path != _rootDirectory.path;
-    final itemCount = _entries.length + (canGoUp ? 1 : 0);
+    final canGoUpDirectory = _directory.path != _rootDirectory.path;
+    final showParentEntry = canGoUpDirectory && !widget.showBreadcrumbHeader;
+    final itemCount = _entries.length + (showParentEntry ? 1 : 0);
 
-    final content = Column(
-      children: [
-        Expanded(
-          child: RefreshIndicator(
+    final body = _isPreviewingFile
+        ? _buildInlineFilePreview()
+        : RefreshIndicator(
             onRefresh: () async => _refresh(),
             child: !exists
                 ? _buildStatusList(message: '工作区不存在')
@@ -235,7 +502,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                         bottom: isLast ? const Radius.circular(4) : Radius.zero,
                       );
 
-                      if (canGoUp && index == 0) {
+                      if (showParentEntry && index == 0) {
                         final parentRow = _buildWorkspaceItem(
                           title: '..',
                           leading: Icon(
@@ -253,7 +520,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                         );
                       }
 
-                      final entry = _entries[index - (canGoUp ? 1 : 0)];
+                      final entry = _entries[index - (showParentEntry ? 1 : 0)];
                       return _buildEntryNode(
                         entry: entry,
                         depth: 0,
@@ -262,8 +529,12 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                       );
                     },
                   ),
-          ),
-        ),
+          );
+
+    final content = Column(
+      children: [
+        if (widget.showBreadcrumbHeader) _buildBreadcrumbHeader(),
+        Expanded(child: body),
       ],
     );
 
@@ -288,7 +559,10 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   }) {
     final name = entry.path.split('/').last;
     final isDirectory = entry is Directory;
-    final canExpandInline = isDirectory && depth < _maxInlineExpansionDepth;
+    final canExpandInline =
+        widget.enableInlineDirectoryExpansion &&
+        isDirectory &&
+        depth < _maxInlineExpansionDepth;
     final isExpanded =
         isDirectory &&
         canExpandInline &&
@@ -319,6 +593,10 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
           } else {
             _openDirectory(directory);
           }
+          return;
+        }
+        if (widget.inlineFilePreview) {
+          _openInlineFilePreview(entry, currentShellPath: currentShellPath);
           return;
         }
         _openFileEntry(entry, currentShellPath: currentShellPath);
@@ -1030,5 +1308,395 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     }
     return OmnibotResourceService.shellPathForAndroidPath(_directory.path) ??
         baseShell;
+  }
+}
+
+class _WorkspaceInlineFilePreview extends StatefulWidget {
+  const _WorkspaceInlineFilePreview({super.key, required this.metadata});
+
+  final OmnibotResourceMetadata metadata;
+
+  @override
+  State<_WorkspaceInlineFilePreview> createState() =>
+      _WorkspaceInlineFilePreviewState();
+}
+
+class _WorkspaceInlineFilePreviewState
+    extends State<_WorkspaceInlineFilePreview> {
+  final TextEditingController _editorController = TextEditingController();
+  String? _textContent;
+  String? _error;
+  bool _loadingText = false;
+  bool _isEditing = false;
+  bool _isSaving = false;
+  bool _isDirty = false;
+
+  bool get _isTextLike =>
+      widget.metadata.previewKind == 'text' ||
+      widget.metadata.previewKind == 'code';
+
+  bool get _canEdit => widget.metadata.exists && _isTextLike;
+
+  bool get _preferMonospace =>
+      widget.metadata.previewKind == 'code' ||
+      widget.metadata.mimeType == 'application/json' ||
+      widget.metadata.mimeType == 'application/xml' ||
+      widget.metadata.mimeType == 'application/yaml';
+
+  @override
+  void initState() {
+    super.initState();
+    _editorController.addListener(_handleEditorChanged);
+    _loadIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant _WorkspaceInlineFilePreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.metadata.path != widget.metadata.path ||
+        oldWidget.metadata.previewKind != widget.metadata.previewKind) {
+      _textContent = null;
+      _error = null;
+      _isEditing = false;
+      _isSaving = false;
+      _isDirty = false;
+      _editorController.clear();
+      _loadIfNeeded();
+    }
+  }
+
+  @override
+  void dispose() {
+    _editorController
+      ..removeListener(_handleEditorChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleEditorChanged() {
+    if (!_isEditing) return;
+    final nextDirty = _editorController.text != (_textContent ?? '');
+    if (nextDirty == _isDirty || !mounted) return;
+    setState(() {
+      _isDirty = nextDirty;
+    });
+  }
+
+  Future<void> _loadIfNeeded() async {
+    if (!_isTextLike || !widget.metadata.exists) return;
+    if (mounted) {
+      setState(() {
+        _loadingText = true;
+      });
+    }
+    try {
+      final text = await File(widget.metadata.path).readAsString();
+      if (!mounted) return;
+      setState(() {
+        _textContent = text;
+        _error = null;
+        _loadingText = false;
+        if (_isEditing && !_isDirty) {
+          _editorController.value = TextEditingValue(
+            text: text,
+            selection: TextSelection.collapsed(offset: text.length),
+          );
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = '读取失败：$error';
+        _loadingText = false;
+      });
+    }
+  }
+
+  Future<bool> confirmDiscardIfNeeded() async {
+    if (!_isEditing || !_isDirty) {
+      return true;
+    }
+    final confirmed = await AppDialog.confirm(
+      context,
+      title: '放弃修改',
+      content: '当前有未保存修改，确认离开吗？',
+      cancelText: '继续编辑',
+      confirmText: '放弃',
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _handleEditPressed() async {
+    if (!_canEdit) return;
+    setState(() {
+      _isEditing = true;
+      _isDirty = false;
+      _editorController.value = TextEditingValue(
+        text: _textContent ?? '',
+        selection: TextSelection.collapsed(offset: (_textContent ?? '').length),
+      );
+    });
+    if (_textContent == null && !_loadingText) {
+      unawaited(_loadIfNeeded());
+    }
+  }
+
+  Future<void> _handleCancelEditing() async {
+    final confirmed = await confirmDiscardIfNeeded();
+    if (!confirmed || !mounted) return;
+    setState(() {
+      _isEditing = false;
+      _isDirty = false;
+      _editorController.value = TextEditingValue(
+        text: _textContent ?? '',
+        selection: TextSelection.collapsed(offset: (_textContent ?? '').length),
+      );
+    });
+  }
+
+  Future<void> _handleSaveText() async {
+    if (!_canEdit || _isSaving) return;
+    setState(() {
+      _isSaving = true;
+    });
+    try {
+      final savedText = _editorController.text;
+      File(widget.metadata.path).writeAsStringSync(savedText);
+      if (!mounted) return;
+      setState(() {
+        _textContent = savedText;
+        _isDirty = false;
+        _error = null;
+        _isEditing = false;
+      });
+      showToast('文件已保存', type: ToastType.success);
+    } catch (error) {
+      if (!mounted) return;
+      showToast('保存失败：$error', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildInlineResourcePreview(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final preview = OmnibotInlineResourceEmbed(
+          metadata: widget.metadata,
+          maxWidth: (constraints.maxWidth - 24).clamp(
+            0.0,
+            constraints.maxWidth,
+          ),
+          preferredHeight: widget.metadata.previewKind == 'pdf'
+              ? (constraints.maxHeight - 24).clamp(240.0, 1200.0)
+              : null,
+        );
+        if (widget.metadata.previewKind == 'pdf') {
+          return Padding(
+            padding: const EdgeInsets.all(12),
+            child: Center(child: preview),
+          );
+        }
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(12),
+          child: Center(child: preview),
+        );
+      },
+    );
+  }
+
+  Widget _buildEditor() {
+    final statusText = _loadingText && _textContent == null
+        ? '正在加载原始内容，可先开始编辑'
+        : (_isDirty ? '编辑中，存在未保存修改' : '编辑中，保存后会立即写回 workspace');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          color: const Color(0xFFF5F7FB),
+          child: Text(
+            statusText,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+            child: TextField(
+              controller: _editorController,
+              expands: true,
+              minLines: null,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              textAlignVertical: TextAlignVertical.top,
+              style: TextStyle(
+                fontFamily: _preferMonospace ? 'monospace' : null,
+                fontSize: 14,
+                height: 1.5,
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
+                hintText: '输入文件内容',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF2C7FEB)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    if (!_canEdit) {
+      return const SizedBox.shrink();
+    }
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Align(
+        alignment: Alignment.bottomRight,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isEditing)
+              FilledButton.tonalIcon(
+                key: const ValueKey('workspace-inline-preview-cancel'),
+                onPressed: _isSaving ? null : _handleCancelEditing,
+                icon: const Icon(Icons.close_rounded),
+                label: const Text('取消'),
+              ),
+            if (_isEditing) const SizedBox(width: 10),
+            FilledButton.icon(
+              key: ValueKey(
+                _isEditing
+                    ? 'workspace-inline-preview-save'
+                    : 'workspace-inline-preview-edit',
+              ),
+              onPressed: _isEditing
+                  ? (_isSaving ? null : _handleSaveText)
+                  : _handleEditPressed,
+              icon: _isEditing
+                  ? (_isSaving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined))
+                  : const Icon(Icons.edit_outlined),
+              label: Text(_isEditing ? '保存' : '编辑'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    if (!widget.metadata.exists) {
+      return const Center(child: Text('文件不存在'));
+    }
+    if (_error != null) {
+      return Center(child: Text(_error!));
+    }
+    if (_isEditing) {
+      return _buildEditor();
+    }
+    switch (widget.metadata.previewKind) {
+      case 'image':
+        return InteractiveViewer(
+          child: Center(child: Image.file(File(widget.metadata.path))),
+        );
+      case 'audio':
+      case 'video':
+      case 'pdf':
+      case 'html':
+      case 'office_word':
+      case 'office_sheet':
+      case 'office_slide':
+        return _buildInlineResourcePreview(context);
+      case 'text':
+      case 'code':
+        if (_loadingText && _textContent == null) {
+          return const Center(child: CircularProgressIndicator.adaptive());
+        }
+        if (_textContent == null) {
+          return const Center(child: Text('暂无内容'));
+        }
+        if (widget.metadata.mimeType == 'text/markdown') {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+            child: OmnibotMarkdownBody(
+              data: _textContent!,
+              baseStyle: const TextStyle(fontSize: 14, height: 1.5),
+              selectable: true,
+            ),
+          );
+        }
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+          child: SelectableText(
+            _textContent!,
+            style: TextStyle(
+              fontFamily: _preferMonospace ? 'monospace' : null,
+              fontSize: 14,
+              height: 1.5,
+              color: AppColors.text,
+            ),
+          ),
+        );
+      default:
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.insert_drive_file_outlined, size: 56),
+                const SizedBox(height: 12),
+                Text(widget.metadata.title, textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                Text(
+                  widget.metadata.mimeType,
+                  style: const TextStyle(color: Color(0xFF667085)),
+                ),
+              ],
+            ),
+          ),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Material(
+            color: Colors.transparent,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.76),
+              ),
+              child: _buildBody(context),
+            ),
+          ),
+        ),
+        Positioned.fill(child: _buildActionButtons()),
+      ],
+    );
   }
 }

@@ -24,8 +24,8 @@ const String _chatAppBarUpdateSparklesSvg =
 enum ChatSurfaceMode { workspace, normal, openclaw }
 
 const List<ChatSurfaceMode> kVisibleChatSurfaceModes = <ChatSurfaceMode>[
-  ChatSurfaceMode.workspace,
   ChatSurfaceMode.normal,
+  ChatSurfaceMode.workspace,
 ];
 
 /// 聊天页面 AppBar
@@ -52,6 +52,8 @@ class ChatAppBar extends StatelessWidget {
   final String? appUpdateTooltip;
   final bool translucent;
   final AppBackgroundVisualProfile visualProfile;
+  final bool showMenuButton;
+  final bool showSurfaceSwitcher;
 
   const ChatAppBar({
     super.key,
@@ -77,6 +79,8 @@ class ChatAppBar extends StatelessWidget {
     this.appUpdateTooltip,
     this.translucent = false,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
+    this.showMenuButton = true,
+    this.showSurfaceSwitcher = true,
   });
 
   @override
@@ -94,22 +98,26 @@ class ChatAppBar extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: GestureDetector(
-                  onTap: onMenuTap,
-                  child: Container(
-                    color: Colors.transparent,
-                    padding: const EdgeInsets.all(15),
-                    child: SvgPicture.asset(
-                      'assets/home/drawer_icon.svg',
-                      width: 20,
-                      height: 20,
-                      colorFilter: ColorFilter.mode(iconTint, BlendMode.srcIn),
+              if (showMenuButton)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: GestureDetector(
+                    onTap: onMenuTap,
+                    child: Container(
+                      color: Colors.transparent,
+                      padding: const EdgeInsets.all(15),
+                      child: SvgPicture.asset(
+                        'assets/home/drawer_icon.svg',
+                        width: 20,
+                        height: 20,
+                        colorFilter: ColorFilter.mode(
+                          iconTint,
+                          BlendMode.srcIn,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
               Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 176),
@@ -129,6 +137,7 @@ class ChatAppBar extends StatelessWidget {
                     activeToolType: activeToolType,
                     translucent: translucent,
                     visualProfile: visualProfile,
+                    showSurfaceLayer: showSurfaceSwitcher,
                   ),
                 ),
               ),
@@ -217,6 +226,7 @@ class _ChatModeModelSwitcher extends StatefulWidget {
     this.activeToolType,
     this.translucent = false,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
+    this.showSurfaceLayer = true,
   });
 
   final ChatSurfaceMode activeMode;
@@ -234,6 +244,7 @@ class _ChatModeModelSwitcher extends StatefulWidget {
   final String? activeToolType;
   final bool translucent;
   final AppBackgroundVisualProfile visualProfile;
+  final bool showSurfaceLayer;
 
   @override
   State<_ChatModeModelSwitcher> createState() => _ChatModeModelSwitcherState();
@@ -283,7 +294,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
     if (index >= 0) {
       return index;
     }
-    return kVisibleChatSurfaceModes.indexOf(ChatSurfaceMode.normal);
+    return 0;
   }
 
   String get _modelLabel {
@@ -298,18 +309,32 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       widget.activeMode == ChatSurfaceMode.normal &&
       (widget.activeModelId ?? '').trim().isNotEmpty;
 
-  int _layerOrder(ChatIslandDisplayLayer layer) => switch (layer) {
-    ChatIslandDisplayLayer.tools => 0,
-    ChatIslandDisplayLayer.model => 1,
-    ChatIslandDisplayLayer.mode => 2,
-  };
+  List<ChatIslandDisplayLayer> get _visibleLayers => widget.showSurfaceLayer
+      ? const <ChatIslandDisplayLayer>[
+          ChatIslandDisplayLayer.tools,
+          ChatIslandDisplayLayer.model,
+          ChatIslandDisplayLayer.mode,
+        ]
+      : const <ChatIslandDisplayLayer>[
+          ChatIslandDisplayLayer.tools,
+          ChatIslandDisplayLayer.model,
+        ];
+
+  ChatIslandDisplayLayer get _effectiveDisplayLayer =>
+      _visibleLayers.contains(widget.displayLayer)
+      ? widget.displayLayer
+      : ChatIslandDisplayLayer.model;
+
+  int _layerOrder(ChatIslandDisplayLayer layer) =>
+      _visibleLayers.indexOf(layer);
 
   void _handleSliderInteraction() {
     widget.onInteracted?.call();
   }
 
   void _handleHorizontalDragUpdate(DragUpdateDetails details) {
-    if (widget.activeMode != ChatSurfaceMode.normal ||
+    if (!widget.showSurfaceLayer ||
+        widget.activeMode != ChatSurfaceMode.normal ||
         widget.displayLayer != ChatIslandDisplayLayer.model) {
       return;
     }
@@ -317,7 +342,8 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
   }
 
   void _handleHorizontalDragEnd(DragEndDetails details) {
-    if (widget.activeMode != ChatSurfaceMode.normal ||
+    if (!widget.showSurfaceLayer ||
+        widget.activeMode != ChatSurfaceMode.normal ||
         widget.displayLayer != ChatIslandDisplayLayer.model) {
       _horizontalDragDelta = 0;
       return;
@@ -362,13 +388,13 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
     }
     widget.onInteracted?.call();
     if (intent > 0) {
-      if (widget.displayLayer != ChatIslandDisplayLayer.tools) {
+      if (_effectiveDisplayLayer != ChatIslandDisplayLayer.tools) {
         widget.onDisplayLayerChanged(ChatIslandDisplayLayer.tools);
       }
       return;
     }
-    if (_canRevealModelLabel &&
-        widget.displayLayer != ChatIslandDisplayLayer.model) {
+    if ((_canRevealModelLabel || !widget.showSurfaceLayer) &&
+        _effectiveDisplayLayer != ChatIslandDisplayLayer.model) {
       widget.onDisplayLayerChanged(ChatIslandDisplayLayer.model);
     }
   }
@@ -425,7 +451,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       onInteracted: _handleSliderInteraction,
       visualProfile: widget.visualProfile,
     );
-    final currentOrder = _layerOrder(widget.displayLayer);
+    final currentOrder = _layerOrder(_effectiveDisplayLayer);
 
     double topFor(ChatIslandDisplayLayer layer) {
       final delta = _layerOrder(layer) - currentOrder;
@@ -472,14 +498,16 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
                   right: 0,
                   height: _switcherHeight,
                   top: topFor(ChatIslandDisplayLayer.mode),
-                  child: ClipRect(
-                    child: ChatModeSlider(
-                      activeMode: widget.activeMode,
-                      onChanged: widget.onModeChanged,
-                      onInteracted: _handleSliderInteraction,
-                      visualProfile: widget.visualProfile,
-                    ),
-                  ),
+                  child: widget.showSurfaceLayer
+                      ? ClipRect(
+                          child: ChatModeSlider(
+                            activeMode: widget.activeMode,
+                            onChanged: widget.onModeChanged,
+                            onInteracted: _handleSliderInteraction,
+                            visualProfile: widget.visualProfile,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
                 AnimatedPositioned(
                   duration: _switchDuration,
@@ -742,7 +770,7 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
     if (index >= 0) {
       return index;
     }
-    return kVisibleChatSurfaceModes.indexOf(ChatSurfaceMode.normal);
+    return 0;
   }
 
   void _handleDragEnd({double velocity = 0}) {
@@ -826,9 +854,9 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
               children: [
                 Expanded(
                   child: _buildModeIcon(
-                    isSelected: widget.activeMode == ChatSurfaceMode.workspace,
+                    isSelected: widget.activeMode == ChatSurfaceMode.normal,
                     child: SvgPicture.string(
-                      _workspaceIconSvg,
+                      _normalChatIconSvg,
                       width: 16,
                       height: 16,
                     ),
@@ -836,9 +864,9 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
                 ),
                 Expanded(
                   child: _buildModeIcon(
-                    isSelected: widget.activeMode == ChatSurfaceMode.normal,
+                    isSelected: widget.activeMode == ChatSurfaceMode.workspace,
                     child: SvgPicture.string(
-                      _normalChatIconSvg,
+                      _workspaceIconSvg,
                       width: 16,
                       height: 16,
                     ),

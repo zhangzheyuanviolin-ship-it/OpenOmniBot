@@ -112,33 +112,40 @@ class MessageBubble extends StatelessWidget {
 
     if (isUserMessage) {
       // 用户消息：整块气泡长按触发快捷操作。
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPressStart: onUserMessageLongPressStart == null
-            ? null
-            : (details) => onUserMessageLongPressStart!(message, details),
-        child: Container(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          decoration: ShapeDecoration(
-            color: visualProfile.userBubbleColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final fallbackMaxWidth = MediaQuery.of(context).size.width * 0.75;
+          final availableWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : fallbackMaxWidth;
+          final maxBubbleWidth = availableWidth * 0.78;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPressStart: onUserMessageLongPressStart == null
+                ? null
+                : (details) => onUserMessageLongPressStart!(message, details),
+            child: Container(
+              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: ShapeDecoration(
+                color: visualProfile.userBubbleColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (text.isNotEmpty) _buildUserText(text),
+                  if (attachments.isNotEmpty) ...[
+                    if (text.isNotEmpty) const SizedBox(height: 8),
+                    _buildUserAttachmentList(context, attachments),
+                  ],
+                ],
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (text.isNotEmpty) _buildUserText(text),
-              if (attachments.isNotEmpty) ...[
-                if (text.isNotEmpty) const SizedBox(height: 8),
-                _buildUserAttachmentList(context, attachments),
-              ],
-            ],
-          ),
-        ),
+          );
+        },
       );
     }
 
@@ -171,8 +178,7 @@ class MessageBubble extends StatelessWidget {
     List<Map<String, dynamic>> attachments,
   ) {
     // Collect all image sources for multi-image preview
-    final imageAttachments =
-        attachments.where(_isImageAttachment).toList();
+    final imageAttachments = attachments.where(_isImageAttachment).toList();
     final imageSources = imageAttachments
         .map(_resolveImageSource)
         .whereType<ImagePreviewSource>()
@@ -189,7 +195,11 @@ class MessageBubble extends StatelessWidget {
         if (_isImageAttachment(item)) {
           final imageIndex = imageAttachments.indexOf(item);
           return _buildImageAttachmentTile(
-            context, item, imageSources, imageIndex, heroTags,
+            context,
+            item,
+            imageSources,
+            imageIndex,
+            heroTags,
           );
         }
         return _buildFileAttachmentChip(item);
@@ -228,10 +238,7 @@ class MessageBubble extends StatelessWidget {
             width: 1,
           ),
         ),
-        child: Hero(
-          tag: heroTag,
-          child: _buildAttachmentImageWidget(item),
-        ),
+        child: Hero(tag: heroTag, child: _buildAttachmentImageWidget(item)),
       ),
     );
   }
