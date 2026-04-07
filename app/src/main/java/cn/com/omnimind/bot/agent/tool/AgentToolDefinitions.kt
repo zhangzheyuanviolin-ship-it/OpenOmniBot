@@ -1134,6 +1134,58 @@ object AgentToolDefinitions {
         }
     }
 
+    val musicPlaybackControlTool: JsonObject = buildJsonObject {
+        put("type", "function")
+        putJsonObject("function") {
+            put("name", "music_playback_control")
+            put("displayName", "音乐播放控制")
+            put("toolType", "music")
+            put(
+                "description",
+                "控制安卓系统级音乐播放。action=play 且提供 source 时，会由应用前台媒体会话播放本地文件、omnibot workspace/public 文件、file/content Uri 或 http(s) 直链音频；play 不提供 source 时，退化为向系统当前播放器发送播放媒体键。pause/resume/stop/next/previous 会优先控制当前由本应用托管的音频播放，若没有本地会话则退化为发送系统媒体键；seek 和 status 仅针对本应用托管的播放会话。"
+            )
+            put("postToolRule", "执行后等待工具结果，再决定是否继续调整播放。")
+            putJsonObject("parameters") {
+                put("type", "object")
+                putJsonObject("properties") {
+                    putJsonObject("action") {
+                        put("type", "string")
+                        put("description", "要执行的播放控制动作。")
+                        putJsonArray("enum") {
+                            add("play")
+                            add("pause")
+                            add("resume")
+                            add("stop")
+                            add("seek")
+                            add("status")
+                            add("next")
+                            add("previous")
+                        }
+                    }
+                    putJsonObject("source") {
+                        put("type", "string")
+                        put("description", "仅 play 时可选。支持 omnibot://、/workspace、/storage、相对 workspace 路径、file://、content://、http(s) 直链。留空表示只向系统发送播放媒体键。")
+                    }
+                    putJsonObject("title") {
+                        put("type", "string")
+                        put("description", "仅 play 时可选，前台通知与系统媒体会话里显示的标题。")
+                    }
+                    putJsonObject("loop") {
+                        put("type", "boolean")
+                        put("description", "仅 play 时可选，是否循环播放。默认 false。")
+                    }
+                    putJsonObject("positionSeconds") {
+                        put("type", "integer")
+                        put("description", "仅 seek 时使用，目标播放秒数。")
+                    }
+                }
+                putJsonArray("required") {
+                    add("action")
+                }
+            }
+        }
+    }
+
     val memorySearchTool: JsonObject = buildJsonObject {
         put("type", "function")
         putJsonObject("function") {
@@ -1303,6 +1355,10 @@ object AgentToolDefinitions {
         calendarEventDeleteTool
     ).map(::decorateToolDefinition)
 
+    val musicTools: List<JsonObject> = listOf(
+        musicPlaybackControlTool
+    ).map(::decorateToolDefinition)
+
     val memoryTools: List<JsonObject> = listOf(
         memorySearchTool,
         memoryWriteDailyTool,
@@ -1314,5 +1370,5 @@ object AgentToolDefinitions {
         subagentDispatchTool
     ).map(::decorateToolDefinition)
 
-    fun staticTools(): List<JsonObject> = builtinTools + scheduleTools + alarmTools + calendarTools
+    fun staticTools(): List<JsonObject> = builtinTools + scheduleTools + alarmTools + calendarTools + musicTools
 }
