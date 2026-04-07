@@ -785,7 +785,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                               key: _drawerKey,
                               embedded: true,
                               closeOnNavigate: false,
-                              activeThreadTarget: _visibleThreadTarget,
                               newConversationMode: _conversationModeForPageMode(
                                 _activeMode,
                               ),
@@ -938,7 +937,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                     ? null
                     : HomeDrawer(
                         key: _drawerKey,
-                        activeThreadTarget: _visibleThreadTarget,
                         newConversationMode: _conversationModeForPageMode(
                           _activeMode,
                         ),

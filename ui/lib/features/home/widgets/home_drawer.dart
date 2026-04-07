@@ -26,7 +26,6 @@ class HomeDrawer extends ConsumerStatefulWidget {
     this.newConversationMode = ConversationMode.normal,
     this.embedded = false,
     this.closeOnNavigate = true,
-    this.activeThreadTarget,
     this.onThreadTargetSelected,
   });
 
@@ -34,7 +33,6 @@ class HomeDrawer extends ConsumerStatefulWidget {
   final ConversationMode newConversationMode;
   final bool embedded;
   final bool closeOnNavigate;
-  final ConversationThreadTarget? activeThreadTarget;
   final ValueChanged<ConversationThreadTarget>? onThreadTargetSelected;
 
   @override
@@ -256,13 +254,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 
   bool get _shouldCloseOnNavigate => widget.closeOnNavigate && !widget.embedded;
-  ConversationThreadTarget? get _draftConversationTarget {
-    final target = widget.activeThreadTarget;
-    if (target == null || !target.isNewConversation) {
-      return null;
-    }
-    return target;
-  }
 
   void _maybeCloseDrawer() {
     if (!_shouldCloseOnNavigate || !Navigator.of(context).canPop()) {
@@ -621,8 +612,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 
   Widget _buildConversationSection() {
-    final draftConversationTarget = _draftConversationTarget;
-    final hasDraftConversation = draftConversationTarget != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -669,88 +658,34 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             child: isLoadingConversations
-                ? hasDraftConversation
-                      ? _buildConversationList(draftConversationTarget)
-                      : Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                AppColors.text,
-                              ),
-                            ),
-                          ),
-                        )
-                : conversations.isEmpty && !hasDraftConversation
-                ? _buildEmptyConversation()
-                : _buildConversationList(draftConversationTarget),
+                ? Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.text,
+                        ),
+                      ),
+                    ),
+                  )
+                : conversations.isEmpty
+                    ? _buildEmptyConversation()
+                    : SlidableAutoCloseBehavior(
+                        child: ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: conversations.length,
+                          itemBuilder: (context, index) {
+                            return _buildSwipeConversationItem(
+                              conversations[index],
+                            );
+                          },
+                        ),
+                      ),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildConversationList(ConversationThreadTarget? draftTarget) {
-    final hasDraftConversation = draftTarget != null;
-    return SlidableAutoCloseBehavior(
-      child: ListView.builder(
-        padding: EdgeInsets.zero,
-        itemCount: conversations.length + (hasDraftConversation ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (hasDraftConversation && index == 0) {
-            return _buildDraftConversationItem(draftTarget);
-          }
-          final conversationIndex = hasDraftConversation ? index - 1 : index;
-          return _buildSwipeConversationItem(conversations[conversationIndex]);
-        },
-      ),
-    );
-  }
-
-  Widget _buildDraftConversationItem(ConversationThreadTarget target) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2F7FF),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0x331930D9)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    '新对话',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.text,
-                      fontFamily: 'PingFang SC',
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ConversationModeBadge(mode: target.mode, compact: true),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '编辑中',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.text.withValues(alpha: 0.4),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
