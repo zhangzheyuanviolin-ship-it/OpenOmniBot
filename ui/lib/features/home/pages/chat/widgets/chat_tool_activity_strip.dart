@@ -24,9 +24,9 @@ const ValueKey<String> kChatToolActivityToggleKey = ValueKey<String>(
 
 const double _kToolActivityRowHeight = 32;
 const double _kToolActivitySurfaceRadius = 18;
-const double _kToolActivityPreviewWidth = 132;
-const double _kToolActivityPreviewHeight = 68;
-const double _kToolActivityPreviewOverlap = 34;
+const double _kToolActivityPreviewWidth = 94;
+const double _kToolActivityPreviewHeight = 54;
+const double _kToolActivityPreviewOverlap = 30;
 const double _kToolActivitySurfaceHorizontalInset = 20;
 const double _kToolActivityDrawerMaxHeight = 264;
 const double _kToolActivityTypeSlotWidth = 34;
@@ -646,7 +646,7 @@ class _TerminalThumbnail extends StatelessWidget {
           child: Ink(
             width: _kToolActivityPreviewWidth,
             height: _kToolActivityPreviewHeight,
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFF1A2231), Color(0xFF0E1422)],
@@ -665,22 +665,22 @@ class _TerminalThumbnail extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFFF4F7FB),
-                    fontSize: 8.2,
+                    fontSize: 6.9,
                     height: 1.05,
                     fontWeight: FontWeight.w600,
                     fontFamily: 'monospace',
                   ),
                 ),
                 if (transcript.previewText.trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Expanded(
                     child: Text.rich(
                       AnsiTextSpanBuilder.build(
                         transcript.previewText,
                         const TextStyle(
                           color: Color(0xFF88EEA6),
-                          fontSize: 6.9,
-                          height: 1.16,
+                          fontSize: 5.7,
+                          height: 1.08,
                           fontFamily: 'monospace',
                         ),
                       ),
