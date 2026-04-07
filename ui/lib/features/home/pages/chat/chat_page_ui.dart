@@ -741,8 +741,17 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     const shellPadding = EdgeInsets.fromLTRB(8, 10, 8, 10);
     return LayoutBuilder(
       builder: (context, constraints) {
+        final availableWidth = math.max(
+          0,
+          constraints.maxWidth - shellPadding.horizontal,
+        ).toDouble();
+        final expandedLayout = _hdPadPaneLayoutResolver.resolve(
+          availableWidth,
+          preferredLeftWidth: _hdPadLeftPaneWidth,
+          preferredRightWidth: _hdPadRightPaneWidth,
+        );
         final layout = _hdPadPaneLayoutResolver.resolve(
-          math.max(0, constraints.maxWidth - shellPadding.horizontal),
+          availableWidth,
           preferredLeftWidth: _hdPadLeftPaneWidth,
           preferredRightWidth: _hdPadRightPaneWidth,
           collapseLeftPane: _hdPadLeftPaneCollapsed,
@@ -755,18 +764,38 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 duration: const Duration(milliseconds: 280),
                 curve: Curves.easeInOutCubic,
                 width: layout.leftWidth,
-                child: _buildPaneSurface(
-                  translucent: backgroundActive,
-                  visualProfile: visualProfile,
-                  child: HomeDrawer(
-                    key: _drawerKey,
-                    embedded: true,
-                    closeOnNavigate: false,
-                    newConversationMode: _conversationModeForPageMode(
-                      _activeMode,
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.centerLeft,
+                    minWidth: expandedLayout.leftWidth,
+                    maxWidth: expandedLayout.leftWidth,
+                    child: SizedBox(
+                      width: expandedLayout.leftWidth,
+                      child: IgnorePointer(
+                        ignoring: _hdPadLeftPaneCollapsed,
+                        child: AnimatedSlide(
+                          duration: const Duration(milliseconds: 280),
+                          curve: Curves.easeInOutCubic,
+                          offset: _hdPadLeftPaneCollapsed
+                              ? const Offset(-0.08, 0)
+                              : Offset.zero,
+                          child: _buildPaneSurface(
+                            translucent: backgroundActive,
+                            visualProfile: visualProfile,
+                            child: HomeDrawer(
+                              key: _drawerKey,
+                              embedded: true,
+                              closeOnNavigate: false,
+                              newConversationMode: _conversationModeForPageMode(
+                                _activeMode,
+                              ),
+                              onThreadTargetSelected:
+                                  _handleEmbeddedDrawerThreadTargetSelected,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                    onThreadTargetSelected:
-                        _handleEmbeddedDrawerThreadTargetSelected,
                   ),
                 ),
               ),
