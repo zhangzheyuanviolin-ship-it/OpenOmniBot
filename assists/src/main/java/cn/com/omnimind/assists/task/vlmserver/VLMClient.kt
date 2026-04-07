@@ -315,9 +315,6 @@ class VLMClient {
             "open_app" -> OpenAppAction(
                 packageName = requireString(args, "package_name")
             )
-            "run_compiled_path" -> RunCompiledPathAction(
-                pathId = requireString(args, "path_id")
-            )
             "press_home" -> PressHomeAction()
             "press_back" -> PressBackAction()
             "wait" -> buildWaitAction(args)

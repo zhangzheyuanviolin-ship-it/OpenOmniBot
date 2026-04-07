@@ -390,10 +390,12 @@ object VlmToolCoordinator {
                         stepSkillGuidance = payload.stepSkillGuidance,
                         onCompileGateResolved = { gateResult ->
                             taskState.compileStatus = gateResult.kind
-                            taskState.executionRoute = when (gateResult.kind) {
-                                "hit" -> "utg"
-                                "hard_fail" -> "blocked"
-                                else -> "vlm"
+                            taskState.executionRoute = gateResult.executionRoute.ifBlank {
+                                when (gateResult.kind) {
+                                    "hit" -> "utg"
+                                    "hard_fail" -> "blocked"
+                                    else -> "vlm"
+                                }
                             }
                             if (gateResult.summary.isNotBlank()) {
                                 taskState.message = gateResult.summary

@@ -31,8 +31,6 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   bool _downloadingCloudPath = false;
   bool _utgEnabled = true;
   bool _providerAutoStartEnabled = true;
-  bool _fallbackToVlmOnFailureEnabled = true;
-  bool _runLogRecordingEnabled = true;
   String? _runningPathId;
   String? _deletingPathId;
   String? _distillingPathId;
@@ -83,8 +81,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       if (!mounted) return;
       _applyConfig(config);
       await Future.wait([
-        _loadPaths(baseUrl: config.resolvedOmnicloudBaseUrl, silent: true),
-        _loadRunLogs(baseUrl: config.resolvedOmnicloudBaseUrl, silent: true),
+        _loadPaths(baseUrl: config.resolvedOmniflowBaseUrl, silent: true),
+        _loadRunLogs(baseUrl: config.resolvedOmniflowBaseUrl, silent: true),
       ]);
     } on PlatformException catch (e) {
       showToast(e.message ?? '加载 OmniFlow 配置失败', type: ToastType.error);
@@ -102,13 +100,11 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     _config = config;
     _utgEnabled = config.utgEnabled;
     _providerAutoStartEnabled = config.providerAutoStartEnabled;
-    _fallbackToVlmOnFailureEnabled = config.fallbackToVlmOnFailureEnabled;
-    _runLogRecordingEnabled = config.runLogRecordingEnabled;
-    _baseUrlController.text = config.omnicloudBaseUrl;
+    _baseUrlController.text = config.omniflowBaseUrl;
     _startCommandController.text = config.providerStartCommand;
     _workingDirectoryController.text = config.providerWorkingDirectory ?? '';
     if (_cloudBaseUrlController.text.trim().isEmpty) {
-      _cloudBaseUrlController.text = config.omnicloudBaseUrl;
+      _cloudBaseUrlController.text = config.omniflowBaseUrl;
     }
     if (mounted) {
       setState(() {});
@@ -121,17 +117,15 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       final saved = await AssistsMessageService.saveUtgBridgeConfig(
         utgEnabled: _utgEnabled,
         providerAutoStartEnabled: _providerAutoStartEnabled,
-        fallbackToVlmOnFailureEnabled: _fallbackToVlmOnFailureEnabled,
-        runLogRecordingEnabled: _runLogRecordingEnabled,
-        omnicloudBaseUrl: _baseUrlController.text.trim(),
+        omniflowBaseUrl: _baseUrlController.text.trim(),
         providerStartCommand: _startCommandController.text.trim(),
         providerWorkingDirectory: _workingDirectoryController.text.trim(),
       );
       if (!mounted) return;
       _applyConfig(saved);
       await Future.wait([
-        _loadPaths(baseUrl: saved.resolvedOmnicloudBaseUrl, silent: true),
-        _loadRunLogs(baseUrl: saved.resolvedOmnicloudBaseUrl, silent: true),
+        _loadPaths(baseUrl: saved.resolvedOmniflowBaseUrl, silent: true),
+        _loadRunLogs(baseUrl: saved.resolvedOmniflowBaseUrl, silent: true),
       ]);
       showToast('OmniFlow 配置已保存', type: ToastType.success);
     } on PlatformException catch (e) {
@@ -246,7 +240,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     try {
       final detail = await AssistsMessageService.getUtgRunLogDetail(
         runId: runId,
-        baseUrl: _config?.resolvedOmnicloudBaseUrl,
+        baseUrl: _config?.resolvedOmniflowBaseUrl,
       );
       if (!mounted) return;
       setState(() {
@@ -1622,8 +1616,14 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       );
       if (!mounted) return;
       _applyConfig(result.config);
-      await _loadPaths(baseUrl: result.config.omnicloudBaseUrl, silent: true);
-      await _loadRunLogs(baseUrl: result.config.omnicloudBaseUrl, silent: true);
+      await _loadPaths(
+        baseUrl: result.config.resolvedOmniflowBaseUrl,
+        silent: true,
+      );
+      await _loadRunLogs(
+        baseUrl: result.config.resolvedOmniflowBaseUrl,
+        silent: true,
+      );
       if (!mounted) return;
       showToast(
         result.success
@@ -2223,26 +2223,6 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   () => _providerAutoStartEnabled = value,
                                 ),
                         ),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          value: _fallbackToVlmOnFailureEnabled,
-                          title: const Text('OmniFlow 失败时自动回退到 VLM'),
-                          onChanged: _saving
-                              ? null
-                              : (value) => setState(
-                                  () => _fallbackToVlmOnFailureEnabled = value,
-                                ),
-                        ),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          value: _runLogRecordingEnabled,
-                          title: const Text('持续记录 OmniFlow run_log'),
-                          onChanged: _saving
-                              ? null
-                              : (value) => setState(
-                                  () => _runLogRecordingEnabled = value,
-                                ),
-                        ),
                         const SizedBox(height: 8),
                         _buildInputField(
                           controller: _baseUrlController,
@@ -2274,10 +2254,6 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                     : 'unreachable'),
                         ),
                         _buildInfoRow(
-                          'sidecar run_log',
-                          config?.runLogPath ?? '',
-                        ),
-                        _buildInfoRow(
                           'provider run_log',
                           config?.providerRunLogPath ?? '',
                         ),
@@ -2286,8 +2262,12 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           config?.canonicalRunLogPath ?? '',
                         ),
                         _buildInfoRow(
-                          'provider stdout',
-                          config?.providerStdoutPath ?? '',
+                          'auto-start command',
+                          config == null
+                              ? ''
+                              : (config.providerStartCommandConfigured
+                                    ? 'configured'
+                                    : 'not configured'),
                         ),
                         const SizedBox(height: 12),
                         Container(

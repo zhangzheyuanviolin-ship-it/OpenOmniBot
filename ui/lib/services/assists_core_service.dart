@@ -114,15 +114,12 @@ class ModelAvailabilityCheckResult {
 
 class UtgBridgeConfig {
   final bool utgEnabled;
-  final String omnicloudBaseUrl;
-  final String resolvedOmnicloudBaseUrl;
+  final String omniflowBaseUrl;
+  final String resolvedOmniflowBaseUrl;
   final bool providerAutoStartEnabled;
-  final bool fallbackToVlmOnFailureEnabled;
   final String providerStartCommand;
+  final bool providerStartCommandConfigured;
   final String? providerWorkingDirectory;
-  final String providerStdoutPath;
-  final bool runLogRecordingEnabled;
-  final String runLogPath;
   final bool providerHealthy;
   final String providerHealthStatus;
   final String providerRunLogPath;
@@ -130,15 +127,12 @@ class UtgBridgeConfig {
 
   const UtgBridgeConfig({
     required this.utgEnabled,
-    required this.omnicloudBaseUrl,
-    required this.resolvedOmnicloudBaseUrl,
+    required this.omniflowBaseUrl,
+    required this.resolvedOmniflowBaseUrl,
     required this.providerAutoStartEnabled,
-    required this.fallbackToVlmOnFailureEnabled,
     required this.providerStartCommand,
+    required this.providerStartCommandConfigured,
     required this.providerWorkingDirectory,
-    required this.providerStdoutPath,
-    required this.runLogRecordingEnabled,
-    required this.runLogPath,
     required this.providerHealthy,
     required this.providerHealthStatus,
     required this.providerRunLogPath,
@@ -150,19 +144,17 @@ class UtgBridgeConfig {
     final health = (raw['providerHealth'] as Map?) ?? const {};
     return UtgBridgeConfig(
       utgEnabled: raw['utgEnabled'] != false,
-      omnicloudBaseUrl: (raw['omnicloudBaseUrl'] ?? '').toString(),
-      resolvedOmnicloudBaseUrl: (raw['resolvedOmnicloudBaseUrl'] ?? '')
+      omniflowBaseUrl: (raw['omniflowBaseUrl'] ?? '').toString(),
+      resolvedOmniflowBaseUrl: (raw['resolvedOmniflowBaseUrl'] ?? '')
           .toString(),
       providerAutoStartEnabled: raw['providerAutoStartEnabled'] == true,
-      fallbackToVlmOnFailureEnabled:
-          raw['fallbackToVlmOnFailureEnabled'] != false,
       providerStartCommand: (raw['providerStartCommand'] ?? '').toString(),
+      providerStartCommandConfigured:
+          raw['providerStartCommandConfigured'] == true,
       providerWorkingDirectory: raw['providerWorkingDirectory']?.toString(),
-      providerStdoutPath: (raw['providerStdoutPath'] ?? '').toString(),
-      runLogRecordingEnabled: raw['runLogRecordingEnabled'] == true,
-      runLogPath: (raw['runLogPath'] ?? '').toString(),
       providerHealthy: raw['providerHealthy'] == true,
-      providerHealthStatus: (health['status'] ?? '').toString(),
+      providerHealthStatus:
+          (raw['providerHealthStatus'] ?? health['status'] ?? '').toString(),
       providerRunLogPath: (raw['providerRunLogPath'] ?? '').toString(),
       canonicalRunLogPath: (raw['canonicalRunLogPath'] ?? '').toString(),
     );
@@ -323,14 +315,14 @@ class UtgPathsSnapshot {
 class UtgBridgeExecutionContext {
   final String bridgeBaseUrl;
   final String bridgeToken;
-  final String resolvedOmnicloudBaseUrl;
+  final String resolvedOmniflowBaseUrl;
   final bool providerHealthy;
   final String providerMessage;
 
   const UtgBridgeExecutionContext({
     required this.bridgeBaseUrl,
     required this.bridgeToken,
-    required this.resolvedOmnicloudBaseUrl,
+    required this.resolvedOmniflowBaseUrl,
     required this.providerHealthy,
     required this.providerMessage,
   });
@@ -340,7 +332,7 @@ class UtgBridgeExecutionContext {
     return UtgBridgeExecutionContext(
       bridgeBaseUrl: (raw['bridgeBaseUrl'] ?? '').toString(),
       bridgeToken: (raw['bridgeToken'] ?? '').toString(),
-      resolvedOmnicloudBaseUrl: (raw['resolvedOmnicloudBaseUrl'] ?? '')
+      resolvedOmniflowBaseUrl: (raw['resolvedOmniflowBaseUrl'] ?? '')
           .toString(),
       providerHealthy: raw['providerHealthy'] == true,
       providerMessage: (raw['providerMessage'] ?? '').toString(),
@@ -1348,9 +1340,7 @@ class AssistsMessageService {
   static Future<UtgBridgeConfig> saveUtgBridgeConfig({
     bool? utgEnabled,
     bool? providerAutoStartEnabled,
-    bool? fallbackToVlmOnFailureEnabled,
-    bool? runLogRecordingEnabled,
-    String? omnicloudBaseUrl,
+    String? omniflowBaseUrl,
     String? providerStartCommand,
     String? providerWorkingDirectory,
   }) async {
@@ -1358,11 +1348,7 @@ class AssistsMessageService {
       if (utgEnabled != null) 'utgEnabled': utgEnabled,
       if (providerAutoStartEnabled != null)
         'providerAutoStartEnabled': providerAutoStartEnabled,
-      if (fallbackToVlmOnFailureEnabled != null)
-        'fallbackToVlmOnFailureEnabled': fallbackToVlmOnFailureEnabled,
-      if (runLogRecordingEnabled != null)
-        'runLogRecordingEnabled': runLogRecordingEnabled,
-      if (omnicloudBaseUrl != null) 'omnicloudBaseUrl': omnicloudBaseUrl,
+      if (omniflowBaseUrl != null) 'omniflowBaseUrl': omniflowBaseUrl,
       if (providerStartCommand != null)
         'providerStartCommand': providerStartCommand,
       if (providerWorkingDirectory != null)

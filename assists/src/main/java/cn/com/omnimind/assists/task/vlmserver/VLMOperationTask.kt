@@ -46,7 +46,8 @@ open class VLMOperationTask(
     }
 
     private lateinit var vlmOperationService: VLMOperationService
-    private lateinit var androidDeviceOperator: AndroidDeviceOperator
+    private lateinit var rawAndroidDeviceOperator: AndroidDeviceOperator
+    private lateinit var deviceOperator: DeviceOperator
     private lateinit var onTaskFinishListener: () -> Unit?
     
     /** 
@@ -79,6 +80,7 @@ open class VLMOperationTask(
     private var goal: String? = null
     private var taskStartTime = 0L//任务开始时间
     private var setStartWithNotShowReadFlag = false
+    private var traceSession: VlmTaskTraceSession? = null
 
     fun appendExternalMemory(memory: String): Boolean {
         val trimmed = memory.trim()
@@ -117,7 +119,8 @@ open class VLMOperationTask(
             isSubTask = isSubTask
 
         )
-        androidDeviceOperator = AndroidDeviceOperator(executionTaskEventApi, taskContext)
+        rawAndroidDeviceOperator = AndroidDeviceOperator(executionTaskEventApi, taskContext)
+        deviceOperator = rawAndroidDeviceOperator
     }
 
     /**
@@ -132,6 +135,11 @@ open class VLMOperationTask(
         }
         val infoMessage = "小万需要你的帮助：$mQuestion"
         AccessibilityController.restoreKeyboard()
+        traceSession?.recordLifecycleEvent(
+            eventType = "waiting_input",
+            message = infoMessage,
+            status = "WAITING_INPUT",
+        )
 
         onTaskStop(TaskFinishType.WAITING_INPUT, infoMessage)
         notifyTerminalResult(
@@ -155,6 +163,11 @@ open class VLMOperationTask(
         OmniLog.d(Tag, "等待用户完成操作并点击继续...")
         val userConfirmation = userInputChannel.receive()
         OmniLog.d(Tag, "收到用户确认：$userConfirmation")
+        traceSession?.recordLifecycleEvent(
+            eventType = "waiting_input_resolved",
+            message = userConfirmation,
+            status = "RUNNING",
+        )
 
         AccessibilityController.hideKeyboard()
         setStartWithNotShowReadFlag = true
@@ -287,10 +300,41 @@ open class VLMOperationTask(
             OmniLog.d(Tag, "VLM Operation Task Is Running ! skipGoHome=$skipGoHome")
             try {
                 taskStartTime = System.currentTimeMillis()
+                traceSession = if (!isSubTask) {
+                    VlmTaskTraceSession(
+                        taskId = id,
+                        goal = goal,
+                        startedAtMs = taskStartTime,
+                    ).also {
+                        deviceOperator = TraceRecordingDeviceOperator(rawAndroidDeviceOperator, it)
+                        it.recordLifecycleEvent(
+                            eventType = "run_started",
+                            message = goal,
+                            status = "RUNNING",
+                        )
+                    }
+                } else {
+                    deviceOperator = rawAndroidDeviceOperator
+                    null
+                }
                 if (!isSubTask && onPrepareExecution != null) {
-                    executionTaskEventApi?.updateShowStepText("正在尝试 UTG compile")
+                    executionTaskEventApi?.updateShowStepText("正在尝试 OmniFlow compile")
                     val preparedResult = onPrepareExecution()
                     compileGateResult = preparedResult
+                    traceSession?.recordLifecycleEvent(
+                        eventType = "compile_decided",
+                        message = preparedResult.summary,
+                        status = preparedResult.kind.uppercase(),
+                        extra = mapOf(
+                            "compile_gate" to linkedMapOf(
+                                "kind" to preparedResult.kind,
+                                "summary" to preparedResult.summary,
+                                "path_id" to preparedResult.pathId,
+                                "planner_guidance" to preparedResult.plannerGuidance,
+                                "execution_route" to preparedResult.executionRoute,
+                            )
+                        ),
+                    )
                     onCompileGateResolved?.invoke(preparedResult)
                     if (preparedResult.summary.isNotBlank()) {
                         executionTaskEventApi?.updateShowStepText(preparedResult.summary)
@@ -337,7 +381,7 @@ open class VLMOperationTask(
                                     stepSkillGuidance = resolvedStepSkillGuidance,
                                     installedApplications = emptyMap()
                                 ),
-                                error = compileGateResult.summary.ifBlank { "UTG compile 失败" },
+                                error = compileGateResult.summary.ifBlank { "OmniFlow compile 失败" },
                                 feedback = compileGateResult.summary,
                                 compileGateKind = compileGateResult.kind,
                             )
@@ -345,9 +389,9 @@ open class VLMOperationTask(
 
                         compileGateResult?.kind == "hit" &&
                             !compileGateResult.pathId.isNullOrBlank() -> {
-                            val compiledResult = runCompiledPath(
+                            val compiledResult = onRunCompiledPath?.invoke(
                                 compileGateResult.pathId!!
-                            )
+                            ) ?: OperationResult(false, "OmniFlow compiled path request failed", null)
                             if (compiledResult.success) {
                                 TaskExecutionReport(
                                     success = true,
@@ -366,26 +410,6 @@ open class VLMOperationTask(
                                     providerRunLogJson = compiledResult.providerRunLogJson,
                                     providerRunLogPath = compiledResult.providerRunLogPath,
                                     canonicalRunLogPath = compiledResult.canonicalRunLogPath,
-                                )
-                            } else if (compileGateResult.fallbackAllowed) {
-                                fallbackUsed = true
-                                executionTaskEventApi?.updateShowStepText(
-                                    "UTG 执行失败，回退 VLM 推理"
-                                )
-                                val installedApps = AccessibilityController.Companion.mapInstalledApplications()
-                                vlmOperationService.executeTask(
-                                    goal = goal,
-                                    installedApps = installedApps,
-                                    model = model ?: "scene.vlm.operation.primary",
-                                    maxSteps = maxSteps,
-                                    packageName = packageName,
-                                    skipGoHome = skipGoHome,
-                                    summary = shouldSummary,
-                                    currentStepGoal = goal,
-                                    stepSkillGuidance = resolvedStepSkillGuidance
-                                ).copy(
-                                    compileGateKind = compileGateResult.kind,
-                                    fallbackUsed = true,
                                 )
                             } else {
                                 TaskExecutionReport(
@@ -452,24 +476,6 @@ open class VLMOperationTask(
                     Tag,
                     "VLM task terminal state: finishType=$finishType success=${taskExecutionReport.success} error=${taskExecutionReport.error.orEmpty()}"
                 )
-                if (!isSubTask && onTaskRunLogReady != null) {
-                    runCatching {
-                        onTaskRunLogReady(
-                            VLMTaskRunLogPayload(
-                                goal = goal,
-                                compileGateResult = compileGateResult,
-                                taskReport = taskExecutionReport,
-                                startedAtMs = taskStartTime,
-                                finishedAtMs = System.currentTimeMillis(),
-                                finalXml = captureCurrentXml(),
-                                finalPackageName = AccessibilityController.getPackageName(),
-                            )
-                        )
-                    }.onFailure {
-                        OmniLog.w(Tag, "onTaskRunLogReady failed: ${it.message}")
-                    }
-                }
-
                 val summaryResult = if (shouldSummary && taskExecutionReport.summaryScreenshotList != null) {
                     pushSummary(
                         goal = goal,
@@ -480,62 +486,76 @@ open class VLMOperationTask(
                     SummaryPushResult()
                 }
 
-                if (taskExecutionReport.success) {
-                    notifyTerminalResult(
-                        VlmTaskTerminalResult(
-                            status = VlmTaskTerminalStatus.FINISHED,
-                            message = extractFinishedContent(taskExecutionReport),
-                            finishedContent = extractFinishedContent(taskExecutionReport),
-                            summaryText = summaryResult.summaryText,
-                            needSummary = shouldSummary,
-                            feedback = taskExecutionReport.feedback,
-                            summaryUnavailable = summaryResult.summaryUnavailable
-                        )
+                val terminalResult = if (taskExecutionReport.success) {
+                    VlmTaskTerminalResult(
+                        status = VlmTaskTerminalStatus.FINISHED,
+                        message = extractFinishedContent(taskExecutionReport),
+                        finishedContent = extractFinishedContent(taskExecutionReport),
+                        summaryText = summaryResult.summaryText,
+                        needSummary = shouldSummary,
+                        feedback = taskExecutionReport.feedback,
+                        summaryUnavailable = summaryResult.summaryUnavailable
                     )
                 } else {
                     val errorMessage = finishMessage.ifBlank { "任务执行失败" }
-                    notifyTerminalResult(
-                        VlmTaskTerminalResult(
-                            status = VlmTaskTerminalStatus.ERROR,
-                            message = errorMessage,
-                            finishedContent = null,
-                            summaryText = summaryResult.summaryText,
-                            errorMessage = errorMessage,
-                            needSummary = shouldSummary,
-                            feedback = taskExecutionReport.feedback,
-                            summaryUnavailable = summaryResult.summaryUnavailable
-                        )
+                    VlmTaskTerminalResult(
+                        status = VlmTaskTerminalStatus.ERROR,
+                        message = errorMessage,
+                        finishedContent = null,
+                        summaryText = summaryResult.summaryText,
+                        errorMessage = errorMessage,
+                        needSummary = shouldSummary,
+                        feedback = taskExecutionReport.feedback,
+                        summaryUnavailable = summaryResult.summaryUnavailable
                     )
                 }
+                traceSession?.recordLifecycleEvent(
+                    eventType = if (taskExecutionReport.success) "run_finished" else "run_failed",
+                    message = terminalResult.message,
+                    status = terminalResult.status.name,
+                )
+                if (!isSubTask && onTaskRunLogReady != null) {
+                    val finishedAtMs = System.currentTimeMillis()
+                    runCatching {
+                        onTaskRunLogReady(
+                            VLMTaskRunLogPayload(
+                                goal = goal,
+                                compileGateResult = compileGateResult,
+                                taskReport = taskExecutionReport,
+                                startedAtMs = traceSession?.startedAtMs ?: taskStartTime,
+                                finishedAtMs = finishedAtMs,
+                                finalXml = captureCurrentXml(),
+                                finalPackageName = AccessibilityController.getPackageName(),
+                                rawEvents = traceSession?.snapshotEvents() ?: emptyList(),
+                                traceSessionMeta = buildTraceSessionMeta(
+                                    finishedAtMs = finishedAtMs,
+                                    compileGateResult = compileGateResult,
+                                    taskExecutionReport = taskExecutionReport,
+                                    terminalResult = terminalResult,
+                                ),
+                            )
+                        )
+                    }.onFailure {
+                        OmniLog.w(Tag, "onTaskRunLogReady failed: ${it.message}")
+                    }
+                }
+                notifyTerminalResult(terminalResult)
                 onTaskStop(finishType, finishMessage)
                 onTaskDestroy()
             } catch (e: PrivacyBlockedException) {
-                notifyTerminalResult(
-                    VlmTaskTerminalResult(
-                        status = VlmTaskTerminalStatus.ERROR,
-                        message = e.message ?: "应用未授权，已被隐私设置限制",
-                        errorMessage = e.message ?: "应用未授权，已被隐私设置限制",
-                        needSummary = needSummary || hasSummaryIntent(goal)
-                    )
+                val terminalResult = VlmTaskTerminalResult(
+                    status = VlmTaskTerminalStatus.ERROR,
+                    message = e.message ?: "应用未授权，已被隐私设置限制",
+                    errorMessage = e.message ?: "应用未授权，已被隐私设置限制",
+                    needSummary = needSummary || hasSummaryIntent(goal)
                 )
-                onTaskStop(TaskFinishType.ERROR, e.message ?: "应用未授权，已被隐私设置限制")
-                onTaskDestroy()
-            } catch (e: Http429Exception) {
-                notifyTerminalResult(
-                    VlmTaskTerminalResult(
-                        status = VlmTaskTerminalStatus.ERROR,
-                        message = e.message ?: "请求过于频繁",
-                        errorMessage = e.message ?: "请求过于频繁",
-                        needSummary = needSummary || hasSummaryIntent(goal)
-                    )
+                traceSession?.recordLifecycleEvent(
+                    eventType = "run_failed",
+                    message = terminalResult.message,
+                    status = terminalResult.status.name,
                 )
-                onTaskStop(TaskFinishType.ERROR, e.message)
-                onTaskDestroy()
-            } catch (e: CancellationException) {
-                val cancelMessage = e.message?.takeIf { it.isNotBlank() }
-                    ?: if (isCancellationRequested) "Task cancelled by user" else "Task cancelled"
-                OmniLog.i(Tag, "VLM Operation Task cancelled: $cancelMessage")
                 if (!isSubTask && onTaskRunLogReady != null) {
+                    val finishedAtMs = System.currentTimeMillis()
                     runCatching {
                         onTaskRunLogReady(
                             VLMTaskRunLogPayload(
@@ -552,36 +572,223 @@ open class VLMOperationTask(
                                         stepSkillGuidance = resolvedStepSkillGuidance,
                                         installedApplications = emptyMap()
                                     ),
-                                    error = cancelMessage,
-                                    feedback = cancelMessage,
+                                    error = terminalResult.errorMessage,
+                                    feedback = terminalResult.message,
                                     compileGateKind = compileGateResult?.kind,
                                     fallbackUsed = fallbackUsed,
                                 ),
-                                startedAtMs = taskStartTime,
-                                finishedAtMs = System.currentTimeMillis(),
+                                startedAtMs = traceSession?.startedAtMs ?: taskStartTime,
+                                finishedAtMs = finishedAtMs,
                                 finalXml = captureCurrentXml(),
                                 finalPackageName = AccessibilityController.getPackageName()
                                     ?: currentPackageName,
+                                rawEvents = traceSession?.snapshotEvents() ?: emptyList(),
+                                traceSessionMeta = buildTraceSessionMeta(
+                                    finishedAtMs = finishedAtMs,
+                                    compileGateResult = compileGateResult,
+                                    taskExecutionReport = TaskExecutionReport(
+                                        success = false,
+                                        goal = goal,
+                                        totalSteps = 0,
+                                        executionTrace = emptyList(),
+                                        finalContext = UIContext(
+                                            overallTask = goal,
+                                            currentStepGoal = goal,
+                                            stepSkillGuidance = resolvedStepSkillGuidance,
+                                            installedApplications = emptyMap()
+                                        ),
+                                        error = terminalResult.errorMessage,
+                                        feedback = terminalResult.message,
+                                        compileGateKind = compileGateResult?.kind,
+                                        fallbackUsed = fallbackUsed,
+                                    ),
+                                    terminalResult = terminalResult,
+                                ),
+                            )
+                        )
+                    }.onFailure {
+                        OmniLog.w(Tag, "onTaskRunLogReady failed after privacy block: ${it.message}")
+                    }
+                }
+                notifyTerminalResult(terminalResult)
+                onTaskStop(TaskFinishType.ERROR, e.message ?: "应用未授权，已被隐私设置限制")
+                onTaskDestroy()
+            } catch (e: Http429Exception) {
+                val terminalResult = VlmTaskTerminalResult(
+                    status = VlmTaskTerminalStatus.ERROR,
+                    message = e.message ?: "请求过于频繁",
+                    errorMessage = e.message ?: "请求过于频繁",
+                    needSummary = needSummary || hasSummaryIntent(goal)
+                )
+                traceSession?.recordLifecycleEvent(
+                    eventType = "run_failed",
+                    message = terminalResult.message,
+                    status = terminalResult.status.name,
+                )
+                if (!isSubTask && onTaskRunLogReady != null) {
+                    val errorReport = TaskExecutionReport(
+                        success = false,
+                        goal = goal,
+                        totalSteps = 0,
+                        executionTrace = emptyList(),
+                        finalContext = UIContext(
+                            overallTask = goal,
+                            currentStepGoal = goal,
+                            stepSkillGuidance = resolvedStepSkillGuidance,
+                            installedApplications = emptyMap()
+                        ),
+                        error = terminalResult.errorMessage,
+                        feedback = terminalResult.message,
+                        compileGateKind = compileGateResult?.kind,
+                        fallbackUsed = fallbackUsed,
+                    )
+                    val finishedAtMs = System.currentTimeMillis()
+                    runCatching {
+                        onTaskRunLogReady(
+                            VLMTaskRunLogPayload(
+                                goal = goal,
+                                compileGateResult = compileGateResult,
+                                taskReport = errorReport,
+                                startedAtMs = traceSession?.startedAtMs ?: taskStartTime,
+                                finishedAtMs = finishedAtMs,
+                                finalXml = captureCurrentXml(),
+                                finalPackageName = AccessibilityController.getPackageName()
+                                    ?: currentPackageName,
+                                rawEvents = traceSession?.snapshotEvents() ?: emptyList(),
+                                traceSessionMeta = buildTraceSessionMeta(
+                                    finishedAtMs = finishedAtMs,
+                                    compileGateResult = compileGateResult,
+                                    taskExecutionReport = errorReport,
+                                    terminalResult = terminalResult,
+                                ),
+                            )
+                        )
+                    }.onFailure {
+                        OmniLog.w(Tag, "onTaskRunLogReady failed after 429: ${it.message}")
+                    }
+                }
+                notifyTerminalResult(terminalResult)
+                onTaskStop(TaskFinishType.ERROR, e.message)
+                onTaskDestroy()
+            } catch (e: CancellationException) {
+                val cancelMessage = e.message?.takeIf { it.isNotBlank() }
+                    ?: if (isCancellationRequested) "Task cancelled by user" else "Task cancelled"
+                OmniLog.i(Tag, "VLM Operation Task cancelled: $cancelMessage")
+                val cancelledReport = TaskExecutionReport(
+                    success = false,
+                    goal = goal,
+                    totalSteps = 0,
+                    executionTrace = emptyList(),
+                    finalContext = UIContext(
+                        overallTask = goal,
+                        currentStepGoal = goal,
+                        stepSkillGuidance = resolvedStepSkillGuidance,
+                        installedApplications = emptyMap()
+                    ),
+                    error = cancelMessage,
+                    feedback = cancelMessage,
+                    compileGateKind = compileGateResult?.kind,
+                    fallbackUsed = fallbackUsed,
+                )
+                val terminalResult = VlmTaskTerminalResult(
+                    status = VlmTaskTerminalStatus.CANCELLED,
+                    message = cancelMessage,
+                    errorMessage = cancelMessage,
+                    needSummary = shouldSummary,
+                    feedback = cancelMessage,
+                )
+                traceSession?.recordLifecycleEvent(
+                    eventType = "run_cancelled",
+                    message = cancelMessage,
+                    status = terminalResult.status.name,
+                )
+                if (!isSubTask && onTaskRunLogReady != null) {
+                    val finishedAtMs = System.currentTimeMillis()
+                    runCatching {
+                        onTaskRunLogReady(
+                            VLMTaskRunLogPayload(
+                                goal = goal,
+                                compileGateResult = compileGateResult,
+                                taskReport = cancelledReport,
+                                startedAtMs = traceSession?.startedAtMs ?: taskStartTime,
+                                finishedAtMs = finishedAtMs,
+                                finalXml = captureCurrentXml(),
+                                finalPackageName = AccessibilityController.getPackageName()
+                                    ?: currentPackageName,
+                                rawEvents = traceSession?.snapshotEvents() ?: emptyList(),
+                                traceSessionMeta = buildTraceSessionMeta(
+                                    finishedAtMs = finishedAtMs,
+                                    compileGateResult = compileGateResult,
+                                    taskExecutionReport = cancelledReport,
+                                    terminalResult = terminalResult,
+                                ),
                             )
                         )
                     }.onFailure {
                         OmniLog.w(Tag, "onTaskRunLogReady failed after cancellation: ${it.message}")
                     }
                 }
+                notifyTerminalResult(terminalResult)
                 if (isRunning) {
                     onTaskStop(TaskFinishType.CANCEL, cancelMessage)
                     onTaskDestroy()
                 }
             } catch (e: Exception) {
                 OmniLog.e(Tag, "VLM Operation Task Error: ${e.message}")
-                notifyTerminalResult(
-                    VlmTaskTerminalResult(
-                        status = VlmTaskTerminalStatus.ERROR,
-                        message = e.message ?: "任务执行异常",
-                        errorMessage = e.message ?: "任务执行异常",
-                        needSummary = needSummary || hasSummaryIntent(goal)
-                    )
+                val terminalResult = VlmTaskTerminalResult(
+                    status = VlmTaskTerminalStatus.ERROR,
+                    message = e.message ?: "任务执行异常",
+                    errorMessage = e.message ?: "任务执行异常",
+                    needSummary = needSummary || hasSummaryIntent(goal)
                 )
+                traceSession?.recordLifecycleEvent(
+                    eventType = "run_failed",
+                    message = terminalResult.message,
+                    status = terminalResult.status.name,
+                )
+                if (!isSubTask && onTaskRunLogReady != null) {
+                    val errorReport = TaskExecutionReport(
+                        success = false,
+                        goal = goal,
+                        totalSteps = 0,
+                        executionTrace = emptyList(),
+                        finalContext = UIContext(
+                            overallTask = goal,
+                            currentStepGoal = goal,
+                            stepSkillGuidance = resolvedStepSkillGuidance,
+                            installedApplications = emptyMap()
+                        ),
+                        error = terminalResult.errorMessage,
+                        feedback = terminalResult.message,
+                        compileGateKind = compileGateResult?.kind,
+                        fallbackUsed = fallbackUsed,
+                    )
+                    val finishedAtMs = System.currentTimeMillis()
+                    runCatching {
+                        onTaskRunLogReady(
+                            VLMTaskRunLogPayload(
+                                goal = goal,
+                                compileGateResult = compileGateResult,
+                                taskReport = errorReport,
+                                startedAtMs = traceSession?.startedAtMs ?: taskStartTime,
+                                finishedAtMs = finishedAtMs,
+                                finalXml = captureCurrentXml(),
+                                finalPackageName = AccessibilityController.getPackageName()
+                                    ?: currentPackageName,
+                                rawEvents = traceSession?.snapshotEvents() ?: emptyList(),
+                                traceSessionMeta = buildTraceSessionMeta(
+                                    finishedAtMs = finishedAtMs,
+                                    compileGateResult = compileGateResult,
+                                    taskExecutionReport = errorReport,
+                                    terminalResult = terminalResult,
+                                ),
+                            )
+                        )
+                    }.onFailure {
+                        OmniLog.w(Tag, "onTaskRunLogReady failed after exception: ${it.message}")
+                    }
+                }
+                notifyTerminalResult(terminalResult)
                 onTaskStop(TaskFinishType.ERROR, e.message ?: "任务执行异常")
                 onTaskDestroy()
             }
@@ -673,6 +880,190 @@ open class VLMOperationTask(
         }
     }
 
+    /**
+     * Build the provider-facing trace-session metadata for one finished local
+     * `vlm_task`.
+     *
+     * @param finishedAtMs Final task timestamp in milliseconds.
+     * @param compileGateResult Optional compile gate result returned by the
+     *   provider pre-hook before local fallback execution.
+     * @param taskExecutionReport Local task report produced by the existing OOB
+     *   `vlm_task` pipeline.
+     * @param terminalResult Final user-visible task result emitted to Flutter and
+     *   MCP state listeners.
+     */
+    private fun buildTraceSessionMeta(
+        finishedAtMs: Long,
+        compileGateResult: VLMTaskPreHookResult?,
+        taskExecutionReport: TaskExecutionReport,
+        terminalResult: VlmTaskTerminalResult,
+    ): Map<String, Any?> {
+        val session = traceSession
+        return linkedMapOf(
+            "source" to "oob_vlm_task",
+            "task_id" to session?.taskId,
+            "started_at" to session?.startedAtMs,
+            "finished_at" to finishedAtMs,
+            "compile_gate" to (
+                compileGateResult?.let {
+                    linkedMapOf(
+                        "kind" to it.kind,
+                        "summary" to it.summary,
+                        "path_id" to it.pathId,
+                        "planner_guidance" to it.plannerGuidance,
+                        "execution_route" to it.executionRoute,
+                    )
+                } ?: emptyMap<String, Any?>()
+            ),
+            "terminal_result" to linkedMapOf(
+                "status" to terminalResult.status.name,
+                "message" to terminalResult.message,
+                "finished_content" to terminalResult.finishedContent,
+                "summary_text" to terminalResult.summaryText,
+                "waiting_question" to terminalResult.waitingQuestion,
+                "error_message" to terminalResult.errorMessage,
+                "need_summary" to terminalResult.needSummary,
+                "feedback" to terminalResult.feedback,
+                "summary_unavailable" to terminalResult.summaryUnavailable,
+            ),
+            "task_report_summary" to buildTaskReportSummary(taskExecutionReport),
+        )
+    }
+
+    /**
+     * Convert the existing `TaskExecutionReport` into a JSON-safe summary that
+     * the provider can materialize into a canonical run log later.
+     *
+     * @param taskExecutionReport Existing local task report from the OOB VLM
+     *   executor.
+     */
+    private fun buildTaskReportSummary(
+        taskExecutionReport: TaskExecutionReport,
+    ): Map<String, Any?> {
+        return linkedMapOf(
+            "success" to taskExecutionReport.success,
+            "goal" to taskExecutionReport.goal,
+            "total_steps" to taskExecutionReport.totalSteps,
+            "error" to taskExecutionReport.error,
+            "feedback" to taskExecutionReport.feedback,
+            "compile_gate_kind" to taskExecutionReport.compileGateKind,
+            "fallback_used" to taskExecutionReport.fallbackUsed,
+            "screenshot_error_code" to taskExecutionReport.screenshotErrorCode,
+            "stabilization_wait_ms" to taskExecutionReport.stabilizationWaitMs,
+            "provider_run_log_path" to taskExecutionReport.providerRunLogPath,
+            "canonical_run_log_path" to taskExecutionReport.canonicalRunLogPath,
+            "provider_run_log_json" to taskExecutionReport.providerRunLogJson,
+            "execution_trace" to taskExecutionReport.executionTrace.mapIndexed { index, step ->
+                linkedMapOf(
+                    "step_index" to index,
+                    "observation" to step.observation,
+                    "thought" to step.thought,
+                    "action" to buildTraceAction(step.action),
+                    "result" to step.result,
+                    "summary" to step.summary,
+                    "observation_xml" to step.observationXml,
+                    "package_name" to step.packageName,
+                    "started_at_ms" to step.startedAtMs,
+                    "finished_at_ms" to step.finishedAtMs,
+                )
+            },
+        )
+    }
+
+    /**
+     * Convert one local UI action into a JSON-safe raw-trace payload.
+     *
+     * @param action One OOB-side UI action emitted by the local VLM executor.
+     */
+    private fun buildTraceAction(action: UIAction): Map<String, Any?> {
+        return when (action) {
+            is ClickAction -> linkedMapOf(
+                "type" to "click",
+                "params" to linkedMapOf(
+                    "x" to action.x,
+                    "y" to action.y,
+                    "target_description" to action.targetDescription,
+                ),
+            )
+            is LongPressAction -> linkedMapOf(
+                "type" to "long_press",
+                "params" to linkedMapOf(
+                    "x" to action.x,
+                    "y" to action.y,
+                    "target_description" to action.targetDescription,
+                ),
+            )
+            is TypeAction -> linkedMapOf(
+                "type" to "input_text",
+                "params" to linkedMapOf("text" to action.content),
+            )
+            is ScrollAction -> linkedMapOf(
+                "type" to "swipe",
+                "params" to linkedMapOf(
+                    "x1" to action.x1,
+                    "y1" to action.y1,
+                    "x2" to action.x2,
+                    "y2" to action.y2,
+                    "duration_ms" to (action.duration * 1000).toLong(),
+                    "target_description" to action.targetDescription,
+                ),
+            )
+            is OpenAppAction -> linkedMapOf(
+                "type" to "open_app",
+                "params" to linkedMapOf("package_name" to action.packageName),
+            )
+            is PressHomeAction -> linkedMapOf(
+                "type" to "press_key",
+                "params" to linkedMapOf("key" to "HOME"),
+            )
+            is PressBackAction -> linkedMapOf(
+                "type" to "press_key",
+                "params" to linkedMapOf("key" to "BACK"),
+            )
+            is WaitAction -> linkedMapOf(
+                "type" to "wait",
+                "params" to linkedMapOf(
+                    "duration_ms" to (action.durationMs ?: action.duration?.times(1000) ?: 1000L),
+                ),
+            )
+            is RecordAction -> linkedMapOf(
+                "type" to "record",
+                "params" to linkedMapOf("content" to action.content),
+            )
+            is FinishedAction -> linkedMapOf(
+                "type" to "finished",
+                "params" to linkedMapOf("content" to action.content),
+            )
+            is FeedbackAction -> linkedMapOf(
+                "type" to "feedback",
+                "params" to linkedMapOf("value" to action.value),
+            )
+            is InfoAction -> linkedMapOf(
+                "type" to "info",
+                "params" to linkedMapOf("value" to action.value),
+            )
+            is AbortAction -> linkedMapOf(
+                "type" to "abort",
+                "params" to linkedMapOf("value" to action.value),
+            )
+            is RequireUserChoiceAction -> linkedMapOf(
+                "type" to "require_user_choice",
+                "params" to linkedMapOf(
+                    "prompt" to action.prompt,
+                    "options" to action.options,
+                ),
+            )
+            is RequireUserConfirmationAction -> linkedMapOf(
+                "type" to "require_user_confirmation",
+                "params" to linkedMapOf("prompt" to action.prompt),
+            )
+            is HotKeyAction -> linkedMapOf(
+                "type" to "press_key",
+                "params" to linkedMapOf("key" to action.key),
+            )
+        }
+    }
+
     private suspend fun executeOpenAppFastPath(
         goal: String,
         installedApps: Map<String, String>,
@@ -715,7 +1106,7 @@ open class VLMOperationTask(
             )
         }
 
-        val launchResult = androidDeviceOperator.launchApplication(packageName)
+        val launchResult = deviceOperator.launchApplication(packageName)
         val afterLaunchPackage = AccessibilityController.getPackageName().orEmpty()
         if (launchResult.success && afterLaunchPackage == packageName) {
             OmniLog.i(Tag, "Open-app fast path hit: launched target package=$packageName")
@@ -821,6 +1212,11 @@ open class VLMOperationTask(
         var summaryStarted = false
 
         try {
+            traceSession?.recordLifecycleEvent(
+                eventType = "summary_started",
+                message = goal,
+                status = "SUMMARY_RUNNING",
+            )
             val steps = report.executionTrace.takeLast(20)
             val finishedFromTrace = steps.lastOrNull { it.action.name == "finished" }
             val traceSummary = finishedFromTrace?.result
@@ -884,14 +1280,29 @@ $goal
 
             if (summaryText == null) {
                 OmniLog.w(Tag, "pushSummary timeout after ${SUMMARY_GENERATION_TIMEOUT_MS}ms")
+                traceSession?.recordLifecycleEvent(
+                    eventType = "summary_finished",
+                    message = "summary_timeout",
+                    status = "SUMMARY_UNAVAILABLE",
+                )
                 return SummaryPushResult(summaryUnavailable = true)
             }
 
             if (summaryText.isBlank()) {
                 OmniLog.w(Tag, "pushSummary: empty summaryText, skip.")
+                traceSession?.recordLifecycleEvent(
+                    eventType = "summary_finished",
+                    message = "summary_empty",
+                    status = "SUMMARY_UNAVAILABLE",
+                )
                 return SummaryPushResult(summaryUnavailable = true)
             }
             OmniLog.d(Tag, "VLM API返回总结内容，长度: ${summaryText.length}")
+            traceSession?.recordLifecycleEvent(
+                eventType = "summary_finished",
+                message = summaryText.take(200),
+                status = "SUMMARY_READY",
+            )
 
             // 4. 推送总结消息内容
             val payload = JSONObject().apply { put("text", summaryText) }.toString()
@@ -937,40 +1348,31 @@ $goal
     }
 
     override suspend fun clickCoordinate(x: Float, y: Float): OperationResult {
-        return androidDeviceOperator.clickCoordinate(x, y)
+        return deviceOperator.clickCoordinate(x, y)
     }
 
     override suspend fun longClickCoordinate(x: Float, y: Float, duration: Long): OperationResult {
-        return androidDeviceOperator.longClickCoordinate(x, y, duration)
+        return deviceOperator.longClickCoordinate(x, y, duration)
     }
 
     override suspend fun inputText(text: String): OperationResult {
-        return androidDeviceOperator.inputText(text)
-    }
-
-    override suspend fun runCompiledPath(pathId: String): OperationResult {
-        val runner = onRunCompiledPath
-        return if (runner != null) {
-            runner(pathId)
-        } else {
-            OperationResult(false, "run_compiled_path is unavailable", null)
-        }
+        return deviceOperator.inputText(text)
     }
 
     override suspend fun pressHotKey(key: String): OperationResult {
-        return androidDeviceOperator.pressHotKey(key)
+        return deviceOperator.pressHotKey(key)
     }
 
     suspend fun inputTextViaShell(text: String): OperationResult {
-        return androidDeviceOperator.inputTextViaShell(text)
+        return rawAndroidDeviceOperator.inputTextViaShell(text)
     }
 
     override suspend fun copyToClipboard(text: String): OperationResult {
-        return androidDeviceOperator.copyToClipboard(text)
+        return deviceOperator.copyToClipboard(text)
     }
 
     override suspend fun getClipboard(): String? {
-        return androidDeviceOperator.getClipboard()
+        return deviceOperator.getClipboard()
     }
 
     override suspend fun slideCoordinate(
@@ -980,43 +1382,43 @@ $goal
         y2: Float,
         duration: Long
     ): OperationResult {
-        return androidDeviceOperator.slideCoordinate(x1, y1, x2, y2, duration)
+        return deviceOperator.slideCoordinate(x1, y1, x2, y2, duration)
     }
 
     override suspend fun goHome(): OperationResult {
-        return androidDeviceOperator.goHome()
+        return deviceOperator.goHome()
     }
 
     override suspend fun goBack(): OperationResult {
-        return androidDeviceOperator.goBack()
+        return deviceOperator.goBack()
     }
 
     override suspend fun launchApplication(packageName: String): OperationResult {
-        return androidDeviceOperator.launchApplication(packageName)
+        return deviceOperator.launchApplication(packageName)
     }
 
     override suspend fun captureScreenshot(): String {
-        return androidDeviceOperator.captureScreenshot()
+        return deviceOperator.captureScreenshot()
     }
 
     override fun getLastScreenshotWidth(): Int {
-        return androidDeviceOperator.getLastScreenshotWidth()
+        return deviceOperator.getLastScreenshotWidth()
     }
 
     override fun getLastScreenshotHeight(): Int {
-        return androidDeviceOperator.getLastScreenshotHeight()
+        return deviceOperator.getLastScreenshotHeight()
     }
 
     override fun getDisplayWidth(): Int {
-        return androidDeviceOperator.getDisplayWidth()
+        return deviceOperator.getDisplayWidth()
     }
 
     override fun getDisplayHeight(): Int {
-        return androidDeviceOperator.getDisplayHeight()
+        return deviceOperator.getDisplayHeight()
     }
 
     override suspend fun showInfo(message: String) {
-        androidDeviceOperator.showInfo(message)
+        deviceOperator.showInfo(message)
     }
 
     fun finishTask() {

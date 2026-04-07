@@ -448,8 +448,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         return when (toolName) {
             "context_apps_query" -> AgentToolMeta("builtin", "查询已安装应用")
             "context_time_now" -> AgentToolMeta("builtin", "查询当前时间")
-            "utg_compile" -> AgentToolMeta("builtin", "UTG Compile")
-            "utg_run_path" -> AgentToolMeta("builtin", "UTG Path 执行")
+            "utg_compile" -> AgentToolMeta("builtin", "OmniFlow Compile")
+            "utg_run_path" -> AgentToolMeta("builtin", "OmniFlow Path 执行")
             "vlm_task" -> AgentToolMeta("builtin", "视觉执行")
             "browser_use" -> AgentToolMeta("browser", "浏览器操作")
             "terminal_execute" -> AgentToolMeta("terminal", "终端执行")
@@ -539,14 +539,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 call.argument<Boolean>("providerAutoStartEnabled")?.let {
                     UtgBridge.setProviderAutoStartEnabled(it)
                 }
-                call.argument<Boolean>("fallbackToVlmOnFailureEnabled")?.let {
-                    UtgBridge.setFallbackToVlmOnFailureEnabled(it)
-                }
-                call.argument<Boolean>("runLogRecordingEnabled")?.let {
-                    UtgBridge.setRunLogRecordingEnabled(it)
-                }
-                if (call.hasArgument("omnicloudBaseUrl")) {
-                    UtgBridge.setOmniCloudBaseUrl(call.argument<String>("omnicloudBaseUrl"))
+                if (call.hasArgument("omniflowBaseUrl")) {
+                    UtgBridge.setOmniFlowBaseUrl(call.argument<String>("omniflowBaseUrl"))
                 }
                 if (call.hasArgument("providerStartCommand")) {
                     UtgBridge.setProviderStartCommand(call.argument<String>("providerStartCommand"))
@@ -597,11 +591,14 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     }
 
     /**
-     * Return the locally cached canonical run_log for one finished vlm_task.
+     * Return the locally cached run-log snapshot for one finished `vlm_task`.
+     *
+     * The snapshot may contain the provider-returned canonical run when upload
+     * succeeds, or a raw-trace fallback snapshot when provider append fails.
      *
      * Args:
      *     call: Method-call payload carrying the originating `taskId`.
-     *     result: Flutter result callback receiving `{success, run_log, ...}`.
+     *     result: Flutter result callback receiving `{success, run_log, raw_trace, ...}`.
      */
     fun getVlmTaskRunLog(
         call: MethodCall, result: MethodChannel.Result,
@@ -664,10 +661,26 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     ) {
         mainJob.launch {
             try {
-                val method = call.argument<String>("method")?.trim().orEmpty()
+                val method = call.argument<String>("method")?.trim().orEmpty().uppercase()
                 val path = call.argument<String>("path")?.trim().orEmpty()
                 val payload = call.argument<Any>("payload")
                 val baseUrl = call.argument<String>("baseUrl")?.trim()
+                val isAllowedRequest =
+                    (method == "GET" && path == "/health") ||
+                        (method == "GET" && path == "/paths") ||
+                        (method == "DELETE" && Regex("^/paths/[^/]+$").matches(path)) ||
+                        (method == "POST" && Regex("^/paths/[^/]+/distill$").matches(path)) ||
+                        (method == "GET" && Regex("^/paths/[^/]+/bundle$").matches(path)) ||
+                        (method == "POST" && path == "/paths/import_bundle") ||
+                        (method == "GET" && path == "/run_logs") ||
+                        (method == "GET" && Regex("^/run_logs/[^/]+$").matches(path)) ||
+                        (method == "POST" && path == "/run_logs/import") ||
+                        (method == "POST" && path == "/cloud_paths/download") ||
+                        (method == "POST" && path == "/cloud_paths/upload") ||
+                        (method == "POST" && path == "/run_compiled_path")
+                if (!isAllowedRequest) {
+                    throw IllegalArgumentException("unsupported_utg_debug_route")
+                }
                 val response = withContext(Dispatchers.IO) {
                     UtgBridge.requestJson(
                         method = method,

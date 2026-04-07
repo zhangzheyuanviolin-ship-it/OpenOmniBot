@@ -332,11 +332,8 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     final enabled = config.utgEnabled ? 'OmniFlow 已开启' : 'OmniFlow 已关闭';
     final autoStart = config.providerAutoStartEnabled ? '自动拉起' : '手动拉起';
-    final fallback = config.fallbackToVlmOnFailureEnabled
-        ? '失败回退 VLM'
-        : '失败不回退';
     final health = config.providerHealthy ? 'provider 正常' : 'provider 不可达';
-    return '$enabled，$autoStart，$fallback，$health';
+    return '$enabled，$autoStart，$health';
   }
 
   @override

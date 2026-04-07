@@ -203,7 +203,6 @@ object McpServerManager {
                                 xml = params["xml"] == true,
                                 appInfo = params["app_info"] == true,
                                 screenshot = params["screenshot"] == true,
-                                waitToStabilize = params["wait_to_stabilize"] == true,
                             )
                         )
                         call.respond(result)

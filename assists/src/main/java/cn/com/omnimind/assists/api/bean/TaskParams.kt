@@ -10,7 +10,7 @@ data class VLMTaskPreHookResult(
     val summary: String = "",
     val pathId: String? = null,
     val plannerGuidance: String = "",
-    val fallbackAllowed: Boolean = true
+    val executionRoute: String = ""
 )
 
 data class VLMTaskRunLogPayload(
@@ -21,6 +21,8 @@ data class VLMTaskRunLogPayload(
     val finishedAtMs: Long,
     val finalXml: String? = null,
     val finalPackageName: String? = null,
+    val rawEvents: List<Map<String, Any?>> = emptyList(),
+    val traceSessionMeta: Map<String, Any?> = emptyMap(),
 )
 
 sealed class TaskParams {

@@ -65,14 +65,6 @@ data class OpenAppAction(
 ) : UIAction()
 
 @Serializable
-@SerialName("run_compiled_path")
-data class RunCompiledPathAction(
-    override val name: String = "run_compiled_path",
-    @SerialName("path_id")
-    val pathId: String
-) : UIAction()
-
-@Serializable
 @SerialName("press_home")
 data class PressHomeAction(
     override val name: String = "press_home"

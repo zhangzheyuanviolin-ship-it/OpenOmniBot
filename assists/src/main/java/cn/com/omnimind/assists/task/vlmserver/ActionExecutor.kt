@@ -15,7 +15,6 @@ interface DeviceOperator {
     suspend fun clickCoordinate(x: Float, y: Float): OperationResult
     suspend fun longClickCoordinate(x: Float, y: Float, duration: Long = 1000L): OperationResult
     suspend fun inputText(text: String): OperationResult
-    suspend fun runCompiledPath(pathId: String): OperationResult
     suspend fun pressHotKey(key: String): OperationResult
     suspend fun copyToClipboard(text: String): OperationResult
     suspend fun getClipboard(): String? // 获取剪贴板内容
@@ -90,10 +89,6 @@ class ActionExecutor(
 
             is OpenAppAction -> {
                 deviceOperator.launchApplication(action.packageName)
-            }
-
-            is RunCompiledPathAction -> {
-                deviceOperator.runCompiledPath(action.pathId)
             }
 
             is PressHomeAction -> {

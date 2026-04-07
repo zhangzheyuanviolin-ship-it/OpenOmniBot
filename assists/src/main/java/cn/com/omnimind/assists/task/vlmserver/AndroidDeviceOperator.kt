@@ -100,10 +100,6 @@ class AndroidDeviceOperator(
         }
     }
 
-    override suspend fun runCompiledPath(pathId: String): OperationResult {
-        return OperationResult(false, "run_compiled_path is unavailable on AndroidDeviceOperator", null)
-    }
-
     override suspend fun pressHotKey(key: String): OperationResult {
         val normalized = key.trim().uppercase()
         return try {

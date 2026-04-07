@@ -47,28 +47,44 @@ class AccessibilityController() {
 
 
         private var screenshotAction: OmniScreenshotAction? = null
+        private var accessibilityEventListenerRegistered = false
 
         /**
          * 初始化控制器
          * 需注意初始化时机,保证AssistsService以运行后初始化
          */
         fun initController(): Boolean {
-            if (service != null || AssistsService.instance == null) {
+            val currentService = AssistsService.instance ?: run {
+                destroy()
                 return false
             }
-            this.service = AssistsService.instance!!;
-            actionController = OmniAction(service!!)
-            captureAction = OmniCaptureAction(service!!)
-            screenshotAction = OmniScreenshotAction(service!!)
-            AssistsService.addListener(object : AssistsServiceListener {
-                override fun onAccessibilityEvent(event: AccessibilityEvent) {
-                    captureAction!!.onAccessibilityEvent(event)
+            if (service === currentService &&
+                actionController != null &&
+                captureAction != null &&
+                screenshotAction != null
+            ) {
+                return true
+            }
+            this.service = currentService
+            actionController = OmniAction(currentService)
+            captureAction = OmniCaptureAction(currentService)
+            screenshotAction = OmniScreenshotAction(currentService)
+            if (!accessibilityEventListenerRegistered) {
+                AssistsService.addListener(object : AssistsServiceListener {
+                    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+                        captureAction?.onAccessibilityEvent(event)
 
-                    // 将事件传递给系统通知状态管理器处理
-                    SystemNotificationStateManager.handleAccessibilityEvent(event)
+                        // 将事件传递给系统通知状态管理器处理
+                        SystemNotificationStateManager.handleAccessibilityEvent(event)
 
-                }
-            })
+                    }
+
+                    override fun onUnbind() {
+                        destroy()
+                    }
+                })
+                accessibilityEventListenerRegistered = true
+            }
 
             return true
         }

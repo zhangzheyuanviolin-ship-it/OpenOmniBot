@@ -239,11 +239,17 @@ class AssistsUtil {
                     )
                 )
                 if (response == null) {
-                    OperationResult(false, "UTG compiled path request failed", null)
+                    OperationResult(false, "OmniFlow compiled path request failed", null)
                 } else {
                     OperationResult(
                         success = response.success,
-                        message = response.summaryText(goal),
+                        message = response.summary?.takeIf { it.isNotBlank() }
+                            ?: response.errorMessage?.takeIf { it.isNotBlank() }
+                            ?: if (response.success) {
+                                "OmniFlow compiled path succeeded without provider summary"
+                            } else {
+                                "OmniFlow compiled path request failed"
+                            },
                         data = null,
                         providerRunLogJson = response.runLog?.let { Gson().toJson(it) },
                         providerRunLogPath = response.providerRunLogPath,
@@ -255,9 +261,9 @@ class AssistsUtil {
                 if (onTaskRunLogReady != null) {
                     onTaskRunLogReady.invoke(payload)
                 } else {
-                    val response = UtgBridge.appendCanonicalRunLog(payload)
-                    if (response == null && UtgBridge.isRunLogRecordingEnabled()) {
-                        Log.w(TAG, "appendCanonicalRunLog returned null")
+                    val response = UtgBridge.appendRawTraceRunLog(payload)
+                    if (response == null) {
+                        Log.w(TAG, "appendRawTraceRunLog returned null")
                     }
                 }
             }

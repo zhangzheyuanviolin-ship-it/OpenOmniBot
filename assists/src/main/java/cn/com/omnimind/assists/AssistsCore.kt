@@ -1,6 +1,11 @@
 package cn.com.omnimind.assists
 
+import BaseApplication
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ComponentName
 import android.content.Context
+import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import cn.com.omnimind.accessibility.api.Constant
 import cn.com.omnimind.accessibility.service.AssistsService
 import cn.com.omnimind.assists.api.bean.TaskParams
@@ -9,6 +14,7 @@ import cn.com.omnimind.assists.api.eventapi.ScreenshotImageEventApi
 import cn.com.omnimind.assists.controller.accessibility.AccessibilityController
 import cn.com.omnimind.assists.task.scheduled.worker.ScheduledParams
 import cn.com.omnimind.assists.task.scheduled.worker.ScheduledStates
+import android.os.SystemClock
 
 /**
  * 向外提供的辅助管理器
@@ -16,6 +22,8 @@ import cn.com.omnimind.assists.task.scheduled.worker.ScheduledStates
 object AssistsCore {
 
     const val TAG = "[Assists]"
+    private const val ACCESSIBILITY_SERVICE_CLASS_NAME =
+        "com.google.android.accessibility.selecttospeak.SelectToSpeakService"
     private var stateMachine: StateMachine? = null;
     var screenshotImageEventApi: ScreenshotImageEventApi? = null
 //     var scheduleTaskParams:TaskParams?=null
@@ -48,7 +56,53 @@ object AssistsCore {
     /**
      * 辅助服务知否已经执行
      */
-    fun isAccessibilityServiceEnabled() = AssistsService.instance != null
+    fun isAccessibilityServiceEnabled(): Boolean {
+        if (AssistsService.instance != null) {
+            return true
+        }
+        val context = stateMachine?.instance ?: BaseApplication.instance
+        if (!isAccessibilityServiceEnabledInSystem(context)) {
+            return false
+        }
+        repeat(5) {
+            if (AssistsService.instance != null) {
+                return true
+            }
+            AccessibilityController.initController()
+            SystemClock.sleep(80)
+        }
+        return isAccessibilityServiceEnabledInSystem(context)
+    }
+
+    /**
+     * 检查系统设置里是否仍将小万的无障碍服务标记为已启用。
+     * 这里同时读取 secure setting 和 AccessibilityManager，避免只靠进程内 singleton
+     * 导致刚切回 App 或服务刚重连时误判为“未开启无障碍”。
+     */
+    private fun isAccessibilityServiceEnabledInSystem(context: Context): Boolean {
+        val componentName = ComponentName(context.packageName, ACCESSIBILITY_SERVICE_CLASS_NAME)
+        val expectedIds = setOf(
+            componentName.flattenToString(),
+            componentName.flattenToShortString(),
+        )
+        val enabledServices = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: ""
+        if (enabledServices.split(':').any { it in expectedIds }) {
+            return true
+        }
+        val accessibilityManager =
+            context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+                ?: return false
+        return accessibilityManager
+            .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            .any { info ->
+                val serviceInfo = info.resolveInfo?.serviceInfo ?: return@any false
+                serviceInfo.packageName == context.packageName &&
+                    serviceInfo.name == ACCESSIBILITY_SERVICE_CLASS_NAME
+            }
+    }
 
     /**
      * 创建陪伴任务
