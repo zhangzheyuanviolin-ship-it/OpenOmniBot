@@ -172,23 +172,32 @@ class HdPadPaneLayoutResolver {
     double totalWidth, {
     double? preferredLeftWidth,
     double? preferredRightWidth,
+    bool collapseLeftPane = false,
   }) {
-    final availableWidth = math.max(0, totalWidth - dividerHitWidth * 2);
-
-    var leftWidth = (preferredLeftWidth ?? defaultLeftWidth).clamp(
-      minLeftWidth,
-      maxLeftWidth,
+    final dividerCount = collapseLeftPane ? 1 : 2;
+    final availableWidth = math.max(
+      0,
+      totalWidth - dividerHitWidth * dividerCount,
     );
+
+    var leftWidth = collapseLeftPane
+        ? 0.0
+        : (preferredLeftWidth ?? defaultLeftWidth).clamp(
+            minLeftWidth,
+            maxLeftWidth,
+          );
     var rightWidth = (preferredRightWidth ?? defaultRightWidth).clamp(
       minRightWidth,
       maxRightWidth,
     );
 
-    final maxLeftBySpace = math.max(
-      minLeftWidth,
-      availableWidth - rightWidth - minCenterWidth,
-    );
-    leftWidth = leftWidth.clamp(minLeftWidth, maxLeftBySpace);
+    if (!collapseLeftPane) {
+      final maxLeftBySpace = math.max(
+        minLeftWidth,
+        availableWidth - rightWidth - minCenterWidth,
+      );
+      leftWidth = leftWidth.clamp(minLeftWidth, maxLeftBySpace);
+    }
 
     final maxRightBySpace = math.max(
       minRightWidth,
@@ -205,7 +214,7 @@ class HdPadPaneLayoutResolver {
         centerWidth += delta;
       }
     }
-    if (centerWidth < minCenterWidth) {
+    if (!collapseLeftPane && centerWidth < minCenterWidth) {
       final leftFlexible = leftWidth - minLeftWidth;
       if (leftFlexible > 0) {
         final delta = math.min(minCenterWidth - centerWidth, leftFlexible);

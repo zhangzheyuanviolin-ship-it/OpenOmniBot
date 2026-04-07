@@ -56,4 +56,22 @@ void main() {
       greaterThanOrEqualTo(HdPadPaneLayoutResolver.minCenterWidth),
     );
   });
+
+  test('supports collapsing the left pane while keeping the right pane', () {
+    final layout = resolver.resolve(
+      1200,
+      preferredLeftWidth: 320,
+      preferredRightWidth: 300,
+      collapseLeftPane: true,
+    );
+
+    expect(layout.leftWidth, 0);
+    expect(layout.rightWidth, HdPadPaneLayoutResolver.defaultRightWidth);
+    expect(
+      layout.centerWidth,
+      1200 -
+          HdPadPaneLayoutResolver.dividerHitWidth -
+          HdPadPaneLayoutResolver.defaultRightWidth,
+    );
+  });
 }

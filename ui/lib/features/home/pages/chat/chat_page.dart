@@ -292,6 +292,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       const HdPadPaneLayoutResolver();
   double? _hdPadLeftPaneWidth;
   double? _hdPadRightPaneWidth;
+  bool _hdPadLeftPaneCollapsed = false;
   final GlobalKey<OmnibotWorkspaceBrowserState> _hdPadWorkspaceBrowserKey =
       GlobalKey<OmnibotWorkspaceBrowserState>();
 
@@ -379,6 +380,12 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     ConversationThreadTarget target,
   ) {
     unawaited(_applyConversationThreadTarget(target));
+  }
+
+  void _toggleHdPadLeftPaneCollapsed() {
+    setState(() {
+      _hdPadLeftPaneCollapsed = !_hdPadLeftPaneCollapsed;
+    });
   }
 
   ConversationThreadTarget get _threadTargetForMode {

@@ -482,6 +482,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     required bool hideWorkspaceOverlays,
     required bool showMenuButton,
     required bool showSurfaceSwitcher,
+    required VoidCallback onMenuTap,
   }) {
     final toolActivityCards = !hideWorkspaceOverlays
         ? extractAgentToolCards(_messages)
@@ -526,7 +527,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         Column(
           children: [
             ChatAppBar(
-              onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
+              onMenuTap: onMenuTap,
               onCompanionTap: () {
                 unawaited(_toggleCompanionMode());
               },
@@ -744,12 +745,15 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           math.max(0, constraints.maxWidth - shellPadding.horizontal),
           preferredLeftWidth: _hdPadLeftPaneWidth,
           preferredRightWidth: _hdPadRightPaneWidth,
+          collapseLeftPane: _hdPadLeftPaneCollapsed,
         );
         return Padding(
           padding: shellPadding,
           child: Row(
             children: [
-              SizedBox(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeInOutCubic,
                 width: layout.leftWidth,
                 child: _buildPaneSurface(
                   translucent: backgroundActive,
@@ -766,15 +770,26 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   ),
                 ),
               ),
-              _PaneResizeHandle(
-                onDragUpdate: (delta) {
-                  setState(() {
-                    _hdPadLeftPaneWidth = layout.leftWidth + delta;
-                  });
-                  _persistHdPadPanePreferences();
-                },
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeInOutCubic,
+                width: _hdPadLeftPaneCollapsed
+                    ? 0
+                    : HdPadPaneLayoutResolver.dividerHitWidth,
+                child: _hdPadLeftPaneCollapsed
+                    ? const SizedBox.shrink()
+                    : _PaneResizeHandle(
+                        onDragUpdate: (delta) {
+                          setState(() {
+                            _hdPadLeftPaneWidth = layout.leftWidth + delta;
+                          });
+                          _persistHdPadPanePreferences();
+                        },
+                      ),
               ),
-              SizedBox(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeInOutCubic,
                 width: layout.centerWidth,
                 child: _buildPaneSurface(
                   translucent: backgroundActive,
@@ -802,8 +817,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                             visualProfile,
                           ),
                           hideWorkspaceOverlays: false,
-                          showMenuButton: false,
+                          showMenuButton: true,
                           showSurfaceSwitcher: false,
+                          onMenuTap: _toggleHdPadLeftPaneCollapsed,
                         );
                       },
                     ),
@@ -818,7 +834,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   _persistHdPadPanePreferences();
                 },
               ),
-              SizedBox(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeInOutCubic,
                 width: layout.rightWidth,
                 child: _buildPaneSurface(
                   translucent: backgroundActive,
@@ -983,6 +1001,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                           _isWorkspaceSurface,
                                       showMenuButton: true,
                                       showSurfaceSwitcher: true,
+                                      onMenuTap: () => _scaffoldKey.currentState
+                                          ?.openDrawer(),
                                     );
                                   },
                                 ),
