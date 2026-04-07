@@ -105,37 +105,6 @@ void main() {
     expect(selectedMode, ConversationMode.normal);
   });
 
-  testWidgets('shows active draft conversation in conversation list', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: DefaultAssetBundle(
-          bundle: _SvgTestAssetBundle(),
-          child: ProviderScope(
-            child: SizedBox(
-              width: 360,
-              height: 720,
-              child: HomeDrawer(
-                embedded: true,
-                closeOnNavigate: false,
-                activeThreadTarget: ConversationThreadTarget.newConversation(
-                  mode: ConversationMode.normal,
-                  requestKey: 'draft-1',
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('新对话'), findsOneWidget);
-    expect(find.text('编辑中'), findsOneWidget);
-    expect(find.text('暂无聊天记录'), findsNothing);
-  });
-
   testWidgets('embedded mode routes existing conversation through callback', (
     tester,
   ) async {

@@ -82,6 +82,7 @@ Future<void> showAgentToolDetailDialog(
         child: Container(
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(dialogContext).size.height * 0.76,
+            maxWidth: 520,
           ),
           decoration: BoxDecoration(
             color: const Color(0xFF0C1220),

@@ -373,6 +373,7 @@ class AgentToolRouter(
                 previewJson = encoded,
                 rawResultJson = encoded,
                 success = true,
+                imageDataUrl = outcome.imageDataUrl,
                 artifacts = outcome.artifacts,
                 workspaceId = env.workspaceDescriptor.id,
                 actions = outcome.actions

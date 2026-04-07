@@ -9,9 +9,13 @@ import cn.com.omnimind.baselib.util.OmniLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class AgentOrchestrator(
     private val llmClient: AgentLlmClient,
@@ -266,11 +270,31 @@ class AgentOrchestrator(
         descriptor: AgentToolRegistry.RuntimeToolDescriptor,
         result: ToolExecutionResult
     ) {
+        val textContent = eventAdapter.toolResultContent(descriptor, result)
+        val imageDataUrl = (result as? ToolExecutionResult.ContextResult)?.imageDataUrl
+
+        val content: JsonElement = if (imageDataUrl != null) {
+            buildJsonArray {
+                add(buildJsonObject {
+                    put("type", "text")
+                    put("text", textContent)
+                })
+                add(buildJsonObject {
+                    put("type", "image_url")
+                    put("image_url", buildJsonObject {
+                        put("url", imageDataUrl)
+                    })
+                })
+            }
+        } else {
+            JsonPrimitive(textContent)
+        }
+
         messages.add(
             ChatCompletionMessage(
                 role = "tool",
                 toolCallId = toolCall.id,
-                content = JsonPrimitive(eventAdapter.toolResultContent(descriptor, result))
+                content = content
             )
         )
     }

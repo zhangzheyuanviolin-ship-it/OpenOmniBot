@@ -293,6 +293,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   double? _hdPadLeftPaneWidth;
   double? _hdPadRightPaneWidth;
   bool _hdPadLeftPaneCollapsed = false;
+  bool _isHdPadPaneDragging = false;
   final GlobalKey<OmnibotWorkspaceBrowserState> _hdPadWorkspaceBrowserKey =
       GlobalKey<OmnibotWorkspaceBrowserState>();
 
@@ -379,27 +380,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   void _handleEmbeddedDrawerThreadTargetSelected(
     ConversationThreadTarget target,
   ) {
-    unawaited(_applyEmbeddedDrawerThreadTarget(target));
-  }
-
-  Future<void> _applyEmbeddedDrawerThreadTarget(
-    ConversationThreadTarget target,
-  ) async {
-    final currentVisibleTarget = _visibleThreadTarget;
-    final shouldPersistCurrentDraft =
-        currentVisibleTarget?.isNewConversation == true &&
-        _currentConversationId == null &&
-        _messages.isNotEmpty;
-    if (shouldPersistCurrentDraft) {
-      await persistConversationSnapshot(
-        generateSummary: false,
-        markComplete: false,
-      );
-      if (!mounted) {
-        return;
-      }
-    }
-    await _applyConversationThreadTarget(target);
+    unawaited(_applyConversationThreadTarget(target));
   }
 
   void _toggleHdPadLeftPaneCollapsed() {
@@ -1023,6 +1004,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     if (!_isWorkspaceSurface && pageMode == _activeConversationMode) {
       unawaited(_persistVisibleThreadTargetIfNeeded());
     }
+    // Reload the embedded drawer's conversation list so newly persisted
+    // conversations appear immediately, matching phone-mode behaviour where
+    // the drawer reloads every time it is opened.
+    _drawerKey.currentState?.reloadConversations();
   }
 
   @override

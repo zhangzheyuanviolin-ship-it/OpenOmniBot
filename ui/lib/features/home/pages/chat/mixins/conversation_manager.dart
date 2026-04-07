@@ -528,7 +528,10 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
             });
           }
 
-          if (currentConversationId == snapshotConversationId) {
+          // After setState above, currentConversationId is now newConversationId.
+          // Use targetId for subsequent guard checks so that service calls are
+          // not accidentally skipped after a successful create.
+          if (currentConversationId == targetId) {
             await ConversationService.setCurrentConversationId(
               newConversationId,
               mode: snapshotMode,
@@ -543,7 +546,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
 
       if (targetId != null) {
         // 只有当前上下文仍然是该对话时，才更新全局当前对话ID
-        if (currentConversationId == snapshotConversationId) {
+        if (currentConversationId == targetId) {
           await ConversationService.setCurrentConversationId(
             targetId,
             mode: snapshotMode,
@@ -583,7 +586,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
           snapshotMode,
         );
 
-        if (mounted && currentConversationId == snapshotConversationId) {
+        if (mounted && currentConversationId == targetId) {
           setState(() {
             currentConversation = updatedConversation;
           });
