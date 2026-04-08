@@ -105,7 +105,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     if (!_isInputAreaVisible) {
       return null;
     }
-    final inputContext = _inputAreaKey.currentContext;
+    final inputContext = _chatInputAreaKey.currentContext;
     final inputBox = inputContext?.findRenderObject();
     final stackBox = layoutContext.findRenderObject();
     if (inputBox is! RenderBox ||
