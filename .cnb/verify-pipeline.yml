@@ -16,9 +16,13 @@
             - name: checkout
               script: |
                 apt-get update && apt-get install -y git
-                git clone --depth=1 --recursive https://${CNB_TOKEN}@${CNB_REPO_URL_HTTPS#https://} .
-                git fetch --depth=0 origin ${CNB_BRANCH}
-                git checkout ${CNB_COMMIT}
+                git init .
+                git remote remove origin >/dev/null 2>&1 || true
+                git remote add origin https://${CNB_TOKEN}@${CNB_REPO_URL_HTTPS#https://}
+                git fetch --no-tags --depth=1 origin ${CNB_COMMIT}
+                git checkout --force --detach FETCH_HEAD
+                git submodule sync --recursive
+                git submodule update --init --recursive --depth=1
 
         # 密钥扫描
         - name: Secret scan (gitleaks)
