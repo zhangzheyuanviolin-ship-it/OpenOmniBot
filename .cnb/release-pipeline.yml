@@ -3,7 +3,7 @@
       imports: https://cnb.cool/o.k/secrets/-/blob/main/omnibot-release.yml
       docker:
         image: ubuntu:latest
-      env:
+    env:
         JAVA_VERSION: '17'
         FLUTTER_VERSION: '3.38.7'
         NDK_VERSION: '28.2.13676358'
@@ -13,7 +13,7 @@
         RELEASE_KEYSTORE: ${SECRETS_RELEASE_KEYSTORE}
         RELEASE_PASSWORD: ${SECRETS_RELEASE_PASSWORD}
         RELEASE_KEY_ALIAS: ${SECRETS_RELEASE_KEY_ALIAS}
-      stages:
+    stages:
         # 检出代码库（递归子模块）
         - name: Checkout repository
           jobs:
