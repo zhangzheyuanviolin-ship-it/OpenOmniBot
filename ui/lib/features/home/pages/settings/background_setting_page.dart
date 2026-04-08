@@ -484,8 +484,8 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
                 children: BackgroundPreviewKind.values.map((kind) {
                   final selected = _previewKind == kind;
                   final label = kind == BackgroundPreviewKind.chat
-                      ? '聊天预览'
-                      : 'Workspace 预览';
+                      ? '聊天'
+                      : '工作区';
                   return ChoiceChip(
                     key: ValueKey('background-preview-kind-${kind.name}'),
                     label: Text(label),

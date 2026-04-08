@@ -134,8 +134,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   void initState() {
     super.initState();
     _loadData();
-    _configChangedSubscription =
-        AssistsMessageService.agentAiConfigChangedStream.listen((event) {
+    _configChangedSubscription = AssistsMessageService
+        .agentAiConfigChangedStream
+        .listen((event) {
           if (event.source != 'file' || !mounted) {
             return;
           }
@@ -338,6 +339,15 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       selection: TextSelection.collapsed(offset: value.length),
     );
     _isSyncingControllers = false;
+  }
+
+  String? _buildBaseUrlHelperText(String rawValue) {
+    final input = rawValue.trim();
+    if (input.isEmpty) {
+      return null;
+    }
+
+    return ModelProviderConfigService.buildChatCompletionsRequestUrl(input);
   }
 
   Future<void> _switchToProfile(String profileId) async {
@@ -907,7 +917,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           child: Text(
                             current.statusText.isNotEmpty
                                 ? current.statusText
-                                : (current.ready ? '内置 Provider' : '内置 Provider 未就绪'),
+                                : (current.ready
+                                      ? '内置 Provider'
+                                      : '内置 Provider 未就绪'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -1004,13 +1016,22 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          '支持直接输入根地址、/v1、/v1/chat/completions，会自动归一化。',
-                          style: TextStyle(
-                            color: AppColors.text50,
-                            fontSize: 12,
-                            fontFamily: 'PingFang SC',
-                          ),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _baseUrlController,
+                          builder: (context, value, child) {
+                            final url = _buildBaseUrlHelperText(value.text);
+                            if (url == null) {
+                              return const SizedBox.shrink();
+                            }
+                            return Text(
+                              url,
+                              style: const TextStyle(
+                                color: AppColors.text50,
+                                fontSize: 12,
+                                fontFamily: 'PingFang SC',
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 14),
                         TextField(
@@ -1082,8 +1103,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             ),
                             _buildModelActionButton(
                               svg: _kPlusSvg,
-                              onPressed:
-                                  _currentProfile?.readOnly == true
+                              onPressed: _currentProfile?.readOnly == true
                                   ? null
                                   : _promptAddModel,
                             ),

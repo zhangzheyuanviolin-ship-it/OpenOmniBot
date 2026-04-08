@@ -14,38 +14,7 @@ class _ToolActivityAnchorGeometry {
 enum _UserMessageQuickAction { copy, retry }
 
 mixin _ChatPageUiMixin on _ChatPageStateBase {
-  bool get _showNewConversationPullIndicator =>
-      _isNewConversationPullTracking || _newConversationPullDistance > 0;
-
-  double _resolveNewConversationPullIndicatorTop({
-    required BuildContext layoutContext,
-    required BoxConstraints constraints,
-    required double inputBottomPadding,
-    required double keyboardSpacer,
-  }) {
-    final fallbackTop =
-        constraints.maxHeight -
-        inputBottomPadding -
-        keyboardSpacer -
-        (_isInputAreaVisible ? 106 : 52);
-    final fallback = fallbackTop
-        .clamp(8.0, constraints.maxHeight - 24)
-        .toDouble();
-    if (!_isInputAreaVisible) {
-      return fallback;
-    }
-    final inputContext = _inputAreaKey.currentContext;
-    final inputBox = inputContext?.findRenderObject();
-    final stackBox = layoutContext.findRenderObject();
-    if (inputBox is! RenderBox ||
-        stackBox is! RenderBox ||
-        !inputBox.hasSize ||
-        !stackBox.hasSize) {
-      return fallback;
-    }
-    final inputTop = inputBox.localToGlobal(Offset.zero, ancestor: stackBox).dy;
-    return (inputTop - 30).clamp(8.0, constraints.maxHeight - 24).toDouble();
-  }
+  _ToolActivityAnchorGeometry? _lastStableToolActivityAnchorGeometry;
 
   _ToolActivityAnchorGeometry _resolveToolActivityAnchorGeometry({
     required BuildContext layoutContext,
@@ -58,6 +27,21 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         ? inputAreaHeight
         : 0.0;
     final derivedWidth = math.max(0.0, constraints.maxWidth - 48);
+    if (_isSurfacePageScrolling &&
+        _lastStableToolActivityAnchorGeometry != null) {
+      return _lastStableToolActivityAnchorGeometry!;
+    }
+
+    final liveGeometry = _resolveToolActivityAnchorGeometryFromInputArea(
+      layoutContext: layoutContext,
+      constraints: constraints,
+      derivedWidth: derivedWidth,
+    );
+    if (liveGeometry != null) {
+      _lastStableToolActivityAnchorGeometry = liveGeometry;
+      return liveGeometry;
+    }
+
     if (_isInputAreaVisible && normalizedInputHeight > 0.5) {
       final bottom =
           (inputBottomPadding + keyboardSpacer + normalizedInputHeight)
@@ -66,10 +50,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       final top = (constraints.maxHeight - bottom)
           .clamp(0.0, constraints.maxHeight)
           .toDouble();
-      return _ToolActivityAnchorGeometry(
+      final geometry = _ToolActivityAnchorGeometry(
         rect: Rect.fromLTWH(24, top, derivedWidth, normalizedInputHeight),
         bottom: bottom,
       );
+      _lastStableToolActivityAnchorGeometry = geometry;
+      return geometry;
     }
 
     final fallbackBottom = (inputBottomPadding + keyboardSpacer + 84)
@@ -101,9 +87,38 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     }
     final inputOffset = inputBox.localToGlobal(Offset.zero, ancestor: stackBox);
     final rect = inputOffset & inputBox.size;
-    return _ToolActivityAnchorGeometry(
+    final geometry = _ToolActivityAnchorGeometry(
       rect: rect,
       bottom: (constraints.maxHeight - rect.top)
+          .clamp(0.0, constraints.maxHeight)
+          .toDouble(),
+    );
+    _lastStableToolActivityAnchorGeometry = geometry;
+    return geometry;
+  }
+
+  _ToolActivityAnchorGeometry? _resolveToolActivityAnchorGeometryFromInputArea({
+    required BuildContext layoutContext,
+    required BoxConstraints constraints,
+    required double derivedWidth,
+  }) {
+    if (!_isInputAreaVisible) {
+      return null;
+    }
+    final inputContext = _chatInputAreaKey.currentContext;
+    final inputBox = inputContext?.findRenderObject();
+    final stackBox = layoutContext.findRenderObject();
+    if (inputBox is! RenderBox ||
+        stackBox is! RenderBox ||
+        !inputBox.hasSize ||
+        !stackBox.hasSize) {
+      return null;
+    }
+    final inputOffset = inputBox.localToGlobal(Offset.zero, ancestor: stackBox);
+    final top = inputOffset.dy.clamp(0.0, constraints.maxHeight).toDouble();
+    return _ToolActivityAnchorGeometry(
+      rect: Rect.fromLTWH(24, top, derivedWidth, inputBox.size.height),
+      bottom: (constraints.maxHeight - top)
           .clamp(0.0, constraints.maxHeight)
           .toDouble(),
     );
@@ -149,68 +164,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     setState(() {
       _inputAreaHeightByMode[_activeMode] = normalized;
     });
-  }
-
-  Widget _buildNewConversationPullIndicator(
-    double topOffset,
-    AppBackgroundVisualProfile visualProfile,
-  ) {
-    final progress =
-        (_newConversationPullDistance /
-                _ChatPageStateBase._newConversationPullThreshold)
-            .clamp(0.0, 1.4)
-            .toDouble();
-    final eased = Curves.easeOutCubic.transform(progress.clamp(0.0, 1.0));
-    final isReady = _newConversationPullThresholdReached;
-    final opacity = (0.10 + eased * 0.90).clamp(0.0, 1.0).toDouble();
-    final offsetY = (1 - eased) * 16;
-    final textColor = isReady
-        ? (visualProfile.usesLightText
-              ? visualProfile.accentGreen
-              : const Color(0xFF197446))
-        : Color.lerp(
-            visualProfile.subtleTextColor,
-            visualProfile.primaryTextColor,
-            eased,
-          )!;
-    final hintText = isReady ? '松手即可新建对话' : '继续上滑新建对话';
-
-    return Positioned(
-      left: 24,
-      right: 24,
-      top: topOffset,
-      child: IgnorePointer(
-        child: Opacity(
-          opacity: opacity,
-          child: Transform.translate(
-            offset: Offset(0, offsetY),
-            child: Center(
-              child: Text(
-                hintText,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: textColor,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.1,
-                  shadows: [
-                    Shadow(
-                      color:
-                          (visualProfile.usesLightText
-                                  ? Colors.black
-                                  : Colors.white)
-                              .withValues(alpha: 0.22),
-                      blurRadius: 6,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildContextCompressingHint() {
@@ -265,6 +218,33 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildNormalSurfaceTransition({
+    required double viewportWidth,
+    required Widget child,
+  }) {
+    return AnimatedBuilder(
+      animation: _modePageController,
+      child: child,
+      builder: (context, child) {
+        final visibility = _normalSurfaceVisibility;
+        if (child == null || visibility <= 0.001) {
+          return const SizedBox.shrink();
+        }
+        final horizontalOffset = -_surfacePageProgress * viewportWidth;
+        return IgnorePointer(
+          ignoring: visibility < 0.999,
+          child: Opacity(
+            opacity: Curves.easeOutCubic.transform(visibility),
+            child: Transform.translate(
+              offset: Offset(horizontalOffset, 0),
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -377,9 +357,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     return ChatMessageList(
       messages: runtime?.messages ?? _messagesByMode[mode]!,
       scrollController: _scrollControllerForMode(mode),
-      bottomOverlayInset: mode == _activeMode && !_isWorkspaceSurface
-          ? _toolActivityOccupiedHeight
-          : 0,
+      bottomOverlayInset: mode == _activeMode ? _toolActivityOccupiedHeight : 0,
       onBeforeTaskExecute: handleBeforeTaskExecute,
       onCancelTask: _onCancelTaskFromCard,
       onRequestAuthorize: mode == ChatPageMode.normal
@@ -396,7 +374,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   @override
   Widget _buildWorkspaceSurfacePage() {
     final workspacePathsFuture = _workspacePathsLoadFuture ??=
-        OmnibotResourceService.ensureWorkspacePathsLoaded(forceRefresh: true);
+        OmnibotResourceService.ensureWorkspacePathsLoaded();
     return FutureBuilder<OmnibotWorkspacePaths>(
       future: workspacePathsFuture,
       builder: (context, snapshot) {
@@ -412,7 +390,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   '/data/user/0/cn.com.omnimind.bot/workspace/.omnibot',
             );
         return OmnibotWorkspaceBrowser(
-          key: ValueKey('workspace_surface_$_workspaceSurfaceSeed'),
           workspacePath: paths.rootPath,
           workspaceShellPath: paths.shellRootPath,
           translucentSurfaces: AppBackgroundService.current.isActive,
@@ -484,17 +461,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     required bool showSurfaceSwitcher,
     required VoidCallback onMenuTap,
   }) {
-    final toolActivityCards = !hideWorkspaceOverlays
-        ? extractAgentToolCards(_messages)
-        : const <Map<String, dynamic>>[];
+    final toolActivityCards = extractAgentToolCards(_messages);
     final toolActivityCanExpand = toolActivityCards.length > 1;
-    final newConversationPullIndicatorTopOffset =
-        _resolveNewConversationPullIndicatorTop(
-          layoutContext: layoutContext,
-          constraints: constraints,
-          inputBottomPadding: inputBottomPadding,
-          keyboardSpacer: keyboardSpacer,
-        );
     final toolActivityAnchor = toolActivityCards.isEmpty
         ? null
         : _resolveToolActivityAnchorGeometry(
@@ -583,54 +551,61 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 ),
               ),
             Expanded(child: conversationBody),
-            if (!hideWorkspaceOverlays && _vlmInfoQuestion != null)
-              VlmInfoPrompt(
-                question: _vlmInfoQuestion!,
-                controller: _vlmAnswerController,
-                isSubmitting: _isSubmittingVlmReply,
-                onSubmit: onSubmitVlmInfo,
-                onDismiss: dismissVlmInfo,
+            if (_vlmInfoQuestion != null)
+              _buildNormalSurfaceTransition(
+                viewportWidth: constraints.maxWidth,
+                child: VlmInfoPrompt(
+                  question: _vlmInfoQuestion!,
+                  controller: _vlmAnswerController,
+                  isSubmitting: _isSubmittingVlmReply,
+                  onSubmit: onSubmitVlmInfo,
+                  onDismiss: dismissVlmInfo,
+                ),
               ),
-            if (_isInputAreaVisible && !hideWorkspaceOverlays)
-              Container(
-                key: _inputAreaKey,
-                child: ChatInputWrapper(
-                  inputAreaKey: _chatInputAreaKey,
-                  controller: _messageController,
-                  focusNode: _inputFocusNode,
-                  isProcessing: _isAiResponding,
-                  onSendMessage: _sendMessage,
-                  onCancelTask: _onCancelTask,
-                  onPopupVisibilityChanged: _onPopupVisibilityChanged,
-                  useLargeComposerStyle: true,
-                  useAttachmentPickerForPlus: true,
-                  onPickAttachment: _pickAttachments,
-                  attachments: _pendingAttachments,
-                  onRemoveAttachment: _removePendingAttachment,
-                  selectedModelOverrideId:
-                      _activeMode == ChatPageMode.normal &&
-                          _showConversationModelMentionChip
-                      ? _activeConversationModelOverrideSelection?.modelId
-                      : null,
-                  contextUsageRatio: _activeMode == ChatPageMode.normal
-                      ? _currentConversation?.contextUsageRatio
-                      : null,
-                  contextUsageTooltipMessage: _activeMode == ChatPageMode.normal
-                      ? _buildContextUsageTooltipMessage()
-                      : null,
-                  onLongPressContextUsageRing:
-                      _activeMode == ChatPageMode.normal
-                      ? _handleContextUsageRingLongPress
-                      : null,
-                  onInputHeightChanged: _handleInputAreaHeightChanged,
-                  onClearSelectedModelOverride:
-                      _activeMode == ChatPageMode.normal &&
-                          _activeConversationModelOverrideSelection != null
-                      ? () {
-                          unawaited(_clearConversationModelOverride());
-                        }
-                      : null,
-                  translucent: backgroundActive,
+            if (_isInputAreaVisible)
+              _buildNormalSurfaceTransition(
+                viewportWidth: constraints.maxWidth,
+                child: Container(
+                  key: _inputAreaKey,
+                  child: ChatInputWrapper(
+                    inputAreaKey: _chatInputAreaKey,
+                    controller: _messageController,
+                    focusNode: _inputFocusNode,
+                    isProcessing: _isAiResponding,
+                    onSendMessage: _sendMessage,
+                    onCancelTask: _onCancelTask,
+                    onPopupVisibilityChanged: _onPopupVisibilityChanged,
+                    useLargeComposerStyle: true,
+                    useAttachmentPickerForPlus: true,
+                    onPickAttachment: _pickAttachments,
+                    attachments: _pendingAttachments,
+                    onRemoveAttachment: _removePendingAttachment,
+                    selectedModelOverrideId:
+                        _activeMode == ChatPageMode.normal &&
+                            _showConversationModelMentionChip
+                        ? _activeConversationModelOverrideSelection?.modelId
+                        : null,
+                    contextUsageRatio: _activeMode == ChatPageMode.normal
+                        ? _currentConversation?.contextUsageRatio
+                        : null,
+                    contextUsageTooltipMessage:
+                        _activeMode == ChatPageMode.normal
+                        ? _buildContextUsageTooltipMessage()
+                        : null,
+                    onLongPressContextUsageRing:
+                        _activeMode == ChatPageMode.normal
+                        ? _handleContextUsageRingLongPress
+                        : null,
+                    onInputHeightChanged: _handleInputAreaHeightChanged,
+                    onClearSelectedModelOverride:
+                        _activeMode == ChatPageMode.normal &&
+                            _activeConversationModelOverrideSelection != null
+                        ? () {
+                            unawaited(_clearConversationModelOverride());
+                          }
+                        : null,
+                    translucent: backgroundActive,
+                  ),
                 ),
               ),
             SizedBox(height: inputBottomPadding + keyboardSpacer),
@@ -645,44 +620,54 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               onTap: () => _setToolActivityExpanded(false),
             ),
           ),
-        if (!hideWorkspaceOverlays &&
-            _isInputAreaVisible &&
-            toolActivityCards.isNotEmpty)
+        if (_isInputAreaVisible && toolActivityCards.isNotEmpty)
           Positioned(
             left: toolActivityAnchor?.rect.left ?? 24,
             width:
                 toolActivityAnchor?.rect.width ??
                 math.max(0.0, constraints.maxWidth - 48),
             bottom: toolActivityAnchor?.bottom ?? 0,
-            child: ChatToolActivityStrip(
-              messages: _messages,
-              anchorRect: toolActivityAnchor?.rect,
-              onOccupiedHeightChanged: _scheduleToolActivityInsetSync,
-              expanded: _isToolActivityExpanded,
-              onExpandedChanged: _setToolActivityExpanded,
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: ChatToolActivityStrip(
+                messages: _messages,
+                anchorRect: toolActivityAnchor?.rect,
+                onOccupiedHeightChanged: _scheduleToolActivityInsetSync,
+                expanded: _isToolActivityExpanded,
+                onExpandedChanged: _setToolActivityExpanded,
+              ),
             ),
           ),
-        if (!hideWorkspaceOverlays)
+        if (_showModelMentionPanel ||
+            _showSlashCommandPanel ||
+            _openClawPanelExpanded ||
+            _isOpenClawSurface)
           Positioned(
             left: 24,
             right: 24,
             bottom: commandPanelBottomOffset,
-            child: _buildSlashCommandPanel(),
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: _buildSlashCommandPanel(),
+            ),
           ),
-        if (!hideWorkspaceOverlays && _showNewConversationPullIndicator)
-          _buildNewConversationPullIndicator(
-            newConversationPullIndicatorTopOffset,
-            visualProfile,
+        if (_isContextCompressing)
+          Positioned.fill(
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: _buildContextCompressingHint(),
+            ),
           ),
-        if (!hideWorkspaceOverlays && _isContextCompressing)
-          Positioned.fill(child: _buildContextCompressingHint()),
-        if (!hideWorkspaceOverlays && _isPopupVisible)
+        if (_isPopupVisible)
           Positioned(
             right: 24,
             bottom: _popupMenuBottomOffset(),
-            child:
-                _chatInputAreaKey.currentState?.buildPopupMenu() ??
-                const SizedBox.shrink(),
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child:
+                  _chatInputAreaKey.currentState?.buildPopupMenu() ??
+                  const SizedBox.shrink(),
+            ),
           ),
         _buildBrowserOverlay(constraints),
       ],
@@ -694,7 +679,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     required AppBackgroundVisualProfile visualProfile,
   }) {
     final workspacePathsFuture = _workspacePathsLoadFuture ??=
-        OmnibotResourceService.ensureWorkspacePathsLoaded(forceRefresh: true);
+        OmnibotResourceService.ensureWorkspacePathsLoaded();
     return FutureBuilder<OmnibotWorkspacePaths>(
       future: workspacePathsFuture,
       builder: (context, snapshot) {

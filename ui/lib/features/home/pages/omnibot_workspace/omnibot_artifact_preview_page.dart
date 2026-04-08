@@ -2,13 +2,14 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
 import 'package:ui/widgets/omnibot_resource_widgets.dart';
+
+enum _ArtifactPreviewAction { openWithSystem, shareFile }
 
 class OmnibotArtifactPreviewPage extends StatefulWidget {
   final String path;
@@ -39,9 +40,6 @@ class OmnibotArtifactPreviewPage extends StatefulWidget {
 
 class _OmnibotArtifactPreviewPageState
     extends State<OmnibotArtifactPreviewPage> {
-  static const String _externalLinkIconAsset =
-      'assets/home/workspace_external_link_icon.svg';
-
   final TextEditingController _editorController = TextEditingController();
 
   StreamSubscription<AgentAiConfigChangedEvent>? _fileChangedSubscription;
@@ -246,6 +244,17 @@ class _OmnibotArtifactPreviewPageState
       }
     } catch (error) {
       showToast('分享失败：$error', type: ToastType.error);
+    }
+  }
+
+  void _handleToolbarAction(_ArtifactPreviewAction action) {
+    switch (action) {
+      case _ArtifactPreviewAction.openWithSystem:
+        unawaited(_handleOpenWithSystem());
+        break;
+      case _ArtifactPreviewAction.shareFile:
+        unawaited(_handleShareFile());
+        break;
     }
   }
 
@@ -472,26 +481,27 @@ class _OmnibotArtifactPreviewPageState
         );
       }
     }
-    actions.addAll([
-      IconButton(
-        tooltip: '系统打开',
-        onPressed: widget.exists ? _handleOpenWithSystem : null,
-        icon: SvgPicture.asset(
-          _externalLinkIconAsset,
-          width: 20,
-          height: 20,
-          colorFilter: const ColorFilter.mode(
-            Color(0xFF111827),
-            BlendMode.srcIn,
-          ),
+    if (widget.exists) {
+      actions.add(
+        PopupMenuButton<_ArtifactPreviewAction>(
+          key: const ValueKey('artifact-preview-more-actions'),
+          tooltip: '更多操作',
+          splashRadius: 18,
+          onSelected: _handleToolbarAction,
+          itemBuilder: (context) => const [
+            PopupMenuItem<_ArtifactPreviewAction>(
+              value: _ArtifactPreviewAction.openWithSystem,
+              child: Text('系统打开'),
+            ),
+            PopupMenuItem<_ArtifactPreviewAction>(
+              value: _ArtifactPreviewAction.shareFile,
+              child: Text('分享文件'),
+            ),
+          ],
+          icon: const Icon(Icons.more_horiz_rounded),
         ),
-      ),
-      IconButton(
-        tooltip: '分享文件',
-        onPressed: widget.exists ? _handleShareFile : null,
-        icon: const Icon(Icons.share_outlined),
-      ),
-    ]);
+      );
+    }
     return actions;
   }
 
