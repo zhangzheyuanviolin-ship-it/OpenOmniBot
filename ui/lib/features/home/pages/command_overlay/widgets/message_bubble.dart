@@ -144,13 +144,13 @@ class MessageBubble extends StatelessWidget {
 
     if (attachments.isEmpty) {
       // AI消息：简单文本样式，无背景
-      return _buildAiText(text);
+      return _buildAiTextWithSpeed(text);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (text.isNotEmpty) _buildAiText(text),
+        if (text.isNotEmpty) _buildAiTextWithSpeed(text),
         if (text.isNotEmpty) const SizedBox(height: 8),
         _buildUserAttachmentList(context, attachments),
       ],
@@ -507,6 +507,36 @@ class MessageBubble extends StatelessWidget {
         height: 1.57,
       ),
     );
+  }
+
+  /// AI text with optional inference speed label
+  Widget _buildAiTextWithSpeed(String text) {
+    final aiText = _buildAiText(text);
+    final speed = _predictedPerSecond;
+    if (speed == null) return aiText;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        aiText,
+        const SizedBox(height: 4),
+        Text(
+          '${speed.toStringAsFixed(1)} tok/s',
+          style: TextStyle(
+            fontSize: 11,
+            color: visualProfile.secondaryTextColor.withValues(alpha: 0.6),
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ],
+    );
+  }
+
+  double? get _predictedPerSecond {
+    final raw = message.content?['predictedPerSecond'];
+    if (raw is double) return raw;
+    if (raw is num) return raw.toDouble();
+    return null;
   }
 
   /// 构建"总结中"指示器

@@ -3301,6 +3301,14 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         dispatchAgentChatMessage(message, isFinal)
                     }
 
+                    override suspend fun onChatMessage(
+                        message: String,
+                        isFinal: Boolean,
+                        predictedPerSecond: Double?
+                    ) {
+                        dispatchAgentChatMessage(message, isFinal, predictedPerSecond)
+                    }
+
                     override suspend fun onPromptTokenUsageChanged(
                         latestPromptTokens: Int,
                         promptTokenThreshold: Int?
@@ -3418,7 +3426,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                     private suspend fun dispatchAgentChatMessage(
                         message: String,
-                        isFinal: Boolean
+                        isFinal: Boolean,
+                        predictedPerSecond: Double? = null
                     ) {
                         val normalizedMessage = message.trim()
                         if (normalizedMessage.isNotEmpty()) {
@@ -3441,10 +3450,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         }
                         sendEvent(
                             "onAgentChatMessage",
-                            mapOf(
-                                "message" to message,
-                                "isFinal" to isFinal
-                            )
+                            buildMap {
+                                put("message", message)
+                                put("isFinal", isFinal)
+                                if (predictedPerSecond != null) {
+                                    put("predictedPerSecond", predictedPerSecond)
+                                }
+                            }
                         )
                     }
 

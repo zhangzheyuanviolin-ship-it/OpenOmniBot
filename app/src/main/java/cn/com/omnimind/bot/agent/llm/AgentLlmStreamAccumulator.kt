@@ -31,6 +31,7 @@ class AgentLlmStreamAccumulator(
     private val toolCallBuilders: SortedMap<Int, MutableToolCallBuilder> = TreeMap()
     private var finishReason: String? = null
     private var usage: ChatCompletionUsage? = null
+    private var predictedPerSecond: Double? = null
     private var seenChunk = false
     private var lastChunkPreview: String = ""
     private var thinkSectionOpen = false
@@ -64,6 +65,7 @@ class AgentLlmStreamAccumulator(
     private fun consumeJsonChunk(root: JsonObject): Boolean {
         seenChunk = true
         usage = decodeUsage(root["usage"]) ?: usage
+        predictedPerSecond = decodeTimings(root["timings"]) ?: predictedPerSecond
 
         var chunkHasPayload = false
         val choices = root["choices"] as? JsonArray
@@ -206,7 +208,8 @@ class AgentLlmStreamAccumulator(
             ),
             reasoning = reasoningBuffer.toString(),
             finishReason = finishReason,
-            usage = usage
+            usage = usage,
+            predictedPerSecond = predictedPerSecond
         )
     }
 
@@ -357,6 +360,11 @@ class AgentLlmStreamAccumulator(
             promptTokensDetails = obj["prompt_tokens_details"],
             completionTokensDetails = obj["completion_tokens_details"]
         )
+    }
+
+    private fun decodeTimings(element: JsonElement?): Double? {
+        val obj = element as? JsonObject ?: return null
+        return obj["predicted_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
     }
 
     private fun appendReasoningPayload(element: JsonElement?) {

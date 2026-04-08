@@ -180,7 +180,8 @@ data class ChatCompletionTurn(
     val message: ChatCompletionMessage,
     val reasoning: String = "",
     val finishReason: String? = null,
-    val usage: ChatCompletionUsage? = null
+    val usage: ChatCompletionUsage? = null,
+    val predictedPerSecond: Double? = null
 )
 
 fun ChatCompletionMessage.contentText(): String {
