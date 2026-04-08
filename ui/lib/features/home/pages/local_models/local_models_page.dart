@@ -603,11 +603,6 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                   '共享端口：同一时间只会有一个 OmniInfer 本地服务实例，切换后端不会改变监听端口。',
                   style: const TextStyle(color: AppColors.text50, height: 1.5),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '固定行为：仅监听 127.0.0.1，当前不校验 API Key。',
-                  style: const TextStyle(color: AppColors.text50, height: 1.5),
-                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _portController,

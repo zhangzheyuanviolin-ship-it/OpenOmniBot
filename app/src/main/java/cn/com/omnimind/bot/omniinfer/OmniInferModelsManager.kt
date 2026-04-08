@@ -311,14 +311,17 @@ object OmniInferModelsManager {
         val license = model["license"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val quants = model["quants"]?.jsonObject ?: return emptyList()
         val sources = model["sources"]?.jsonObject
-        val installedDir = getModelDir()
 
         return quants.entries.map { (quantName, quantObj) ->
             val sizeBytes = quantObj.jsonObject["size_bytes"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
-            val fileName = "$modelName-$quantName.gguf"
             val id = "$modelName-$quantName"
-            val localFile = File(installedDir, fileName)
-            val download = activeDownloads[id]
+            val localFile = findModelFile(id)
+            val activeDownload = activeDownloads[id]
+            val downloadMap = when {
+                activeDownload != null -> activeDownload.toMap()
+                localFile != null -> completedDownloadMap(localFile.length())
+                else -> null
+            }
             val repo = sources?.get(source)?.jsonPrimitive?.contentOrNull.orEmpty()
             mapOf(
                 "id" to id,
@@ -330,20 +333,20 @@ object OmniInferModelsManager {
                     if (license.isNotEmpty()) add("License: $license")
                     if (repo.isNotEmpty()) add("Repo: $repo")
                 }.joinToString(separator = " | "),
-                "path" to localFile.absolutePath,
+                "path" to (localFile?.absolutePath ?: ""),
                 "vendor" to vendor,
                 "tags" to (tags + listOf("GGUF", quantName)),
                 "extraTags" to listOf(params).filter { it.isNotBlank() },
                 "active" to (id == getActiveModelId()),
-                "isLocal" to localFile.exists(),
+                "isLocal" to (localFile != null),
                 "isPinned" to false,
                 "hasUpdate" to false,
                 "fileSize" to sizeBytes,
                 "sizeB" to sizeBytes.toDouble(),
                 "formattedSize" to formatSize(sizeBytes),
                 "lastUsedAt" to 0,
-                "downloadedAt" to if (localFile.exists()) localFile.lastModified() else 0L,
-                "download" to download?.toMap(),
+                "downloadedAt" to (localFile?.lastModified() ?: 0L),
+                "download" to downloadMap,
                 "readOnly" to false,
             )
         }
@@ -507,6 +510,21 @@ object OmniInferModelsManager {
 
     private fun emitEvent(type: String, payload: Map<String, Any?>) {
         eventDispatcher?.invoke(mapOf("type" to type) + payload)
+    }
+
+    private fun completedDownloadMap(sizeBytes: Long): Map<String, Any?> {
+        return mapOf(
+            "state" to 0,
+            "stateLabel" to "completed",
+            "progress" to 1.0,
+            "savedSize" to sizeBytes,
+            "totalSize" to sizeBytes,
+            "speedInfo" to "",
+            "errorMessage" to "",
+            "progressStage" to "",
+            "currentFile" to "",
+            "hasUpdate" to false,
+        )
     }
 
     private fun formatSize(bytes: Long): String {
