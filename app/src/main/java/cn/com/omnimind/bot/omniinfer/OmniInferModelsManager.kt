@@ -1,17 +1,28 @@
-package cn.com.omnimind.bot.omniinfer
+﻿package cn.com.omnimind.bot.omniinfer
 
 import android.content.Context
 import android.util.Log
-import cn.com.omnimind.baselib.llm.MnnLocalProviderStateStore
 import com.omniinfer.server.OmniInferServer
 import com.tencent.mmkv.MMKV
-import kotlinx.coroutines.*
-import kotlinx.serialization.json.*
-import okhttp3.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.Call
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.internal.closeQuietly
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -19,7 +30,16 @@ object OmniInferModelsManager {
     private const val TAG = "OmniInferModels"
     private const val MARKET_URL =
         "https://omnimind-model.oss-cn-beijing.aliyuncs.com/llama.cpp/model_market.json"
+    private const val ASSET_NAME = "omniinfer_llama_model_market.json"
+    private const val CACHE_DIR = "omniinfer"
+    private const val CACHE_FILE_NAME = "llama_model_market_cache.json"
     private const val MMKV_ID = "omniinfer_config"
+    private const val KEY_ACTIVE_MODEL_ID = "omniinfer_llama_active_model_id"
+    private const val KEY_AUTO_START = "omniinfer_llama_auto_start_on_app_open"
+    private const val KEY_DOWNLOAD_PROVIDER = "omniinfer_llama_download_provider"
+    private const val LEGACY_ACTIVE_MODEL_ID = "activeModelId"
+    private const val LEGACY_AUTO_START = "autoStartOnAppOpen"
+    private const val LEGACY_DOWNLOAD_PROVIDER = "downloadProvider"
 
     private var appContext: Context? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -28,20 +48,16 @@ object OmniInferModelsManager {
         .followSslRedirects(true)
         .build()
 
-    // Cached market data
     private var cachedMarketJson: JsonObject? = null
     private var cachedMarketModels: List<JsonObject> = emptyList()
-
-    // Download state: modelId -> DownloadTask
     private val activeDownloads = ConcurrentHashMap<String, DownloadTask>()
-
-    // Event dispatcher (set by channel)
     private var eventDispatcher: ((Map<String, Any?>) -> Unit)? = null
 
     private val mmkv: MMKV by lazy { MMKV.mmkvWithID(MMKV_ID) }
 
     fun setContext(context: Context) {
         appContext = context.applicationContext
+        OmniInferLocalRuntime.setContext(context.applicationContext)
     }
 
     fun setEventDispatcher(dispatcher: ((Map<String, Any?>) -> Unit)?) {
@@ -54,82 +70,79 @@ object OmniInferModelsManager {
         eventDispatcher = null
     }
 
-    // ── Config ──
+    fun handleAppOpen() {
+        if (shouldAutoStartOnAppOpen()) {
+            startApiService(getActiveModelId())
+        }
+    }
 
     fun getConfig(): Map<String, Any?> {
-        val port = mmkv.decodeInt("apiPort", 9099)
-        val activeModelId = mmkv.decodeString("activeModelId", "") ?: ""
-        val autoStart = mmkv.decodeBool("autoStartOnAppOpen", false)
-        val downloadProvider = mmkv.decodeString("downloadProvider", "ModelScope") ?: "ModelScope"
-        val running = OmniInferServer.isReady()
-
+        val running = OmniInferLocalRuntime.isReady()
         return mapOf(
-            "backend" to "llama.cpp",
-            "autoStartOnAppOpen" to autoStart,
-            "apiEnabled" to true,
-            "apiLanEnabled" to false,
+            "backend" to OmniInferLocalRuntime.BACKEND_LLAMA_CPP,
+            "autoStartOnAppOpen" to shouldAutoStartOnAppOpen(),
             "apiRunning" to running,
             "apiReady" to running,
             "apiState" to if (running) "running" else "stopped",
-            "apiHost" to "127.0.0.1",
-            "apiPort" to port,
-            "apiKey" to "",
-            "baseUrl" to "http://127.0.0.1:$port",
-            "activeModelId" to activeModelId,
-            "speechRecognitionProvider" to "system",
-            "defaultAsrModelId" to "",
-            "defaultTtsModelId" to "",
-            "downloadProvider" to downloadProvider,
+            "apiHost" to OmniInferLocalRuntime.getHost(),
+            "apiPort" to OmniInferLocalRuntime.getPort(),
+            "baseUrl" to OmniInferLocalRuntime.getBaseUrl(),
+            "activeModelId" to getActiveModelId(),
+            "downloadProvider" to getDownloadProvider(),
             "availableSources" to listOf("ModelScope", "HuggingFace"),
-            "voiceReady" to false,
-            "voiceStatusText" to "",
-            "installedAsrModels" to emptyList<Any>(),
-            "installedTtsModels" to emptyList<Any>(),
+            "loadedBackend" to OmniInferLocalRuntime.getLoadedBackend(),
+            "loadedModelId" to OmniInferLocalRuntime.getLoadedModelId(),
         )
     }
 
     fun saveConfig(args: Map<*, *>): Map<String, Any?> {
-        args["apiPort"]?.let { mmkv.encode("apiPort", (it as Number).toInt()) }
-        args["activeModelId"]?.let { mmkv.encode("activeModelId", it as String) }
-        args["autoStartOnAppOpen"]?.let { mmkv.encode("autoStartOnAppOpen", it as Boolean) }
-        args["downloadProvider"]?.let { mmkv.encode("downloadProvider", it as String) }
+        args["apiPort"]?.let { value ->
+            val port = (value as? Number)?.toInt()
+            if (port != null && port > 0) {
+                OmniInferLocalRuntime.setPort(port)
+            }
+        }
+        args["activeModelId"]?.let { mmkv.encode(KEY_ACTIVE_MODEL_ID, it.toString()) }
+        args["autoStartOnAppOpen"]?.let { mmkv.encode(KEY_AUTO_START, it == true) }
+        args["downloadProvider"]?.let { mmkv.encode(KEY_DOWNLOAD_PROVIDER, normalizeSource(it.toString())) }
+        emitConfigChanged()
         return getConfig()
     }
 
     fun setActiveModel(modelId: String?): Map<String, Any?> {
-        mmkv.encode("activeModelId", modelId ?: "")
+        mmkv.encode(KEY_ACTIVE_MODEL_ID, modelId?.trim().orEmpty())
+        emitConfigChanged()
         return getConfig()
     }
 
-    // ── Installed Models ──
-
     private fun getModelDir(): File {
-        val ctx = appContext ?: throw IllegalStateException("Context not set")
-        val dir = File(ctx.getExternalFilesDir(null), "omniinfer-llama")
-        if (!dir.exists()) dir.mkdirs()
+        val context = appContext ?: error("OmniInfer context is not initialized")
+        val dir = File(context.getExternalFilesDir(null), "omniinfer-llama")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
         return dir
     }
 
     fun listInstalledModels(query: String? = null, category: String? = null): List<Map<String, Any?>> {
-        val dir = getModelDir()
-        val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".gguf") } ?: emptyArray()
-        return files
-            .sortedByDescending { it.lastModified() }
-            .filter { file ->
-                if (query.isNullOrBlank()) true
-                else file.name.lowercase().contains(query.lowercase())
+        val normalizedQuery = query?.trim()?.lowercase(Locale.getDefault()).orEmpty()
+        return getModelDir()
+            .listFiles { file -> file.isFile && file.name.endsWith(".gguf") }
+            ?.sortedByDescending { it.lastModified() }
+            ?.filter { file ->
+                if (normalizedQuery.isEmpty()) {
+                    true
+                } else {
+                    file.name.lowercase(Locale.getDefault()).contains(normalizedQuery)
+                }
             }
-            .map { file ->
-                val id = file.nameWithoutExtension
-                val download = activeDownloads[id]
-                modelFileToMap(file, download)
-            }
+            ?.map { file -> modelFileToMap(file, activeDownloads[file.nameWithoutExtension]) }
+            .orEmpty()
     }
 
     private fun modelFileToMap(file: File, download: DownloadTask? = null): Map<String, Any?> {
         val id = file.nameWithoutExtension
         val sizeBytes = file.length()
-        val activeModelId = mmkv.decodeString("activeModelId", "") ?: ""
         return mapOf(
             "id" to id,
             "name" to id,
@@ -140,7 +153,7 @@ object OmniInferModelsManager {
             "vendor" to "",
             "tags" to listOf("GGUF"),
             "extraTags" to emptyList<String>(),
-            "active" to (id == activeModelId),
+            "active" to (id == getActiveModelId() || id == OmniInferLocalRuntime.getLoadedModelId()),
             "isLocal" to true,
             "isPinned" to false,
             "hasUpdate" to false,
@@ -150,6 +163,7 @@ object OmniInferModelsManager {
             "lastUsedAt" to 0,
             "downloadedAt" to file.lastModified(),
             "download" to download?.toMap(),
+            "readOnly" to false,
         )
     }
 
@@ -157,31 +171,31 @@ object OmniInferModelsManager {
         return listInstalledModels()
     }
 
-    // ── Market Models ──
-
     suspend fun listMarketModels(
         query: String? = null,
         category: String? = null,
-        refresh: Boolean = false
+        refresh: Boolean = false,
     ): Map<String, Any?> {
         if (refresh || cachedMarketJson == null) {
-            fetchMarketJson()
+            fetchMarketJson(refresh)
         }
-        val source = mmkv.decodeString("downloadProvider", "ModelScope") ?: "ModelScope"
+        val selectedSource = getDownloadProvider()
+        val normalizedQuery = query?.trim()?.lowercase(Locale.getDefault()).orEmpty()
         val models = cachedMarketModels
             .filter { model ->
-                if (query.isNullOrBlank()) true
-                else {
-                    val name = model["modelName"]?.jsonPrimitive?.contentOrNull ?: ""
-                    val vendor = model["vendor"]?.jsonPrimitive?.contentOrNull ?: ""
-                    name.lowercase().contains(query.lowercase()) ||
-                        vendor.lowercase().contains(query.lowercase())
+                if (normalizedQuery.isEmpty()) {
+                    true
+                } else {
+                    val name = model["modelName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val vendor = model["vendor"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    name.lowercase(Locale.getDefault()).contains(normalizedQuery) ||
+                        vendor.lowercase(Locale.getDefault()).contains(normalizedQuery)
                 }
             }
-            .flatMap { model -> marketModelToMaps(model, source) }
+            .flatMap { model -> marketModelToMaps(model, selectedSource) }
 
         return mapOf(
-            "source" to source,
+            "source" to selectedSource,
             "category" to "llm",
             "availableSources" to listOf("ModelScope", "HuggingFace"),
             "models" to models,
@@ -195,71 +209,119 @@ object OmniInferModelsManager {
         return listMarketModels(query = query, category = category, refresh = true)
     }
 
-    private suspend fun fetchMarketJson() {
-        try {
-            val request = Request.Builder().url(MARKET_URL).get().build()
-            val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
-            val body = response.body?.string() ?: return
-            val json = Json.parseToJsonElement(body).jsonObject
-            cachedMarketJson = json
-            cachedMarketModels = json["models"]?.jsonArray
-                ?.mapNotNull { it.jsonObject }
-                ?: emptyList()
-            Log.i(TAG, "Fetched ${cachedMarketModels.size} market models")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch market JSON", e)
+    private suspend fun fetchMarketJson(refresh: Boolean) {
+        val resolvedJson = if (!refresh) {
+            cachedMarketJson ?: loadLocalMarketJson()
+        } else {
+            runCatching { fetchRemoteMarketJson() }
+                .onFailure { error ->
+                    Log.e(TAG, "Failed to fetch llama.cpp market JSON", error)
+                }
+                .getOrElse { cachedMarketJson ?: loadLocalMarketJson() }
         }
+        cachedMarketJson = resolvedJson
+        cachedMarketModels = resolvedJson["models"]?.jsonArray?.mapNotNull { it.jsonObject }.orEmpty()
     }
 
-    /**
-     * Convert one market model entry (which may have multiple quants) into
-     * multiple MnnLocalModel-compatible maps (one per quant).
-     */
+    private fun ensureMarketSeedLoaded() {
+        if (cachedMarketJson != null) {
+            return
+        }
+        runCatching { loadLocalMarketJson() }
+            .onSuccess { json ->
+                cachedMarketJson = json
+                cachedMarketModels = json["models"]?.jsonArray?.mapNotNull { it.jsonObject }.orEmpty()
+            }
+            .onFailure { error ->
+                Log.e(TAG, "Failed to load local llama.cpp market JSON", error)
+            }
+    }
+
+    private fun loadLocalMarketJson(): JsonObject {
+        val context = appContext ?: error("OmniInfer context is not initialized")
+        val cacheFile = marketCacheFile(context)
+        val cachedText = runCatching {
+            if (cacheFile.exists()) cacheFile.readText() else null
+        }.getOrNull()
+        if (!cachedText.isNullOrBlank()) {
+            return decodeMarketJson(cachedText)
+        }
+        val assetText = context.assets.open(ASSET_NAME).bufferedReader().use { it.readText() }
+        return decodeMarketJson(assetText)
+    }
+
+    private suspend fun fetchRemoteMarketJson(): JsonObject {
+        val context = appContext ?: error("OmniInfer context is not initialized")
+        val body = withContext(Dispatchers.IO) {
+            client.newCall(Request.Builder().url(MARKET_URL).get().build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    error("Failed to fetch llama.cpp market: HTTP ${response.code}")
+                }
+                response.body?.string().orEmpty()
+            }
+        }
+        val json = decodeMarketJson(body)
+        withContext(Dispatchers.IO) {
+            val target = marketCacheFile(context)
+            target.parentFile?.mkdirs()
+            target.writeText(body)
+        }
+        return json
+    }
+
+    private fun decodeMarketJson(raw: String): JsonObject {
+        return Json.parseToJsonElement(raw).jsonObject
+    }
+
+    private fun marketCacheFile(context: Context): File {
+        return File(File(context.filesDir, CACHE_DIR), CACHE_FILE_NAME)
+    }
+
     private fun marketModelToMaps(model: JsonObject, source: String): List<Map<String, Any?>> {
         val modelName = model["modelName"]?.jsonPrimitive?.contentOrNull ?: return emptyList()
-        val vendor = model["vendor"]?.jsonPrimitive?.contentOrNull ?: ""
-        val tags = model["tags"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
-        val params = model["params"]?.jsonPrimitive?.contentOrNull ?: ""
-        val license = model["license"]?.jsonPrimitive?.contentOrNull ?: ""
+        val vendor = model["vendor"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val tags = model["tags"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
+        val params = model["params"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val license = model["license"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val quants = model["quants"]?.jsonObject ?: return emptyList()
         val sources = model["sources"]?.jsonObject
-
         val installedDir = getModelDir()
 
         return quants.entries.map { (quantName, quantObj) ->
-            val sizeBytes = quantObj.jsonObject["size_bytes"]?.jsonPrimitive?.longOrNull ?: 0L
+            val sizeBytes = quantObj.jsonObject["size_bytes"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
             val fileName = "$modelName-$quantName.gguf"
             val id = "$modelName-$quantName"
             val localFile = File(installedDir, fileName)
-            val isLocal = localFile.exists() && localFile.length() > 0
             val download = activeDownloads[id]
-            val repo = sources?.get(source)?.jsonPrimitive?.contentOrNull ?: ""
-
+            val repo = sources?.get(source)?.jsonPrimitive?.contentOrNull.orEmpty()
             mapOf(
                 "id" to id,
                 "name" to "$modelName $quantName",
                 "category" to "llm",
                 "source" to source,
-                "description" to "Params: $params | License: $license | Repo: $repo",
+                "description" to buildList {
+                    if (params.isNotEmpty()) add("Params: $params")
+                    if (license.isNotEmpty()) add("License: $license")
+                    if (repo.isNotEmpty()) add("Repo: $repo")
+                }.joinToString(separator = " | "),
                 "path" to localFile.absolutePath,
                 "vendor" to vendor,
                 "tags" to (tags + listOf("GGUF", quantName)),
-                "extraTags" to listOf(params),
-                "active" to false,
-                "isLocal" to isLocal,
+                "extraTags" to listOf(params).filter { it.isNotBlank() },
+                "active" to (id == getActiveModelId()),
+                "isLocal" to localFile.exists(),
                 "isPinned" to false,
                 "hasUpdate" to false,
                 "fileSize" to sizeBytes,
                 "sizeB" to sizeBytes.toDouble(),
                 "formattedSize" to formatSize(sizeBytes),
                 "lastUsedAt" to 0,
-                "downloadedAt" to if (isLocal) localFile.lastModified() else 0L,
+                "downloadedAt" to if (localFile.exists()) localFile.lastModified() else 0L,
                 "download" to download?.toMap(),
+                "readOnly" to false,
             )
         }
     }
-
-    // ── Overview ──
 
     suspend fun getOverview(
         installedQuery: String? = null,
@@ -273,58 +335,57 @@ object OmniInferModelsManager {
         )
     }
 
-    // ── Download ──
-
     fun startDownload(modelId: String) {
         if (activeDownloads.containsKey(modelId)) {
-            Log.w(TAG, "Download already in progress: $modelId")
             return
         }
-        val source = mmkv.decodeString("downloadProvider", "ModelScope") ?: "ModelScope"
-        val (repo, quantName) = findRepoAndQuantForModel(modelId, source) ?: run {
-            Log.e(TAG, "No repo found for $modelId in source=$source")
+        val source = getDownloadProvider()
+        val resolved = findRepoAndQuantForModel(modelId, source) ?: run {
             emitEvent("download_error", mapOf("modelId" to modelId, "error" to "No download source"))
             return
         }
-        // Derive filename from repo name: e.g. "unsloth/gemma-4-E2B-it-GGUF" -> "gemma-4-E2B-it"
-        val repoBaseName = repo.substringAfterLast("/")
-            .removeSuffix("-GGUF").removeSuffix("-gguf")
-        val remoteFileName = "$repoBaseName-$quantName.gguf"
-        val localFileName = "$modelId.gguf"
-        val url = buildDownloadUrl(source, repo, remoteFileName)
-        val destFile = File(getModelDir(), localFileName)
-
-        Log.i(TAG, "Starting download: $modelId -> $url")
-        val task = DownloadTask(modelId, url, destFile)
+        val repoBaseName = resolved.first.substringAfterLast("/")
+            .removeSuffix("-GGUF")
+            .removeSuffix("-gguf")
+        val remoteFileName = "$repoBaseName-${resolved.second}.gguf"
+        val url = buildDownloadUrl(source, resolved.first, remoteFileName)
+        val destination = File(getModelDir(), "$modelId.gguf")
+        val task = DownloadTask(modelId, url, destination)
         activeDownloads[modelId] = task
         task.start()
     }
 
     fun pauseDownload(modelId: String) {
-        activeDownloads[modelId]?.cancel()
-        activeDownloads.remove(modelId)
+        activeDownloads.remove(modelId)?.cancel()
         emitEvent("downloads_changed", mapOf("modelId" to modelId))
     }
 
     suspend fun deleteModel(modelId: String): List<Map<String, Any?>> {
+        if (OmniInferLocalRuntime.isModelLoaded(OmniInferLocalRuntime.BACKEND_LLAMA_CPP, modelId)) {
+            OmniInferLocalRuntime.stop()
+        }
         val file = File(getModelDir(), "$modelId.gguf")
-        if (file.exists()) file.delete()
+        if (file.exists()) {
+            file.delete()
+        }
+        if (getActiveModelId() == modelId) {
+            mmkv.encode(KEY_ACTIVE_MODEL_ID, "")
+        }
         activeDownloads.remove(modelId)
+        emitConfigChanged()
         return listInstalledModels()
     }
 
-    /**
-     * Returns (repo, quantName) pair for a given modelId and source.
-     */
     private fun findRepoAndQuantForModel(modelId: String, source: String): Pair<String, String>? {
-        for (model in cachedMarketModels) {
-            val modelName = model["modelName"]?.jsonPrimitive?.contentOrNull ?: continue
-            val quants = model["quants"]?.jsonObject ?: continue
-            for (quantName in quants.keys) {
+        ensureMarketSeedLoaded()
+        cachedMarketModels.forEach { model ->
+            val modelName = model["modelName"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+            val quants = model["quants"]?.jsonObject ?: return@forEach
+            quants.keys.forEach { quantName ->
                 if ("$modelName-$quantName" == modelId) {
                     val repo = model["sources"]?.jsonObject?.get(source)?.jsonPrimitive?.contentOrNull
                         ?: return null
-                    return Pair(repo, quantName)
+                    return repo to quantName
                 }
             }
         }
@@ -334,85 +395,134 @@ object OmniInferModelsManager {
     private fun buildDownloadUrl(source: String, repo: String, fileName: String): String {
         return when (source) {
             "HuggingFace" -> "https://huggingface.co/$repo/resolve/main/$fileName"
-            "ModelScope" -> "https://modelscope.cn/models/$repo/resolve/master/$fileName"
             else -> "https://modelscope.cn/models/$repo/resolve/master/$fileName"
         }
     }
 
-    // ── API Service ──
-
     fun startApiService(modelId: String?): Map<String, Any?> {
-        val id = modelId ?: mmkv.decodeString("activeModelId", "") ?: ""
-        if (id.isBlank()) {
-            Log.w(TAG, "No model selected")
+        val resolvedModelId = modelId?.trim().orEmpty().ifBlank { getActiveModelId() }
+        if (resolvedModelId.isBlank()) {
             return getConfig()
         }
-        val file = File(getModelDir(), "$id.gguf")
-        if (!file.exists()) {
-            Log.e(TAG, "Model file not found: ${file.absolutePath}")
+        val modelFile = File(getModelDir(), "$resolvedModelId.gguf")
+        if (!modelFile.exists()) {
             return getConfig()
         }
-        val port = mmkv.decodeInt("apiPort", 9099)
-        mmkv.encode("activeModelId", id)
-        val success = OmniInferServer.loadModel(
-            modelPath = file.absolutePath,
-            backend = "llama.cpp",
-            port = port,
+        mmkv.encode(KEY_ACTIVE_MODEL_ID, resolvedModelId)
+        OmniInferLocalRuntime.loadModel(
+            modelId = resolvedModelId,
+            modelPath = modelFile.absolutePath,
+            backend = OmniInferLocalRuntime.BACKEND_LLAMA_CPP,
         )
-        // Sync provider state so the agent system can discover this local provider
-        MnnLocalProviderStateStore.update(port = port, apiKey = "", ready = success)
+        emitConfigChanged()
         return getConfig()
     }
 
     fun stopApiService(): Map<String, Any?> {
-        OmniInferServer.stop()
-        MnnLocalProviderStateStore.update(port = 9099, apiKey = "", ready = false)
+        OmniInferLocalRuntime.stop()
+        emitConfigChanged()
         return getConfig()
     }
 
-    /**
-     * Called by LocalModelProviderBridge delegate to ensure a model is ready for inference.
-     * If OmniInfer already has a model loaded, returns true.
-     * Otherwise tries to find and load the requested model as a GGUF file.
-     */
     fun ensureModelReady(modelId: String): Boolean {
-        if (OmniInferServer.isReady()) return true
-        val ctx = appContext ?: return false
-        // Try to find model file
-        val dir = getModelDir()
-        val file = File(dir, "$modelId.gguf")
-        if (!file.exists()) {
-            // Try matching by name prefix (modelId might not have .gguf suffix)
-            val match = dir.listFiles { f -> f.isFile && f.name.endsWith(".gguf") }
-                ?.firstOrNull { it.nameWithoutExtension == modelId }
-                ?: return false
-            return loadAndWait(match.absolutePath)
+        val normalizedModelId = modelId.trim()
+        if (normalizedModelId.isEmpty()) {
+            return false
         }
-        return loadAndWait(file.absolutePath)
-    }
-
-    private fun loadAndWait(modelPath: String): Boolean {
-        val port = mmkv.decodeInt("apiPort", 9099)
-        val success = OmniInferServer.loadModel(
-            modelPath = modelPath,
-            backend = "llama.cpp",
-            port = port,
+        if (OmniInferLocalRuntime.isModelLoaded(OmniInferLocalRuntime.BACKEND_LLAMA_CPP, normalizedModelId)) {
+            return true
+        }
+        val directFile = File(getModelDir(), "$normalizedModelId.gguf")
+        val targetFile = when {
+            directFile.exists() -> directFile
+            else -> getModelDir().listFiles { file ->
+                file.isFile && file.name.endsWith(".gguf") && file.nameWithoutExtension == normalizedModelId
+            }?.firstOrNull() ?: return false
+        }
+        mmkv.encode(KEY_ACTIVE_MODEL_ID, normalizedModelId)
+        return OmniInferLocalRuntime.loadModel(
+            modelId = normalizedModelId,
+            modelPath = targetFile.absolutePath,
+            backend = OmniInferLocalRuntime.BACKEND_LLAMA_CPP,
         )
-        if (success) {
-            MnnLocalProviderStateStore.update(port = port, apiKey = "", ready = true)
-        }
-        return success
     }
 
-    // ── Download Task ──
+    private fun getActiveModelId(): String {
+        val stored = mmkv.decodeString(KEY_ACTIVE_MODEL_ID, null)
+        if (!stored.isNullOrBlank()) {
+            return stored
+        }
+        val legacy = mmkv.decodeString(LEGACY_ACTIVE_MODEL_ID, "").orEmpty()
+        if (legacy.isNotBlank()) {
+            mmkv.encode(KEY_ACTIVE_MODEL_ID, legacy)
+        }
+        return legacy
+    }
+
+    private fun shouldAutoStartOnAppOpen(): Boolean {
+        return if (mmkv.containsKey(KEY_AUTO_START)) {
+            mmkv.decodeBool(KEY_AUTO_START, false)
+        } else {
+            mmkv.decodeBool(LEGACY_AUTO_START, false).also { legacy ->
+                mmkv.encode(KEY_AUTO_START, legacy)
+            }
+        }
+    }
+
+    private fun getDownloadProvider(): String {
+        val stored = if (mmkv.containsKey(KEY_DOWNLOAD_PROVIDER)) {
+            mmkv.decodeString(KEY_DOWNLOAD_PROVIDER, "ModelScope")
+        } else {
+            mmkv.decodeString(LEGACY_DOWNLOAD_PROVIDER, "ModelScope")
+        }
+        val normalized = normalizeSource(stored)
+        mmkv.encode(KEY_DOWNLOAD_PROVIDER, normalized)
+        return normalized
+    }
+
+    private fun normalizeSource(rawSource: String?): String {
+        return when (rawSource?.trim()) {
+            "HuggingFace" -> "HuggingFace"
+            else -> "ModelScope"
+        }
+    }
+
+    private fun emitConfigChanged() {
+        emitEvent("config_changed", mapOf("config" to getConfig()))
+    }
+
+    private fun emitEvent(type: String, payload: Map<String, Any?>) {
+        eventDispatcher?.invoke(mapOf("type" to type) + payload)
+    }
+
+    private fun formatSize(bytes: Long): String {
+        if (bytes <= 0L) {
+            return ""
+        }
+        return when {
+            bytes >= 1_073_741_824 -> String.format(Locale.US, "%.1f GB", bytes / 1_073_741_824.0)
+            bytes >= 1_048_576 -> String.format(Locale.US, "%.1f MB", bytes / 1_048_576.0)
+            bytes >= 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
+            else -> "$bytes B"
+        }
+    }
 
     private class DownloadTask(
-        val modelId: String,
-        val url: String,
-        val destFile: File,
+        private val modelId: String,
+        private val url: String,
+        private val destFile: File,
     ) {
         private var call: Call? = null
         private val cancelled = AtomicBoolean(false)
+
+        @Volatile
+        private var progress: Double = 0.0
+
+        @Volatile
+        private var savedSize: Long = 0L
+
+        @Volatile
+        private var totalSize: Long = 0L
 
         fun cancel() {
             cancelled.set(true)
@@ -434,96 +544,70 @@ object OmniInferModelsManager {
             )
         }
 
-        @Volatile var progress: Double = 0.0
-        @Volatile var savedSize: Long = 0L
-        @Volatile var totalSize: Long = 0L
-
         fun start() {
             OmniInferModelsManager.scope.launch {
                 try {
                     val tempFile = File(destFile.parent, destFile.name + ".part")
-                    var existingSize = if (tempFile.exists()) tempFile.length() else 0L
-
+                    val existingSize = if (tempFile.exists()) tempFile.length() else 0L
                     val requestBuilder = Request.Builder().url(url)
                     if (existingSize > 0) {
                         requestBuilder.header("Range", "bytes=$existingSize-")
                     }
-
                     call = OmniInferModelsManager.client.newCall(requestBuilder.build())
                     val response = call!!.execute()
-
                     if (!response.isSuccessful && response.code != 206) {
                         throw IOException("HTTP ${response.code}")
                     }
-
                     val body = response.body ?: throw IOException("Empty body")
                     val contentLength = body.contentLength()
                     totalSize = if (response.code == 206) existingSize + contentLength else contentLength
                     savedSize = if (response.code == 206) existingSize else 0L
-
-                    val raf = RandomAccessFile(tempFile, "rw")
+                    val output = RandomAccessFile(tempFile, "rw")
                     if (response.code == 206) {
-                        raf.seek(existingSize)
+                        output.seek(existingSize)
                     } else {
-                        raf.setLength(0)
-                        savedSize = 0L
+                        output.setLength(0)
                     }
-
                     val buffer = ByteArray(8192)
-                    val source = body.byteStream()
+                    val input = body.byteStream()
                     var lastEmitTime = 0L
-
                     while (!cancelled.get()) {
-                        val read = source.read(buffer)
-                        if (read == -1) break
-                        raf.write(buffer, 0, read)
+                        val read = input.read(buffer)
+                        if (read == -1) {
+                            break
+                        }
+                        output.write(buffer, 0, read)
                         savedSize += read
                         progress = if (totalSize > 0) savedSize.toDouble() / totalSize else 0.0
-
                         val now = System.currentTimeMillis()
                         if (now - lastEmitTime > 500) {
                             lastEmitTime = now
                             OmniInferModelsManager.emitEvent("downloads_changed", mapOf("modelId" to modelId))
                         }
                     }
-
-                    raf.close()
-                    source.close()
+                    output.close()
+                    input.close()
                     body.closeQuietly()
-
                     if (!cancelled.get()) {
                         tempFile.renameTo(destFile)
-                        Log.i(TAG, "Download complete: $modelId")
                         OmniInferModelsManager.activeDownloads.remove(modelId)
                         OmniInferModelsManager.emitEvent("downloads_changed", mapOf("modelId" to modelId))
-                        OmniInferModelsManager.emitEvent("installed_changed", emptyMap())
                     }
-                } catch (e: Exception) {
+                } catch (error: Exception) {
                     if (!cancelled.get()) {
-                        Log.e(TAG, "Download failed: $modelId", e)
                         OmniInferModelsManager.activeDownloads.remove(modelId)
-                        OmniInferModelsManager.emitEvent("download_error", mapOf(
-                            "modelId" to modelId,
-                            "error" to (e.message ?: "unknown")
-                        ))
+                        OmniInferModelsManager.emitEvent(
+                            "download_error",
+                            mapOf(
+                                "modelId" to modelId,
+                                "error" to (error.message ?: "unknown"),
+                            )
+                        )
                     }
                 }
             }
         }
     }
-
-    // ── Helpers ──
-
-    private fun emitEvent(type: String, payload: Map<String, Any?>) {
-        eventDispatcher?.invoke(mapOf("type" to type) + payload)
-    }
-
-    private fun formatSize(bytes: Long): String {
-        return when {
-            bytes >= 1_073_741_824 -> "%.1f GB".format(bytes / 1_073_741_824.0)
-            bytes >= 1_048_576 -> "%.1f MB".format(bytes / 1_048_576.0)
-            bytes >= 1024 -> "%.1f KB".format(bytes / 1024.0)
-            else -> "$bytes B"
-        }
-    }
 }
+
+

@@ -62,7 +62,7 @@ import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
-import cn.com.omnimind.bot.mnnlocal.MnnLocalModelsManager
+import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
 import cn.com.omnimind.bot.webchat.ConversationDomainService
 import cn.com.omnimind.bot.webchat.FlutterChatSyncBridge
@@ -2026,7 +2026,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     fallbackConfigId = currentConfig.id
                 )
                 val models = if (isBuiltinLocalRequest) {
-                    MnnLocalModelsManager.listInstalledModels()
+                    OmniInferLocalRuntime.listBuiltinProviderModels()
                         .mapNotNull { item ->
                             val modelId = item["id"]?.toString()?.trim().orEmpty()
                             if (modelId.isEmpty()) {
@@ -2073,7 +2073,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     fallbackConfigId = currentConfig.id
                 )
                 val checkResult = if (isBuiltinLocalRequest) {
-                    val installed = MnnLocalModelsManager.listInstalledModels()
+                    val installed = OmniInferLocalRuntime.listBuiltinProviderModels()
                     val exists = installed.any { item ->
                         item["id"]?.toString()?.trim() == model
                     }
@@ -4296,3 +4296,5 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 }
+
+

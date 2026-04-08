@@ -166,7 +166,8 @@ class ProviderModelGroup {
 }
 
 class ModelProviderConfigService {
-  static const String _kBuiltinMnnLocalProfileId = 'mnn-local';
+  static const String _kBuiltinOmniInferProfileId = 'omniinfer-local';
+  static const String _kLegacyBuiltinMnnLocalProfileId = 'mnn-local';
   static const String _kManualModelIdsKey = 'manual_provider_model_ids_v2';
   static const String _kCachedFetchedModelsKey =
       'cached_provider_models_with_base_v2';
@@ -174,6 +175,20 @@ class ModelProviderConfigService {
       'manual_provider_model_ids_v1';
   static const String _kLegacyCachedFetchedModelsKey =
       'cached_provider_models_with_base_v1';
+
+  static bool _isBuiltinLocalProfileId(String profileId) {
+    final normalized = profileId.trim();
+    return normalized == _kBuiltinOmniInferProfileId ||
+        normalized == _kLegacyBuiltinMnnLocalProfileId;
+  }
+
+  static String _canonicalProfileId(String profileId) {
+    final normalized = profileId.trim();
+    if (_isBuiltinLocalProfileId(normalized)) {
+      return _kBuiltinOmniInferProfileId;
+    }
+    return normalized;
+  }
 
   static Future<ModelProviderConfig> getConfig() async {
     try {
@@ -306,7 +321,8 @@ class ModelProviderConfigService {
     required String profileId,
     String apiBase = '',
   }) async {
-    await _migrateLegacyStorageIfNeeded(profileId);
+    final normalizedProfileId = _canonicalProfileId(profileId);
+    await _migrateLegacyStorageIfNeeded(normalizedProfileId);
     final raw = StorageService.getString(
       _kCachedFetchedModelsKey,
       defaultValue: '',
@@ -321,7 +337,7 @@ class ModelProviderConfigService {
       if (decoded is! Map<String, dynamic>) {
         return const [];
       }
-      final bucket = decoded[profileId];
+      final bucket = decoded[normalizedProfileId];
       if (bucket is! Map<String, dynamic>) {
         return const [];
       }
@@ -359,10 +375,11 @@ class ModelProviderConfigService {
     required String apiBase,
     required List<ProviderModelOption> models,
   }) async {
-    await _migrateLegacyStorageIfNeeded(profileId);
+    final normalizedProfileId = _canonicalProfileId(profileId);
+    await _migrateLegacyStorageIfNeeded(normalizedProfileId);
     final current = _readJsonMap(_kCachedFetchedModelsKey);
     final normalizedBase = normalizeApiBase(apiBase) ?? '';
-    current[profileId] = {
+    current[normalizedProfileId] = {
       'apiBase': normalizedBase,
       'models': models
           .map(
@@ -383,9 +400,10 @@ class ModelProviderConfigService {
   static Future<List<String>> getManualModelIds({
     required String profileId,
   }) async {
-    await _migrateLegacyStorageIfNeeded(profileId);
+    final normalizedProfileId = _canonicalProfileId(profileId);
+    await _migrateLegacyStorageIfNeeded(normalizedProfileId);
     final current = _readJsonMap(_kManualModelIdsKey);
-    final rawIds = (current[profileId] as List?)
+    final rawIds = (current[normalizedProfileId] as List?)
         ?.map((item) => item.toString())
         .toList();
     return _normalizeModelIds(rawIds ?? const []);
@@ -395,21 +413,22 @@ class ModelProviderConfigService {
     required String profileId,
     required List<String> ids,
   }) async {
-    await _migrateLegacyStorageIfNeeded(profileId);
+    final normalizedProfileId = _canonicalProfileId(profileId);
+    await _migrateLegacyStorageIfNeeded(normalizedProfileId);
     final current = _readJsonMap(_kManualModelIdsKey);
-    current[profileId] = _normalizeModelIds(ids);
+    current[normalizedProfileId] = _normalizeModelIds(ids);
     await StorageService.setString(_kManualModelIdsKey, jsonEncode(current));
   }
 
   static Future<List<ProviderModelOption>> getStoredModelOptionsForProfile(
     String profileId,
   ) async {
-    final normalizedProfileId = profileId.trim();
+    final normalizedProfileId = _canonicalProfileId(profileId);
     final manualModelIds = await getManualModelIds(
       profileId: normalizedProfileId,
     );
     List<ProviderModelOption> remoteModels;
-    if (normalizedProfileId == _kBuiltinMnnLocalProfileId) {
+    if (_isBuiltinLocalProfileId(normalizedProfileId)) {
       try {
         remoteModels = await fetchModels(profileId: normalizedProfileId);
       } catch (_) {
@@ -467,10 +486,11 @@ class ModelProviderConfigService {
 
   static Future<String?> _resolveProfileId(String? profileId) async {
     if (profileId != null && profileId.trim().isNotEmpty) {
-      return profileId.trim();
+      return _canonicalProfileId(profileId);
     }
     final config = await getConfig();
-    return config.id.trim().isEmpty ? null : config.id.trim();
+    final normalized = _canonicalProfileId(config.id);
+    return normalized.isEmpty ? null : normalized;
   }
 
   static Map<String, dynamic> _readJsonMap(String key) {
@@ -490,12 +510,23 @@ class ModelProviderConfigService {
   }
 
   static Future<void> _migrateLegacyStorageIfNeeded(String profileId) async {
-    final targetProfileId = profileId.trim();
+    final targetProfileId = _canonicalProfileId(profileId);
     if (targetProfileId.isEmpty) {
       return;
     }
 
     final currentManual = _readJsonMap(_kManualModelIdsKey);
+    if (targetProfileId == _kBuiltinOmniInferProfileId &&
+        !currentManual.containsKey(targetProfileId) &&
+        currentManual.containsKey(_kLegacyBuiltinMnnLocalProfileId)) {
+      currentManual[targetProfileId] =
+          currentManual[_kLegacyBuiltinMnnLocalProfileId];
+      currentManual.remove(_kLegacyBuiltinMnnLocalProfileId);
+      await StorageService.setString(
+        _kManualModelIdsKey,
+        jsonEncode(currentManual),
+      );
+    }
     if (!currentManual.containsKey(targetProfileId)) {
       final legacyManual = StorageService.getStringList(
         _kLegacyManualModelIdsKey,
@@ -512,6 +543,17 @@ class ModelProviderConfigService {
     }
 
     final currentCached = _readJsonMap(_kCachedFetchedModelsKey);
+    if (targetProfileId == _kBuiltinOmniInferProfileId &&
+        !currentCached.containsKey(targetProfileId) &&
+        currentCached.containsKey(_kLegacyBuiltinMnnLocalProfileId)) {
+      currentCached[targetProfileId] =
+          currentCached[_kLegacyBuiltinMnnLocalProfileId];
+      currentCached.remove(_kLegacyBuiltinMnnLocalProfileId);
+      await StorageService.setString(
+        _kCachedFetchedModelsKey,
+        jsonEncode(currentCached),
+      );
+    }
     if (!currentCached.containsKey(targetProfileId)) {
       final legacyRaw = StorageService.getString(
         _kLegacyCachedFetchedModelsKey,
@@ -589,3 +631,6 @@ class ModelProviderConfigService {
     return normalized.isNotEmpty && !normalized.startsWith('scene.');
   }
 }
+
+
+
