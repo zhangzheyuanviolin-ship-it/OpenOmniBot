@@ -1,8 +1,8 @@
 .verify_pipeline:
-  - name: verify
-      imports: https://cnb.cool/o.k/secrets/-/blob/main/omnibot-release.yml
-      docker:
-        image: ubuntu:latest
+    name: verify
+    imports: https://cnb.cool/o.k/secrets/-/blob/main/omnibot-release.yml
+    docker:
+      image: ubuntu:latest
     env:
         JAVA_VERSION: '17'
         FLUTTER_VERSION: '3.38.7'
