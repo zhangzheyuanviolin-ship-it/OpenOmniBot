@@ -11,141 +11,6 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
   static const double _kPageSwipeThreshold = 18;
   static const double _kRevealInterruptThreshold = 6;
 
-  bool _isNormalChatListAtBottom() {
-    final controller = _normalMessageScrollController;
-    if (!controller.hasClients) {
-      return true;
-    }
-    final position = controller.position;
-    final distanceToBottom = (position.maxScrollExtent - position.pixels).abs();
-    return distanceToBottom <= 2;
-  }
-
-  bool _isInNewConversationPullActivationZone(Offset position) {
-    if (_isPointerInside(_inputAreaKey, position)) {
-      return false;
-    }
-    final inputContext = _inputAreaKey.currentContext;
-    if (inputContext == null) {
-      final screenHeight = MediaQuery.of(context).size.height;
-      return position.dy >=
-          screenHeight -
-              _ChatPageStateBase._newConversationPullActivationZoneHeight;
-    }
-    final box = inputContext.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) {
-      final screenHeight = MediaQuery.of(context).size.height;
-      return position.dy >=
-          screenHeight -
-              _ChatPageStateBase._newConversationPullActivationZoneHeight;
-    }
-    final rect = box.localToGlobal(Offset.zero) & box.size;
-    final zoneTop =
-        rect.top - _ChatPageStateBase._newConversationPullActivationZoneHeight;
-    return position.dy >= zoneTop;
-  }
-
-  bool _canStartNewConversationPullGesture(PointerDownEvent event) {
-    if (_activeSurfaceMode != ChatSurfaceMode.normal ||
-        _activeMode != ChatPageMode.normal ||
-        _isPopupVisible ||
-        _showSlashCommandPanel ||
-        _showModelMentionPanel ||
-        _openClawPanelExpanded ||
-        _isAiResponding ||
-        _isCheckingExecutableTask ||
-        _isExecutingTask) {
-      return false;
-    }
-    return _isNormalChatListAtBottom() &&
-        _isInNewConversationPullActivationZone(event.position);
-  }
-
-  void _updateNewConversationPullDistance(double distance) {
-    final clampedDistance = distance
-        .clamp(0.0, _ChatPageStateBase._newConversationPullMaxDistance)
-        .toDouble();
-    final reachedThreshold =
-        clampedDistance >= _ChatPageStateBase._newConversationPullThreshold;
-    if (_newConversationPullDistance == clampedDistance &&
-        _newConversationPullThresholdReached == reachedThreshold) {
-      return;
-    }
-    if (mounted) {
-      setState(() {
-        _newConversationPullDistance = clampedDistance;
-        _newConversationPullThresholdReached = reachedThreshold;
-      });
-    } else {
-      _newConversationPullDistance = clampedDistance;
-      _newConversationPullThresholdReached = reachedThreshold;
-    }
-    if (reachedThreshold && !_newConversationPullHapticTriggered) {
-      _newConversationPullHapticTriggered = true;
-      unawaited(_triggerNewConversationPullHaptic());
-    }
-  }
-
-  void _resetNewConversationPullGesture({bool clearPointer = false}) {
-    final hasVisualChanges =
-        _isNewConversationPullTracking ||
-        _newConversationPullDistance > 0 ||
-        _newConversationPullThresholdReached ||
-        _newConversationPullHapticTriggered;
-    if (hasVisualChanges) {
-      if (mounted) {
-        setState(() {
-          _isNewConversationPullTracking = false;
-          _newConversationPullDistance = 0;
-          _newConversationPullThresholdReached = false;
-          _newConversationPullHapticTriggered = false;
-        });
-      } else {
-        _isNewConversationPullTracking = false;
-        _newConversationPullDistance = 0;
-        _newConversationPullThresholdReached = false;
-        _newConversationPullHapticTriggered = false;
-      }
-    }
-    if (clearPointer) {
-      _pageGesturePointerId = null;
-      _pageVerticalDragDelta = 0;
-    }
-  }
-
-  Future<void> _triggerNewConversationPullHaptic() async {
-    try {
-      final enabled = await CacheUtil.getBool(
-        'app_vibrate',
-        defaultValue: true,
-      );
-      if (!enabled) {
-        return;
-      }
-      await HapticFeedback.mediumImpact();
-    } catch (error) {
-      debugPrint('[ChatPage] failed to trigger pull haptic: $error');
-    }
-  }
-
-  Future<void> _triggerNewConversationFromPull() async {
-    if (_isCreatingConversationFromPull) {
-      return;
-    }
-    _isCreatingConversationFromPull = true;
-    try {
-      GoRouterManager.pushReplacement(
-        '/home/chat',
-        extra: ConversationThreadTarget.newConversation(
-          mode: _conversationModeForPageMode(_activeMode),
-          requestKey: DateTime.now().microsecondsSinceEpoch.toString(),
-        ),
-      );
-    } finally {
-      _isCreatingConversationFromPull = false;
-    }
-  }
-
   void _applyPageVerticalIntent(double delta) {
     if (_activeSurfaceMode != ChatSurfaceMode.normal ||
         delta.abs() < _kPageSwipeThreshold) {
@@ -159,33 +24,16 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
   @override
   void _handlePagePointerDown(PointerDownEvent event) {
     if (_activeSurfaceMode != ChatSurfaceMode.normal) {
-      _resetNewConversationPullGesture(clearPointer: true);
+      _pageGesturePointerId = null;
+      _pageVerticalDragDelta = 0;
       return;
     }
     if (_isBrowserOverlayVisible &&
         _isPointerInside(_browserOverlayKey, event.position)) {
-      _resetNewConversationPullGesture(clearPointer: true);
-      return;
-    }
-    if (_canStartNewConversationPullGesture(event)) {
-      _pageGesturePointerId = event.pointer;
+      _pageGesturePointerId = null;
       _pageVerticalDragDelta = 0;
-      if (mounted) {
-        setState(() {
-          _isNewConversationPullTracking = true;
-          _newConversationPullDistance = 0;
-          _newConversationPullThresholdReached = false;
-          _newConversationPullHapticTriggered = false;
-        });
-      } else {
-        _isNewConversationPullTracking = true;
-        _newConversationPullDistance = 0;
-        _newConversationPullThresholdReached = false;
-        _newConversationPullHapticTriggered = false;
-      }
       return;
     }
-    _resetNewConversationPullGesture();
     _pageGesturePointerId = event.pointer;
     _pageVerticalDragDelta = 0;
   }
@@ -197,7 +45,8 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
       return;
     }
     if (ToolCardDetailGestureGate.containsPointer(event.pointer)) {
-      _resetNewConversationPullGesture(clearPointer: true);
+      _pageGesturePointerId = null;
+      _pageVerticalDragDelta = 0;
       return;
     }
     _pageVerticalDragDelta += event.delta.dy;
@@ -205,9 +54,6 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
         !_normalSurfaceModelRevealInterrupted &&
         _pageVerticalDragDelta.abs() >= _kRevealInterruptThreshold) {
       _interruptNormalSurfaceModelReveal();
-    }
-    if (_isNewConversationPullTracking) {
-      _updateNewConversationPullDistance(-_pageVerticalDragDelta);
     }
   }
 
@@ -217,19 +63,13 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
       return;
     }
     if (ToolCardDetailGestureGate.containsPointer(event.pointer)) {
-      _resetNewConversationPullGesture(clearPointer: true);
-      return;
-    }
-    if (_isNewConversationPullTracking) {
-      final shouldCreateNewConversation = _newConversationPullThresholdReached;
-      _resetNewConversationPullGesture(clearPointer: true);
-      if (shouldCreateNewConversation) {
-        unawaited(_triggerNewConversationFromPull());
-      }
+      _pageGesturePointerId = null;
+      _pageVerticalDragDelta = 0;
       return;
     }
     _applyPageVerticalIntent(_pageVerticalDragDelta);
-    _resetNewConversationPullGesture(clearPointer: true);
+    _pageGesturePointerId = null;
+    _pageVerticalDragDelta = 0;
   }
 
   @override
@@ -237,7 +77,8 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
     if (event.pointer != _pageGesturePointerId) {
       return;
     }
-    _resetNewConversationPullGesture(clearPointer: true);
+    _pageGesturePointerId = null;
+    _pageVerticalDragDelta = 0;
   }
 
   @override
@@ -554,8 +395,7 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
 
   @override
   Widget _buildBrowserOverlay(BoxConstraints constraints) {
-    if (_activeSurfaceMode != ChatSurfaceMode.normal ||
-        !_isBrowserOverlayVisible) {
+    if (!_isBrowserOverlayVisible || _normalSurfaceVisibility <= 0.001) {
       return const SizedBox.shrink();
     }
     final snapshot = _resolvedBrowserSessionSnapshot;
@@ -571,21 +411,30 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
       top: bounds.top,
       width: bounds.width,
       height: bounds.height,
-      child: KeyedSubtree(
-        key: ValueKey(
-          'agent-browser-overlay-${snapshot.workspaceId}-$_browserOverlayViewSeed',
-        ),
-        child: ChatBrowserOverlay(
-          key: _browserOverlayKey,
-          workspaceId: snapshot.workspaceId,
-          title: snapshot.title,
-          currentUrl: snapshot.currentUrl,
-          onClose: _hideBrowserOverlay,
-          onDragDelta: (delta) => _moveBrowserOverlay(delta, constraints),
-          onResizeLeftDelta: (delta) =>
-              _resizeBrowserOverlayFromLeft(delta, constraints),
-          onResizeRightDelta: (delta) =>
-              _resizeBrowserOverlayFromRight(delta, constraints),
+      child: IgnorePointer(
+        ignoring: _normalSurfaceVisibility < 0.999,
+        child: Opacity(
+          opacity: Curves.easeOutCubic.transform(_normalSurfaceVisibility),
+          child: Transform.translate(
+            offset: Offset(-_surfacePageProgress * constraints.maxWidth, 0),
+            child: KeyedSubtree(
+              key: ValueKey(
+                'agent-browser-overlay-${snapshot.workspaceId}-$_browserOverlayViewSeed',
+              ),
+              child: ChatBrowserOverlay(
+                key: _browserOverlayKey,
+                workspaceId: snapshot.workspaceId,
+                title: snapshot.title,
+                currentUrl: snapshot.currentUrl,
+                onClose: _hideBrowserOverlay,
+                onDragDelta: (delta) => _moveBrowserOverlay(delta, constraints),
+                onResizeLeftDelta: (delta) =>
+                    _resizeBrowserOverlayFromLeft(delta, constraints),
+                onResizeRightDelta: (delta) =>
+                    _resizeBrowserOverlayFromRight(delta, constraints),
+              ),
+            ),
+          ),
         ),
       ),
     );
