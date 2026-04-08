@@ -4,19 +4,12 @@ const int _kDefaultContextTokenThreshold = 128000;
 const int _kMinContextTokenThreshold = 10000;
 const int _kMaxContextTokenThreshold = 512000;
 
-class _ToolActivityAnchorGeometry {
-  const _ToolActivityAnchorGeometry({required this.rect, required this.bottom});
-
-  final Rect rect;
-  final double bottom;
-}
-
 enum _UserMessageQuickAction { copy, retry }
 
 mixin _ChatPageUiMixin on _ChatPageStateBase {
-  _ToolActivityAnchorGeometry? _lastStableToolActivityAnchorGeometry;
+  ChatPaneOverlayAnchorGeometry? _lastStableToolActivityAnchorGeometry;
 
-  _ToolActivityAnchorGeometry _resolveToolActivityAnchorGeometry({
+  ChatPaneOverlayAnchorGeometry _resolveToolActivityAnchorGeometry({
     required BuildContext layoutContext,
     required BoxConstraints constraints,
     required double inputBottomPadding,
@@ -32,6 +25,17 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return _lastStableToolActivityAnchorGeometry!;
     }
 
+    if (_isInputAreaVisible && normalizedInputHeight > 0.5) {
+      final geometry = resolveChatPaneOverlayAnchorGeometry(
+        viewportSize: constraints.biggest,
+        bottomSpacing:
+            inputBottomPadding + keyboardSpacer + normalizedInputHeight,
+        anchorHeight: normalizedInputHeight,
+      );
+      _lastStableToolActivityAnchorGeometry = geometry;
+      return geometry;
+    }
+
     final liveGeometry = _resolveToolActivityAnchorGeometryFromInputArea(
       layoutContext: layoutContext,
       constraints: constraints,
@@ -42,36 +46,13 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return liveGeometry;
     }
 
-    if (_isInputAreaVisible && normalizedInputHeight > 0.5) {
-      final bottom =
-          (inputBottomPadding + keyboardSpacer + normalizedInputHeight)
-              .clamp(0.0, constraints.maxHeight)
-              .toDouble();
-      final top = (constraints.maxHeight - bottom)
-          .clamp(0.0, constraints.maxHeight)
-          .toDouble();
-      final geometry = _ToolActivityAnchorGeometry(
-        rect: Rect.fromLTWH(24, top, derivedWidth, normalizedInputHeight),
-        bottom: bottom,
-      );
-      _lastStableToolActivityAnchorGeometry = geometry;
-      return geometry;
-    }
-
-    final fallbackBottom = (inputBottomPadding + keyboardSpacer + 84)
-        .clamp(0.0, constraints.maxHeight)
-        .toDouble();
-    final fallbackRect = Rect.fromLTWH(
-      24,
-      constraints.maxHeight - fallbackBottom,
-      derivedWidth,
-      0,
+    final fallbackGeometry = resolveChatPaneOverlayAnchorGeometry(
+      viewportSize: constraints.biggest,
+      bottomSpacing: inputBottomPadding + keyboardSpacer + 84,
+      anchorHeight: 0,
     );
     if (!_isInputAreaVisible) {
-      return _ToolActivityAnchorGeometry(
-        rect: fallbackRect,
-        bottom: fallbackBottom,
-      );
+      return fallbackGeometry;
     }
     final inputContext = _chatInputAreaKey.currentContext;
     final inputBox = inputContext?.findRenderObject();
@@ -80,14 +61,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         stackBox is! RenderBox ||
         !inputBox.hasSize ||
         !stackBox.hasSize) {
-      return _ToolActivityAnchorGeometry(
-        rect: fallbackRect,
-        bottom: fallbackBottom,
-      );
+      return fallbackGeometry;
     }
     final inputOffset = inputBox.localToGlobal(Offset.zero, ancestor: stackBox);
     final rect = inputOffset & inputBox.size;
-    final geometry = _ToolActivityAnchorGeometry(
+    final geometry = ChatPaneOverlayAnchorGeometry(
       rect: rect,
       bottom: (constraints.maxHeight - rect.top)
           .clamp(0.0, constraints.maxHeight)
@@ -97,7 +75,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     return geometry;
   }
 
-  _ToolActivityAnchorGeometry? _resolveToolActivityAnchorGeometryFromInputArea({
+  ChatPaneOverlayAnchorGeometry?
+  _resolveToolActivityAnchorGeometryFromInputArea({
     required BuildContext layoutContext,
     required BoxConstraints constraints,
     required double derivedWidth,
@@ -116,7 +95,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     }
     final inputOffset = inputBox.localToGlobal(Offset.zero, ancestor: stackBox);
     final top = inputOffset.dy.clamp(0.0, constraints.maxHeight).toDouble();
-    return _ToolActivityAnchorGeometry(
+    return ChatPaneOverlayAnchorGeometry(
       rect: Rect.fromLTWH(24, top, derivedWidth, inputBox.size.height),
       bottom: (constraints.maxHeight - top)
           .clamp(0.0, constraints.maxHeight)
@@ -463,6 +442,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   }) {
     final toolActivityCards = extractAgentToolCards(_messages);
     final toolActivityCanExpand = toolActivityCards.length > 1;
+    final suppressToolActivitySurfaceShadow =
+        _inputFocusNode.hasFocus &&
+        (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0.0) > 0;
     final toolActivityAnchor = toolActivityCards.isEmpty
         ? null
         : _resolveToolActivityAnchorGeometry(
@@ -635,6 +617,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 onOccupiedHeightChanged: _scheduleToolActivityInsetSync,
                 expanded: _isToolActivityExpanded,
                 onExpandedChanged: _setToolActivityExpanded,
+                suppressSurfaceShadow: suppressToolActivitySurfaceShadow,
               ),
             ),
           ),
