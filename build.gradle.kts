@@ -14,7 +14,7 @@ val prepareMnnAndroidNativeLibs by tasks.registering(Exec::class) {
     group = "build setup"
     description = "Prepare shared MNN Android native libraries for modules that link libMNN.so."
     workingDir = rootProject.projectDir
-    commandLine("bash", "${rootProject.projectDir}/scripts/prepare_mnn_android_native.sh")
+    commandLine("bash", "scripts/prepare_mnn_android_native.sh")
     inputs.file(rootProject.file("scripts/prepare_mnn_android_native.sh"))
     outputs.file(rootProject.file("third_party/mnn_android/project/android/build_64/lib/libMNN.so"))
 }

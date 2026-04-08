@@ -123,6 +123,7 @@ class MnnLocalModel {
 }
 
 class MnnLocalConfig {
+  final String backend;
   final bool autoStartOnAppOpen;
   final bool apiEnabled;
   final bool apiLanEnabled;
@@ -145,6 +146,7 @@ class MnnLocalConfig {
   final List<MnnLocalModel> installedTtsModels;
 
   const MnnLocalConfig({
+    required this.backend,
     required this.autoStartOnAppOpen,
     required this.apiEnabled,
     required this.apiLanEnabled,
@@ -169,6 +171,7 @@ class MnnLocalConfig {
 
   factory MnnLocalConfig.fromMap(Map<dynamic, dynamic>? map) {
     return MnnLocalConfig(
+      backend: (map?['backend'] ?? 'llama.cpp').toString(),
       autoStartOnAppOpen: map?['autoStartOnAppOpen'] == true,
       apiEnabled: map?['apiEnabled'] == true,
       apiLanEnabled: map?['apiLanEnabled'] == true,
@@ -618,5 +621,18 @@ class MnnLocalModelsService {
       'stopBenchmark',
     );
     return MnnLocalBenchmarkState.fromMap(result);
+  }
+
+  static Future<String> getBackend() async {
+    final result = await _channel.invokeMethod<String>('getBackend');
+    return result ?? 'llama.cpp';
+  }
+
+  static Future<String> setBackend(String backend) async {
+    final result = await _channel.invokeMethod<String>(
+      'setBackend',
+      {'backend': backend},
+    );
+    return result ?? backend;
   }
 }

@@ -37,6 +37,9 @@ include(":baselib")
 include(":accessibility")
 include(":omniintelligence")
 include(":mnn_local")
+include(":omniinfer-server")
+project(":omniinfer-server").projectDir =
+    File(settingsDir, "third_party/omniinfer/android/omniinfer-server")
 include(":mnn_tts")
 project(":mnn_tts").projectDir =
     File(settingsDir, "third_party/mnn_android/apps/frameworks/mnn_tts/android")

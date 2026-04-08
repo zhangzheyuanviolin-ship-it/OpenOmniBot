@@ -14,6 +14,7 @@ import cn.com.omnimind.bot.mnnlocal.MnnLocalInitializer
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
+import com.omniinfer.server.OmniInferServer
 import com.rk.resources.Res
 import com.tencent.mmkv.MMKV
 import io.flutter.FlutterInjector
@@ -114,6 +115,7 @@ class App : BaseApplication() {
         // OSS 版本统一使用固定本地数据库，不依赖历史账号分库
         DatabaseHelper.init(this)
         MnnLocalInitializer.initialize(this)
+        OmniInferServer.init(this)
         LocalModelProviderBridge.setDelegate(
             object : LocalModelProviderBridge.Delegate {
                 override suspend fun prepareForRequest(
@@ -121,6 +123,16 @@ class App : BaseApplication() {
                     apiBase: String?,
                     modelId: String
                 ): Boolean {
+                    // If OmniInfer server is already running with a model, just verify readiness
+                    if (OmniInferServer.isReady()) {
+                        return true
+                    }
+                    // Try OmniInfer llama.cpp backend: check if the model is a GGUF file
+                    val omniInferResult = runCatching {
+                        cn.com.omnimind.bot.omniinfer.OmniInferModelsManager.ensureModelReady(modelId)
+                    }.getOrDefault(false)
+                    if (omniInferResult) return true
+                    // Fallback to MNN
                     return runCatching {
                         MnnLocalInitializer.initialize(this@App)
                         cn.com.omnimind.bot.mnnlocal.MnnLocalModelsManager.ensureApiServiceForModel(

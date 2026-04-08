@@ -924,6 +924,29 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         _buildInfoCard(
+          title: '推理后端',
+          child: DropdownButtonFormField<String>(
+            key: ValueKey('backend-${resolvedConfig.backend}'),
+            initialValue: resolvedConfig.backend,
+            decoration: const InputDecoration(
+              labelText: '推理引擎',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            items: const [
+              DropdownMenuItem(value: 'llama.cpp', child: Text('llama.cpp (GGUF)')),
+              DropdownMenuItem(value: 'mnn', child: Text('MNN')),
+            ],
+            onChanged: (value) async {
+              if (value == null) return;
+              await MnnLocalModelsService.setBackend(value);
+              if (!mounted) return;
+              _bootstrap();
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildInfoCard(
           title: 'API 网络服务',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
