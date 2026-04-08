@@ -2,6 +2,7 @@
 
 import android.content.Context
 import android.util.Log
+import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import com.omniinfer.server.OmniInferServer
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
@@ -117,27 +118,52 @@ object OmniInferModelsManager {
 
     private fun getModelDir(): File {
         val context = appContext ?: error("OmniInfer context is not initialized")
-        val dir = File(context.getExternalFilesDir(null), "omniinfer-llama")
+        val dir = AgentWorkspaceManager.modelsLlamaDirectory(context)
         if (!dir.exists()) {
             dir.mkdirs()
         }
         return dir
     }
 
+    private fun getLegacyModelDir(): File? {
+        val context = appContext ?: return null
+        val dir = File(context.getExternalFilesDir(null), "omniinfer-llama")
+        return if (dir.exists()) dir else null
+    }
+
+    private fun findModelFile(modelId: String): File? {
+        val fileName = "$modelId.gguf"
+        val newFile = File(getModelDir(), fileName)
+        if (newFile.exists()) return newFile
+        val legacyDir = getLegacyModelDir()
+        if (legacyDir != null) {
+            val legacyFile = File(legacyDir, fileName)
+            if (legacyFile.exists()) return legacyFile
+        }
+        return null
+    }
+
     fun listInstalledModels(query: String? = null, category: String? = null): List<Map<String, Any?>> {
         val normalizedQuery = query?.trim()?.lowercase(Locale.getDefault()).orEmpty()
-        return getModelDir()
-            .listFiles { file -> file.isFile && file.name.endsWith(".gguf") }
-            ?.sortedByDescending { it.lastModified() }
-            ?.filter { file ->
+        val seen = mutableSetOf<String>()
+        val allFiles = mutableListOf<File>()
+
+        getModelDir().listFiles { file -> file.isFile && file.name.endsWith(".gguf") }
+            ?.forEach { file -> if (seen.add(file.name)) allFiles.add(file) }
+
+        getLegacyModelDir()?.listFiles { file -> file.isFile && file.name.endsWith(".gguf") }
+            ?.forEach { file -> if (seen.add(file.name)) allFiles.add(file) }
+
+        return allFiles
+            .sortedByDescending { it.lastModified() }
+            .filter { file ->
                 if (normalizedQuery.isEmpty()) {
                     true
                 } else {
                     file.name.lowercase(Locale.getDefault()).contains(normalizedQuery)
                 }
             }
-            ?.map { file -> modelFileToMap(file, activeDownloads[file.nameWithoutExtension]) }
-            .orEmpty()
+            .map { file -> modelFileToMap(file, activeDownloads[file.nameWithoutExtension]) }
     }
 
     private fun modelFileToMap(file: File, download: DownloadTask? = null): Map<String, Any?> {
@@ -364,10 +390,7 @@ object OmniInferModelsManager {
         if (OmniInferLocalRuntime.isModelLoaded(OmniInferLocalRuntime.BACKEND_LLAMA_CPP, modelId)) {
             OmniInferLocalRuntime.stop()
         }
-        val file = File(getModelDir(), "$modelId.gguf")
-        if (file.exists()) {
-            file.delete()
-        }
+        findModelFile(modelId)?.delete()
         if (getActiveModelId() == modelId) {
             mmkv.encode(KEY_ACTIVE_MODEL_ID, "")
         }
@@ -404,10 +427,7 @@ object OmniInferModelsManager {
         if (resolvedModelId.isBlank()) {
             return getConfig()
         }
-        val modelFile = File(getModelDir(), "$resolvedModelId.gguf")
-        if (!modelFile.exists()) {
-            return getConfig()
-        }
+        val modelFile = findModelFile(resolvedModelId) ?: return getConfig()
         mmkv.encode(KEY_ACTIVE_MODEL_ID, resolvedModelId)
         OmniInferLocalRuntime.loadModel(
             modelId = resolvedModelId,
@@ -432,13 +452,7 @@ object OmniInferModelsManager {
         if (OmniInferLocalRuntime.isModelLoaded(OmniInferLocalRuntime.BACKEND_LLAMA_CPP, normalizedModelId)) {
             return true
         }
-        val directFile = File(getModelDir(), "$normalizedModelId.gguf")
-        val targetFile = when {
-            directFile.exists() -> directFile
-            else -> getModelDir().listFiles { file ->
-                file.isFile && file.name.endsWith(".gguf") && file.nameWithoutExtension == normalizedModelId
-            }?.firstOrNull() ?: return false
-        }
+        val targetFile = findModelFile(normalizedModelId) ?: return false
         mmkv.encode(KEY_ACTIVE_MODEL_ID, normalizedModelId)
         return OmniInferLocalRuntime.loadModel(
             modelId = normalizedModelId,

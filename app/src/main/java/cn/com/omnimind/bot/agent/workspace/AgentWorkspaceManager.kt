@@ -38,6 +38,9 @@ class AgentWorkspaceManager(
         private const val FILE_MEMORY = "MEMORY.md"
         private const val DIR_SHORT_MEMORIES = "short-memories"
         private const val DIR_MEMORY_INDEX = "index"
+        private const val DIR_MODELS = "models"
+        private const val DIR_MODELS_LLAMA = "OmniInfer-llama"
+        private const val DIR_MODELS_MNN = "OmniInfer-mnn"
 
         fun rootDirectory(context: Context): File {
             return File(context.applicationInfo.dataDir, ROOT_DIR_NAME)
@@ -45,6 +48,18 @@ class AgentWorkspaceManager(
 
         fun internalRootDirectory(context: Context): File {
             return File(rootDirectory(context), INTERNAL_DIR)
+        }
+
+        fun modelsDirectory(context: Context): File {
+            return File(internalRootDirectory(context), DIR_MODELS)
+        }
+
+        fun modelsLlamaDirectory(context: Context): File {
+            return File(modelsDirectory(context), DIR_MODELS_LLAMA)
+        }
+
+        fun modelsMnnDirectory(context: Context): File {
+            return File(modelsDirectory(context), DIR_MODELS_MNN)
         }
 
         fun androidRootPath(context: Context): String {
@@ -124,6 +139,9 @@ class AgentWorkspaceManager(
     private val longMemoryFile = File(memoryDir, FILE_MEMORY)
     private val shortMemoriesDir = File(memoryDir, DIR_SHORT_MEMORIES)
     private val memoryIndexDir = File(memoryDir, DIR_MEMORY_INDEX)
+    private val modelsDir = File(internalDir, DIR_MODELS)
+    private val modelsLlamaDir = File(modelsDir, DIR_MODELS_LLAMA)
+    private val modelsMnnDir = File(modelsDir, DIR_MODELS_MNN)
     private val migrationMarker = File(internalDir, WORKSPACE_MIGRATION_MARKER)
     private val legacyRootDir = File(LEGACY_EXTERNAL_ROOT_PATH)
     private val publicStorageRootDir = File(PUBLIC_STORAGE_ROOT_PATH)
@@ -141,7 +159,10 @@ class AgentWorkspaceManager(
             memoryDir,
             agentDir,
             shortMemoriesDir,
-            memoryIndexDir
+            memoryIndexDir,
+            modelsDir,
+            modelsLlamaDir,
+            modelsMnnDir
         ).forEach { directory ->
             if (!directory.exists()) {
                 directory.mkdirs()
