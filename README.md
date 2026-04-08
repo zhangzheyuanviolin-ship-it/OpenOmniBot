@@ -64,11 +64,11 @@ cd OpenOmniBot
 #安装 Flutter 依赖
 cd ui
 flutter pub get
-cd ..
 ```
 
 ### 构建并安装
 ```bash
+cd .. # 回到根目录下
 ./gradlew :app:installDevelopDebug
 ```
 ### 配置
