@@ -447,7 +447,7 @@ ssh -N -L 18789:127.0.0.1:18789 root@<手机IP> -p 2222
 
 ```
 
-http://localhost:18789/#token=a10838e85317cb6cc5412513f898b7f7a5612003ce5c169f
+http://localhost:18789/#token=<OPENCLAW_SESSION_TOKEN>
 
 ```
 
