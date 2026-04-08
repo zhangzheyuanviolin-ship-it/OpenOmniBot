@@ -1,0 +1,163 @@
+.verify_pipeline:
+  - name: verify
+      imports: https://cnb.cool/o.k/secrets/-/blob/main/omnibot-release.yml
+      docker:
+        image: ubuntu:latest
+      env:
+        JAVA_VERSION: '17'
+        FLUTTER_VERSION: '3.38.7'
+        NDK_VERSION: '28.2.13676358'
+        ALLOWED_THIRD_PARTY_WRAPPER_SHA: 'ee3739525a995bcb5601621a6e2daec1f183bbefc375743acc235cec33547e04'
+        MNN_NATIVE_CACHE_VERSION: '2026-04-03-1'
+      stages:
+        # 检出代码库
+        - name: Checkout repository
+          jobs:
+            - name: checkout
+              script: |
+                apt-get update && apt-get install -y git
+                git clone --depth=1 --recursive https://${CNB_TOKEN}@${CNB_REPO_URL_HTTPS#https://} .
+                git fetch --depth=0 origin ${CNB_BRANCH}
+                git checkout ${CNB_COMMIT}
+
+        # 密钥扫描
+        - name: Secret scan (gitleaks)
+          jobs:
+            - name: gitleaks-scan
+              script: |
+                apt-get update && apt-get install -y wget tar
+                wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
+                tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+                chmod +x gitleaks
+                ./gitleaks detect --source=. --verbose --redact
+              env:
+                GITHUB_TOKEN: ${CNB_TOKEN}
+                GITLEAKS_LICENSE: ${SECRETS_GITLEAKS_LICENSE}
+
+        # 设置JDK 17
+        - name: Set up JDK 17
+          jobs:
+            - name: setup-java
+              script: |
+                apt-get update && apt-get install -y wget apt-transport-https gnupg software-properties-common
+                wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor | tee /usr/share/keyrings/adoptium.gpg
+                echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/adoptium.list
+                apt-get update && apt-get install -y temurin-17-jdk
+                echo "JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64" >> $GITHUB_ENV
+                echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+
+        # 验证Gradle包装器
+        - name: Validate Gradle wrappers
+          jobs:
+            - name: gradle-wrapper-validation
+              script: |
+                wget https://raw.githubusercontent.com/gradle/gradle/v8.5.0/gradlew
+                chmod +x gradlew
+                ./gradlew --version
+                echo "${ALLOWED_THIRD_PARTY_WRAPPER_SHA}  gradlew" | sha256sum -c
+
+        # 设置Gradle
+        - name: Set up Gradle
+          jobs:
+            - name: setup-gradle
+              script: |
+                wget https://services.gradle.org/distributions/gradle-8.5-bin.zip
+                unzip gradle-8.5-bin.zip
+                mv gradle-8.5 /opt/gradle
+                echo "PATH=/opt/gradle/bin:$PATH" >> $GITHUB_ENV
+
+        # 设置Flutter
+        - name: Set up Flutter
+          jobs:
+            - name: setup-flutter
+              script: |
+                apt-get update && apt-get install -y curl unzip
+                wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz
+                tar xf flutter_linux_${FLUTTER_VERSION}-stable.tar.xz
+                mv flutter /opt/flutter
+                echo "PATH=/opt/flutter/bin:$PATH" >> $GITHUB_ENV
+                flutter config --enable-web --enable-linux-desktop
+                flutter doctor
+
+        # 设置Android SDK
+        - name: Set up Android SDK
+          jobs:
+            - name: setup-android-sdk
+              script: |
+                apt-get update && apt-get install -y wget unzip
+                wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+                mkdir -p /opt/android-sdk/cmdline-tools
+                unzip commandlinetools-linux-9477386_latest.zip -d /opt/android-sdk/cmdline-tools/
+                mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
+                echo "ANDROID_SDK_ROOT=/opt/android-sdk" >> $GITHUB_ENV
+                echo "PATH=$PATH:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools" >> $GITHUB_ENV
+                yes | sdkmanager --licenses
+
+        # 缓存Android NDK
+        - name: Cache Android NDK
+          jobs:
+            - name: cache-android-ndk
+              script: |
+                echo "Cache path: ${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
+                echo "Cache key: ${RUNNER_OS}-android-ndk-${NDK_VERSION}"
+                # 模拟缓存检查逻辑
+                if [ -d "${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" ] && [ -d "${ANDROID_SDK_ROOT}/licenses" ]; then
+                  echo "cache-hit=true" > cache-status.txt
+                else
+                  echo "cache-hit=false" > cache-status.txt
+                fi
+              exports:
+                cache-hit: CACHE_HIT_STATUS
+
+        # 安装Android NDK（条件执行）
+        - name: Install Android NDK
+          if: ${CACHE_HIT_STATUS} != "true"
+          jobs:
+            - name: install-ndk
+              script: |
+                yes | sdkmanager --licenses >/dev/null
+                sdkmanager "ndk;${NDK_VERSION}"
+
+        # 导出Android NDK环境变量
+        - name: Export Android NDK environment
+          jobs:
+            - name: export-ndk-env
+              script: |
+                echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> $GITHUB_ENV
+                echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> $GITHUB_ENV
+
+        # 缓存MNN原生库
+        - name: Cache prepared MNN native libraries
+          jobs:
+            - name: cache-mnn-libs
+              script: |
+                CACHE_PATHS="third_party/mnn_android/project/android/build_64/lib third_party/mnn_android/schema/current"
+                CACHE_KEY="${RUNNER_OS}-mnn-native-${NDK_VERSION}-${MNN_NATIVE_CACHE_VERSION}-$(find scripts/prepare_mnn_android_native.sh third_party/mnn_android/project/android/build_64.sh -type f -exec md5sum {} \; | sort | md5sum | cut -d' ' -f1)"
+                echo "Cache paths: $CACHE_PATHS"
+                echo "Cache key: $CACHE_KEY"
+
+        # 安装Flutter依赖
+        - name: Install Flutter dependencies
+          jobs:
+            - name: flutter-deps
+              script: |
+                cd ui
+                flutter pub get --enforce-lockfile
+
+        # Flutter代码分析
+        - name: Flutter analyze
+          jobs:
+            - name: flutter-analyze
+              script: |
+                cd ui
+                flutter analyze --no-fatal-warnings --no-fatal-infos
+
+        # Gradle验证任务
+        - name: Gradle verify develop debug
+          jobs:
+            - name: gradle-verify
+              script: |
+                ./gradlew --no-daemon --parallel --build-cache \
+                  :app:testDevelopDebugUnitTest \
+                  :app:assembleDevelopDebug \
+                  :app:lintDevelopDebug
