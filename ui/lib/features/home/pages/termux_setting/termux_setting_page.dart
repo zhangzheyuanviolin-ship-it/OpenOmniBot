@@ -537,21 +537,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildLegendTag(
-                label: 'ready',
-                backgroundColor: const Color(0xFFE8F7EE),
-                foregroundColor: const Color(0xFF17803D),
-              ),
-              const SizedBox(width: 8),
-              _buildLegendTag(
-                label: 'lost',
-                backgroundColor: const Color(0xFFEAF2FF),
-                foregroundColor: const Color(0xFF2563EB),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -612,7 +597,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                       ? null
                       : () => openNativeTerminal(),
                   icon: const Icon(Icons.terminal_rounded),
-                  label: const Text('打开 ReTerminal'),
+                  label: const Text('打开 终端'),
                 ),
               ),
             ],
