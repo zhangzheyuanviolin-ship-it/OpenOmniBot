@@ -1,8 +1,8 @@
 include:
   # 引入 verify 模板
-  - ./.cnb/verify-pipeline.yml
+  - .cnb/verify-pipeline.yml
   # 引入 release 模板
-  - ./.cnb/release-pipeline.yml
+  - .cnb/release-pipeline.yml
 # .cnb.yml
 main:
   push:
