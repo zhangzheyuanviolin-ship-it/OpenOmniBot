@@ -32,6 +32,7 @@ const double _kToolActivityDrawerMaxHeight = 264;
 const double _kToolActivityTypeSlotWidth = 34;
 const double _kToolActivityStatusSlotWidth = 42;
 const double _kToolActivityTrailingSlotWidth = 18;
+const double _kToolActivityAttachedBorderReveal = 1.5;
 const Color _kToolActivitySurfaceColor = Color(0xFFF9FCFF);
 const BorderRadius _kToolActivitySurfaceBorderRadius = BorderRadius.only(
   topLeft: Radius.circular(_kToolActivitySurfaceRadius),
@@ -49,6 +50,7 @@ class ChatToolActivityStrip extends StatefulWidget {
     this.onOccupiedHeightChanged,
     this.expanded,
     this.onExpandedChanged,
+    this.suppressSurfaceShadow = false,
   });
 
   final List<ChatMessageModel> messages;
@@ -56,6 +58,7 @@ class ChatToolActivityStrip extends StatefulWidget {
   final ValueChanged<double>? onOccupiedHeightChanged;
   final bool? expanded;
   final ValueChanged<bool>? onExpandedChanged;
+  final bool suppressSurfaceShadow;
 
   @override
   State<ChatToolActivityStrip> createState() => _ChatToolActivityStripState();
@@ -129,6 +132,7 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
                 historyHeight: historyHeight,
                 expanded: isExpanded,
                 canExpand: canExpand,
+                suppressShadow: widget.suppressSurfaceShadow,
                 leadingInset: isExpanded ? 0 : collapsedLeadingInset,
                 onToggle: () => _handleExpandedChanged(!isExpanded),
                 onOpenCard: (cardData) =>
@@ -293,6 +297,7 @@ class _ActivityDrawerSurface extends StatelessWidget {
     required this.historyHeight,
     required this.expanded,
     required this.canExpand,
+    required this.suppressShadow,
     required this.leadingInset,
     required this.onToggle,
     required this.onOpenCard,
@@ -305,6 +310,7 @@ class _ActivityDrawerSurface extends StatelessWidget {
   final double historyHeight;
   final bool expanded;
   final bool canExpand;
+  final bool suppressShadow;
   final double leadingInset;
   final VoidCallback onToggle;
   final ValueChanged<Map<String, dynamic>> onOpenCard;
@@ -313,13 +319,21 @@ class _ActivityDrawerSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomReveal = suppressShadow
+        ? _kToolActivityAttachedBorderReveal
+        : 0.0;
     return PhysicalShape(
       key: kChatToolActivityBarKey,
       color: _kToolActivitySurfaceColor,
-      shadowColor: const Color(0x18111B2D),
-      elevation: expanded ? 8 : 6,
+      shadowColor: suppressShadow
+          ? Colors.transparent
+          : const Color(0x18111B2D),
+      elevation: suppressShadow ? 0 : (expanded ? 8 : 6),
       clipBehavior: Clip.antiAlias,
-      clipper: _ActivityDrawerClipper(showPreviewCutout: !expanded),
+      clipper: _ActivityDrawerClipper(
+        showPreviewCutout: !expanded,
+        bottomReveal: bottomReveal,
+      ),
       child: ColoredBox(
         color: _kToolActivitySurfaceColor,
         child: Column(
@@ -699,14 +713,24 @@ class _TerminalThumbnail extends StatelessWidget {
 }
 
 class _ActivityDrawerClipper extends CustomClipper<Path> {
-  const _ActivityDrawerClipper({required this.showPreviewCutout});
+  const _ActivityDrawerClipper({
+    required this.showPreviewCutout,
+    this.bottomReveal = 0,
+  });
 
   final bool showPreviewCutout;
+  final double bottomReveal;
 
   @override
   Path getClip(Size size) {
+    final resolvedBottomReveal = bottomReveal.clamp(0.0, size.height);
+    final surfaceHeight = math.max(0.0, size.height - resolvedBottomReveal);
     final surfacePath = Path()
-      ..addRRect(_kToolActivitySurfaceBorderRadius.toRRect(Offset.zero & size));
+      ..addRRect(
+        _kToolActivitySurfaceBorderRadius.toRRect(
+          Rect.fromLTWH(0, 0, size.width, surfaceHeight),
+        ),
+      );
     if (!showPreviewCutout) {
       return surfacePath;
     }
@@ -725,6 +749,7 @@ class _ActivityDrawerClipper extends CustomClipper<Path> {
 
   @override
   bool shouldReclip(covariant _ActivityDrawerClipper oldClipper) {
-    return oldClipper.showPreviewCutout != showPreviewCutout;
+    return oldClipper.showPreviewCutout != showPreviewCutout ||
+        oldClipper.bottomReveal != bottomReveal;
   }
 }

@@ -442,6 +442,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   }) {
     final toolActivityCards = extractAgentToolCards(_messages);
     final toolActivityCanExpand = toolActivityCards.length > 1;
+    final suppressToolActivitySurfaceShadow =
+        _inputFocusNode.hasFocus &&
+        (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0.0) > 0;
     final toolActivityAnchor = toolActivityCards.isEmpty
         ? null
         : _resolveToolActivityAnchorGeometry(
@@ -614,6 +617,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 onOccupiedHeightChanged: _scheduleToolActivityInsetSync,
                 expanded: _isToolActivityExpanded,
                 onExpandedChanged: _setToolActivityExpanded,
+                suppressSurfaceShadow: suppressToolActivitySurfaceShadow,
               ),
             ),
           ),
