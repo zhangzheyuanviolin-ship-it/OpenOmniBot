@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui';
 
 enum ChatIslandDisplayLayer {
   mode('mode'),
@@ -229,4 +230,36 @@ class HdPadPaneLayoutResolver {
       rightWidth: centerWidth.isNegative ? 0 : rightWidth,
     );
   }
+}
+
+class ChatPaneOverlayAnchorGeometry {
+  const ChatPaneOverlayAnchorGeometry({
+    required this.rect,
+    required this.bottom,
+  });
+
+  final Rect rect;
+  final double bottom;
+}
+
+ChatPaneOverlayAnchorGeometry resolveChatPaneOverlayAnchorGeometry({
+  required Size viewportSize,
+  double horizontalInset = 24,
+  required double bottomSpacing,
+  required double anchorHeight,
+}) {
+  final resolvedWidth = math.max(0.0, viewportSize.width - horizontalInset * 2);
+  final resolvedBottom = bottomSpacing
+      .clamp(0.0, viewportSize.height)
+      .toDouble();
+  final resolvedHeight = anchorHeight.isFinite
+      ? math.max(0.0, anchorHeight)
+      : 0.0;
+  final top = (viewportSize.height - resolvedBottom)
+      .clamp(0.0, viewportSize.height)
+      .toDouble();
+  return ChatPaneOverlayAnchorGeometry(
+    rect: Rect.fromLTWH(horizontalInset, top, resolvedWidth, resolvedHeight),
+    bottom: resolvedBottom,
+  );
 }

@@ -81,8 +81,6 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
     final activeCardId = _cardIdentity(activeCard);
     final historyCards = cards
         .where((card) => _cardIdentity(card) != activeCardId)
-        .toList(growable: false)
-        .reversed
         .toList(growable: false);
     final canExpand = historyCards.isNotEmpty;
     final isExpanded = _resolvedExpanded && canExpand;
@@ -431,6 +429,7 @@ class _HistoryDrawer extends StatelessWidget {
         onPointerUp: (event) => onPointerEnd(event.pointer),
         onPointerCancel: (event) => onPointerEnd(event.pointer),
         child: ListView.separated(
+          reverse: true,
           padding: EdgeInsets.zero,
           shrinkWrap: true,
           physics: scrollable
@@ -438,10 +437,10 @@ class _HistoryDrawer extends StatelessWidget {
               : const NeverScrollableScrollPhysics(),
           itemBuilder: (context, index) {
             final card = cards[index];
-            final isLast = index == cards.length - 1;
+            final isBottomMost = index == 0;
             return DecoratedBox(
               decoration: BoxDecoration(
-                border: isLast
+                border: isBottomMost
                     ? null
                     : Border(
                         bottom: BorderSide(

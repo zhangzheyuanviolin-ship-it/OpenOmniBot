@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 
@@ -73,5 +75,31 @@ void main() {
           HdPadPaneLayoutResolver.dividerHitWidth -
           HdPadPaneLayoutResolver.defaultRightWidth,
     );
+  });
+
+  test('resolves overlay anchor from current keyboard spacing', () {
+    final geometry = resolveChatPaneOverlayAnchorGeometry(
+      viewportSize: const Size(420, 900),
+      bottomSpacing: 260,
+      anchorHeight: 96,
+    );
+
+    expect(geometry.bottom, 260);
+    expect(geometry.rect.left, 24);
+    expect(geometry.rect.width, 372);
+    expect(geometry.rect.top, 640);
+    expect(geometry.rect.height, 96);
+  });
+
+  test('clamps overlay anchor when keyboard spacing exceeds viewport', () {
+    final geometry = resolveChatPaneOverlayAnchorGeometry(
+      viewportSize: const Size(420, 300),
+      bottomSpacing: 480,
+      anchorHeight: 0,
+    );
+
+    expect(geometry.bottom, 300);
+    expect(geometry.rect.top, 0);
+    expect(geometry.rect.height, 0);
   });
 }
