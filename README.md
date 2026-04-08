@@ -1,6 +1,6 @@
 <p align="center">
   <picture>
-    <img alt="OpenOmniBot" src="docs/pic/OpenOmniBot.png" width="100%">
+    <img alt="OpenOmniBot" src="docs/pic/OmniBot.png" width="50%">
   </picture>
 </p>
 
