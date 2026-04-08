@@ -437,6 +437,6 @@ $:
             }
             EOF
         - name: flutter set up
-          script: cd ui && flutter pub get
+          script: cd ui && flutter pub get --enforce-lockfile
         - name: ls
           script: ls -al
