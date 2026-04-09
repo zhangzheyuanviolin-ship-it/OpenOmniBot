@@ -11,6 +11,7 @@ import 'package:ui/features/home/widgets/conversation_mode_badge.dart';
 import 'package:ui/services/agent_skill_store_service.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/models/conversation_model.dart';
@@ -302,8 +303,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = _drawerBackgroundColor;
     final content = ColoredBox(
-      color: AppColors.background,
+      color: backgroundColor,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,9 +352,45 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.8,
-      backgroundColor: AppColors.background,
+      backgroundColor: backgroundColor,
       child: content,
     );
+  }
+
+  Color get _drawerBackgroundColor {
+    if (!context.isDarkTheme) {
+      return AppColors.background;
+    }
+    return context.omniPalette.pageBackground;
+  }
+
+  Color get _drawerTextColor {
+    if (!context.isDarkTheme) {
+      return AppColors.text;
+    }
+    return context.omniPalette.textPrimary;
+  }
+
+  Color get _drawerSecondaryTextColor {
+    if (!context.isDarkTheme) {
+      return AppColors.text.withValues(alpha: 0.4);
+    }
+    return context.omniPalette.textSecondary;
+  }
+
+  BoxDecoration _drawerPanelDecoration({
+    required BorderRadius borderRadius,
+    required Color darkColor,
+  }) {
+    if (!context.isDarkTheme) {
+      return BoxDecoration(
+        color: Colors.white,
+        borderRadius: borderRadius,
+        boxShadow: [AppColors.boxShadow],
+      );
+    }
+
+    return BoxDecoration(color: darkColor, borderRadius: borderRadius);
   }
 
   /// 用户头像和问候语
@@ -366,19 +404,19 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         children: [
           Text(
             greeting['title'] ?? '你好！',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w400,
-              color: AppColors.text,
+              color: _drawerTextColor,
               height: 1.5,
             ),
           ),
           Text(
             greeting['subtitle'] ?? '欢迎使用小万',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w400,
-              color: AppColors.text,
+              color: _drawerTextColor,
               height: 1.5,
             ),
           ),
@@ -485,10 +523,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
+        decoration: _drawerPanelDecoration(
           borderRadius: BorderRadius.circular(4),
-          boxShadow: [AppColors.boxShadow],
+          darkColor: context.omniPalette.surfacePrimary,
         ),
         child: Material(
           color: Colors.transparent,
@@ -505,20 +542,23 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                     icon,
                     width: 16,
                     height: 16,
-                    colorFilter: const ColorFilter.mode(
-                      AppColors.text,
+                    colorFilter: ColorFilter.mode(
+                      _drawerTextColor,
                       BlendMode.srcIn,
                     ),
-                    errorBuilder: (context, error, stackTrace) =>
-                        Icon(Icons.settings, size: 16, color: AppColors.text),
+                    errorBuilder: (context, error, stackTrace) => Icon(
+                      Icons.settings,
+                      size: 16,
+                      color: _drawerTextColor,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.text,
+                      color: _drawerTextColor,
                       fontFamily: 'PingFang SC',
                       height: 1.57,
                     ),
@@ -537,21 +577,22 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
+        decoration: _drawerPanelDecoration(
           borderRadius: BorderRadius.circular(4),
-          boxShadow: [AppColors.boxShadow],
+          darkColor: context.omniPalette.surfacePrimary,
         ),
         child: Column(
           children: [
             for (int index = 0; index < items.length; index++) ...[
               if (index > 0)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Divider(
                     height: 0.5,
                     thickness: 0.5,
-                    color: AppColors.borderStandard,
+                    color: context.isDarkTheme
+                        ? context.omniPalette.borderSubtle.withValues(alpha: 0.45)
+                        : AppColors.borderStandard,
                   ),
                 ),
               Material(
@@ -578,23 +619,23 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                           items[index].icon,
                           width: 16,
                           height: 16,
-                          colorFilter: const ColorFilter.mode(
-                            AppColors.text,
+                          colorFilter: ColorFilter.mode(
+                            _drawerTextColor,
                             BlendMode.srcIn,
                           ),
                           errorBuilder: (context, error, stackTrace) => Icon(
                             Icons.settings,
                             size: 16,
-                            color: AppColors.text,
+                            color: _drawerTextColor,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           items[index].title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
-                            color: AppColors.text,
+                            color: _drawerTextColor,
                             fontFamily: 'PingFang SC',
                             height: 1.57,
                           ),
@@ -618,10 +659,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 16),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white,
+          decoration: _drawerPanelDecoration(
             borderRadius: BorderRadius.circular(8),
-            boxShadow: [AppColors.boxShadow],
+            darkColor: context.omniPalette.surfacePrimary,
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -633,7 +673,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.text,
+                    color: _drawerTextColor,
                   ),
                 ),
                 Row(
@@ -665,24 +705,24 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          AppColors.text,
+                          _drawerTextColor,
                         ),
                       ),
                     ),
                   )
                 : conversations.isEmpty
-                    ? _buildEmptyConversation()
-                    : SlidableAutoCloseBehavior(
-                        child: ListView.builder(
-                          padding: EdgeInsets.zero,
-                          itemCount: conversations.length,
-                          itemBuilder: (context, index) {
-                            return _buildSwipeConversationItem(
-                              conversations[index],
-                            );
-                          },
-                        ),
-                      ),
+                ? _buildEmptyConversation()
+                : SlidableAutoCloseBehavior(
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      itemCount: conversations.length,
+                      itemBuilder: (context, index) {
+                        return _buildSwipeConversationItem(
+                          conversations[index],
+                        );
+                      },
+                    ),
+                  ),
           ),
         ),
       ],
@@ -698,10 +738,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           children: [
             Text(
               '暂无聊天记录',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.text.withValues(alpha: 0.4),
-              ),
+              style: TextStyle(fontSize: 14, color: _drawerSecondaryTextColor),
             ),
             const SizedBox(height: 12),
             GestureDetector(
@@ -746,15 +783,20 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         width: 32,
         height: 32,
         decoration: BoxDecoration(
-          color: isPrimary ? const Color(0xFF1930D9) : Colors.white,
+          color: isPrimary
+              ? const Color(0xFF1930D9)
+              : context.isDarkTheme
+              ? context.omniPalette.surfaceSecondary
+              : Colors.white,
           shape: BoxShape.circle,
           boxShadow: [
             if (!isPrimary)
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
+              if (!context.isDarkTheme)
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
           ],
         ),
         padding: const EdgeInsets.all(
@@ -765,7 +807,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           width: 16,
           height: 16,
           colorFilter: ColorFilter.mode(
-            isPrimary ? Colors.white : AppColors.text,
+            isPrimary ? Colors.white : _drawerTextColor,
             BlendMode.srcIn,
           ),
         ),
@@ -918,9 +960,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       onFullSwipe: () => _archiveConversation(conversation),
       margin: const EdgeInsets.only(bottom: 6),
       child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.background,
+        decoration: _drawerPanelDecoration(
           borderRadius: BorderRadius.circular(8),
+          darkColor: context.omniPalette.surfaceSecondary,
         ),
         child: Material(
           color: Colors.transparent,
@@ -938,10 +980,10 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                         Expanded(
                           child: Text(
                             conversation.summary ?? conversation.title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
-                              color: AppColors.text,
+                              color: _drawerTextColor,
                               fontFamily: 'PingFang SC',
                             ),
                             maxLines: 1,
@@ -961,7 +1003,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                     conversation.timeDisplay,
                     style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.text.withValues(alpha: 0.4),
+                      color: _drawerSecondaryTextColor,
                     ),
                   ),
                 ],

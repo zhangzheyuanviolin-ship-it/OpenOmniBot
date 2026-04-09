@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/pages/omnibot_workspace/widgets/omnibot_workspace_browser.dart';
 import 'package:ui/services/app_background_service.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -40,6 +41,7 @@ class _OmnibotWorkspacePageState extends State<OmnibotWorkspacePage> {
     return ValueListenableBuilder<AppBackgroundConfig>(
       valueListenable: AppBackgroundService.notifier,
       builder: (context, backgroundConfig, _) {
+        final palette = context.omniPalette;
         final backgroundActive = backgroundConfig.isActive;
         return PopScope(
           canPop: !_browserCanGoUp,
@@ -55,7 +57,7 @@ class _OmnibotWorkspacePageState extends State<OmnibotWorkspacePage> {
                 Positioned.fill(
                   child: AppBackgroundLayer(
                     config: backgroundConfig,
-                    fallbackColor: const Color(0xFFF9FCFF),
+                    fallbackColor: palette.previewFallback,
                     layerKey: const ValueKey('workspace-page-background'),
                   ),
                 ),
@@ -67,6 +69,7 @@ class _OmnibotWorkspacePageState extends State<OmnibotWorkspacePage> {
                         primary: false,
                         backgroundColor: backgroundSurfaceColor(
                           translucent: backgroundActive,
+                          baseColor: palette.surfacePrimary,
                           opacity: 0.68,
                         ),
                         onBackPressed: _handleBackPressed,

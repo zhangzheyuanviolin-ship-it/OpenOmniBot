@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:ui/theme/theme_context.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
 import '../../../../../widgets/app_background_widgets.dart';
@@ -464,6 +465,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       decoration: BoxDecoration(
         color: backgroundSurfaceColor(
           translucent: widget.translucent,
+          baseColor: context.omniPalette.surfacePrimary,
           opacity: 0.78,
         ),
         borderRadius: BorderRadius.circular(999),

@@ -12,6 +12,7 @@ import 'package:ui/services/special_permission.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -295,6 +296,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     final workspaceMemoryConfigured = _embeddingConfig?.configured == true;
     final workspaceMemorySubtitle = !_workspaceMemoryLoaded
         ? '加载中...'
@@ -304,7 +306,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final sections = _buildSections(workspaceMemorySubtitle);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: palette.pageBackground,
       appBar: const CommonAppBar(title: '设置', primary: true),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -429,7 +431,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.wallpaper_outlined,
             title: '外观设置',
-            subtitle: '配置共享背景图、聊天字号和文本颜色',
+            subtitle: '配置主题模式、共享背景图、聊天字号和文本颜色',
             onTap: () {
               GoRouterManager.push('/home/background_setting');
             },
@@ -494,11 +496,21 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildSettingsSection(_SettingSection section) {
+    final palette = context.omniPalette;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: palette.surfacePrimary,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE8ECF3)),
+        border: Border.all(color: palette.borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: palette.shadowColor.withValues(
+              alpha: context.isDarkTheme ? 0.32 : 0.08,
+            ),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         children: List.generate(section.items.length, (index) {
@@ -511,12 +523,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 isLast: isLast,
               ),
               if (!isLast)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.only(left: 40, right: 16),
                   child: Divider(
                     height: 1,
                     thickness: 1,
-                    color: Color(0xFFECEFF4),
+                    color: palette.borderSubtle,
                   ),
                 ),
             ],
@@ -531,6 +543,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required bool isFirst,
     required bool isLast,
   }) {
+    final palette = context.omniPalette;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -557,10 +570,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     Text(
                       item.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: AppColors.text,
+                        color: palette.textPrimary,
                         height: 1.57,
                         fontFamily: 'PingFang SC',
                       ),
@@ -568,8 +581,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     if (item.subtitle != null) ...[
                       Text(
                         item.subtitle!,
-                        style: const TextStyle(
-                          color: AppColors.text70,
+                        style: TextStyle(
+                          color: palette.textSecondary,
                           fontSize: 10,
                           fontFamily: 'PingFang SC',
                           fontWeight: FontWeight.w400,
@@ -585,11 +598,7 @@ class _SettingsPageState extends State<SettingsPage> {
               else if (item.onTap != null)
                 const Padding(
                   padding: EdgeInsets.only(left: 12),
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20,
-                    color: AppColors.text20,
-                  ),
+                  child: Icon(Icons.chevron_right_rounded, size: 20),
                 ),
             ],
           ),
@@ -599,6 +608,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildLeadingIcon(_SettingItem item) {
+    final palette = context.omniPalette;
     return SizedBox(
       width: 16,
       height: 16,
@@ -607,12 +617,17 @@ class _SettingsPageState extends State<SettingsPage> {
               item.iconSvg!,
               width: 16,
               height: 16,
-              colorFilter: item.iconColor != null
-                  ? ColorFilter.mode(item.iconColor!, BlendMode.srcIn)
-                  : null,
+              colorFilter: ColorFilter.mode(
+                item.iconColor ?? palette.textPrimary,
+                BlendMode.srcIn,
+              ),
             )
           : item.icon != null
-          ? Icon(item.icon, size: 16, color: item.iconColor)
+          ? Icon(
+              item.icon,
+              size: 16,
+              color: item.iconColor ?? palette.textPrimary,
+            )
           : const SizedBox.shrink(),
     );
   }
@@ -623,6 +638,7 @@ class _SettingsPageState extends State<SettingsPage> {
     bool enabled = true,
     bool loading = false,
   }) {
+    final palette = context.omniPalette;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled && !loading ? () => onToggle(!value) : null,
@@ -633,7 +649,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 width: 32,
                 height: 18.67,
                 decoration: BoxDecoration(
-                  color: AppColors.fillStandardSecondary,
+                  color: palette.borderStrong,
                   borderRadius: BorderRadius.circular(28.75),
                 ),
               )
@@ -645,8 +661,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     height: 18.67,
                     toggleSize: 11.3,
                     padding: 3,
-                    activeColor: const Color(0xFF2C7FEB),
-                    inactiveColor: AppColors.fillStandardSecondary,
+                    activeColor: palette.accentPrimary,
+                    inactiveColor: palette.borderStrong,
                     borderRadius: 28.75,
                     value: value,
                     onToggle: onToggle,

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ui/theme/app_theme_mode.dart';
 
 /// SharedPreferences 统一管理类。
 /// OSS 版本统一使用全局存储，不再区分登录用户作用域。
@@ -148,6 +149,7 @@ class StorageService {
 
   static const String kAutoBackToChatAfterTaskKey =
       'auto_back_to_chat_after_task';
+  static const String kThemeOptionKey = 'theme_option';
 
   static Future<bool> isAutoBackToChatAfterTaskEnabled() async {
     final enabled = getBool(kAutoBackToChatAfterTaskKey, defaultValue: true);
@@ -156,5 +158,18 @@ class StorageService {
 
   static Future<void> setAutoBackToChatAfterTaskEnabled(bool enabled) async {
     await setBool(kAutoBackToChatAfterTaskKey, enabled);
+  }
+
+  static AppThemeMode getThemeMode() {
+    return appThemeModeFromString(
+      getString(
+        kThemeOptionKey,
+        defaultValue: AppThemeMode.system.storageValue,
+      ),
+    );
+  }
+
+  static Future<void> setThemeMode(AppThemeMode mode) async {
+    await setString(kThemeOptionKey, mode.storageValue);
   }
 }

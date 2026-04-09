@@ -6,6 +6,8 @@ import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/scheduled_task_scheduler_service.dart';
 import 'package:ui/services/storage_service.dart';
+import 'package:ui/theme/app_theme_controller.dart';
+import 'package:ui/theme/app_theme_mode.dart';
 import 'package:ui/theme/app_theme.dart';
 import 'package:ui/widgets/embedded_terminal_init_overlay.dart';
 
@@ -150,22 +152,21 @@ class _MyAppState extends ConsumerState<MyApp> {
     );
 
     final widgetBuildStart = DateTime.now();
-    final widget = AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarDividerColor: Colors.transparent,
-        systemNavigationBarContrastEnforced: false, // 改为 false，强制完全透明
-        systemNavigationBarIconBrightness: Brightness.dark,
-      ),
-      child: MaterialApp.router(
-        title: '小万',
-        theme: AppTheme.lightTheme,
-        routerConfig: router,
-        builder: (context, child) {
-          final mediaQuery = MediaQuery.of(context);
-          return MediaQuery(
+    final themeMode = ref.watch(appThemeModeProvider).materialThemeMode;
+    final widget = MaterialApp.router(
+      title: '小万',
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode,
+      themeAnimationCurve: Curves.easeInOutCubic,
+      themeAnimationDuration: const Duration(milliseconds: 220),
+      routerConfig: router,
+      builder: (context, child) {
+        final mediaQuery = MediaQuery.of(context);
+        final brightness = Theme.of(context).brightness;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: AppTheme.overlayStyleForBrightness(brightness),
+          child: MediaQuery(
             data: mediaQuery.copyWith(
               padding: mediaQuery.padding.copyWith(bottom: 0),
               viewPadding: mediaQuery.viewPadding.copyWith(bottom: 0),
@@ -177,15 +178,15 @@ class _MyAppState extends ConsumerState<MyApp> {
                 const EmbeddedTerminalInitToastListener(),
               ],
             ),
-          );
-        },
-        localizationsDelegates: [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: [const Locale('en', 'US'), const Locale('zh', 'CN')],
-      ),
+          ),
+        );
+      },
+      localizationsDelegates: [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: [const Locale('en', 'US'), const Locale('zh', 'CN')],
     );
 
     print(
