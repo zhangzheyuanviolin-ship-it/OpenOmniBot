@@ -76,6 +76,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   bool _isSavingProfile = false;
   bool _saveQueued = false;
   bool _isSwitchingProfile = false;
+  String _selectedProtocolType = 'openai_compatible';
 
   Timer? _autoSaveTimer;
   StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
@@ -273,6 +274,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
           name: nextName.isEmpty ? current.name : nextName,
           baseUrl: _baseUrlController.text.trim(),
           apiKey: nextApiKey,
+          protocolType: _selectedProtocolType,
         );
         if (!mounted) return;
         setState(() {
@@ -348,6 +350,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       _editingProfileId = current.id;
       _manualModelIds = manualModelIds;
       _remoteModels = remoteModels;
+      _selectedProtocolType = current.protocolType;
     });
   }
 
@@ -646,6 +649,60 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         });
       }
     }
+  }
+
+  Widget _buildProtocolOption({
+    required String label,
+    required String value,
+  }) {
+    final selected = _selectedProtocolType == value;
+    return GestureDetector(
+      onTap: () async {
+        if (_selectedProtocolType == value) return;
+        final current = _currentProfile;
+        if (current == null || current.readOnly) return;
+        setState(() => _selectedProtocolType = value);
+        try {
+          final saved = await ModelProviderConfigService.saveProfile(
+            id: current.id,
+            name: current.name,
+            baseUrl: current.baseUrl,
+            apiKey: current.apiKey,
+            protocolType: value,
+          );
+          if (!mounted) return;
+          setState(() {
+            _profiles = _profiles
+                .map((p) => p.id == saved.id ? saved : p)
+                .toList();
+          });
+        } catch (_) {
+          if (!mounted) return;
+          setState(() => _selectedProtocolType = current.protocolType);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF2C7FEB) : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected
+                ? const Color(0xFF2C7FEB)
+                : const Color(0x1A000000),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? Colors.white : AppColors.text,
+            fontFamily: 'PingFang SC',
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildCard({required Widget child}) {
@@ -1103,6 +1160,33 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             color: _tertiaryTextColor,
                             fontSize: 12,
                             fontFamily: 'PingFang SC',
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          '协议类型',
+                          style: TextStyle(
+                            color: AppColors.text70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            fontFamily: 'PingFang SC',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        IgnorePointer(
+                          ignoring: _currentProfile?.readOnly ?? false,
+                          child: Row(
+                            children: [
+                              _buildProtocolOption(
+                                label: 'OpenAI Compatible',
+                                value: 'openai_compatible',
+                              ),
+                              const SizedBox(width: 8),
+                              _buildProtocolOption(
+                                label: 'Anthropic',
+                                value: 'anthropic',
+                              ),
+                            ],
                           ),
                         ),
                       ],

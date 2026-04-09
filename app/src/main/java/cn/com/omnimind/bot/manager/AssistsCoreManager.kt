@@ -279,7 +279,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "name" to name,
             "baseUrl" to baseUrl,
             "apiKey" to apiKey,
-            "configured" to isConfigured()
+            "configured" to isConfigured(),
+            "protocolType" to protocolType
         )
     }
 
@@ -1911,6 +1912,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val name = call.argument<String>("name")?.trim().orEmpty()
         val baseUrl = call.argument<String>("baseUrl")?.trim().orEmpty()
         val apiKey = call.argument<String>("apiKey")?.trim().orEmpty()
+        val protocolType = call.argument<String>("protocolType")?.trim() ?: "openai_compatible"
 
         workJob.launch {
             try {
@@ -1918,7 +1920,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     id = profileId,
                     name = name,
                     baseUrl = baseUrl,
-                    apiKey = apiKey
+                    apiKey = apiKey,
+                    protocolType = protocolType
                 )
                 syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
@@ -2046,7 +2049,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 } else {
                     val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
                     val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
-                    HttpController.fetchProviderModels(apiBase, apiKey)
+                    val profile = profileId?.let(ModelProviderConfigStore::getProfile)
+                        ?: ModelProviderConfigStore.getEditingProfile()
+                    HttpController.fetchProviderModels(apiBase, apiKey, profile.protocolType)
                 }
                 withContext(Dispatchers.Main) {
                     result.success(models.map { it.toMap() })
@@ -2864,7 +2869,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     providerProfileName = providerProfile.name,
                     modelId = modelId,
                     apiBase = providerProfile.baseUrl,
-                    apiKey = providerProfile.apiKey
+                    apiKey = providerProfile.apiKey,
+                    protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" }
                 )
             }
         }

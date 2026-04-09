@@ -28,7 +28,8 @@ private data class AgentAiCapabilityProviderSnapshot(
     val id: String = "",
     val name: String = "",
     val baseUrl: String = "",
-    val apiKey: String = ""
+    val apiKey: String = "",
+    val protocolType: String = "openai_compatible"
 )
 
 private data class AgentAiCapabilitySceneModelSnapshot(
@@ -56,7 +57,8 @@ private data class AgentAiCapabilityProviderPartial(
     val id: String? = null,
     val name: String? = null,
     val baseUrl: String? = null,
-    val apiKey: String? = null
+    val apiKey: String? = null,
+    val protocolType: String? = null
 )
 
 class AgentAiCapabilityConfigSync private constructor(
@@ -249,7 +251,8 @@ class AgentAiCapabilityConfigSync private constructor(
                     id = profile.id,
                     name = profile.name,
                     baseUrl = profile.baseUrl,
-                    apiKey = profile.apiKey
+                    apiKey = profile.apiKey,
+                    protocolType = profile.protocolType
                 )
             }
         val sceneModels = linkedMapOf<String, AgentAiCapabilitySceneModelSnapshot>()
@@ -280,7 +283,8 @@ class AgentAiCapabilityConfigSync private constructor(
                     id = provider.id.trim(),
                     name = provider.name.trim(),
                     baseUrl = provider.baseUrl.trim(),
-                    apiKey = provider.apiKey.trim()
+                    apiKey = provider.apiKey.trim(),
+                    protocolType = provider.protocolType.trim().ifEmpty { "openai_compatible" }
                 )
             },
             editingProfileId = snapshot.currentProviderId
@@ -345,7 +349,8 @@ class AgentAiCapabilityConfigSync private constructor(
                     id = provider.id?.trim().orEmpty(),
                     name = provider.name?.trim().orEmpty(),
                     baseUrl = provider.baseUrl?.trim().orEmpty(),
-                    apiKey = provider.apiKey?.trim().orEmpty()
+                    apiKey = provider.apiKey?.trim().orEmpty(),
+                    protocolType = provider.protocolType?.trim()?.ifEmpty { "openai_compatible" } ?: "openai_compatible"
                 )
             } ?: fallback.providers,
             sceneModels = sceneModels

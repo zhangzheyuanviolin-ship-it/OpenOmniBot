@@ -18,7 +18,8 @@ data class AgentModelOverride(
     val providerProfileName: String? = null,
     val modelId: String,
     val apiBase: String,
-    val apiKey: String
+    val apiKey: String,
+    val protocolType: String = "openai_compatible"
 )
 
 data class ArtifactAction(

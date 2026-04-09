@@ -789,6 +789,18 @@ class WorkspaceMemoryService(
                 ?.takeIf { it.isNotEmpty() && !it.startsWith("scene.") }
         val apiBase = profile.baseUrl.trim().ifEmpty { null }
         val apiKey = profile.apiKey.trim()
+        if (profile.protocolType == "anthropic") {
+            return WorkspaceMemoryEmbeddingConfig(
+                enabled = enabled,
+                configured = false,
+                sceneId = SCENE_MEMORY_EMBEDDING,
+                providerProfileId = profile.id,
+                providerProfileName = profile.name,
+                modelId = modelId,
+                apiBase = apiBase,
+                hasApiKey = apiKey.isNotEmpty()
+            )
+        }
         val configured = enabled &&
             !apiBase.isNullOrBlank() &&
             apiKey.isNotEmpty() &&
