@@ -620,7 +620,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                   value: config.autoStartOnAppOpen,
                   contentPadding: EdgeInsets.zero,
                   title: const Text('打开 App 时自动预热'),
-                  subtitle: const Text('只会尝试预热当前选中的后端与其当前模型。'),
+                  subtitle: const Text('打开App后自动启动本地服务并加载当前模型。'),
                   onChanged: _toggleAutoStart,
                 ),
                 const SizedBox(height: 12),
