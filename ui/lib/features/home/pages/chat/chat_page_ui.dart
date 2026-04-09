@@ -943,6 +943,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                     return;
                   }
                   if (isOpen) {
+                    _dismissChatInputFocus();
                     _drawerKey.currentState?.reloadConversations();
                   } else {
                     checkAndHandleDeletedConversation();
@@ -1031,8 +1032,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                           _isWorkspaceSurface,
                                       showMenuButton: true,
                                       showSurfaceSwitcher: true,
-                                      onMenuTap: () => _scaffoldKey.currentState
-                                          ?.openDrawer(),
+                                      onMenuTap: () {
+                                        _dismissChatInputFocus();
+                                        _scaffoldKey.currentState?.openDrawer();
+                                      },
                                     );
                                   },
                                 ),

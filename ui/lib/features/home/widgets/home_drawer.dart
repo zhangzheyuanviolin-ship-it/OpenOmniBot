@@ -7,9 +7,12 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/widgets/conversation_slidable.dart';
+import 'package:ui/features/home/widgets/home_drawer_search_field.dart';
+import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
@@ -78,14 +81,24 @@ class HomeDrawer extends ConsumerStatefulWidget {
 
 class HomeDrawerState extends ConsumerState<HomeDrawer> {
   static const double _conversationActionIconSize = 18;
+  static const Duration _searchDebounceDuration = Duration(milliseconds: 220);
   static const BorderRadius _drawerTrailingActionRadius = BorderRadius.only(
     topRight: Radius.circular(4),
     bottomRight: Radius.circular(4),
   );
 
-  List<ConversationModel> conversations = [];
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final Map<String, _ConversationSearchIndex> _conversationSearchCache =
+      <String, _ConversationSearchIndex>{};
   final Set<String> _busyConversationKeys = <String>{};
+  List<ConversationModel> _allConversations = <ConversationModel>[];
+  List<_ConversationSearchResult> _searchResults =
+      <_ConversationSearchResult>[];
   bool isLoadingConversations = true;
+  bool _isSearching = false;
+  int _searchGeneration = 0;
+  Timer? _searchDebounceTimer;
   StreamSubscription<Map<String, dynamic>>?
   _conversationListChangedSubscription;
 
@@ -162,6 +175,8 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(_handleSearchQueryChanged);
+    _searchFocusNode.addListener(_handleSearchFocusChanged);
     _conversationListChangedSubscription = AssistsMessageService
         .conversationListChangedStream
         .listen((_) {
@@ -172,12 +187,36 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _conversationListChangedSubscription?.cancel();
+    _searchController
+      ..removeListener(_handleSearchQueryChanged)
+      ..dispose();
+    _searchFocusNode
+      ..removeListener(_handleSearchFocusChanged)
+      ..dispose();
     super.dispose();
   }
 
   void reloadConversations() {
     _loadConversations();
+  }
+
+  bool get _isSearchActive => _searchQuery.isNotEmpty;
+
+  String get _searchQuery => _searchController.text.trim();
+
+  List<_ConversationSearchResult> get _visibleConversationResults {
+    if (_isSearchActive) {
+      return _searchResults;
+    }
+    return _allConversations
+        .where((conversation) => !conversation.isArchived)
+        .map(
+          (conversation) =>
+              _ConversationSearchResult(conversation: conversation),
+        )
+        .toList(growable: false);
   }
 
   Future<void> _loadConversations() async {
@@ -187,14 +226,24 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     });
 
     try {
-      final loadedConversations =
-          await ConversationService.getAllConversations();
+      final loadedConversations = await ConversationService.getAllConversations(
+        includeArchived: true,
+      );
       debugPrint('[HomeDrawer] 加载到 ${loadedConversations.length} 条聊天记录');
       if (!mounted) return;
+      final visibleThreadKeys = loadedConversations
+          .map((conversation) => conversation.threadKey)
+          .toSet();
       setState(() {
-        conversations = loadedConversations;
+        _allConversations = loadedConversations;
+        _conversationSearchCache.removeWhere(
+          (threadKey, _) => !visibleThreadKeys.contains(threadKey),
+        );
         isLoadingConversations = false;
       });
+      if (_isSearchActive) {
+        _scheduleConversationSearch(immediate: true);
+      }
     } catch (e) {
       debugPrint('[HomeDrawer] 加载聊天记录出错: $e');
       if (!mounted) return;
@@ -272,6 +321,340 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
   }
 
+  void _handleSearchFocusChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  void _handleSearchQueryChanged() {
+    if (!mounted) {
+      return;
+    }
+    _searchGeneration += 1;
+    _searchDebounceTimer?.cancel();
+
+    if (_searchQuery.isEmpty) {
+      setState(() {
+        _searchResults = <_ConversationSearchResult>[];
+        _isSearching = false;
+      });
+      return;
+    }
+
+    setState(() {});
+    _scheduleConversationSearch();
+  }
+
+  void _scheduleConversationSearch({bool immediate = false}) {
+    final query = _searchQuery;
+    if (query.isEmpty) {
+      return;
+    }
+
+    final generation = _searchGeneration;
+    _searchDebounceTimer?.cancel();
+    void callback() {
+      unawaited(_performConversationSearch(query, generation: generation));
+    }
+
+    if (immediate) {
+      callback();
+      return;
+    }
+    _searchDebounceTimer = Timer(_searchDebounceDuration, callback);
+  }
+
+  Future<void> _performConversationSearch(
+    String query, {
+    required int generation,
+  }) async {
+    final trimmedQuery = query.trim();
+    if (trimmedQuery.isEmpty || generation != _searchGeneration) {
+      return;
+    }
+
+    final queryTokens = _tokenizeSearchQuery(trimmedQuery);
+    if (queryTokens.isEmpty) {
+      if (!mounted || generation != _searchGeneration) {
+        return;
+      }
+      setState(() {
+        _searchResults = <_ConversationSearchResult>[];
+        _isSearching = false;
+      });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSearching = true;
+      });
+    }
+
+    final snapshot = List<ConversationModel>.from(_allConversations);
+    final results = <_ConversationSearchResult>[];
+
+    for (final conversation in snapshot) {
+      if (!mounted || generation != _searchGeneration) {
+        return;
+      }
+      final result = await _matchConversationAgainstQuery(
+        conversation,
+        queryTokens,
+      );
+      if (!mounted || generation != _searchGeneration) {
+        return;
+      }
+      if (result != null) {
+        results.add(result);
+      }
+    }
+
+    if (!mounted || generation != _searchGeneration) {
+      return;
+    }
+    setState(() {
+      _searchResults = results;
+      _isSearching = false;
+    });
+  }
+
+  Future<_ConversationSearchResult?> _matchConversationAgainstQuery(
+    ConversationModel conversation,
+    List<String> queryTokens,
+  ) async {
+    final metadataCandidates = _buildConversationMetadataCandidates(
+      conversation,
+    );
+    if (_matchesSearchTokens(
+      _normalizeSearchText(metadataCandidates.join('\n')),
+      queryTokens,
+    )) {
+      return _ConversationSearchResult(
+        conversation: conversation,
+        matchedPreview: _resolveMatchedPreview(
+          candidates: metadataCandidates,
+          conversation: conversation,
+          queryTokens: queryTokens,
+        ),
+      );
+    }
+
+    final searchIndex = await _ensureConversationSearchIndex(conversation);
+    if (!_matchesSearchTokens(searchIndex.searchableText, queryTokens)) {
+      return null;
+    }
+
+    return _ConversationSearchResult(
+      conversation: conversation,
+      matchedPreview: _resolveMatchedPreview(
+        candidates: searchIndex.candidates,
+        conversation: conversation,
+        queryTokens: queryTokens,
+      ),
+    );
+  }
+
+  Future<_ConversationSearchIndex> _ensureConversationSearchIndex(
+    ConversationModel conversation,
+  ) async {
+    final signature = _conversationSearchSignature(conversation);
+    final cacheKey = conversation.threadKey;
+    final cached = _conversationSearchCache[cacheKey];
+    if (cached != null && cached.signature == signature) {
+      return cached;
+    }
+
+    final candidates = _buildConversationMetadataCandidates(conversation);
+    final seenCandidates = candidates
+        .map(_normalizeSearchText)
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    final messages = await ConversationHistoryService.getConversationMessages(
+      conversation.id,
+      mode: conversation.mode,
+    );
+
+    for (final message in messages) {
+      for (final fragment in _collectSearchableText(message)) {
+        _addUniqueCandidate(candidates, seenCandidates, fragment);
+      }
+    }
+
+    final searchIndex = _ConversationSearchIndex(
+      signature: signature,
+      candidates: List<String>.unmodifiable(candidates),
+      searchableText: _normalizeSearchText(candidates.join('\n')),
+    );
+    _conversationSearchCache[cacheKey] = searchIndex;
+    return searchIndex;
+  }
+
+  List<String> _buildConversationMetadataCandidates(
+    ConversationModel conversation,
+  ) {
+    final candidates = <String>[];
+    final seenCandidates = <String>{};
+    _addUniqueCandidate(
+      candidates,
+      seenCandidates,
+      _resolveConversationTitle(conversation),
+    );
+    _addUniqueCandidate(candidates, seenCandidates, conversation.summary);
+    _addUniqueCandidate(
+      candidates,
+      seenCandidates,
+      conversation.contextSummary,
+    );
+    _addUniqueCandidate(candidates, seenCandidates, conversation.lastMessage);
+    return candidates;
+  }
+
+  List<String> _collectSearchableText(ChatMessageModel message) {
+    final fragments = <String>[];
+    final seenCandidates = <String>{};
+    _collectSearchableTextFromValue(
+      message.content,
+      sink: fragments,
+      seenNormalized: seenCandidates,
+    );
+    return fragments;
+  }
+
+  void _collectSearchableTextFromValue(
+    dynamic value, {
+    required List<String> sink,
+    required Set<String> seenNormalized,
+  }) {
+    if (value == null) {
+      return;
+    }
+    if (value is String) {
+      _addUniqueCandidate(sink, seenNormalized, value);
+      return;
+    }
+    if (value is List) {
+      for (final item in value) {
+        _collectSearchableTextFromValue(
+          item,
+          sink: sink,
+          seenNormalized: seenNormalized,
+        );
+      }
+      return;
+    }
+    if (value is Map) {
+      for (final item in value.values) {
+        _collectSearchableTextFromValue(
+          item,
+          sink: sink,
+          seenNormalized: seenNormalized,
+        );
+      }
+    }
+  }
+
+  void _addUniqueCandidate(
+    List<String> candidates,
+    Set<String> seenNormalized,
+    String? rawValue,
+  ) {
+    final normalized = _normalizeSearchText(rawValue ?? '');
+    if (normalized.isEmpty || !seenNormalized.add(normalized)) {
+      return;
+    }
+    candidates.add((rawValue ?? '').replaceAll(RegExp(r'\s+'), ' ').trim());
+  }
+
+  List<String> _tokenizeSearchQuery(String value) {
+    return _normalizeSearchText(value)
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  String _normalizeSearchText(String value) {
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+  }
+
+  bool _matchesSearchTokens(String searchableText, List<String> queryTokens) {
+    if (searchableText.isEmpty || queryTokens.isEmpty) {
+      return false;
+    }
+    return queryTokens.every(searchableText.contains);
+  }
+
+  String? _resolveMatchedPreview({
+    required List<String> candidates,
+    required ConversationModel conversation,
+    required List<String> queryTokens,
+  }) {
+    final title = _resolveConversationTitle(conversation);
+    for (final candidate in candidates) {
+      final normalized = _normalizeSearchText(candidate);
+      if (_matchesSearchTokens(normalized, queryTokens) &&
+          candidate.trim() != title) {
+        return candidate.trim();
+      }
+    }
+    for (final candidate in candidates) {
+      final normalized = _normalizeSearchText(candidate);
+      if (queryTokens.any(normalized.contains) && candidate.trim() != title) {
+        return candidate.trim();
+      }
+    }
+    return null;
+  }
+
+  String _conversationSearchSignature(ConversationModel conversation) {
+    return [
+      conversation.threadKey,
+      conversation.updatedAt,
+      conversation.messageCount,
+      conversation.isArchived ? 1 : 0,
+      conversation.title,
+      conversation.summary ?? '',
+      conversation.contextSummary ?? '',
+      conversation.lastMessage ?? '',
+    ].join('|');
+  }
+
+  void _replaceConversationInState(ConversationModel updatedConversation) {
+    final allConversations = List<ConversationModel>.from(_allConversations);
+    final allIndex = allConversations.indexWhere(
+      (item) => item.threadKey == updatedConversation.threadKey,
+    );
+    if (allIndex >= 0) {
+      allConversations[allIndex] = updatedConversation;
+    }
+
+    final searchResults = List<_ConversationSearchResult>.from(_searchResults);
+    final searchIndex = searchResults.indexWhere(
+      (item) => item.conversation.threadKey == updatedConversation.threadKey,
+    );
+    if (searchIndex >= 0) {
+      searchResults[searchIndex] = searchResults[searchIndex].copyWith(
+        conversation: updatedConversation,
+      );
+    }
+
+    _conversationSearchCache.remove(updatedConversation.threadKey);
+    _allConversations = allConversations;
+    _searchResults = searchResults;
+  }
+
+  void _removeConversationFromState(ConversationModel conversation) {
+    _allConversations = List<ConversationModel>.from(_allConversations)
+      ..removeWhere((item) => item.threadKey == conversation.threadKey);
+    _searchResults = List<_ConversationSearchResult>.from(_searchResults)
+      ..removeWhere(
+        (item) => item.conversation.threadKey == conversation.threadKey,
+      );
+    _conversationSearchCache.remove(conversation.threadKey);
+  }
+
   @override
   Widget build(BuildContext context) {
     final backgroundColor = _drawerBackgroundColor;
@@ -334,14 +717,23 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 
   Widget _buildConversationSection() {
+    final visibleConversationResults = _visibleConversationResults;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              Expanded(
+                child: HomeDrawerSearchField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  isSearching: _isSearching,
+                  textColor: _drawerTextColor,
+                ),
+              ),
+              const SizedBox(width: 10),
               _buildSectionActionButton(
                 iconPath: 'assets/home/archive_icon.svg',
                 tooltip: '归档对话',
@@ -374,12 +766,22 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                       ),
                     ),
                   )
-                : conversations.isEmpty
-                ? _buildEmptyConversation()
+                : visibleConversationResults.isEmpty
+                ? _isSearchActive
+                      ? (_isSearching
+                            ? _buildSearchingConversationState()
+                            : _buildEmptySearchResult())
+                      : _buildEmptyConversation()
                 : SlidableAutoCloseBehavior(
                     child: ListView(
                       padding: EdgeInsets.zero,
-                      children: _buildConversationTimelineChildren(),
+                      children: _isSearchActive
+                          ? _buildSearchResultChildren(
+                              visibleConversationResults,
+                            )
+                          : _buildConversationTimelineChildren(
+                              visibleConversationResults,
+                            ),
                     ),
                   ),
           ),
@@ -427,8 +829,165 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
   }
 
-  List<Widget> _buildConversationTimelineChildren() {
-    final sections = _buildConversationSections();
+  Widget _buildSearchingConversationState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.2,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                context.omniPalette.accentPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            '正在搜索对话内容…',
+            style: TextStyle(
+              fontSize: 14,
+              color: _drawerSecondaryTextColor,
+              fontFamily: 'PingFang SC',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptySearchResult() {
+    final palette = context.omniPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: context.isDarkTheme
+                    ? palette.surfaceSecondary
+                    : palette.previewFallback,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.search_off_rounded,
+                size: 22,
+                color: palette.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '没有找到相关对话',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: _drawerTextColor,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '试试更短的关键词，或换一种说法',
+              style: TextStyle(
+                fontSize: 12,
+                color: _drawerSecondaryTextColor,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: _searchController.clear,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: context.isDarkTheme
+                      ? palette.surfaceSecondary
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: palette.borderSubtle),
+                ),
+                child: Text(
+                  '清空搜索',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: _drawerTextColor,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildSearchResultChildren(
+    List<_ConversationSearchResult> results,
+  ) {
+    final palette = context.omniPalette;
+    final children = <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Row(
+          children: [
+            Icon(
+              Icons.manage_search_rounded,
+              size: 16,
+              color: palette.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '搜索结果',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.6,
+                color: palette.textTertiary,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${results.length} 条',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: palette.textTertiary,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+
+    for (int index = 0; index < results.length; index++) {
+      children.add(
+        _buildSwipeConversationItem(
+          results[index],
+          showDivider: index != results.length - 1,
+        ),
+      );
+    }
+    return children;
+  }
+
+  List<Widget> _buildConversationTimelineChildren(
+    List<_ConversationSearchResult> results,
+  ) {
+    final sections = _buildConversationSections(results);
     final children = <Widget>[];
     for (int sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
       final section = sections[sectionIndex];
@@ -437,15 +996,11 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       }
       children.add(_buildConversationSectionHeader(section.label));
       children.add(const SizedBox(height: 4));
-      for (
-        int itemIndex = 0;
-        itemIndex < section.conversations.length;
-        itemIndex++
-      ) {
+      for (int itemIndex = 0; itemIndex < section.results.length; itemIndex++) {
         children.add(
           _buildSwipeConversationItem(
-            section.conversations[itemIndex],
-            showDivider: itemIndex != section.conversations.length - 1,
+            section.results[itemIndex],
+            showDivider: itemIndex != section.results.length - 1,
           ),
         );
       }
@@ -453,19 +1008,22 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     return children;
   }
 
-  List<_ConversationSection> _buildConversationSections() {
+  List<_ConversationSection> _buildConversationSections(
+    List<_ConversationSearchResult> results,
+  ) {
     final sections = <_ConversationSection>[];
-    for (final conversation in conversations) {
+    for (final result in results) {
+      final conversation = result.conversation;
       final label = conversation.timeDisplay;
       if (sections.isEmpty || sections.last.label != label) {
         sections.add(
           _ConversationSection(
             label: label,
-            conversations: <ConversationModel>[conversation],
+            results: <_ConversationSearchResult>[result],
           ),
         );
       } else {
-        sections.last.conversations.add(conversation);
+        sections.last.results.add(result);
       }
     }
     return sections;
@@ -662,7 +1220,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return;
     }
 
-    final originalIndex = conversations.indexWhere(
+    final originalIndex = _allConversations.indexWhere(
       (item) => item.id == conversation.id,
     );
     if (originalIndex < 0) {
@@ -671,8 +1229,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
     setState(() {
       _busyConversationKeys.add(conversation.threadKey);
-      conversations = List<ConversationModel>.from(conversations)
-        ..removeAt(originalIndex);
+      _removeConversationFromState(conversation);
     });
 
     final deleted = await ConversationService.deleteConversation(
@@ -689,11 +1246,14 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     setState(() {
       _busyConversationKeys.remove(conversation.threadKey);
       if (!deleted) {
-        final restoredIndex = originalIndex <= conversations.length
+        final restoredIndex = originalIndex <= _allConversations.length
             ? originalIndex
-            : conversations.length;
-        conversations = List<ConversationModel>.from(conversations)
+            : _allConversations.length;
+        _allConversations = List<ConversationModel>.from(_allConversations)
           ..insert(restoredIndex, conversation);
+        if (_isSearchActive) {
+          _scheduleConversationSearch(immediate: true);
+        }
       }
     });
 
@@ -708,21 +1268,25 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return;
     }
 
-    final originalIndex = conversations.indexWhere(
-      (item) => item.id == conversation.id,
+    final originalIndex = _allConversations.indexWhere(
+      (item) => item.threadKey == conversation.threadKey,
     );
     if (originalIndex < 0) {
       return;
     }
 
+    final originalConversation = _allConversations[originalIndex];
+    final archivedConversation = originalConversation.copyWith(
+      isArchived: true,
+    );
+
     setState(() {
       _busyConversationKeys.add(conversation.threadKey);
-      conversations = List<ConversationModel>.from(conversations)
-        ..removeAt(originalIndex);
+      _replaceConversationInState(archivedConversation);
     });
 
     final archived = await ConversationService.archiveConversation(
-      conversation,
+      originalConversation,
     );
     if (!mounted) {
       return;
@@ -731,17 +1295,55 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     setState(() {
       _busyConversationKeys.remove(conversation.threadKey);
       if (!archived) {
-        final restoredIndex = originalIndex <= conversations.length
-            ? originalIndex
-            : conversations.length;
-        conversations = List<ConversationModel>.from(conversations)
-          ..insert(restoredIndex, conversation);
+        _replaceConversationInState(originalConversation);
       }
     });
 
     showToast(
       archived ? '已归档' : '归档失败',
       type: archived ? ToastType.success : ToastType.error,
+    );
+  }
+
+  Future<void> _unarchiveConversation(ConversationModel conversation) async {
+    if (_busyConversationKeys.contains(conversation.threadKey)) {
+      return;
+    }
+
+    final originalIndex = _allConversations.indexWhere(
+      (item) => item.threadKey == conversation.threadKey,
+    );
+    if (originalIndex < 0) {
+      return;
+    }
+
+    final originalConversation = _allConversations[originalIndex];
+    final restoredConversation = originalConversation.copyWith(
+      isArchived: false,
+    );
+
+    setState(() {
+      _busyConversationKeys.add(conversation.threadKey);
+      _replaceConversationInState(restoredConversation);
+    });
+
+    final restored = await ConversationService.unarchiveConversation(
+      originalConversation,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _busyConversationKeys.remove(conversation.threadKey);
+      if (!restored) {
+        _replaceConversationInState(originalConversation);
+      }
+    });
+
+    showToast(
+      restored ? '已取消归档' : '取消归档失败',
+      type: restored ? ToastType.success : ToastType.error,
     );
   }
 
@@ -762,7 +1364,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         ),
       ),
       ConversationSlideAction(
-        onPressed: () => _archiveConversation(conversation),
+        onPressed: () => conversation.isArchived
+            ? _unarchiveConversation(conversation)
+            : _archiveConversation(conversation),
         backgroundColor: context.isDarkTheme
             ? Color.lerp(
                 context.omniPalette.surfaceElevated,
@@ -772,12 +1376,21 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             : AppColors.buttonPrimary,
         borderRadius: _drawerTrailingActionRadius,
         child: Center(
-          child: SvgPicture.asset(
-            'assets/home/archive_icon.svg',
-            width: _conversationActionIconSize,
-            height: _conversationActionIconSize,
-            colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-          ),
+          child: conversation.isArchived
+              ? Icon(
+                  Icons.unarchive_outlined,
+                  size: _conversationActionIconSize,
+                  color: Colors.white,
+                )
+              : SvgPicture.asset(
+                  'assets/home/archive_icon.svg',
+                  width: _conversationActionIconSize,
+                  height: _conversationActionIconSize,
+                  colorFilter: const ColorFilter.mode(
+                    Colors.white,
+                    BlendMode.srcIn,
+                  ),
+                ),
         ),
       ),
     ];
@@ -793,11 +1406,13 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 
   Widget _buildSwipeConversationItem(
-    ConversationModel conversation, {
+    _ConversationSearchResult result, {
     required bool showDivider,
   }) {
+    final conversation = result.conversation;
     final isBusy = _busyConversationKeys.contains(conversation.threadKey);
     final title = _resolveConversationTitle(conversation);
+    final showArchivedBadge = _isSearchActive && conversation.isArchived;
 
     return ConversationSlidable(
       itemKey: conversation.threadKey,
@@ -805,7 +1420,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       isBusy: isBusy,
       actions: _buildDrawerActions(conversation),
       onDismissed: () => _deleteConversation(conversation),
-      onFullSwipe: () => _archiveConversation(conversation),
+      onFullSwipe: () => conversation.isArchived
+          ? _unarchiveConversation(conversation)
+          : _archiveConversation(conversation),
       child: Column(
         children: [
           Material(
@@ -819,29 +1436,83 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
               highlightColor: Colors.transparent,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(4, 9, 2, 9),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: _drawerTextColor,
+                              height: 1.35,
+                              fontFamily: 'PingFang SC',
+                            ),
+                          ),
+                        ),
+                        if (showArchivedBadge) ...[
+                          const SizedBox(width: 10),
+                          _buildArchivedBadge(),
+                        ],
+                      ],
+                    ),
+                    if (_isSearchActive && result.matchedPreview != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        result.matchedPreview!,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: _drawerTextColor,
-                          height: 1.35,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: _drawerSecondaryTextColor,
+                          height: 1.4,
                           fontFamily: 'PingFang SC',
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
             ),
           ),
           if (showDivider) const SizedBox(height: 2),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildArchivedBadge() {
+    final palette = context.omniPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: context.isDarkTheme
+            ? palette.surfaceSecondary
+            : palette.previewFallback,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.archive_outlined, size: 11, color: palette.textSecondary),
+          const SizedBox(width: 4),
+          Text(
+            '已归档',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: palette.textSecondary,
+              fontFamily: 'PingFang SC',
+            ),
+          ),
         ],
       ),
     );
@@ -866,8 +1537,40 @@ class _DrawerShortcutAction {
 }
 
 class _ConversationSection {
-  _ConversationSection({required this.label, required this.conversations});
+  _ConversationSection({required this.label, required this.results});
 
   final String label;
-  final List<ConversationModel> conversations;
+  final List<_ConversationSearchResult> results;
+}
+
+class _ConversationSearchIndex {
+  const _ConversationSearchIndex({
+    required this.signature,
+    required this.candidates,
+    required this.searchableText,
+  });
+
+  final String signature;
+  final List<String> candidates;
+  final String searchableText;
+}
+
+class _ConversationSearchResult {
+  const _ConversationSearchResult({
+    required this.conversation,
+    this.matchedPreview,
+  });
+
+  final ConversationModel conversation;
+  final String? matchedPreview;
+
+  _ConversationSearchResult copyWith({
+    ConversationModel? conversation,
+    String? matchedPreview,
+  }) {
+    return _ConversationSearchResult(
+      conversation: conversation ?? this.conversation,
+      matchedPreview: matchedPreview ?? this.matchedPreview,
+    );
+  }
 }

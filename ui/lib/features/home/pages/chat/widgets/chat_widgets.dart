@@ -496,14 +496,25 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
           opacity: 0.78,
         ),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: widget.translucent
-              ? widget.visualProfile.islandBorderColor
-              : context.isDarkTheme
-              ? palette.borderSubtle
-              : const Color(0xFFD9E6FB),
-          width: 1,
-        ),
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                    alpha: widget.translucent ? 0.18 : 0.14,
+                  ),
+                  blurRadius: widget.translucent ? 18 : 14,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(
+                    alpha: widget.translucent ? 0.2 : 0.12,
+                  ),
+                  blurRadius: widget.translucent ? 22 : 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
