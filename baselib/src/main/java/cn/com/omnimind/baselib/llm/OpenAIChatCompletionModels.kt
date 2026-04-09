@@ -170,6 +170,10 @@ data class ChatCompletionUsage(
     val completionTokens: Int? = null,
     @SerialName("total_tokens")
     val totalTokens: Int? = null,
+    @SerialName("prefill_tokens_per_second")
+    val prefillTokensPerSecond: Double? = null,
+    @SerialName("decode_tokens_per_second")
+    val decodeTokensPerSecond: Double? = null,
     @SerialName("prompt_tokens_details")
     val promptTokensDetails: JsonElement? = null,
     @SerialName("completion_tokens_details")
@@ -180,8 +184,7 @@ data class ChatCompletionTurn(
     val message: ChatCompletionMessage,
     val reasoning: String = "",
     val finishReason: String? = null,
-    val usage: ChatCompletionUsage? = null,
-    val predictedPerSecond: Double? = null
+    val usage: ChatCompletionUsage? = null
 )
 
 fun ChatCompletionMessage.contentText(): String {

@@ -47,7 +47,8 @@ typedef AgentChatMessageCallback =
       String taskId,
       String message, {
       bool isFinal,
-      double? predictedPerSecond,
+      double? prefillTokensPerSecond,
+      double? decodeTokensPerSecond,
     });
 typedef AgentPromptTokenUsageCallback =
     void Function(
@@ -425,13 +426,16 @@ class AssistsMessageService {
               : (isFinalRaw is bool
                     ? isFinalRaw
                     : isFinalRaw.toString().toLowerCase() == 'true');
-          final double? predictedPerSecond =
-              _asNullableDouble(data['predictedPerSecond']);
+          final double? prefillTokensPerSecond =
+              _asNullableDouble(data['prefillTokensPerSecond']);
+          final double? decodeTokensPerSecond =
+              _asNullableDouble(data['decodeTokensPerSecond']);
           _onAgentChatMessageCallback?.call(
             (data['taskId'] ?? '').toString(),
             (data['message'] ?? '').toString(),
             isFinal: isFinal,
-            predictedPerSecond: predictedPerSecond,
+            prefillTokensPerSecond: prefillTokensPerSecond,
+            decodeTokensPerSecond: decodeTokensPerSecond,
           );
           break;
         case 'onAgentPromptTokenUsageChanged':

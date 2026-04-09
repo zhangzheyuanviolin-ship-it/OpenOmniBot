@@ -46,7 +46,8 @@ class AgentOrchestrator(
         var lastFinishReason: String? = null
         var latestPromptTokens: Int? = null
         var latestPromptTokenThreshold: Int? = null
-        var lastPredictedPerSecond: Double? = null
+        var lastPrefillTokensPerSecond: Double? = null
+        var lastDecodeTokensPerSecond: Double? = null
         var completedModelRounds = 0
         var terminated = false
 
@@ -71,7 +72,7 @@ class AgentOrchestrator(
                         maxCompletionTokens = 16384,
                         stream = true,
                         streamOptions = ChatCompletionStreamOptions(includeUsage = true),
-                        tools = toolRegistry.toolsForModel,
+                        tools = toolRegistry.toolsForModel.take(2),
                         toolChoice = toolChoiceForRound,
                         parallelToolCalls = false
                     ),
@@ -88,7 +89,10 @@ class AgentOrchestrator(
                 )
 
                 lastFinishReason = turn.finishReason
-                lastPredictedPerSecond = turn.predictedPerSecond ?: lastPredictedPerSecond
+                lastPrefillTokensPerSecond =
+                    turn.usage?.prefillTokensPerSecond ?: lastPrefillTokensPerSecond
+                lastDecodeTokensPerSecond =
+                    turn.usage?.decodeTokensPerSecond ?: lastDecodeTokensPerSecond
                 lastAssistantContent = turn.message.contentText().trim()
                 val toolCalls = turn.message.toolCalls.orEmpty()
                 logInfo(
@@ -130,7 +134,12 @@ class AgentOrchestrator(
                     val fallbackMessage = lastAssistantContent.ifBlank {
                         "我已完成思考，但暂时无法生成回复，请重试。"
                     }
-                    callback.onChatMessage(fallbackMessage, true, lastPredictedPerSecond)
+                    callback.onChatMessage(
+                        fallbackMessage,
+                        true,
+                        lastPrefillTokensPerSecond,
+                        lastDecodeTokensPerSecond
+                    )
                     executedTools.add(ToolExecutionResult.ChatMessage(fallbackMessage))
                     outputKind = AgentOutputKind.CHAT_MESSAGE
                     hasUserFacingOutput = true
@@ -239,7 +248,12 @@ class AgentOrchestrator(
             val fallbackMessage = lastAssistantContent.ifBlank {
                 "我已完成思考，但暂时无法生成回复，请重试。"
             }
-            callback.onChatMessage(fallbackMessage, true, lastPredictedPerSecond)
+            callback.onChatMessage(
+                fallbackMessage,
+                true,
+                lastPrefillTokensPerSecond,
+                lastDecodeTokensPerSecond
+            )
             executedTools.add(ToolExecutionResult.ChatMessage(fallbackMessage))
             outputKind = AgentOutputKind.CHAT_MESSAGE
             hasUserFacingOutput = true

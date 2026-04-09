@@ -332,13 +332,15 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       _,
       message, {
       bool isFinal = true,
-      double? predictedPerSecond,
+      double? prefillTokensPerSecond,
+      double? decodeTokensPerSecond,
     }) {
       if (!mounted) return;
       handleAgentChatMessage(
         message,
         isFinal: isFinal,
-        predictedPerSecond: predictedPerSecond,
+        prefillTokensPerSecond: prefillTokensPerSecond,
+        decodeTokensPerSecond: decodeTokensPerSecond,
       );
     });
 

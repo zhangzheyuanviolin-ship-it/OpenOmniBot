@@ -343,6 +343,10 @@ class VLMStreamAccumulator(
             promptTokens = obj["prompt_tokens"]?.jsonPrimitive?.intOrNull,
             completionTokens = obj["completion_tokens"]?.jsonPrimitive?.intOrNull,
             totalTokens = obj["total_tokens"]?.jsonPrimitive?.intOrNull,
+            prefillTokensPerSecond =
+                obj["prefill_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
+            decodeTokensPerSecond =
+                obj["decode_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
             promptTokensDetails = obj["prompt_tokens_details"],
             completionTokensDetails = obj["completion_tokens_details"]
         )

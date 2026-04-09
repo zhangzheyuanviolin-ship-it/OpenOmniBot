@@ -813,7 +813,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     String taskId,
     String message, {
     bool isFinal = true,
-    double? predictedPerSecond,
+    double? prefillTokensPerSecond,
+    double? decodeTokensPerSecond,
   }) {
     final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
@@ -838,8 +839,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           content: {
             'text': message,
             'id': aiTextMessageId,
-            if (isFinal && predictedPerSecond != null)
-              'predictedPerSecond': predictedPerSecond,
+            if (isFinal && prefillTokensPerSecond != null)
+              'prefillTokensPerSecond': prefillTokensPerSecond,
+            if (isFinal && decodeTokensPerSecond != null)
+              'decodeTokensPerSecond': decodeTokensPerSecond,
           },
         ),
       );
@@ -849,8 +852,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       final currentText = (content['text'] ?? '').toString();
       if (!_shouldIgnoreRegressiveSnapshot(currentText, message)) {
         content['text'] = message;
-        if (isFinal && predictedPerSecond != null) {
-          content['predictedPerSecond'] = predictedPerSecond;
+        if (isFinal && prefillTokensPerSecond != null) {
+          content['prefillTokensPerSecond'] = prefillTokensPerSecond;
+        }
+        if (isFinal && decodeTokensPerSecond != null) {
+          content['decodeTokensPerSecond'] = decodeTokensPerSecond;
         }
         runtime.messages[index] = existing.copyWith(content: content);
       }

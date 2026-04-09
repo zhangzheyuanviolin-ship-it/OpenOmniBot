@@ -512,7 +512,7 @@ class MessageBubble extends StatelessWidget {
   /// AI text with optional inference speed label
   Widget _buildAiTextWithSpeed(String text) {
     final aiText = _buildAiText(text);
-    final speed = _predictedPerSecond;
+    final speed = _decodeTokensPerSecond;
     if (speed == null) return aiText;
 
     return Column(
@@ -532,8 +532,8 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  double? get _predictedPerSecond {
-    final raw = message.content?['predictedPerSecond'];
+  double? get _decodeTokensPerSecond {
+    final raw = message.content?['decodeTokensPerSecond'];
     if (raw is double) return raw;
     if (raw is num) return raw.toDouble();
     return null;

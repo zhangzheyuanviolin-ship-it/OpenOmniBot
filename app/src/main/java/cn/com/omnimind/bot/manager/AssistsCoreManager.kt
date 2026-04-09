@@ -3304,9 +3304,15 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     override suspend fun onChatMessage(
                         message: String,
                         isFinal: Boolean,
-                        predictedPerSecond: Double?
+                        prefillTokensPerSecond: Double?,
+                        decodeTokensPerSecond: Double?
                     ) {
-                        dispatchAgentChatMessage(message, isFinal, predictedPerSecond)
+                        dispatchAgentChatMessage(
+                            message = message,
+                            isFinal = isFinal,
+                            prefillTokensPerSecond = prefillTokensPerSecond,
+                            decodeTokensPerSecond = decodeTokensPerSecond
+                        )
                     }
 
                     override suspend fun onPromptTokenUsageChanged(
@@ -3427,7 +3433,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     private suspend fun dispatchAgentChatMessage(
                         message: String,
                         isFinal: Boolean,
-                        predictedPerSecond: Double? = null
+                        prefillTokensPerSecond: Double? = null,
+                        decodeTokensPerSecond: Double? = null
                     ) {
                         val normalizedMessage = message.trim()
                         if (normalizedMessage.isNotEmpty()) {
@@ -3453,8 +3460,11 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             buildMap {
                                 put("message", message)
                                 put("isFinal", isFinal)
-                                if (predictedPerSecond != null) {
-                                    put("predictedPerSecond", predictedPerSecond)
+                                if (prefillTokensPerSecond != null) {
+                                    put("prefillTokensPerSecond", prefillTokensPerSecond)
+                                }
+                                if (decodeTokensPerSecond != null) {
+                                    put("decodeTokensPerSecond", decodeTokensPerSecond)
                                 }
                             }
                         )

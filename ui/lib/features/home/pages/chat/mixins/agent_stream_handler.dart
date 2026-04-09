@@ -238,7 +238,8 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
   void handleAgentChatMessage(
     String message, {
     bool isFinal = true,
-    double? predictedPerSecond,
+    double? prefillTokensPerSecond,
+    double? decodeTokensPerSecond,
   }) {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
     if (taskId == null) return;
@@ -258,8 +259,10 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
             content: {
               'text': message,
               'id': aiTextMessageId,
-              if (isFinal && predictedPerSecond != null)
-                'predictedPerSecond': predictedPerSecond,
+              if (isFinal && prefillTokensPerSecond != null)
+                'prefillTokensPerSecond': prefillTokensPerSecond,
+              if (isFinal && decodeTokensPerSecond != null)
+                'decodeTokensPerSecond': decodeTokensPerSecond,
             },
           ),
         );
@@ -269,8 +272,11 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
         final currentText = (content['text'] ?? '').toString();
         if (!_shouldIgnoreRegressiveSnapshot(currentText, message)) {
           content['text'] = message;
-          if (isFinal && predictedPerSecond != null) {
-            content['predictedPerSecond'] = predictedPerSecond;
+          if (isFinal && prefillTokensPerSecond != null) {
+            content['prefillTokensPerSecond'] = prefillTokensPerSecond;
+          }
+          if (isFinal && decodeTokensPerSecond != null) {
+            content['decodeTokensPerSecond'] = decodeTokensPerSecond;
           }
           messages[index] = existing.copyWith(content: content);
         }
