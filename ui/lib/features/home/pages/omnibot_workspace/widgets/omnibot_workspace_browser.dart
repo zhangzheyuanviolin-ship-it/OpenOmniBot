@@ -77,6 +77,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   static const int _maxInlineExpansionDepth = 2;
   static const int _maxExpandedItemsBeforeScroll = 8;
   static const double _itemHeight = 40;
+  static const double _itemCornerRadius = 10;
   static const double _indentStep = 16;
   static const Set<String> _audioExtensions = <String>{
     '.mp3',
@@ -485,8 +486,12 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                       final isFirst = index == 0;
                       final isLast = index == itemCount - 1;
                       final borderRadius = BorderRadius.vertical(
-                        top: isFirst ? const Radius.circular(4) : Radius.zero,
-                        bottom: isLast ? const Radius.circular(4) : Radius.zero,
+                        top: isFirst
+                            ? const Radius.circular(_itemCornerRadius)
+                            : Radius.zero,
+                        bottom: isLast
+                            ? const Radius.circular(_itemCornerRadius)
+                            : Radius.zero,
                       );
 
                       if (showParentEntry && index == 0) {
@@ -542,7 +547,9 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     required FileSystemEntity entry,
     required int depth,
     required String? currentShellPath,
-    BorderRadius borderRadius = const BorderRadius.all(Radius.circular(4)),
+    BorderRadius borderRadius = const BorderRadius.all(
+      Radius.circular(_itemCornerRadius),
+    ),
   }) {
     final name = entry.path.split('/').last;
     final isDirectory = entry is Directory;
@@ -554,12 +561,21 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         isDirectory &&
         canExpandInline &&
         _expandedDirectoryPaths.contains(entry.path);
+    final expandedChildren = isExpanded
+        ? (_directoryChildrenCache[entry.path] ?? const <FileSystemEntity>[])
+        : const <FileSystemEntity>[];
+    final hasExpandedChildren = expandedChildren.isNotEmpty;
+    final shouldRoundExpandedLeftEdge = depth > 0;
     final itemBorderRadius = isExpanded
         ? BorderRadius.only(
             topLeft: borderRadius.topLeft,
             topRight: borderRadius.topRight,
-            bottomLeft: Radius.zero,
-            bottomRight: Radius.zero,
+            bottomLeft: shouldRoundExpandedLeftEdge
+                ? const Radius.circular(_itemCornerRadius)
+                : borderRadius.bottomLeft,
+            bottomRight: hasExpandedChildren
+                ? Radius.zero
+                : borderRadius.bottomRight,
           )
         : borderRadius;
 
@@ -611,13 +627,12 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       return row;
     }
 
-    final children = _directoryChildrenCache[entry.path] ?? const [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         row,
         _buildExpandedChildren(
-          entries: children,
+          entries: expandedChildren,
           depth: depth + 1,
           currentShellPath: currentShellPath,
         ),
@@ -1156,14 +1171,37 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     }
 
     Widget buildItem(BuildContext context, int index) {
+      final entry = entries[index];
+      final previousEntry = index > 0 ? entries[index - 1] : null;
       final isLast = index == entries.length - 1;
+      final isExpandedDirectory =
+          entry is Directory && _expandedDirectoryPaths.contains(entry.path);
+      final hasExpandedDirectoryAbove =
+          previousEntry is Directory &&
+          _expandedDirectoryPaths.contains(previousEntry.path);
+      final shouldRoundTrailingCorners =
+          depth <= 1 &&
+          isLast &&
+          !(depth > 0 && entry is Directory && !isExpandedDirectory);
+      final shouldRoundTopLeft =
+          depth > 0 &&
+          entry is Directory &&
+          isExpandedDirectory &&
+          hasExpandedDirectoryAbove;
       return _buildEntryNode(
-        entry: entries[index],
+        entry: entry,
         depth: depth,
         currentShellPath: currentShellPath,
         borderRadius: BorderRadius.only(
-          bottomLeft: isLast ? const Radius.circular(4) : Radius.zero,
-          bottomRight: isLast ? const Radius.circular(4) : Radius.zero,
+          topLeft: shouldRoundTopLeft
+              ? const Radius.circular(_itemCornerRadius)
+              : Radius.zero,
+          bottomLeft: shouldRoundTrailingCorners
+              ? const Radius.circular(_itemCornerRadius)
+              : Radius.zero,
+          bottomRight: shouldRoundTrailingCorners
+              ? const Radius.circular(_itemCornerRadius)
+              : Radius.zero,
         ),
       );
     }
