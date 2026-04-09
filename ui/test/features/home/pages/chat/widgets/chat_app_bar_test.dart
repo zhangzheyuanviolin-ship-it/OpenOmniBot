@@ -119,13 +119,13 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
   double _pageVerticalDragDelta = 0;
 
   int _pageIndexForSurface(ChatSurfaceMode mode) => switch (mode) {
-    ChatSurfaceMode.workspace => 0,
-    ChatSurfaceMode.normal => 1,
+    ChatSurfaceMode.normal => 0,
+    ChatSurfaceMode.workspace => 1,
     ChatSurfaceMode.openclaw => 2,
   };
 
   ChatSurfaceMode _surfaceForPageIndex(int pageIndex) => switch (pageIndex) {
-    0 => ChatSurfaceMode.workspace,
+    1 => ChatSurfaceMode.workspace,
     2 => ChatSurfaceMode.openclaw,
     _ => ChatSurfaceMode.normal,
   };
@@ -427,11 +427,140 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
   }
 }
 
+class _FloatingPanelGestureExclusionHarness extends StatefulWidget {
+  const _FloatingPanelGestureExclusionHarness();
+
+  @override
+  State<_FloatingPanelGestureExclusionHarness> createState() =>
+      _FloatingPanelGestureExclusionHarnessState();
+}
+
+class _FloatingPanelGestureExclusionHarnessState
+    extends State<_FloatingPanelGestureExclusionHarness> {
+  final GlobalKey _panelKey = GlobalKey();
+  ChatIslandDisplayLayer _displayLayer = ChatIslandDisplayLayer.model;
+  int? _pageGesturePointerId;
+  double _pageVerticalDragDelta = 0;
+
+  bool _isPointerInside(GlobalKey key, Offset position) {
+    final context = key.currentContext;
+    if (context == null) {
+      return false;
+    }
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) {
+      return false;
+    }
+    final rect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+    return rect.contains(position);
+  }
+
+  void _handlePagePointerDown(PointerDownEvent event) {
+    if (_isPointerInside(_panelKey, event.position)) {
+      _pageGesturePointerId = null;
+      _pageVerticalDragDelta = 0;
+      return;
+    }
+    _pageGesturePointerId = event.pointer;
+    _pageVerticalDragDelta = 0;
+  }
+
+  void _handlePagePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _pageGesturePointerId) {
+      return;
+    }
+    _pageVerticalDragDelta += event.delta.dy;
+  }
+
+  void _handlePagePointerUp(PointerUpEvent event) {
+    if (event.pointer != _pageGesturePointerId) {
+      return;
+    }
+    if (_pageVerticalDragDelta.abs() >= 18) {
+      setState(() {
+        _displayLayer = _pageVerticalDragDelta > 0
+            ? ChatIslandDisplayLayer.tools
+            : ChatIslandDisplayLayer.model;
+      });
+    }
+    _pageGesturePointerId = null;
+    _pageVerticalDragDelta = 0;
+  }
+
+  void _handlePagePointerCancel(PointerCancelEvent event) {
+    if (event.pointer != _pageGesturePointerId) {
+      return;
+    }
+    _pageGesturePointerId = null;
+    _pageVerticalDragDelta = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Column(
+          children: [
+            Text('layer:${_displayLayer.wireName}'),
+            Expanded(
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: _handlePagePointerDown,
+                onPointerMove: _handlePagePointerMove,
+                onPointerUp: _handlePagePointerUp,
+                onPointerCancel: _handlePagePointerCancel,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: ColoredBox(
+                        key: const ValueKey('floating-background'),
+                        color: const Color(0xFFF5F7FB),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 32),
+                        child: Material(
+                          key: _panelKey,
+                          elevation: 4,
+                          borderRadius: BorderRadius.circular(16),
+                          color: Colors.white,
+                          child: SizedBox(
+                            width: 240,
+                            height: 180,
+                            child: ListView.builder(
+                              key: const ValueKey('floating-panel'),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              physics: const ClampingScrollPhysics(),
+                              itemCount: 12,
+                              itemBuilder: (context, index) {
+                                return ListTile(
+                                  dense: true,
+                                  title: Text('model-$index'),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 Future<void> _tapModeSegment(WidgetTester tester, int index) async {
   final slider = find.byType(ChatModeSlider);
   final box = tester.renderObject<RenderBox>(slider);
   final topLeft = box.localToGlobal(Offset.zero);
-  final segmentWidth = box.size.width / 3;
+  final segmentWidth = box.size.width / 2;
   final tapOffset =
       topLeft + Offset(segmentWidth * (index + 0.5), box.size.height / 2);
   await tester.tapAt(tapOffset);
@@ -450,6 +579,36 @@ void main() {
 
     expect(find.text('layer:model'), findsOneWidget);
     expect(find.text('gpt-5.4'), findsOneWidget);
+  });
+
+  testWidgets('uses chat-left workspace-right surface order', (tester) async {
+    await tester.pumpWidget(const _SurfaceTransitionHarness());
+
+    await _tapModeSegment(tester, 1);
+    await _pumpSurfaceSwitch(tester);
+    expect(find.text('active:workspace'), findsOneWidget);
+
+    await _tapModeSegment(tester, 0);
+    await _pumpSurfaceSwitch(tester);
+    expect(find.text('active:normal'), findsOneWidget);
+  });
+
+  testWidgets('content swipe matches chat-left workspace-right order', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const _SurfaceTransitionHarness());
+
+    await _tapModeSegment(tester, 0);
+    await _pumpSurfaceSwitch(tester);
+    expect(find.text('active:normal'), findsOneWidget);
+
+    await tester.fling(find.byType(PageView), const Offset(-640, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.text('active:workspace'), findsOneWidget);
+
+    await tester.fling(find.byType(PageView), const Offset(640, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.text('active:normal'), findsOneWidget);
   });
 
   testWidgets('shows app update indicator next to companion button', (
@@ -563,6 +722,60 @@ void main() {
     expect(find.text('layer:model'), findsOneWidget);
   });
 
+  testWidgets('ignores floating panel drags for island layer switching', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const _FloatingPanelGestureExclusionHarness());
+
+    expect(find.text('layer:model'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey('floating-panel')),
+      const Offset(0, 64),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('layer:model'), findsOneWidget);
+
+    final background = find.byKey(const ValueKey('floating-background'));
+    await tester.dragFrom(
+      tester.getTopLeft(background) + const Offset(40, 40),
+      const Offset(0, 64),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('layer:tools'), findsOneWidget);
+  });
+
+  testWidgets('hides surface switcher when disabled', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: _SvgTestAssetBundle(),
+          child: Scaffold(
+            body: ChatAppBar(
+              onMenuTap: () {},
+              onCompanionTap: () {},
+              activeMode: ChatSurfaceMode.normal,
+              onModeChanged: (_) {},
+              activeModelId: 'gpt-5.4',
+              displayLayer: ChatIslandDisplayLayer.mode,
+              onDisplayLayerChanged: (_) {},
+              onTerminalEnvironmentTap: (_) {},
+              onTerminalTap: () {},
+              onBrowserTap: () {},
+              showMenuButton: false,
+              showSurfaceSwitcher: false,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(ChatModeSlider), findsNothing);
+    expect(find.text('gpt-5.4'), findsOneWidget);
+  });
+
   testWidgets(
     'reveals model only after normal surface settles and stays idle',
     (tester) async {
@@ -570,7 +783,7 @@ void main() {
 
       expect(find.text('active:openclaw'), findsOneWidget);
 
-      await _tapModeSegment(tester, 1);
+      await _tapModeSegment(tester, 0);
       await _pumpSurfaceSwitch(tester);
 
       expect(find.text('active:normal'), findsOneWidget);
@@ -617,7 +830,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const _SurfaceTransitionHarness());
 
-    await _tapModeSegment(tester, 1);
+    await _tapModeSegment(tester, 0);
     await _pumpSurfaceSwitch(tester);
     expect(find.text('active:normal'), findsOneWidget);
     expect(find.text('layer:mode'), findsOneWidget);

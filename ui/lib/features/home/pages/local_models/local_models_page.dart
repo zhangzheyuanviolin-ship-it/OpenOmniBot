@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ui/services/mnn_local_models_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -23,6 +24,21 @@ class LocalModelsPage extends StatefulWidget {
 class _LocalModelsPageState extends State<LocalModelsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+
+  bool get _isDarkTheme => context.isDarkTheme;
+  Color get _cardColor => context.omniPalette.surfacePrimary;
+  Color get _borderColor => context.omniPalette.borderSubtle;
+  Color get _primaryTextColor => context.omniPalette.textPrimary;
+  Color get _secondaryTextColor => context.omniPalette.textSecondary;
+  Color get _tertiaryTextColor => context.omniPalette.textTertiary;
+  Color get _tagSurfaceColor => context.omniPalette.surfaceSecondary;
+  List<BoxShadow> get _cardShadow => [
+    BoxShadow(
+      color: context.omniPalette.shadowColor,
+      blurRadius: _isDarkTheme ? 16 : 20,
+      offset: const Offset(0, 8),
+    ),
+  ];
 
   final TextEditingController _installedSearchController =
       TextEditingController();
@@ -509,7 +525,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       case 'failed':
         return const Color(0xFFB42318);
       default:
-        return AppColors.text70;
+        return _secondaryTextColor;
     }
   }
 
@@ -786,6 +802,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     final modelSizeText = _resolvedModelSizeText(model);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      color: _cardColor,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: _borderColor),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -796,9 +819,10 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 Expanded(
                   child: Text(
                     model.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
+                      color: _primaryTextColor,
                     ),
                   ),
                 ),
@@ -833,14 +857,14 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               const SizedBox(height: 8),
               Text(
                 '文件大小：$modelSizeText',
-                style: const TextStyle(fontSize: 12, color: AppColors.text50),
+                style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
               ),
             ],
             if (model.path.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
                 model.path,
-                style: const TextStyle(fontSize: 12, color: AppColors.text50),
+                style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
               ),
             ],
             const SizedBox(height: 12),
@@ -888,6 +912,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     final modelSizeText = _resolvedModelSizeText(model);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      color: _cardColor,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: _borderColor),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -898,19 +929,17 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 Expanded(
                   child: Text(
                     model.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
+                      color: _primaryTextColor,
                     ),
                   ),
                 ),
                 if (download != null)
                   Text(
                     _downloadStatusLabel(download),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.text50,
-                    ),
+                    style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
                   ),
               ],
             ),
@@ -918,7 +947,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               const SizedBox(height: 8),
               Text(
                 model.description,
-                style: const TextStyle(color: AppColors.text70, height: 1.5),
+                style: TextStyle(color: _secondaryTextColor, height: 1.5),
               ),
             ],
             const SizedBox(height: 8),
@@ -935,7 +964,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               const SizedBox(height: 8),
               Text(
                 '文件大小：$modelSizeText',
-                style: const TextStyle(fontSize: 12, color: AppColors.text50),
+                style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
               ),
             ],
             if (download != null && (isDownloading || isPaused))
@@ -948,10 +977,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                     const SizedBox(height: 8),
                     Text(
                       '${(download.progress * 100).toStringAsFixed(1)}% ${download.speedInfo}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.text50,
-                      ),
+                      style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
                     ),
                   ],
                 ),
@@ -1066,16 +1092,21 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFECEFF4)),
+        border: Border.all(color: _borderColor),
+        boxShadow: _cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: _primaryTextColor,
+            ),
           ),
           const SizedBox(height: 10),
           child,
@@ -1087,12 +1118,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F4F7),
+        color: _tagSurfaceColor,
         borderRadius: BorderRadius.circular(999),
+        border: _isDarkTheme ? Border.all(color: _borderColor) : null,
       ),
       child: Text(
         value,
-        style: const TextStyle(fontSize: 12, color: AppColors.text70),
+        style: TextStyle(fontSize: 12, color: _secondaryTextColor),
       ),
     );
   }
@@ -1104,22 +1136,26 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.offline_bolt_outlined,
               size: 44,
-              color: AppColors.text50,
+              color: _tertiaryTextColor,
             ),
             const SizedBox(height: 12),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: _primaryTextColor,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(height: 1.6, color: AppColors.text50),
+              style: TextStyle(height: 1.6, color: _tertiaryTextColor),
             ),
           ],
         ),

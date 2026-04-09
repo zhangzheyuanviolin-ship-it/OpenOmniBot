@@ -449,7 +449,7 @@ object OmniInferMnnModelsManager {
                         configPath = configFile.absolutePath,
                         downloadModelId = null,
                         source = "local",
-                        description = "鎵嬪姩鏀剧疆鐩綍妯″瀷",
+                        description = "手动放置目录模型",
                         vendor = "",
                         tags = listOf("MNN", "Manual"),
                         extraTags = emptyList(),
@@ -536,7 +536,7 @@ object OmniInferMnnModelsManager {
             if (item.tags.isNotEmpty()) {
                 add(item.tags.joinToString(separator = " / "))
             }
-        }.joinToString(separator = " 路 ")
+        }.joinToString(separator = " | ")
     }
 
     private fun ensureDownloadListenerRegistered(context: Context) {

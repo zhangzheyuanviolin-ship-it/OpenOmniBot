@@ -626,6 +626,38 @@ class ModelProviderConfigService {
     return result.replaceAll(RegExp(r'/+$'), '');
   }
 
+  static String? buildModelsRequestUrl(String value) {
+    return _buildRequestUrl(
+      value,
+      suffixAfterV1: '/models',
+      suffixWithVersion: '/v1/models',
+    );
+  }
+
+  static String? buildChatCompletionsRequestUrl(String value) {
+    return _buildRequestUrl(
+      value,
+      suffixAfterV1: '/chat/completions',
+      suffixWithVersion: '/v1/chat/completions',
+    );
+  }
+
+  static String? _buildRequestUrl(
+    String value, {
+    required String suffixAfterV1,
+    required String suffixWithVersion,
+  }) {
+    final normalizedBase = normalizeApiBase(value);
+    if (normalizedBase == null) {
+      return null;
+    }
+    final base = normalizedBase.replaceAll(RegExp(r'/+$'), '');
+    if (base.toLowerCase().endsWith('/v1')) {
+      return '$base$suffixAfterV1';
+    }
+    return '$base$suffixWithVersion';
+  }
+
   static bool isValidModelName(String value) {
     final normalized = value.trim();
     return normalized.isNotEmpty && !normalized.startsWith('scene.');

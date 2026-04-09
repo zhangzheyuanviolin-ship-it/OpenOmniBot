@@ -38,10 +38,10 @@ import 'package:ui/services/permission_registry.dart';
 import 'package:ui/services/permission_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
 import 'package:ui/services/shared_open_draft_service.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/services/storage_service.dart';
-import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
 
 // 导入 Mixins
@@ -94,7 +94,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _normalMessageScrollController = ScrollController();
   final ScrollController _openClawMessageScrollController = ScrollController();
-  final PageController _modePageController = PageController(initialPage: 1);
+  final PageController _modePageController = PageController(initialPage: 0);
   final FocusNode _inputFocusNode = FocusNode();
   final TextEditingController _vlmAnswerController = TextEditingController();
 
@@ -243,10 +243,15 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   static const String _openClawWaitingHint = '等待龙虾烹饪';
   static const String _openClawWaitingStatusKey = 'openclaw_waiting';
   static const String _openClawSessionKeyPrefix = 'openclaw';
+  static const String _hdPadLeftPaneWidthStorageKey =
+      'chat_hd_pad_left_pane_width';
+  static const String _hdPadRightPaneWidthStorageKey =
+      'chat_hd_pad_right_pane_width';
+  static const double _hdPadLandscapeMinShortestSide = 600;
+  static const double _hdPadLandscapeMinWidth = 960;
   static const Duration _normalSurfaceModelRevealDelay = Duration(
     milliseconds: 1700,
   );
-  int _workspaceSurfaceSeed = 0;
   bool _workspaceBrowserCanGoUp = false;
   Future<OmnibotWorkspacePaths>? _workspacePathsLoadFuture;
   bool _hasInitializedHalfScreen = false;
@@ -270,18 +275,18 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   String? _lastObservedBrowserSnapshotSignature;
   int? _pageGesturePointerId;
   double _pageVerticalDragDelta = 0;
-  static const double _newConversationPullThreshold = 156;
-  static const double _newConversationPullMaxDistance = 236;
-  static const double _newConversationPullActivationZoneHeight = 120;
-  bool _isNewConversationPullTracking = false;
-  double _newConversationPullDistance = 0;
-  bool _newConversationPullThresholdReached = false;
-  bool _newConversationPullHapticTriggered = false;
-  bool _isCreatingConversationFromPull = false;
   Timer? _normalSurfaceModelRevealTimer;
   bool _normalSurfaceModelRevealInterrupted = false;
   int _surfaceSwitchRequestId = 0;
   bool _isSurfacePageScrolling = false;
+  final HdPadPaneLayoutResolver _hdPadPaneLayoutResolver =
+      const HdPadPaneLayoutResolver();
+  double? _hdPadLeftPaneWidth;
+  double? _hdPadRightPaneWidth;
+  bool _hdPadLeftPaneCollapsed = false;
+  bool _isHdPadPaneDragging = false;
+  final GlobalKey<OmnibotWorkspaceBrowserState> _hdPadWorkspaceBrowserKey =
+      GlobalKey<OmnibotWorkspaceBrowserState>();
 
   ChatPageMode get _activeMode => _activeConversationMode;
   ConversationMode _conversationModeForPageMode(ChatPageMode mode) {
@@ -331,6 +336,73 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
+  double get _surfacePageProgress {
+    final fallback = _pageIndexForSurface(_activeSurfaceMode).toDouble();
+    if (!_modePageController.hasClients) {
+      return fallback;
+    }
+    final page = _modePageController.page;
+    if (page == null || !page.isFinite) {
+      return fallback;
+    }
+    return page.clamp(0.0, 1.0).toDouble();
+  }
+
+  double get _normalSurfaceVisibility =>
+      (1.0 - _surfacePageProgress).clamp(0.0, 1.0).toDouble();
+  bool _isHdPadLandscapeForMediaQuery(MediaQueryData mediaQuery) {
+    final size = mediaQuery.size;
+    final shortestSide = math.min(size.width, size.height);
+    return shortestSide >= _hdPadLandscapeMinShortestSide &&
+        size.width > size.height &&
+        size.width >= _hdPadLandscapeMinWidth;
+  }
+
+  void _loadHdPadPanePreferences() {
+    _hdPadLeftPaneWidth = StorageService.getDouble(
+      _hdPadLeftPaneWidthStorageKey,
+    );
+    _hdPadRightPaneWidth = StorageService.getDouble(
+      _hdPadRightPaneWidthStorageKey,
+    );
+  }
+
+  void _persistHdPadPanePreferences() {
+    final leftWidth = _hdPadLeftPaneWidth;
+    final rightWidth = _hdPadRightPaneWidth;
+    if (leftWidth != null) {
+      unawaited(
+        StorageService.setDouble(_hdPadLeftPaneWidthStorageKey, leftWidth),
+      );
+    }
+    if (rightWidth != null) {
+      unawaited(
+        StorageService.setDouble(_hdPadRightPaneWidthStorageKey, rightWidth),
+      );
+    }
+  }
+
+  void _handleEmbeddedDrawerThreadTargetSelected(
+    ConversationThreadTarget target,
+  ) {
+    _dismissChatInputFocus();
+    unawaited(_applyConversationThreadTarget(target));
+  }
+
+  void _toggleHdPadLeftPaneCollapsed() {
+    _dismissChatInputFocus();
+    setState(() {
+      _hdPadLeftPaneCollapsed = !_hdPadLeftPaneCollapsed;
+    });
+  }
+
+  void _dismissChatInputFocus() {
+    if (_inputFocusNode.hasFocus) {
+      _inputFocusNode.unfocus();
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   ConversationThreadTarget get _threadTargetForMode {
     final conversationMode = _conversationModeForPageMode(_activeMode);
     final conversationId = _currentConversationIdByMode[_activeMode];
@@ -946,6 +1018,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     if (!_isWorkspaceSurface && pageMode == _activeConversationMode) {
       unawaited(_persistVisibleThreadTargetIfNeeded());
     }
+    // Reload the embedded drawer's conversation list so newly persisted
+    // conversations appear immediately, matching phone-mode behaviour where
+    // the drawer reloads every time it is opened.
+    _drawerKey.currentState?.reloadConversations();
   }
 
   @override
@@ -1268,8 +1344,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   _ActiveModelMentionToken? _parseActiveModelMentionToken(
     TextEditingValue value,
   );
-
-  ModelProviderProfileSummary? _findProviderProfile(String profileId);
 
   Future<void> _openConversationModelSelector(BuildContext anchorContext);
 

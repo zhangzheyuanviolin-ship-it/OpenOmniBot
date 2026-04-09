@@ -100,6 +100,9 @@ String resolveAgentToolPreview(Map<String, dynamic> cardData) {
 String resolveAgentToolStatusLabel(Map<String, dynamic> cardData) {
   final status = (cardData['status'] ?? 'running').toString();
   final toolType = (cardData['toolType'] ?? 'builtin').toString();
+  if (status == 'timeout') {
+    return '超时';
+  }
   if (status == 'interrupted') {
     return '中断';
   }

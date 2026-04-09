@@ -5,9 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
+import 'package:ui/widgets/theme_mode_setting_card.dart';
 
 class _AppearanceTextColorPreset {
   final String label;
@@ -307,8 +310,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   ) async {
     final importedPath = _sessionImportedLocalPath;
     final validationError = await _validateConfig(snapshot);
-    if (validationError != null ||
-        _sameConfig(_savedConfig, snapshot)) {
+    if (validationError != null || _sameConfig(_savedConfig, snapshot)) {
       if (validationError == null) {
         await _cleanupUnsavedImportedImageIfNeeded(
           importedPath: importedPath,
@@ -430,8 +432,9 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: palette.pageBackground,
       appBar: const CommonAppBar(title: '外观设置', primary: true),
       body: SafeArea(
         top: false,
@@ -446,15 +449,20 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
                   _autoSaveHint,
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.text.withValues(alpha: 0.65),
+                    color: palette.textSecondary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
+              const ThemeModeSettingCard(),
+              const SizedBox(height: 18),
+              const SettingsSectionTitle(label: '背景来源'),
               _buildSourceCard(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+              const SettingsSectionTitle(label: '效果预览'),
               _buildPreviewCard(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+              const SettingsSectionTitle(label: '效果调整'),
               _buildAdjustCard(),
             ],
           ),
@@ -468,35 +476,20 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text(
-                '效果预览',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.text,
-                ),
-              ),
-              const Spacer(),
-              Wrap(
-                spacing: 8,
-                children: BackgroundPreviewKind.values.map((kind) {
-                  final selected = _previewKind == kind;
-                  final label = kind == BackgroundPreviewKind.chat
-                      ? '聊天预览'
-                      : 'Workspace 预览';
-                  return ChoiceChip(
-                    key: ValueKey('background-preview-kind-${kind.name}'),
-                    label: Text(label),
-                    selected: selected,
-                    onSelected: (_) {
-                      setState(() => _previewKind = kind);
-                    },
-                  );
-                }).toList(),
-              ),
-            ],
+          Wrap(
+            spacing: 8,
+            children: BackgroundPreviewKind.values.map((kind) {
+              final selected = _previewKind == kind;
+              final label = kind == BackgroundPreviewKind.chat ? '聊天' : '工作区';
+              return ChoiceChip(
+                key: ValueKey('background-preview-kind-${kind.name}'),
+                label: Text(label),
+                selected: selected,
+                onSelected: (_) {
+                  setState(() => _previewKind = kind);
+                },
+              );
+            }).toList(),
           ),
           const SizedBox(height: 12),
           AppBackgroundPreview(
@@ -520,6 +513,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   }
 
   Widget _buildSourceCard() {
+    final palette = context.omniPalette;
     final localPath = _draftConfig.localImagePath.trim();
     final sourceType = _draftConfig.sourceType;
     return _buildCard(
@@ -528,17 +522,17 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
         children: [
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text(
+            title: Text(
               '启用背景图',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppColors.text,
+                color: palette.textPrimary,
               ),
             ),
-            subtitle: const Text(
+            subtitle: Text(
               '同时作用于聊天页和 Workspace 页面，并自动保存',
-              style: TextStyle(fontSize: 12, color: AppColors.text70),
+              style: TextStyle(fontSize: 12, color: palette.textSecondary),
             ),
             value: _draftConfig.enabled,
             onChanged: (value) {
@@ -572,7 +566,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
               localPath.isEmpty ? '尚未选择本地图片' : localPath,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: AppColors.text70),
+              style: TextStyle(fontSize: 12, color: palette.textSecondary),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
@@ -601,19 +595,11 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   }
 
   Widget _buildAdjustCard() {
+    final palette = context.omniPalette;
     return _buildCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '效果调整',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppColors.text,
-            ),
-          ),
-          const SizedBox(height: 8),
           _buildSliderRow(
             label: '背景柔化',
             subtitle: '调节图片上方蒙版的柔化程度',
@@ -660,10 +646,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
           const SizedBox(height: 6),
           Text(
             '图片可直接在上方预览里拖动和双指缩放，预览会尽量贴近实际效果。',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.text.withValues(alpha: 0.6),
-            ),
+            style: TextStyle(fontSize: 12, color: palette.textSecondary),
           ),
         ],
       ),
@@ -679,6 +662,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
     required ValueChanged<double> onChanged,
     String Function(double value)? valueFormatter,
   }) {
+    final palette = context.omniPalette;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Column(
@@ -688,23 +672,23 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.text,
+                  color: palette.textPrimary,
                 ),
               ),
               const Spacer(),
               Text(
                 valueFormatter?.call(value) ?? value.toStringAsFixed(2),
-                style: const TextStyle(fontSize: 12, color: AppColors.text70),
+                style: TextStyle(fontSize: 12, color: palette.textSecondary),
               ),
             ],
           ),
           const SizedBox(height: 2),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 12, color: AppColors.text70),
+            style: TextStyle(fontSize: 12, color: palette.textSecondary),
           ),
           Slider(value: value, min: min, max: max, onChanged: onChanged),
         ],
@@ -713,24 +697,25 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   }
 
   Widget _buildTextColorSection() {
+    final palette = context.omniPalette;
     final selectedHex = normalizeAppBackgroundHexColor(
       _draftConfig.chatTextHexColor,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           '聊天文本颜色',
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: AppColors.text,
+            color: palette.textPrimary,
           ),
         ),
         const SizedBox(height: 2),
-        const Text(
+        Text(
           '默认会自动跟随背景明暗，也可以改成固定颜色',
-          style: TextStyle(fontSize: 12, color: AppColors.text70),
+          style: TextStyle(fontSize: 12, color: palette.textSecondary),
         ),
         const SizedBox(height: 10),
         Wrap(
@@ -779,8 +764,10 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: selected
-                          ? AppColors.primaryBlue
-                          : const Color(0xFFD9E2EF),
+                          ? (context.isDarkTheme
+                                ? palette.accentPrimary
+                                : AppColors.primaryBlue)
+                          : palette.borderStrong,
                       width: selected ? 3 : 1.5,
                     ),
                     boxShadow: [
@@ -812,16 +799,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   }
 
   Widget _buildCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE8ECF3)),
-      ),
-      child: child,
-    );
+    return SizedBox(width: double.infinity, child: child);
   }
 
   void _scheduleDraftVisualProfileRefresh() {

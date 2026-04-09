@@ -374,7 +374,7 @@ object AgentToolDefinitions {
             put("toolType", "browser")
             put(
                 "description",
-                "控制一个最多 3 个标签页的离屏浏览器。不要用它打开 App deep link、omnibot:// 非 browser 资源或应用内路由。浏览器只支持访问 http(s) 页面，以及 omnibot://browser/... 资源文件。使用 navigate 打开页面，screenshot 查看当前视口截图，click/type/hover 与元素交互，get_text/get_readable 抽取内容，scroll 导航长页面，scroll_and_collect 在一次调用中滚动并收集无限列表内容，find_elements 发现可交互元素，get_page_info 获取页面元信息，get_backbone 获取 DOM 骨架，execute_js 执行脚本，fetch 复用当前页面 session 下载资源并返回 omnibot://browser/... 产物，new_tab/close_tab/list_tabs 管理标签页，get_cookies 返回 cookie 摘要与可复用的 offload env 脚本路径，set_user_agent 切换 desktop_safari 或 mobile_safari。tool_title 必须是 5-10 个字的简洁摘要，并使用与用户相同的语言。"
+                "控制一个最多 3 个标签页的离屏浏览器。不要用它打开 App deep link、omnibot:// 非 browser 资源或应用内路由。浏览器只支持访问 http(s) 页面，以及 omnibot://browser/... 资源文件。使用 navigate 打开页面，screenshot 查看当前视口截图（传 read_image=true 可让模型直接看到截图内容），click/type/hover 与元素交互，get_text/get_readable 抽取内容，scroll 导航长页面，scroll_and_collect 在一次调用中滚动并收集无限列表内容，find_elements 发现可交互元素，get_page_info 获取页面元信息，get_backbone 获取 DOM 骨架，execute_js 执行脚本，fetch 复用当前页面 session 下载资源并返回 omnibot://browser/... 产物，new_tab/close_tab/list_tabs 管理标签页，go_back/go_forward 浏览器前进后退，press_key 模拟键盘按键，wait_for_selector 等待元素出现，get_cookies 返回 cookie 摘要与可复用的 offload env 脚本路径，set_user_agent 切换 desktop_safari 或 mobile_safari。tool_title 必须是 5-10 个字的简洁摘要，并使用与用户相同的语言。"
             )
             putJsonObject("parameters") {
                 put("type", "object")
@@ -406,6 +406,10 @@ object AgentToolDefinitions {
                             add("list_tabs")
                             add("get_cookies")
                             add("scroll_and_collect")
+                            add("go_back")
+                            add("go_forward")
+                            add("press_key")
+                            add("wait_for_selector")
                         }
                     }
                     putJsonObject("url") {
@@ -477,6 +481,18 @@ object AgentToolDefinitions {
                     putJsonObject("fuzzy") {
                         put("type", "boolean")
                         put("description", "get_cookies 的关键词匹配模式，默认 true。")
+                    }
+                    putJsonObject("read_image") {
+                        put("type", "boolean")
+                        put("description", "仅 screenshot 时生效。设为 true 时，截图会以 base64 图片嵌入工具结果，供模型直接分析页面内容。默认 false。")
+                    }
+                    putJsonObject("key") {
+                        put("type", "string")
+                        put("description", "press_key 动作要模拟的按键名，例如 Enter、Escape、Tab、ArrowDown。")
+                    }
+                    putJsonObject("timeout_ms") {
+                        put("type", "integer")
+                        put("description", "wait_for_selector 的超时毫秒数，默认 5000，范围 500-30000。")
                     }
                 }
                 putJsonArray("required") {
@@ -1134,6 +1150,58 @@ object AgentToolDefinitions {
         }
     }
 
+    val musicPlaybackControlTool: JsonObject = buildJsonObject {
+        put("type", "function")
+        putJsonObject("function") {
+            put("name", "music_playback_control")
+            put("displayName", "音乐播放控制")
+            put("toolType", "music")
+            put(
+                "description",
+                "控制安卓系统级音乐播放。action=play 且提供 source 时，会由应用前台媒体会话播放本地文件、omnibot workspace/public 文件、file/content Uri 或 http(s) 直链音频；play 不提供 source 时，退化为向系统当前播放器发送播放媒体键。pause/resume/stop/next/previous 会优先控制当前由本应用托管的音频播放，若没有本地会话则退化为发送系统媒体键；seek 和 status 仅针对本应用托管的播放会话。"
+            )
+            put("postToolRule", "执行后等待工具结果，再决定是否继续调整播放。")
+            putJsonObject("parameters") {
+                put("type", "object")
+                putJsonObject("properties") {
+                    putJsonObject("action") {
+                        put("type", "string")
+                        put("description", "要执行的播放控制动作。")
+                        putJsonArray("enum") {
+                            add("play")
+                            add("pause")
+                            add("resume")
+                            add("stop")
+                            add("seek")
+                            add("status")
+                            add("next")
+                            add("previous")
+                        }
+                    }
+                    putJsonObject("source") {
+                        put("type", "string")
+                        put("description", "仅 play 时可选。支持 omnibot://、/workspace、/storage、相对 workspace 路径、file://、content://、http(s) 直链。留空表示只向系统发送播放媒体键。")
+                    }
+                    putJsonObject("title") {
+                        put("type", "string")
+                        put("description", "仅 play 时可选，前台通知与系统媒体会话里显示的标题。")
+                    }
+                    putJsonObject("loop") {
+                        put("type", "boolean")
+                        put("description", "仅 play 时可选，是否循环播放。默认 false。")
+                    }
+                    putJsonObject("positionSeconds") {
+                        put("type", "integer")
+                        put("description", "仅 seek 时使用，目标播放秒数。")
+                    }
+                }
+                putJsonArray("required") {
+                    add("action")
+                }
+            }
+        }
+    }
+
     val memorySearchTool: JsonObject = buildJsonObject {
         put("type", "function")
         putJsonObject("function") {
@@ -1303,6 +1371,10 @@ object AgentToolDefinitions {
         calendarEventDeleteTool
     ).map(::decorateToolDefinition)
 
+    val musicTools: List<JsonObject> = listOf(
+        musicPlaybackControlTool
+    ).map(::decorateToolDefinition)
+
     val memoryTools: List<JsonObject> = listOf(
         memorySearchTool,
         memoryWriteDailyTool,
@@ -1314,5 +1386,5 @@ object AgentToolDefinitions {
         subagentDispatchTool
     ).map(::decorateToolDefinition)
 
-    fun staticTools(): List<JsonObject> = builtinTools + scheduleTools + alarmTools + calendarTools
+    fun staticTools(): List<JsonObject> = builtinTools + scheduleTools + alarmTools + calendarTools + musicTools
 }

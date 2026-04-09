@@ -61,11 +61,15 @@ void main() {
       '/storage/Music/demo.mp3',
     );
     expect(
-      OmnibotResourceService.shellPathForAndroidPath('/sdcard/Download/demo.txt'),
+      OmnibotResourceService.shellPathForAndroidPath(
+        '/sdcard/Download/demo.txt',
+      ),
       '/sdcard/Download/demo.txt',
     );
     expect(
-      OmnibotResourceService.androidPathForShellPath('/sdcard/Download/demo.txt'),
+      OmnibotResourceService.androidPathForShellPath(
+        '/sdcard/Download/demo.txt',
+      ),
       '/sdcard/Download/demo.txt',
     );
   });
@@ -82,6 +86,9 @@ void main() {
     );
     final document = OmnibotResourceService.describePath(
       '/data/user/0/cn.com.omnimind.bot/workspace/docs/spec.pdf',
+    );
+    final html = OmnibotResourceService.describePath(
+      '/data/user/0/cn.com.omnimind.bot/workspace/docs/report.html',
     );
 
     expect(audio.shellPath, '/workspace/audio/demo.mp3');
@@ -102,8 +109,13 @@ void main() {
     expect(office.inlineRenderable, isTrue);
 
     expect(document.shellPath, '/workspace/docs/spec.pdf');
-    expect(document.embedKind, 'link');
-    expect(document.inlineRenderable, isFalse);
+    expect(document.embedKind, 'pdf');
+    expect(document.inlineRenderable, isTrue);
+
+    expect(html.shellPath, '/workspace/docs/report.html');
+    expect(html.previewKind, 'html');
+    expect(html.embedKind, 'html');
+    expect(html.inlineRenderable, isTrue);
   });
 
   test(

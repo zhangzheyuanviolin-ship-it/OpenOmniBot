@@ -61,6 +61,7 @@ import cn.com.omnimind.bot.agent.ToolExecutionResult
 import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
+import cn.com.omnimind.bot.agent.resolveToolExecutionStatus
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
@@ -617,7 +618,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 previewJson = result.previewJson
                 rawResultJson = result.rawResultJson
                 success = result.success
-                status = if (result.success) "success" else "error"
+                status = resolveToolExecutionStatus(result)
             }
             is ToolExecutionResult.ContextResult -> {
                 summary = result.summaryText
@@ -652,6 +653,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         )
         extractToolTitle(argsJson)?.let { payload["toolTitle"] = it }
         if (result is ToolExecutionResult.TerminalResult) {
+            payload["timedOut"] = result.timedOut
             payload["terminalOutput"] = result.terminalOutput
             payload["terminalSessionId"] = result.terminalSessionId
             payload["terminalStreamState"] = result.terminalStreamState

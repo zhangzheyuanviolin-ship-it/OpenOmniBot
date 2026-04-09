@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.agent
 
 import android.content.Context
+import android.net.Uri
 import android.provider.Settings
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.RemoteMcpClient
@@ -72,6 +73,7 @@ class AgentToolRouter(
     private val tag = "AgentToolRouter"
     private val alarmToolService = AgentAlarmToolService(context)
     private val calendarToolService = AgentCalendarToolService(context)
+    private val musicToolService = AgentMusicToolService(context, workspaceManager)
     private val skillIndexService = SkillIndexService(context, workspaceManager)
     private val skillLoader = SkillLoader(workspaceManager)
     private val terminalSessionRegistry = EmbeddedTerminalSessionRegistry(context)
@@ -253,6 +255,11 @@ class AgentToolRouter(
                 args = args,
                 callback = callback
             )
+            "music_playback_control" -> executeMusicTool(
+                args = args,
+                workspace = env.workspaceDescriptor,
+                callback = callback
+            )
 
             "memory_search",
             "memory_write_daily",
@@ -366,6 +373,7 @@ class AgentToolRouter(
                 previewJson = encoded,
                 rawResultJson = encoded,
                 success = true,
+                imageDataUrl = outcome.imageDataUrl,
                 artifacts = outcome.artifacts,
                 workspaceId = env.workspaceDescriptor.id,
                 actions = outcome.actions
@@ -610,6 +618,7 @@ class AgentToolRouter(
                     )
                 ),
                 success = false,
+                timedOut = false,
                 terminalOutput = e.message ?: "终端命令执行失败",
                 terminalStreamState = "error",
                 workspaceId = workspace.id
@@ -658,6 +667,7 @@ class AgentToolRouter(
                 previewJson = json.encodeToString(mapToJsonElement(payload)),
                 rawResultJson = json.encodeToString(mapToJsonElement(payload)),
                 success = true,
+                timedOut = false,
                 terminalOutput = "",
                 terminalSessionId = sessionId,
                 terminalStreamState = "ready",
@@ -703,7 +713,16 @@ class AgentToolRouter(
             val shellWorkingDirectory = parsedArgs.workingDirectory?.let {
                 resolveShellWorkingDirectory(it, workspace)
             }
-            reportToolProgress(callback, toolName, "正在向终端会话发送命令")
+            reportToolProgress(
+                callback,
+                toolName,
+                "正在向终端会话发送命令",
+                mapOf(
+                    "summary" to "正在向终端会话发送命令",
+                    "terminalSessionId" to sessionId,
+                    "terminalStreamState" to "starting"
+                )
+            )
             val result = EmbeddedTerminalRuntime.executeSessionCommand(
                 context = context,
                 sessionId = sessionId,
@@ -711,6 +730,20 @@ class AgentToolRouter(
                 workingDirectory = shellWorkingDirectory,
                 timeoutSeconds = parsedArgs.timeoutSeconds,
                 environment = terminalEnvironment,
+                onLiveUpdate = { update ->
+                    val summary = update.summary.ifBlank { "终端输出更新中" }
+                    reportToolProgress(
+                        callback,
+                        toolName,
+                        summary,
+                        mapOf<String, Any?>(
+                            "summary" to summary,
+                            "terminalSessionId" to update.sessionId,
+                            "terminalOutputDelta" to update.outputDelta,
+                            "terminalStreamState" to update.streamState
+                        )
+                    )
+                }
             )
             val terminalStreamState = when {
                 !result.completed -> "running"
@@ -725,6 +758,7 @@ class AgentToolRouter(
                 "command" to parsedArgs.command,
                 "exitCode" to result.exitCode,
                 "completed" to result.completed,
+                "timedOut" to result.timedOut,
                 "logPath" to logArtifact.workspacePath,
                 "androidLogPath" to logArtifact.androidPath,
                 "logUri" to logArtifact.uri,
@@ -749,6 +783,7 @@ class AgentToolRouter(
                 previewJson = json.encodeToString(mapToJsonElement(rawResult)),
                 rawResultJson = json.encodeToString(mapToJsonElement(rawResult)),
                 success = result.completed && result.success && result.errorMessage == null,
+                timedOut = result.timedOut,
                 terminalOutput = if (result.completed) result.output else result.transcript,
                 terminalSessionId = sessionId,
                 terminalStreamState = terminalStreamState,
@@ -802,6 +837,7 @@ class AgentToolRouter(
                 previewJson = json.encodeToString(mapToJsonElement(payload)),
                 rawResultJson = json.encodeToString(mapToJsonElement(payload)),
                 success = true,
+                timedOut = false,
                 terminalOutput = content,
                 terminalSessionId = sessionId,
                 terminalStreamState = if (readResult.commandRunning) "running" else "completed",
@@ -846,6 +882,7 @@ class AgentToolRouter(
                 previewJson = json.encodeToString(mapToJsonElement(payload)),
                 rawResultJson = json.encodeToString(mapToJsonElement(payload)),
                 success = result,
+                timedOut = false,
                 terminalOutput = if (result) "session_stopped:$sessionId" else "session_not_found:$sessionId",
                 terminalSessionId = sessionId,
                 terminalStreamState = if (result) "stopped" else "error",
@@ -1781,6 +1818,109 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             ToolExecutionResult.Error(toolName, e.message ?: "Calendar tool failed")
+        }
+    }
+
+    private suspend fun executeMusicTool(
+        args: JsonObject,
+        workspace: AgentWorkspaceDescriptor,
+        callback: AgentCallback
+    ): ToolExecutionResult {
+        val toolName = "music_playback_control"
+        return try {
+            val action = args["action"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase().orEmpty()
+            val source = args["source"]?.jsonPrimitive?.contentOrNull?.trim()
+            val title = args["title"]?.jsonPrimitive?.contentOrNull?.trim()
+            val loop = args["loop"]?.jsonPrimitive?.contentOrNull
+                ?.toBooleanStrictOrNull() ?: false
+            val positionSeconds = args["positionSeconds"]?.jsonPrimitive?.intOrNull
+
+            if (action.isBlank()) {
+                throw IllegalArgumentException("action 不能为空")
+            }
+
+            if (!source.isNullOrBlank()) {
+                val needsWorkspaceResolution = source.startsWith("omnibot://", ignoreCase = true) ||
+                    source.startsWith(AgentWorkspaceManager.SHELL_ROOT_PATH) ||
+                    source.startsWith("/") ||
+                    !source.contains("://")
+                if (needsWorkspaceResolution) {
+                    requireWorkspaceStorageAccess(callback)?.let { return it }
+                }
+
+                val publicCandidates = buildList {
+                    add(source)
+                    if (source.startsWith("file://", ignoreCase = true)) {
+                        Uri.parse(source).path?.let { add(it) }
+                    }
+                }
+                requirePublicStorageAccessIfNeeded(
+                    callback,
+                    *publicCandidates.toTypedArray()
+                )?.let { return it }
+            }
+
+            reportToolProgress(
+                callback,
+                toolName,
+                when (action) {
+                    "play" -> if (source.isNullOrBlank()) {
+                        "正在发送系统播放命令"
+                    } else {
+                        "正在准备播放音频"
+                    }
+
+                    "pause" -> "正在暂停播放"
+                    "resume" -> "正在恢复播放"
+                    "stop" -> "正在停止播放"
+                    "seek" -> "正在调整播放进度"
+                    "status" -> "正在读取播放状态"
+                    "next" -> "正在切换到下一首"
+                    "previous" -> "正在切换到上一首"
+                    else -> "正在执行音乐播放控制"
+                }
+            )
+
+            val payload = when (action) {
+                "play" -> musicToolService.play(
+                    AgentMusicPlayRequest(
+                        source = source,
+                        title = title,
+                        loop = loop
+                    ),
+                    workspace
+                )
+
+                "pause" -> musicToolService.pause()
+                "resume" -> musicToolService.resume()
+                "stop" -> musicToolService.stop()
+                "seek" -> {
+                    if (positionSeconds == null) {
+                        throw IllegalArgumentException("seek 动作需要提供 positionSeconds")
+                    }
+                    musicToolService.seek(positionSeconds)
+                }
+
+                "status" -> musicToolService.status()
+                "next" -> musicToolService.next()
+                "previous" -> musicToolService.previous()
+                else -> throw IllegalArgumentException("不支持的 action：$action")
+            }
+
+            val payloadJson = json.encodeToString(mapToJsonElement(payload))
+            ToolExecutionResult.ContextResult(
+                toolName = toolName,
+                summaryText = payload["summary"]?.toString().orEmpty().ifBlank {
+                    "音乐播放控制已执行"
+                },
+                previewJson = payloadJson,
+                rawResultJson = payloadJson,
+                success = payload["success"] != false
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ToolExecutionResult.Error(toolName, e.message ?: "Music tool failed")
         }
     }
 
@@ -2749,6 +2889,7 @@ class AgentToolRouter(
             previewJson = json.encodeToString(mapToJsonElement(previewMap)),
             rawResultJson = json.encodeToString(mapToJsonElement(rawResultMap)),
             success = result.success,
+            timedOut = result.timedOut,
             terminalOutput = result.terminalOutput,
             terminalSessionId = result.liveSessionId,
             terminalStreamState = result.liveStreamState,

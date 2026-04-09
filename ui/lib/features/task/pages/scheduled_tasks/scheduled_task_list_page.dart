@@ -9,6 +9,7 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/scheduled_task_scheduler_service.dart';
 import 'package:ui/services/scheduled_task_storage_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -175,21 +176,34 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   Future<void> _deleteScheduledTask(ScheduledTask task) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除定时任务'),
-        content: Text('确定要删除"${task.title}"的定时任务吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+      builder: (context) {
+        final palette = context.omniPalette;
+        return AlertDialog(
+          backgroundColor: context.isDarkTheme ? palette.surfacePrimary : null,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: context.isDarkTheme
+                ? BorderSide(color: palette.borderSubtle)
+                : BorderSide.none,
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.alertRed),
-            child: const Text('删除'),
+          title: Text('删除定时任务', style: TextStyle(color: palette.textPrimary)),
+          content: Text(
+            '确定要删除"${task.title}"的定时任务吗？',
+            style: TextStyle(color: palette.textSecondary),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('取消', style: TextStyle(color: palette.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: AppColors.alertRed),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed == true) {
@@ -202,9 +216,14 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
           SnackBar(
             content: const Text('定时任务已删除'),
             behavior: SnackBarBehavior.floating,
-            backgroundColor: AppColors.text.withOpacity(0.8),
+            backgroundColor: context.isDarkTheme
+                ? context.omniPalette.surfaceElevated
+                : AppColors.text.withValues(alpha: 0.8),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
+              side: context.isDarkTheme
+                  ? BorderSide(color: context.omniPalette.borderSubtle)
+                  : BorderSide.none,
             ),
             margin: const EdgeInsets.all(16),
             duration: const Duration(seconds: 2),
@@ -217,21 +236,34 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   Future<void> _deleteExactAlarm(_AgentExactAlarmItem alarm) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除闹钟'),
-        content: Text('确定要删除"${alarm.title}"吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+      builder: (context) {
+        final palette = context.omniPalette;
+        return AlertDialog(
+          backgroundColor: context.isDarkTheme ? palette.surfacePrimary : null,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: context.isDarkTheme
+                ? BorderSide(color: palette.borderSubtle)
+                : BorderSide.none,
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.alertRed),
-            child: const Text('删除'),
+          title: Text('删除闹钟', style: TextStyle(color: palette.textPrimary)),
+          content: Text(
+            '确定要删除"${alarm.title}"吗？',
+            style: TextStyle(color: palette.textSecondary),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('取消', style: TextStyle(color: palette.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: AppColors.alertRed),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed != true) return;
@@ -251,6 +283,7 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   }
 
   void _showSuccessOverlay(ScheduledTask task) {
+    final rootContext = context;
     final overlay = Overlay.of(context);
     late OverlayEntry overlayEntry;
 
@@ -277,27 +310,42 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: rootContext.isDarkTheme
+                    ? rootContext.omniPalette.surfacePrimary
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                border: rootContext.isDarkTheme
+                    ? Border.all(color: rootContext.omniPalette.borderSubtle)
+                    : null,
+                boxShadow: rootContext.isDarkTheme
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
               ),
               child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryBlue.withOpacity(0.1),
+                      color: rootContext.isDarkTheme
+                          ? Color.lerp(
+                              rootContext.omniPalette.surfaceSecondary,
+                              rootContext.omniPalette.accentPrimary,
+                              0.14,
+                            )!
+                          : AppColors.primaryBlue.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.alarm_on,
-                      color: AppColors.primaryBlue,
+                      color: rootContext.isDarkTheme
+                          ? rootContext.omniPalette.accentPrimary
+                          : AppColors.primaryBlue,
                       size: 20,
                     ),
                   ),
@@ -307,20 +355,24 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
+                        Text(
                           '定时任务已更新',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.text,
+                            color: rootContext.isDarkTheme
+                                ? rootContext.omniPalette.textPrimary
+                                : AppColors.text,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           '将在 ${task.getDisplayTimeText()} 执行',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: AppColors.text70,
+                            color: rootContext.isDarkTheme
+                                ? rootContext.omniPalette.textSecondary
+                                : AppColors.text70,
                           ),
                         ),
                       ],
@@ -369,8 +421,11 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: const CommonAppBar(title: '定时', primary: true),
       body: Column(
         children: [
@@ -397,6 +452,7 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   }
 
   Widget _buildTabSwitcher() {
+    final palette = context.omniPalette;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Builder(
@@ -406,60 +462,86 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
             _tabSwitcherDragDelta += details.delta.dx;
           },
           onHorizontalDragEnd: (details) {
-            _handleTabSwitcherDragEnd(
-              velocity: details.primaryVelocity ?? 0,
-            );
+            _handleTabSwitcherDragEnd(velocity: details.primaryVelocity ?? 0);
           },
           onTapUp: (details) {
             final box = sliderContext.findRenderObject() as RenderBox?;
             if (box == null || !box.hasSize) return;
             final local = box.globalToLocal(details.globalPosition);
-            _switchTab(local.dx >= box.size.width / 2 ? _alarmTab : _scheduleTab);
+            _switchTab(
+              local.dx >= box.size.width / 2 ? _alarmTab : _scheduleTab,
+            );
           },
           child: Container(
             height: 40,
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.isDarkTheme ? palette.segmentTrack : Colors.white,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: AppColors.text10),
+              border: Border.all(
+                color: context.isDarkTheme
+                    ? palette.borderSubtle
+                    : AppColors.text10,
+              ),
             ),
             child: Stack(
               children: [
                 AnimatedAlign(
-              duration: const Duration(milliseconds: 280),
-              curve: Curves.easeOutCubic,
-              alignment: _currentTab == _scheduleTab
-                  ? Alignment.centerLeft
-                  : Alignment.centerRight,
-              child: FractionallySizedBox(
-                widthFactor: 0.5,
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 1),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x1F1930D9),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                  alignment: _currentTab == _scheduleTab
+                      ? Alignment.centerLeft
+                      : Alignment.centerRight,
+                  child: FractionallySizedBox(
+                    widthFactor: 0.5,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 1),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        gradient: context.isDarkTheme
+                            ? LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color.lerp(
+                                    palette.surfaceElevated,
+                                    palette.accentPrimary,
+                                    0.18,
+                                  )!,
+                                  Color.lerp(
+                                    palette.surfaceSecondary,
+                                    palette.accentPrimary,
+                                    0.30,
+                                  )!,
+                                ],
+                              )
+                            : const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                              ),
+                        boxShadow: context.isDarkTheme
+                            ? null
+                            : const [
+                                BoxShadow(
+                                  color: Color(0x1F1930D9),
+                                  blurRadius: 10,
+                                  offset: Offset(0, 4),
+                                ),
+                              ],
+                        border: context.isDarkTheme
+                            ? Border.all(color: palette.borderSubtle)
+                            : null,
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
                 Row(
-              children: [
-                _buildTabButton(label: '定时任务', tabIndex: _scheduleTab),
-                _buildTabButton(label: '闹钟列表', tabIndex: _alarmTab),
-              ],
-            ),
+                  children: [
+                    _buildTabButton(label: '定时任务', tabIndex: _scheduleTab),
+                    _buildTabButton(label: '闹钟列表', tabIndex: _alarmTab),
+                  ],
+                ),
               ],
             ),
           ),
@@ -470,6 +552,7 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
 
   Widget _buildTabButton({required String label, required int tabIndex}) {
     final selected = _currentTab == tabIndex;
+    final palette = context.omniPalette;
 
     return Expanded(
       child: Center(
@@ -481,7 +564,11 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
             style: TextStyle(
-              color: selected ? Colors.white : AppColors.text70,
+              color: selected
+                  ? (context.isDarkTheme ? palette.textPrimary : Colors.white)
+                  : (context.isDarkTheme
+                        ? palette.textSecondary
+                        : AppColors.text70),
               fontSize: 14,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
             ),
@@ -518,6 +605,7 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   }
 
   Widget _buildScheduledEmptyState() {
+    final palette = context.omniPalette;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -526,17 +614,30 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
             'assets/common/schedule_icon.svg',
             width: 64,
             height: 64,
-            colorFilter: ColorFilter.mode(AppColors.text50, BlendMode.srcIn),
+            colorFilter: ColorFilter.mode(
+              context.isDarkTheme ? palette.borderStrong : AppColors.text50,
+              BlendMode.srcIn,
+            ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             '暂无定时任务',
-            style: TextStyle(fontSize: 16, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 16,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             '在任务记录中点击闹钟图标添加',
-            style: TextStyle(fontSize: 14, color: AppColors.text50),
+            style: TextStyle(
+              fontSize: 14,
+              color: context.isDarkTheme
+                  ? palette.textTertiary
+                  : AppColors.text50,
+            ),
           ),
         ],
       ),
@@ -544,20 +645,37 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   }
 
   Widget _buildAlarmEmptyState() {
+    final palette = context.omniPalette;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.alarm_outlined, size: 64, color: AppColors.text50),
+          Icon(
+            Icons.alarm_outlined,
+            size: 64,
+            color: context.isDarkTheme
+                ? palette.borderStrong
+                : AppColors.text50,
+          ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             '暂无应用内闹钟',
-            style: TextStyle(fontSize: 16, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 16,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             '通过统一 Agent 创建 exact_alarm 后会显示在这里',
-            style: TextStyle(fontSize: 14, color: AppColors.text50),
+            style: TextStyle(
+              fontSize: 14,
+              color: context.isDarkTheme
+                  ? palette.textTertiary
+                  : AppColors.text50,
+            ),
           ),
         ],
       ),
@@ -579,6 +697,7 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   }
 
   Widget _buildAlarmItem(_AgentExactAlarmItem alarm) {
+    final palette = context.omniPalette;
     final triggerAt = DateTime.fromMillisecondsSinceEpoch(
       alarm.triggerAtMillis,
     );
@@ -587,9 +706,12 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.circular(8),
-        boxShadow: [AppColors.boxShadow],
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
+        boxShadow: context.isDarkTheme ? null : [AppColors.boxShadow],
       ),
       child: Row(
         children: [
@@ -597,14 +719,22 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: AppColors.primaryBlue.withValues(alpha: 0.1),
+              color: context.isDarkTheme
+                  ? Color.lerp(
+                      palette.surfaceSecondary,
+                      palette.accentPrimary,
+                      0.14,
+                    )!
+                  : AppColors.primaryBlue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             alignment: Alignment.center,
-            child: const Icon(
+            child: Icon(
               Icons.alarm,
               size: 16,
-              color: AppColors.primaryBlue,
+              color: context.isDarkTheme
+                  ? palette.accentPrimary
+                  : AppColors.primaryBlue,
             ),
           ),
           const SizedBox(width: 10),
@@ -616,10 +746,12 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
                   alarm.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.text,
+                    color: context.isDarkTheme
+                        ? palette.textPrimary
+                        : AppColors.text,
                   ),
                 ),
                 if (alarm.message.isNotEmpty) ...[
@@ -628,9 +760,11 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
                     alarm.message,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.text70,
+                      color: context.isDarkTheme
+                          ? palette.textSecondary
+                          : AppColors.text70,
                       height: 1.35,
                     ),
                   ),
@@ -638,7 +772,12 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
                 const SizedBox(height: 6),
                 Text(
                   '$timeText  ·  ${alarm.timezone}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.text50),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.isDarkTheme
+                        ? palette.textTertiary
+                        : AppColors.text50,
+                  ),
                 ),
               ],
             ),
@@ -650,7 +789,13 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
               width: 32,
               height: 32,
               alignment: Alignment.center,
-              child: const Icon(Icons.close, size: 16, color: AppColors.text70),
+              child: Icon(
+                Icons.close,
+                size: 16,
+                color: context.isDarkTheme
+                    ? palette.textSecondary
+                    : AppColors.text70,
+              ),
             ),
           ),
         ],
@@ -659,18 +804,33 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   }
 
   Widget _buildTaskItem(ScheduledTask task) {
+    final palette = context.omniPalette;
     final isExpired = _isTaskExpired(task);
-    final titleColor = isExpired ? AppColors.text50 : AppColors.text;
-    final secondaryTextColor = isExpired ? AppColors.text50 : AppColors.text70;
-    final accentColor = isExpired ? AppColors.text50 : AppColors.primaryBlue;
+    final titleColor = context.isDarkTheme
+        ? (isExpired ? palette.textTertiary : palette.textPrimary)
+        : (isExpired ? AppColors.text50 : AppColors.text);
+    final secondaryTextColor = context.isDarkTheme
+        ? (isExpired ? palette.textTertiary : palette.textSecondary)
+        : (isExpired ? AppColors.text50 : AppColors.text70);
+    final accentColor = context.isDarkTheme
+        ? (isExpired ? palette.textTertiary : palette.accentPrimary)
+        : (isExpired ? AppColors.text50 : AppColors.primaryBlue);
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isExpired ? const Color(0xFFF8FAFC) : Colors.white,
+        color: context.isDarkTheme
+            ? (isExpired ? palette.surfaceSecondary : palette.surfacePrimary)
+            : (isExpired ? const Color(0xFFF8FAFC) : Colors.white),
         borderRadius: BorderRadius.circular(8),
-        border: isExpired ? Border.all(color: AppColors.text10) : null,
-        boxShadow: isExpired ? const [] : [AppColors.boxShadow],
+        border: Border.all(
+          color: context.isDarkTheme
+              ? palette.borderSubtle
+              : (isExpired ? AppColors.text10 : Colors.transparent),
+        ),
+        boxShadow: context.isDarkTheme || isExpired
+            ? const []
+            : [AppColors.boxShadow],
       ),
       child: Stack(
         children: [
@@ -716,19 +876,35 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: (task.targetKind == 'subagent'
-                                    ? Colors.teal
-                                    : AppColors.primaryBlue)
-                                .withValues(alpha: 0.12),
+                            color:
+                                (task.targetKind == 'subagent'
+                                        ? (context.isDarkTheme
+                                              ? palette.surfaceElevated
+                                              : Colors.teal)
+                                        : (context.isDarkTheme
+                                              ? Color.lerp(
+                                                  palette.surfaceSecondary,
+                                                  palette.accentPrimary,
+                                                  0.12,
+                                                )!
+                                              : AppColors.primaryBlue))
+                                    .withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(4),
+                            border: context.isDarkTheme
+                                ? Border.all(color: palette.borderSubtle)
+                                : null,
                           ),
                           child: Text(
                             task.targetKind == 'subagent' ? 'SubAgent' : 'VLM',
                             style: TextStyle(
                               fontSize: 10,
                               color: task.targetKind == 'subagent'
-                                  ? Colors.teal
-                                  : AppColors.primaryBlue,
+                                  ? (context.isDarkTheme
+                                        ? palette.textSecondary
+                                        : Colors.teal)
+                                  : (context.isDarkTheme
+                                        ? palette.accentPrimary
+                                        : AppColors.primaryBlue),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -789,10 +965,21 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
                             decoration: BoxDecoration(
                               color:
                                   (isExpired
-                                          ? AppColors.text50
-                                          : AppColors.primaryBlue)
+                                          ? (context.isDarkTheme
+                                                ? palette.surfaceElevated
+                                                : AppColors.text50)
+                                          : (context.isDarkTheme
+                                                ? Color.lerp(
+                                                    palette.surfaceSecondary,
+                                                    palette.accentPrimary,
+                                                    0.14,
+                                                  )!
+                                                : AppColors.primaryBlue))
                                       .withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
+                              border: context.isDarkTheme
+                                  ? Border.all(color: palette.borderSubtle)
+                                  : null,
                             ),
                             child: Text(
                               '每日',
@@ -828,11 +1015,7 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
                 width: 32,
                 height: 32,
                 alignment: Alignment.center,
-                child: Icon(
-                  Icons.close,
-                  size: 16,
-                  color: isExpired ? AppColors.text50 : AppColors.text70,
-                ),
+                child: Icon(Icons.close, size: 16, color: secondaryTextColor),
               ),
             ),
           ),
@@ -870,17 +1053,25 @@ class _ScheduledTaskListPageState extends State<ScheduledTaskListPage> {
   }
 
   Widget _buildDefaultIcon({required bool isExpired}) {
+    final palette = context.omniPalette;
     return Container(
       width: 20,
       height: 20,
       decoration: BoxDecoration(
-        color: isExpired ? Colors.grey[200] : Colors.grey[300],
+        color: context.isDarkTheme
+            ? (isExpired ? palette.surfaceElevated : palette.surfaceSecondary)
+            : (isExpired ? Colors.grey[200] : Colors.grey[300]),
         borderRadius: BorderRadius.circular(4),
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
       ),
       child: Icon(
         Icons.apps,
         size: 14,
-        color: isExpired ? Colors.grey[400] : Colors.grey,
+        color: context.isDarkTheme
+            ? (isExpired ? palette.textTertiary : palette.textSecondary)
+            : (isExpired ? Colors.grey[400] : Colors.grey),
       ),
     );
   }

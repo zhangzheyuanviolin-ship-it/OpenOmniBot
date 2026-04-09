@@ -4,6 +4,7 @@ import 'package:ui/features/memory/models/mem0_memory_item.dart';
 import 'package:ui/features/memory/pages/memory_center/widgets/tag_chip.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_text_styles.dart';
+import 'package:ui/theme/theme_context.dart';
 
 class Mem0MemorySection extends StatefulWidget {
   final bool isLoading;
@@ -46,6 +47,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     if (!widget.snapshot.shouldShowSection && !widget.isLoading) {
       return const SizedBox.shrink();
     }
@@ -76,7 +78,9 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
                     title: '${category.$3}$countText',
                     selected: _selectedCategory == category.$1,
                     showIcon: false,
-                    backgroundColor: Colors.white.withValues(alpha: 0.9),
+                    backgroundColor: palette.surfacePrimary.withValues(
+                      alpha: 0.9,
+                    ),
                   ),
                 );
               }).toList(),
@@ -121,13 +125,14 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
   }
 
   Widget _buildHeader({required int filteredCount}) {
+    final palette = context.omniPalette;
     final count = widget.snapshot.items.length;
     return Row(
       children: [
-        const Text(
+        Text(
           '长期记忆',
           style: TextStyle(
-            color: AppColors.text,
+            color: palette.textPrimary,
             fontSize: AppTextStyles.fontSizeMain,
             fontWeight: AppTextStyles.fontWeightSemiBold,
             height: AppTextStyles.lineHeightH2,
@@ -137,8 +142,8 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
           const SizedBox(width: 8),
           Text(
             '$filteredCount/$count',
-            style: const TextStyle(
-              color: AppColors.text50,
+            style: TextStyle(
+              color: palette.textSecondary,
               fontSize: AppTextStyles.fontSizeSmall,
               height: AppTextStyles.lineHeightH2,
             ),
@@ -180,6 +185,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
   }
 
   Widget _buildLoadingState() {
+    final palette = context.omniPalette;
     return Column(
       children: List.generate(3, (index) {
         return Container(
@@ -187,8 +193,9 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
           margin: EdgeInsets.only(bottom: index == 2 ? 0 : 10),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.84),
+            color: palette.surfacePrimary.withValues(alpha: 0.84),
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: palette.borderSubtle),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,12 +229,14 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
     required String title,
     required String subtitle,
   }) {
+    final palette = context.omniPalette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.84),
+        color: context.omniPalette.surfacePrimary.withValues(alpha: 0.84),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.omniPalette.borderSubtle),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,8 +257,8 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: AppColors.text,
+                  style: TextStyle(
+                    color: palette.textPrimary,
                     fontSize: AppTextStyles.fontSizeMain,
                     fontWeight: AppTextStyles.fontWeightMedium,
                     height: AppTextStyles.lineHeightH2,
@@ -259,7 +268,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: AppColors.text70,
+                    color: palette.textSecondary,
                     fontSize: AppTextStyles.fontSizeSmall,
                     height: AppTextStyles.lineHeightH2,
                   ),
@@ -273,6 +282,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
   }
 
   Widget _buildMemoryCard(Mem0MemoryItem item) {
+    final palette = context.omniPalette;
     return InkWell(
       onTap: widget.onMemoryTap == null
           ? null
@@ -282,9 +292,9 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
         width: double.infinity,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.88),
+          color: palette.surfacePrimary.withValues(alpha: 0.88),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0x132C7FEB)),
+          border: Border.all(color: palette.borderSubtle),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,8 +325,8 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
                     item.memory,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.text,
+                    style: TextStyle(
+                      color: palette.textPrimary,
                       fontSize: AppTextStyles.fontSizeMain,
                       fontWeight: AppTextStyles.fontWeightMedium,
                       height: AppTextStyles.lineHeightH2,
@@ -337,9 +347,9 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: AppColors.text50,
+              color: palette.textSecondary,
               size: 18,
             ),
           ],
@@ -349,16 +359,19 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
   }
 
   Widget _buildMetaPill(String label) {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0x0F2C7FEB),
+        color: palette.segmentThumb.withValues(
+          alpha: context.isDarkTheme ? 0.72 : 0.9,
+        ),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          color: AppColors.text70,
+        style: TextStyle(
+          color: palette.textSecondary,
           fontSize: AppTextStyles.fontSizeTip,
           fontWeight: AppTextStyles.fontWeightRegular,
         ),

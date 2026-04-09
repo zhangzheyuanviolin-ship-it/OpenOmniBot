@@ -531,6 +531,8 @@ class AgentOrchestratorTest {
             get() = throw UnsupportedOperationException("unused in test")
         override val resolvedSkills: List<ResolvedSkillContext>
             get() = emptyList()
+        override val failureLearningSkill: ResolvedSkillContext?
+            get() = null
         override val workspaceManager: AgentWorkspaceManager
             get() = throw UnsupportedOperationException("unused in test")
         override val workspaceMemoryService: WorkspaceMemoryService

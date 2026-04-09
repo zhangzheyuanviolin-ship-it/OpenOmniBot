@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:ui/theme/theme_context.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
 import '../../../../../widgets/app_background_widgets.dart';
@@ -21,11 +22,18 @@ const String _chatAppBarUpdateSparklesSvg =
     '<circle cx="4" cy="20" r="2"/>'
     '</svg>';
 
+const List<Color> _kDarkChatAccentGradient = <Color>[
+  Color(0xFFAA9774),
+  Color(0xFF8FA38A),
+];
+
+const Color _kDarkChatAccentShadow = Color(0x2610110F);
+
 enum ChatSurfaceMode { workspace, normal, openclaw }
 
 const List<ChatSurfaceMode> kVisibleChatSurfaceModes = <ChatSurfaceMode>[
-  ChatSurfaceMode.workspace,
   ChatSurfaceMode.normal,
+  ChatSurfaceMode.workspace,
 ];
 
 /// 聊天页面 AppBar
@@ -52,6 +60,8 @@ class ChatAppBar extends StatelessWidget {
   final String? appUpdateTooltip;
   final bool translucent;
   final AppBackgroundVisualProfile visualProfile;
+  final bool showMenuButton;
+  final bool showSurfaceSwitcher;
 
   const ChatAppBar({
     super.key,
@@ -77,16 +87,21 @@ class ChatAppBar extends StatelessWidget {
     this.appUpdateTooltip,
     this.translucent = false,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
+    this.showMenuButton = true,
+    this.showSurfaceSwitcher = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     final iconTint = translucent
         ? visualProfile.appBarIconColor
+        : context.isDarkTheme
+        ? palette.textPrimary
         : Colors.grey[800]!;
     const updateTint = Color(0xFFD4A017);
     return ColoredBox(
-      color: translucent ? Colors.transparent : const Color(0xFFF9FCFF),
+      color: translucent ? Colors.transparent : palette.pageBackground,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: SizedBox(
@@ -94,22 +109,26 @@ class ChatAppBar extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: GestureDetector(
-                  onTap: onMenuTap,
-                  child: Container(
-                    color: Colors.transparent,
-                    padding: const EdgeInsets.all(15),
-                    child: SvgPicture.asset(
-                      'assets/home/drawer_icon.svg',
-                      width: 20,
-                      height: 20,
-                      colorFilter: ColorFilter.mode(iconTint, BlendMode.srcIn),
+              if (showMenuButton)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: GestureDetector(
+                    onTap: onMenuTap,
+                    child: Container(
+                      color: Colors.transparent,
+                      padding: const EdgeInsets.all(15),
+                      child: SvgPicture.asset(
+                        'assets/home/drawer_icon.svg',
+                        width: 20,
+                        height: 20,
+                        colorFilter: ColorFilter.mode(
+                          iconTint,
+                          BlendMode.srcIn,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
               Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 176),
@@ -129,6 +148,7 @@ class ChatAppBar extends StatelessWidget {
                     activeToolType: activeToolType,
                     translucent: translucent,
                     visualProfile: visualProfile,
+                    showSurfaceLayer: showSurfaceSwitcher,
                   ),
                 ),
               ),
@@ -171,7 +191,9 @@ class ChatAppBar extends StatelessWidget {
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     isCompanionModeEnabled
-                                        ? const Color(0xFF1930D9)
+                                        ? (context.isDarkTheme
+                                              ? palette.accentPrimary
+                                              : const Color(0xFF1930D9))
                                         : iconTint,
                                   ),
                                 ),
@@ -182,7 +204,9 @@ class ChatAppBar extends StatelessWidget {
                                 height: 20,
                                 colorFilter: ColorFilter.mode(
                                   isCompanionModeEnabled
-                                      ? const Color(0xFF1930D9)
+                                      ? (context.isDarkTheme
+                                            ? palette.accentPrimary
+                                            : const Color(0xFF1930D9))
                                       : iconTint,
                                   BlendMode.srcIn,
                                 ),
@@ -217,6 +241,7 @@ class _ChatModeModelSwitcher extends StatefulWidget {
     this.activeToolType,
     this.translucent = false,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
+    this.showSurfaceLayer = true,
   });
 
   final ChatSurfaceMode activeMode;
@@ -234,6 +259,7 @@ class _ChatModeModelSwitcher extends StatefulWidget {
   final String? activeToolType;
   final bool translucent;
   final AppBackgroundVisualProfile visualProfile;
+  final bool showSurfaceLayer;
 
   @override
   State<_ChatModeModelSwitcher> createState() => _ChatModeModelSwitcherState();
@@ -283,7 +309,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
     if (index >= 0) {
       return index;
     }
-    return kVisibleChatSurfaceModes.indexOf(ChatSurfaceMode.normal);
+    return 0;
   }
 
   String get _modelLabel {
@@ -298,18 +324,32 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       widget.activeMode == ChatSurfaceMode.normal &&
       (widget.activeModelId ?? '').trim().isNotEmpty;
 
-  int _layerOrder(ChatIslandDisplayLayer layer) => switch (layer) {
-    ChatIslandDisplayLayer.tools => 0,
-    ChatIslandDisplayLayer.model => 1,
-    ChatIslandDisplayLayer.mode => 2,
-  };
+  List<ChatIslandDisplayLayer> get _visibleLayers => widget.showSurfaceLayer
+      ? const <ChatIslandDisplayLayer>[
+          ChatIslandDisplayLayer.tools,
+          ChatIslandDisplayLayer.model,
+          ChatIslandDisplayLayer.mode,
+        ]
+      : const <ChatIslandDisplayLayer>[
+          ChatIslandDisplayLayer.tools,
+          ChatIslandDisplayLayer.model,
+        ];
+
+  ChatIslandDisplayLayer get _effectiveDisplayLayer =>
+      _visibleLayers.contains(widget.displayLayer)
+      ? widget.displayLayer
+      : ChatIslandDisplayLayer.model;
+
+  int _layerOrder(ChatIslandDisplayLayer layer) =>
+      _visibleLayers.indexOf(layer);
 
   void _handleSliderInteraction() {
     widget.onInteracted?.call();
   }
 
   void _handleHorizontalDragUpdate(DragUpdateDetails details) {
-    if (widget.activeMode != ChatSurfaceMode.normal ||
+    if (!widget.showSurfaceLayer ||
+        widget.activeMode != ChatSurfaceMode.normal ||
         widget.displayLayer != ChatIslandDisplayLayer.model) {
       return;
     }
@@ -317,7 +357,8 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
   }
 
   void _handleHorizontalDragEnd(DragEndDetails details) {
-    if (widget.activeMode != ChatSurfaceMode.normal ||
+    if (!widget.showSurfaceLayer ||
+        widget.activeMode != ChatSurfaceMode.normal ||
         widget.displayLayer != ChatIslandDisplayLayer.model) {
       _horizontalDragDelta = 0;
       return;
@@ -362,19 +403,30 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
     }
     widget.onInteracted?.call();
     if (intent > 0) {
-      if (widget.displayLayer != ChatIslandDisplayLayer.tools) {
+      if (_effectiveDisplayLayer != ChatIslandDisplayLayer.tools) {
         widget.onDisplayLayerChanged(ChatIslandDisplayLayer.tools);
       }
       return;
     }
-    if (_canRevealModelLabel &&
-        widget.displayLayer != ChatIslandDisplayLayer.model) {
+    if ((_canRevealModelLabel || !widget.showSurfaceLayer) &&
+        _effectiveDisplayLayer != ChatIslandDisplayLayer.model) {
       widget.onDisplayLayerChanged(ChatIslandDisplayLayer.model);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final restingLabelColor = widget.translucent
+        ? widget.visualProfile.subtleTextColor
+        : context.isDarkTheme
+        ? palette.textSecondary
+        : const Color(0xFF9DA9BB);
+    final islandBaseColor = widget.translucent
+        ? palette.surfacePrimary
+        : context.isDarkTheme
+        ? palette.surfaceSecondary
+        : palette.surfacePrimary;
     final modelLabelWidget = Builder(
       builder: (anchorContext) {
         final text = Text(
@@ -384,9 +436,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 14,
-            color: widget.translucent
-                ? widget.visualProfile.subtleTextColor
-                : const Color(0xFF9DA9BB),
+            color: restingLabelColor,
             fontWeight: FontWeight.w500,
           ),
         );
@@ -425,7 +475,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       onInteracted: _handleSliderInteraction,
       visualProfile: widget.visualProfile,
     );
-    final currentOrder = _layerOrder(widget.displayLayer);
+    final currentOrder = _layerOrder(_effectiveDisplayLayer);
 
     double topFor(ChatIslandDisplayLayer layer) {
       final delta = _layerOrder(layer) - currentOrder;
@@ -438,15 +488,29 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
       decoration: BoxDecoration(
         color: backgroundSurfaceColor(
           translucent: widget.translucent,
+          baseColor: islandBaseColor,
           opacity: 0.78,
         ),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: widget.translucent
-              ? widget.visualProfile.islandBorderColor
-              : const Color(0xFFD9E6FB),
-          width: 1,
-        ),
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                    alpha: widget.translucent ? 0.18 : 0.14,
+                  ),
+                  blurRadius: widget.translucent ? 18 : 14,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(
+                    alpha: widget.translucent ? 0.2 : 0.12,
+                  ),
+                  blurRadius: widget.translucent ? 22 : 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
@@ -472,14 +536,16 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
                   right: 0,
                   height: _switcherHeight,
                   top: topFor(ChatIslandDisplayLayer.mode),
-                  child: ClipRect(
-                    child: ChatModeSlider(
-                      activeMode: widget.activeMode,
-                      onChanged: widget.onModeChanged,
-                      onInteracted: _handleSliderInteraction,
-                      visualProfile: widget.visualProfile,
-                    ),
-                  ),
+                  child: widget.showSurfaceLayer
+                      ? ClipRect(
+                          child: ChatModeSlider(
+                            activeMode: widget.activeMode,
+                            onChanged: widget.onModeChanged,
+                            onInteracted: _handleSliderInteraction,
+                            visualProfile: widget.visualProfile,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
                 AnimatedPositioned(
                   duration: _switchDuration,
@@ -543,6 +609,12 @@ class _ChatToolSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final activeGradient = context.isDarkTheme
+        ? _kDarkChatAccentGradient
+        : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
+    final activeShadowColor = context.isDarkTheme
+        ? _kDarkChatAccentShadow
+        : const Color(0x291930D9);
     return SizedBox(
       height: 32,
       child: Container(
@@ -563,15 +635,15 @@ class _ChatToolSlider extends StatelessWidget {
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 1),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                      colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x291930D9),
+                        color: activeShadowColor,
                         blurRadius: 10,
                         offset: Offset(0, 4),
                       ),
@@ -582,9 +654,10 @@ class _ChatToolSlider extends StatelessWidget {
             ),
             Row(
               children: [
-                Expanded(child: _buildEnvironmentButton()),
+                Expanded(child: _buildEnvironmentButton(context)),
                 Expanded(
                   child: _buildToolSegment(
+                    context: context,
                     key: const ValueKey('chat-island-terminal-button'),
                     isSelected: _isTerminalActive,
                     isEnabled: true,
@@ -599,6 +672,7 @@ class _ChatToolSlider extends StatelessWidget {
                 ),
                 Expanded(
                   child: _buildToolSegment(
+                    context: context,
                     key: const ValueKey('chat-island-browser-button'),
                     isSelected: _isBrowserActive,
                     isEnabled: isBrowserEnabled,
@@ -619,7 +693,10 @@ class _ChatToolSlider extends StatelessWidget {
     );
   }
 
-  Widget _buildEnvironmentButton() {
+  Widget _buildEnvironmentButton(BuildContext context) {
+    final inactiveColor = context.isDarkTheme
+        ? context.omniPalette.textSecondary
+        : visualProfile.secondaryTextColor;
     return Builder(
       builder: (anchorContext) {
         return Tooltip(
@@ -642,10 +719,7 @@ class _ChatToolSlider extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: ColorFiltered(
-                  colorFilter: ColorFilter.mode(
-                    visualProfile.secondaryTextColor,
-                    BlendMode.srcIn,
-                  ),
+                  colorFilter: ColorFilter.mode(inactiveColor, BlendMode.srcIn),
                   child: SvgPicture.string(
                     environmentIconSvg,
                     width: 15,
@@ -661,6 +735,7 @@ class _ChatToolSlider extends StatelessWidget {
   }
 
   Widget _buildToolSegment({
+    required BuildContext context,
     required Key key,
     required bool isSelected,
     required bool isEnabled,
@@ -668,11 +743,14 @@ class _ChatToolSlider extends StatelessWidget {
     required VoidCallback onTap,
     required Widget child,
   }) {
-    final color = !isEnabled
-        ? visualProfile.subtleTextColor.withValues(alpha: 0.72)
-        : isSelected
-        ? Colors.white
+    final inactiveColor = context.isDarkTheme
+        ? context.omniPalette.textSecondary
         : visualProfile.secondaryTextColor;
+    final color = !isEnabled
+        ? inactiveColor.withValues(alpha: 0.72)
+        : isSelected
+        ? Theme.of(context).colorScheme.onPrimary
+        : inactiveColor;
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -742,7 +820,7 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
     if (index >= 0) {
       return index;
     }
-    return kVisibleChatSurfaceModes.indexOf(ChatSurfaceMode.normal);
+    return 0;
   }
 
   void _handleDragEnd({double velocity = 0}) {
@@ -762,6 +840,12 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
 
   @override
   Widget build(BuildContext context) {
+    final activeGradient = context.isDarkTheme
+        ? _kDarkChatAccentGradient
+        : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
+    final activeShadowColor = context.isDarkTheme
+        ? _kDarkChatAccentShadow
+        : const Color(0x291930D9);
     final alignment = _activeVisibleModeIndex == 0
         ? Alignment.centerLeft
         : Alignment.centerRight;
@@ -805,15 +889,15 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 1),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                      colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x291930D9),
+                        color: activeShadowColor,
                         blurRadius: 10,
                         offset: Offset(0, 4),
                       ),
@@ -826,9 +910,9 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
               children: [
                 Expanded(
                   child: _buildModeIcon(
-                    isSelected: widget.activeMode == ChatSurfaceMode.workspace,
+                    isSelected: widget.activeMode == ChatSurfaceMode.normal,
                     child: SvgPicture.string(
-                      _workspaceIconSvg,
+                      _normalChatIconSvg,
                       width: 16,
                       height: 16,
                     ),
@@ -836,9 +920,9 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
                 ),
                 Expanded(
                   child: _buildModeIcon(
-                    isSelected: widget.activeMode == ChatSurfaceMode.normal,
+                    isSelected: widget.activeMode == ChatSurfaceMode.workspace,
                     child: SvgPicture.string(
-                      _normalChatIconSvg,
+                      _workspaceIconSvg,
                       width: 16,
                       height: 16,
                     ),
@@ -853,9 +937,12 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
   }
 
   Widget _buildModeIcon({required bool isSelected, required Widget child}) {
-    final color = isSelected
-        ? Colors.white
+    final inactiveColor = context.isDarkTheme
+        ? context.omniPalette.textSecondary
         : widget.visualProfile.secondaryTextColor;
+    final color = isSelected
+        ? Theme.of(context).colorScheme.onPrimary
+        : inactiveColor;
     return Center(
       child: AnimatedScale(
         duration: const Duration(milliseconds: 220),
@@ -949,65 +1036,84 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   @override
   Widget build(BuildContext context) {
+    final pageBackgroundColor =
+        !widget.appearanceConfig.isActive && context.isDarkTheme
+        ? context.omniPalette.pageBackground
+        : null;
+
+    final Widget content;
     if (widget.messages.isEmpty) {
-      return GestureDetector(
+      content = GestureDetector(
         onVerticalDragUpdate: (_) {},
         behavior: HitTestBehavior.opaque,
         child: Center(
           child: Text(
             '有什么可以帮助你的？',
             style: TextStyle(
-              color: widget.visualProfile.secondaryTextColor,
+              color:
+                  !widget.appearanceConfig.isActive &&
+                      widget.appearanceConfig.chatTextColorMode !=
+                          AppBackgroundTextColorMode.custom
+                  ? context.omniPalette.textSecondary
+                  : widget.visualProfile.secondaryTextColor,
               fontSize: 14,
             ),
           ),
         ),
       );
+    } else {
+      content = ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ListView.builder(
+            controller: widget.scrollController,
+            reverse: false,
+            shrinkWrap: true,
+            physics: const ClampingScrollPhysics(),
+            clipBehavior: Clip.hardEdge,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            itemCount: widget.messages.length,
+            itemBuilder: (context, index) {
+              final dataIndex = widget.messages.length - 1 - index;
+              final message = widget.messages[dataIndex];
+              final isNewestMessage = dataIndex == 0;
+              final isOldestMessage = dataIndex == widget.messages.length - 1;
+              final bottomPadding = isNewestMessage
+                  ? widget.bottomOverlayInset
+                  : 0.0;
+              final needTopPadding = isOldestMessage && message.user != 1;
+              return Padding(
+                key: ValueKey('chat-message-list-item-$dataIndex'),
+                padding: EdgeInsets.only(
+                  top: needTopPadding ? 24.0 : 0.0,
+                  bottom: bottomPadding,
+                ),
+                child: MessageBubble(
+                  message: message,
+                  key: ValueKey(
+                    message.dbId ?? message.contentId ?? message.id,
+                  ),
+                  onBeforeTaskExecute: widget.onBeforeTaskExecute,
+                  onCancelTask: widget.onCancelTask,
+                  enableThinkingCollapse: true,
+                  parentScrollController: widget.scrollController,
+                  onRequestAuthorize: widget.onRequestAuthorize,
+                  onUserMessageLongPressStart:
+                      widget.onUserMessageLongPressStart,
+                  visualProfile: widget.visualProfile,
+                  appearanceConfig: widget.appearanceConfig,
+                ),
+              );
+            },
+          ),
+        ),
+      );
     }
 
-    return ClipRect(
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ListView.builder(
-          controller: widget.scrollController,
-          reverse: false,
-          shrinkWrap: true,
-          physics: const ClampingScrollPhysics(),
-          clipBehavior: Clip.hardEdge,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          itemCount: widget.messages.length,
-          itemBuilder: (context, index) {
-            final dataIndex = widget.messages.length - 1 - index;
-            final message = widget.messages[dataIndex];
-            final isNewestMessage = dataIndex == 0;
-            final isOldestMessage = dataIndex == widget.messages.length - 1;
-            final bottomPadding = isNewestMessage
-                ? widget.bottomOverlayInset
-                : 0.0;
-            final needTopPadding = isOldestMessage && message.user != 1;
-            return Padding(
-              key: ValueKey('chat-message-list-item-$dataIndex'),
-              padding: EdgeInsets.only(
-                top: needTopPadding ? 24.0 : 0.0,
-                bottom: bottomPadding,
-              ),
-              child: MessageBubble(
-                message: message,
-                key: ValueKey(message.dbId ?? message.contentId ?? message.id),
-                onBeforeTaskExecute: widget.onBeforeTaskExecute,
-                onCancelTask: widget.onCancelTask,
-                enableThinkingCollapse: true,
-                parentScrollController: widget.scrollController,
-                onRequestAuthorize: widget.onRequestAuthorize,
-                onUserMessageLongPressStart: widget.onUserMessageLongPressStart,
-                visualProfile: widget.visualProfile,
-                appearanceConfig: widget.appearanceConfig,
-              ),
-            );
-          },
-        ),
-      ),
-    );
+    if (pageBackgroundColor == null) {
+      return content;
+    }
+    return ColoredBox(color: pageBackgroundColor, child: content);
   }
 }
 

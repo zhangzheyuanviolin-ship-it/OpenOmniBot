@@ -6,8 +6,10 @@ import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class WorkspaceMemorySettingPage extends StatefulWidget {
   const WorkspaceMemorySettingPage({super.key});
@@ -206,14 +208,18 @@ class _WorkspaceMemorySettingPageState
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: const CommonAppBar(title: 'Workspace 记忆', primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
               children: [
+                const SettingsSectionTitle(label: '记忆能力'),
                 _buildSwitchCard(
                   title: '记忆嵌入检索',
                   subtitle: _embeddingConfig?.configured == true
@@ -228,7 +234,7 @@ class _WorkspaceMemorySettingPageState
                     child: const Text('去场景模型配置记忆嵌入模型'),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const Divider(height: 24),
                 _buildSwitchCard(
                   title: '夜间记忆整理（22:00）',
                   subtitle:
@@ -243,14 +249,15 @@ class _WorkspaceMemorySettingPageState
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 18),
+                const SettingsSectionTitle(label: '文档内容'),
                 _buildEditorCard(
                   title: 'SOUL.md（Agent 灵魂）',
                   controller: _soulController,
                   saving: _savingSoul,
                   onSave: _saveSoul,
                 ),
-                const SizedBox(height: 12),
+                const Divider(height: 24),
                 _buildEditorCard(
                   title: 'MEMORY.md（长期记忆）',
                   controller: _memoryController,
@@ -269,13 +276,9 @@ class _WorkspaceMemorySettingPageState
     required ValueChanged<bool> onChanged,
     Widget? footer,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow],
-      ),
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -284,10 +287,12 @@ class _WorkspaceMemorySettingPageState
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.text,
+                    color: context.isDarkTheme
+                        ? palette.textPrimary
+                        : AppColors.text,
                   ),
                 ),
               ),
@@ -297,7 +302,12 @@ class _WorkspaceMemorySettingPageState
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 12, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 12,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
           ),
           if (footer != null) ...[const SizedBox(height: 8), footer],
         ],
@@ -311,22 +321,18 @@ class _WorkspaceMemorySettingPageState
     required bool saving,
     required Future<void> Function() onSave,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow],
-      ),
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: AppColors.text,
+              color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
             ),
           ),
           const SizedBox(height: 8),

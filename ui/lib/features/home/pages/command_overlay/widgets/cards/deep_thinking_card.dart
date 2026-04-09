@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import './bot_status.dart';
 
 /// 深度思考卡片组件
@@ -265,11 +266,17 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     final parentScrollPosition =
         widget.parentScrollController?.hasClients == true
         ? widget.parentScrollController!.position
         : Scrollable.maybeOf(context)?.position;
-    final secondaryTextColor = widget.textColor.withValues(alpha: 0.68);
+    final resolvedTextColor = context.isDarkTheme
+        ? palette.textPrimary
+        : widget.textColor;
+    final secondaryTextColor = context.isDarkTheme
+        ? palette.textSecondary
+        : resolvedTextColor.withValues(alpha: 0.68);
     final bool hasContent = widget.thinkingText.isNotEmpty;
     final bool canCollapse = widget.isCollapsible && widget.stage == 4;
     final sizeAnimationDuration = canCollapse
@@ -360,9 +367,14 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
               width: double.infinity,
               constraints: BoxConstraints(maxHeight: widget.maxHeight),
               margin: const EdgeInsets.only(top: 8.0),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 border: Border(
-                  left: BorderSide(color: AppColors.text10, width: 1.0),
+                  left: BorderSide(
+                    color: context.isDarkTheme
+                        ? palette.borderSubtle
+                        : AppColors.text10,
+                    width: 1.0,
+                  ),
                 ),
               ),
               child: Stack(
@@ -383,7 +395,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildText(widget.thinkingText, widget.textColor),
+                            _buildText(widget.thinkingText, resolvedTextColor),
                           ],
                         ),
                       ),
@@ -406,9 +418,17 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [
-                                const Color(0xCCF1F8FF).withValues(alpha: 0.0),
-                                const Color(0xCCF1F8FF).withValues(alpha: 0.8),
-                                const Color(0xCCF1F8FF),
+                                (context.isDarkTheme
+                                        ? palette.surfacePrimary
+                                        : const Color(0xCCF1F8FF))
+                                    .withValues(alpha: 0.0),
+                                (context.isDarkTheme
+                                        ? palette.surfacePrimary
+                                        : const Color(0xCCF1F8FF))
+                                    .withValues(alpha: 0.8),
+                                context.isDarkTheme
+                                    ? palette.surfacePrimary
+                                    : const Color(0xCCF1F8FF),
                               ],
                             ),
                           ),
@@ -443,7 +463,9 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                   child: Text(
                     '取消任务',
                     style: TextStyle(
-                      color: Color(0xFF576B95),
+                      color: context.isDarkTheme
+                          ? palette.accentPrimary
+                          : const Color(0xFF576B95),
                       fontSize: 12 * widget.textScale,
                       fontFamily: 'PingFang SC',
                       fontWeight: FontWeight.w500,

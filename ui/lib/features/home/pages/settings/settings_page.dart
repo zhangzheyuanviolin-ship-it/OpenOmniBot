@@ -12,6 +12,7 @@ import 'package:ui/services/special_permission.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -295,6 +296,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     final workspaceMemoryConfigured = _embeddingConfig?.configured == true;
     final workspaceMemorySubtitle = !_workspaceMemoryLoaded
         ? '加载中...'
@@ -304,20 +306,16 @@ class _SettingsPageState extends State<SettingsPage> {
     final sections = _buildSections(workspaceMemorySubtitle);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: palette.pageBackground,
       appBar: const CommonAppBar(title: '设置', primary: true),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (int index = 0; index < sections.length; index++) ...[
-                _buildSettingsSection(sections[index]),
-                if (index != sections.length - 1) const SizedBox(height: 12),
-              ],
-            ],
-          ),
+        child: ListView.separated(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
+          itemCount: sections.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 24),
+          itemBuilder: (context, index) {
+            return _buildSettingsSection(sections[index]);
+          },
         ),
       ),
     );
@@ -326,6 +324,7 @@ class _SettingsPageState extends State<SettingsPage> {
   List<_SettingSection> _buildSections(String workspaceMemorySubtitle) {
     return [
       _SettingSection(
+        label: '模型与记忆',
         items: [
           _SettingItem(
             icon: Icons.smart_toy_outlined,
@@ -369,6 +368,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
       _SettingSection(
+        label: '服务与环境',
         items: [
           _SettingItem(
             icon: Icons.extension_outlined,
@@ -417,6 +417,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
       _SettingSection(
+        label: '体验与外观',
         items: [
           _SettingItem(
             icon: Icons.alarm_outlined,
@@ -429,7 +430,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.wallpaper_outlined,
             title: '外观设置',
-            subtitle: '配置共享背景图、聊天字号和文本颜色',
+            subtitle: '配置主题模式、共享背景图、聊天字号和文本颜色',
             onTap: () {
               GoRouterManager.push('/home/background_setting');
             },
@@ -462,6 +463,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
       _SettingSection(
+        label: '权限与信息',
         items: [
           _SettingItem(
             icon: Icons.security,
@@ -494,86 +496,101 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildSettingsSection(_SettingSection section) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE8ECF3)),
-      ),
-      child: Column(
-        children: List.generate(section.items.length, (index) {
-          final isLast = index == section.items.length - 1;
-          return Column(
+    final palette = context.omniPalette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+          child: Row(
             children: [
-              _buildSettingTile(
-                section.items[index],
-                isFirst: index == 0,
-                isLast: isLast,
+              Text(
+                section.label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.6,
+                  color: palette.textTertiary,
+                  fontFamily: 'PingFang SC',
+                ),
               ),
-              if (!isLast)
-                const Padding(
-                  padding: EdgeInsets.only(left: 40, right: 16),
-                  child: Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: Color(0xFFECEFF4),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Container(
+                  height: 1,
+                  color: palette.borderSubtle.withValues(
+                    alpha: context.isDarkTheme ? 0.56 : 0.8,
                   ),
                 ),
+              ),
             ],
-          );
-        }),
-      ),
+          ),
+        ),
+        Column(
+          children: List.generate(section.items.length, (index) {
+            final isLast = index == section.items.length - 1;
+            return Column(
+              children: [
+                _buildSettingTile(section.items[index], isLast: isLast),
+                if (!isLast)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 30),
+                    child: Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: palette.borderSubtle.withValues(
+                        alpha: context.isDarkTheme ? 0.5 : 0.78,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          }),
+        ),
+      ],
     );
   }
 
-  Widget _buildSettingTile(
-    _SettingItem item, {
-    required bool isFirst,
-    required bool isLast,
-  }) {
+  Widget _buildSettingTile(_SettingItem item, {required bool isLast}) {
+    final palette = context.omniPalette;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: item.onTap,
-        borderRadius: BorderRadius.vertical(
-          top: isFirst ? const Radius.circular(18) : Radius.zero,
-          bottom: isLast ? const Radius.circular(18) : Radius.zero,
-        ),
+        borderRadius: BorderRadius.circular(14),
+        splashColor: palette.accentPrimary.withValues(alpha: 0.08),
+        highlightColor: Colors.transparent,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            isFirst ? 16 : 12,
-            16,
-            isLast ? 16 : 12,
-          ),
+          padding: EdgeInsets.fromLTRB(4, 14, 2, isLast ? 14 : 13),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _buildLeadingIcon(item),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       item.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: AppColors.text,
-                        height: 1.57,
+                        color: palette.textPrimary,
+                        height: 1.5,
                         fontFamily: 'PingFang SC',
                       ),
                     ),
                     if (item.subtitle != null) ...[
+                      const SizedBox(height: 2),
                       Text(
                         item.subtitle!,
-                        style: const TextStyle(
-                          color: AppColors.text70,
-                          fontSize: 10,
+                        style: TextStyle(
+                          color: palette.textSecondary,
+                          fontSize: 11,
                           fontFamily: 'PingFang SC',
                           fontWeight: FontWeight.w400,
-                          height: 1.60,
+                          height: 1.55,
                         ),
                       ),
                     ],
@@ -583,12 +600,12 @@ class _SettingsPageState extends State<SettingsPage> {
               if (item.trailing != null)
                 item.trailing!
               else if (item.onTap != null)
-                const Padding(
-                  padding: EdgeInsets.only(left: 12),
+                Padding(
+                  padding: const EdgeInsets.only(left: 12),
                   child: Icon(
                     Icons.chevron_right_rounded,
-                    size: 20,
-                    color: AppColors.text20,
+                    size: 18,
+                    color: palette.textTertiary,
                   ),
                 ),
             ],
@@ -599,20 +616,20 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildLeadingIcon(_SettingItem item) {
+    final palette = context.omniPalette;
+    final iconColor = item.iconColor ?? palette.textPrimary;
     return SizedBox(
-      width: 16,
-      height: 16,
+      width: 18,
+      height: 18,
       child: item.iconSvg != null
           ? SvgPicture.asset(
               item.iconSvg!,
-              width: 16,
-              height: 16,
-              colorFilter: item.iconColor != null
-                  ? ColorFilter.mode(item.iconColor!, BlendMode.srcIn)
-                  : null,
+              width: 18,
+              height: 18,
+              colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
             )
           : item.icon != null
-          ? Icon(item.icon, size: 16, color: item.iconColor)
+          ? Icon(item.icon, size: 18, color: iconColor)
           : const SizedBox.shrink(),
     );
   }
@@ -623,6 +640,7 @@ class _SettingsPageState extends State<SettingsPage> {
     bool enabled = true,
     bool loading = false,
   }) {
+    final palette = context.omniPalette;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled && !loading ? () => onToggle(!value) : null,
@@ -633,7 +651,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 width: 32,
                 height: 18.67,
                 decoration: BoxDecoration(
-                  color: AppColors.fillStandardSecondary,
+                  color: palette.borderStrong,
                   borderRadius: BorderRadius.circular(28.75),
                 ),
               )
@@ -645,8 +663,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     height: 18.67,
                     toggleSize: 11.3,
                     padding: 3,
-                    activeColor: const Color(0xFF2C7FEB),
-                    inactiveColor: AppColors.fillStandardSecondary,
+                    activeColor: palette.accentPrimary,
+                    inactiveColor: palette.borderStrong,
                     borderRadius: 28.75,
                     value: value,
                     onToggle: onToggle,
@@ -659,9 +677,10 @@ class _SettingsPageState extends State<SettingsPage> {
 }
 
 class _SettingSection {
+  final String label;
   final List<_SettingItem> items;
 
-  const _SettingSection({required this.items});
+  const _SettingSection({required this.label, required this.items});
 }
 
 class _SettingItem {

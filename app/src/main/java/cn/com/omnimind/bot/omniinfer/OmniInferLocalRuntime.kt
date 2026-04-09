@@ -3,7 +3,6 @@ package cn.com.omnimind.bot.omniinfer
 import android.app.Application
 import android.content.Context
 import cn.com.omnimind.baselib.llm.MnnLocalProviderStateStore
-import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import com.alibaba.mls.api.ApplicationProvider
 import com.alibaba.mls.api.download.ModelDownloadManager
 import com.omniinfer.server.OmniInferServer
@@ -28,8 +27,7 @@ object OmniInferLocalRuntime {
         appContext = applicationContext
         if (applicationContext is Application) {
             ApplicationProvider.set(applicationContext)
-            val mnnCacheDir = AgentWorkspaceManager.modelsMnnDirectory(applicationContext).absolutePath
-            ModelDownloadManager.getInstance(applicationContext, mnnCacheDir)
+            ModelDownloadManager.getInstance(applicationContext)
                 .setProgressCallbackIntervalMs(500L)
         }
         syncProviderState()
