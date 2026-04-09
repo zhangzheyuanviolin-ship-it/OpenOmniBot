@@ -596,7 +596,7 @@ class ModelProviderConfigService {
     return _buildRequestUrl(
       value,
       suffixAfterV1: '/chat/completions',
-      suffixWithVersion: '/v1/chat/completions',
+      suffixWithVersion: '/chat/completions',
     );
   }
 
