@@ -24,15 +24,18 @@ class AppTheme {
     required OmniThemePalette palette,
   }) {
     final isDark = brightness == Brightness.dark;
+    final onAccentColor = _foregroundForAccent(palette.accentPrimary);
     final colorScheme =
         ColorScheme.fromSeed(
           seedColor: palette.accentPrimary,
           brightness: brightness,
         ).copyWith(
           primary: palette.accentPrimary,
-          onPrimary: Colors.white,
-          secondary: isDark ? const Color(0xFF91CBFF) : AppColors.gradientAux,
-          onSecondary: palette.textPrimary,
+          onPrimary: onAccentColor,
+          secondary: isDark
+              ? _secondaryAccentForDark(palette)
+              : AppColors.gradientAux,
+          onSecondary: isDark ? onAccentColor : palette.textPrimary,
           error: AppColors.alertRed,
           onError: Colors.white,
           surface: palette.surfacePrimary,
@@ -49,9 +52,7 @@ class AppTheme {
       scaffoldBackgroundColor: palette.pageBackground,
       dividerColor: palette.borderSubtle,
       shadowColor: palette.shadowColor,
-      splashColor: palette.accentPrimary.withValues(
-        alpha: isDark ? 0.16 : 0.08,
-      ),
+      splashColor: palette.accentPrimary.withValues(alpha: isDark ? 0.1 : 0.08),
       highlightColor: Colors.transparent,
       extensions: <ThemeExtension<dynamic>>[palette],
       appBarTheme: AppBarTheme(
@@ -189,5 +190,19 @@ class AppTheme {
           ? Brightness.light
           : Brightness.dark,
     );
+  }
+
+  static Color _foregroundForAccent(Color accentColor) {
+    return accentColor.computeLuminance() > 0.35
+        ? const Color(0xFF141716)
+        : Colors.white;
+  }
+
+  static Color _secondaryAccentForDark(OmniThemePalette palette) {
+    final hsl = HSLColor.fromColor(palette.accentPrimary);
+    return hsl
+        .withSaturation((hsl.saturation * 0.72).clamp(0.0, 1.0))
+        .withLightness((hsl.lightness + 0.08).clamp(0.0, 1.0))
+        .toColor();
   }
 }

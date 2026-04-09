@@ -764,7 +764,9 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: selected
-                          ? AppColors.primaryBlue
+                          ? (context.isDarkTheme
+                                ? palette.accentPrimary
+                                : AppColors.primaryBlue)
                           : palette.borderStrong,
                       width: selected ? 3 : 1.5,
                     ),

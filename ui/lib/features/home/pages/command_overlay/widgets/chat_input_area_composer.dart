@@ -1,5 +1,23 @@
 part of 'chat_input_area.dart';
 
+const List<Color> _kLightComposerFlowGradientColors = <Color>[
+  Color(0xFFFF6A01),
+  Color(0xFFF8C91C),
+  Color(0xFF8A2BE2),
+  Color(0xFF00BFFF),
+  Color(0xFFFF0055),
+  Color(0xFFFF6A01),
+];
+
+const List<Color> _kDarkComposerFlowGradientColors = <Color>[
+  Color(0xFF8C775D),
+  Color(0xFFB5A27D),
+  Color(0xFF99AD91),
+  Color(0xFFD5C6AB),
+  Color(0xFF889B80),
+  Color(0xFF8C775D),
+];
+
 mixin _ChatInputAreaComposerMixin
     on _ChatInputAreaStateBase, _ChatInputAreaRecordingMixin {
   @override
@@ -402,6 +420,9 @@ mixin _ChatInputAreaComposerMixin
                         forceStrong: isRecording,
                         radius: shellRadius,
                         strokeWidth: 1.5,
+                        gradientColors: context.isDarkTheme
+                            ? _kDarkComposerFlowGradientColors
+                            : _kLightComposerFlowGradientColors,
                       ),
                     ),
                   ),
@@ -851,6 +872,7 @@ class _ComposerFlowBorderPainter extends CustomPainter {
   final bool forceStrong;
   final double radius;
   final double strokeWidth;
+  final List<Color> gradientColors;
 
   _ComposerFlowBorderPainter({
     required this.progress,
@@ -859,6 +881,7 @@ class _ComposerFlowBorderPainter extends CustomPainter {
     required this.forceStrong,
     required this.radius,
     required this.strokeWidth,
+    required this.gradientColors,
   }) : super(repaint: progress);
 
   @override
@@ -881,14 +904,9 @@ class _ComposerFlowBorderPainter extends CustomPainter {
     final gradient = LinearGradient(
       begin: Alignment(-1 + shift, 0),
       end: Alignment(1 + shift, 0),
-      colors: [
-        const Color(0xFFFF6A01).withValues(alpha: clampedOpacity),
-        const Color(0xFFF8C91C).withValues(alpha: clampedOpacity),
-        const Color(0xFF8A2BE2).withValues(alpha: clampedOpacity),
-        const Color(0xFF00BFFF).withValues(alpha: clampedOpacity),
-        const Color(0xFFFF0055).withValues(alpha: clampedOpacity),
-        const Color(0xFFFF6A01).withValues(alpha: clampedOpacity),
-      ],
+      colors: gradientColors
+          .map((color) => color.withValues(alpha: clampedOpacity))
+          .toList(growable: false),
       stops: const [0.0, 0.2, 0.4, 0.62, 0.82, 1.0],
     );
 
@@ -908,6 +926,7 @@ class _ComposerFlowBorderPainter extends CustomPainter {
         oldDelegate.focused != focused ||
         oldDelegate.forceStrong != forceStrong ||
         oldDelegate.radius != radius ||
-        oldDelegate.strokeWidth != strokeWidth;
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.gradientColors != gradientColors;
   }
 }

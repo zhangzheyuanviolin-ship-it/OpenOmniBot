@@ -55,21 +55,21 @@ class OmniThemePalette extends ThemeExtension<OmniThemePalette> {
   );
 
   static const OmniThemePalette dark = OmniThemePalette(
-    pageBackground: Color(0xFF0A1020),
-    surfacePrimary: Color(0xFF12192B),
-    surfaceSecondary: Color(0xFF172238),
-    surfaceElevated: Color(0xFF1D2942),
-    borderSubtle: Color(0xFF283652),
-    borderStrong: Color(0xFF344765),
-    textPrimary: Color(0xFFEAF2FF),
-    textSecondary: Color(0xFFB4C2D8),
-    textTertiary: Color(0xFF8493AB),
-    accentPrimary: Color(0xFF56A8FF),
-    segmentTrack: Color(0xFF162136),
-    segmentThumb: Color(0xFF22314D),
-    overlayScrim: Color(0x99050A14),
-    previewFallback: Color(0xFF0E172B),
-    shadowColor: Color(0x52000000),
+    pageBackground: Color(0xFF151617),
+    surfacePrimary: Color(0xFF1C1E1F),
+    surfaceSecondary: Color(0xFF242728),
+    surfaceElevated: Color(0xFF2D3032),
+    borderSubtle: Color(0xFF373A3C),
+    borderStrong: Color(0xFF484C4F),
+    textPrimary: Color(0xFFF2EFE8),
+    textSecondary: Color(0xFFC9C3B8),
+    textTertiary: Color(0xFF9A9488),
+    accentPrimary: Color(0xFF98AD90),
+    segmentTrack: Color(0xFF222425),
+    segmentThumb: Color(0xFF303335),
+    overlayScrim: Color(0xA6121314),
+    previewFallback: Color(0xFF1A1B1C),
+    shadowColor: Color(0x26000000),
   );
 
   @override

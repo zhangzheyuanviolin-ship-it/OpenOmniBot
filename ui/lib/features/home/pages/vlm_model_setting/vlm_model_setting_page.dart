@@ -677,7 +677,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Color(0xFF2C7FEB)),
+        borderSide: BorderSide(
+          color: _isDarkTheme
+              ? context.omniPalette.accentPrimary
+              : const Color(0xFF2C7FEB),
+        ),
       ),
     );
   }
@@ -695,12 +699,16 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
               ? context.omniPalette.surfaceElevated
               : const Color(0xFFE8ECF3))
         : useHighlightStyle
-        ? const Color(0xFF2C7FEB)
+        ? (_isDarkTheme
+              ? context.omniPalette.accentPrimary
+              : const Color(0xFF2C7FEB))
         : _cardColor;
     final iconColor = !isEnabled && !loading
         ? _tertiaryTextColor
         : useHighlightStyle
-        ? Colors.white
+        ? (_isDarkTheme
+              ? Theme.of(context).colorScheme.onPrimary
+              : Colors.white)
         : _primaryTextColor;
 
     return Material(
@@ -1270,10 +1278,12 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
                 ),
               ),
               if (selected)
-                const Icon(
+                Icon(
                   Icons.check_rounded,
                   size: 16,
-                  color: Color(0xFF2C7FEB),
+                  color: _isDarkTheme(context)
+                      ? palette.accentPrimary
+                      : const Color(0xFF2C7FEB),
                 ),
             ],
           ),

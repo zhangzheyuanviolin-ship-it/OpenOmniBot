@@ -173,8 +173,12 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
                       child: FilledButton(
                         onPressed: _saving ? null : _saveSettings,
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primaryBlue,
-                          foregroundColor: Colors.white,
+                          backgroundColor: context.isDarkTheme
+                              ? palette.accentPrimary
+                              : AppColors.primaryBlue,
+                          foregroundColor: context.isDarkTheme
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : Colors.white,
                           minimumSize: const Size.fromHeight(48),
                         ),
                         child: Text(_saving ? '保存中...' : '保存'),
@@ -235,7 +239,9 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
               Radio<String>(
                 value: value,
                 groupValue: _source,
-                activeColor: AppColors.primaryBlue,
+                activeColor: context.isDarkTheme
+                    ? palette.accentPrimary
+                    : AppColors.primaryBlue,
                 onChanged: (next) {
                   if (next == null) return;
                   setState(() {
@@ -277,7 +283,9 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
                   child: Icon(
                     Icons.check_rounded,
                     size: 16,
-                    color: AppColors.primaryBlue,
+                    color: context.isDarkTheme
+                        ? palette.accentPrimary
+                        : AppColors.primaryBlue,
                   ),
                 ),
             ],
@@ -320,8 +328,14 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
           OutlinedButton(
             onPressed: _pickLocalMp3,
             style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.primaryBlue,
-              side: const BorderSide(color: AppColors.primaryBlue),
+              foregroundColor: context.isDarkTheme
+                  ? palette.accentPrimary
+                  : AppColors.primaryBlue,
+              side: BorderSide(
+                color: context.isDarkTheme
+                    ? palette.accentPrimary
+                    : AppColors.primaryBlue,
+              ),
             ),
             child: const Text('选择 mp3 文件'),
           ),

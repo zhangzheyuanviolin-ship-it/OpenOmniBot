@@ -827,10 +827,12 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                 ),
               ),
               if (selected)
-                const Icon(
+                Icon(
                   Icons.check_rounded,
                   size: 15,
-                  color: Color(0xFF2C7FEB),
+                  color: _isDarkTheme
+                      ? context.omniPalette.accentPrimary
+                      : const Color(0xFF2C7FEB),
                 ),
             ],
           ),
@@ -895,10 +897,12 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
               ),
               if (isCurrent) ...[
                 const SizedBox(width: 6),
-                const Icon(
+                Icon(
                   Icons.check_circle_rounded,
                   size: 13,
-                  color: Color(0xFF2C7FEB),
+                  color: _isDarkTheme
+                      ? context.omniPalette.accentPrimary
+                      : const Color(0xFF2C7FEB),
                 ),
               ],
               const SizedBox(width: 6),
@@ -964,10 +968,12 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                   ),
                 ),
                 if (selected)
-                  const Icon(
+                  Icon(
                     Icons.check_rounded,
                     size: 15,
-                    color: Color(0xFF2C7FEB),
+                    color: _isDarkTheme
+                        ? context.omniPalette.accentPrimary
+                        : const Color(0xFF2C7FEB),
                   ),
               ],
             ),

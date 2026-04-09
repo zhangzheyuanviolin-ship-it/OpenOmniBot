@@ -1336,8 +1336,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     TextEditingValue value,
   );
 
-  ModelProviderProfileSummary? _findProviderProfile(String profileId);
-
   Future<void> _openConversationModelSelector(BuildContext anchorContext);
 
   Future<void> _applyDispatchSceneModelSelection({

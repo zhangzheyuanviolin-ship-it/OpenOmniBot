@@ -22,6 +22,13 @@ const String _chatAppBarUpdateSparklesSvg =
     '<circle cx="4" cy="20" r="2"/>'
     '</svg>';
 
+const List<Color> _kDarkChatAccentGradient = <Color>[
+  Color(0xFFAA9774),
+  Color(0xFF8FA38A),
+];
+
+const Color _kDarkChatAccentShadow = Color(0x2610110F);
+
 enum ChatSurfaceMode { workspace, normal, openclaw }
 
 const List<ChatSurfaceMode> kVisibleChatSurfaceModes = <ChatSurfaceMode>[
@@ -188,7 +195,9 @@ class ChatAppBar extends StatelessWidget {
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     isCompanionModeEnabled
-                                        ? const Color(0xFF1930D9)
+                                        ? (context.isDarkTheme
+                                              ? palette.accentPrimary
+                                              : const Color(0xFF1930D9))
                                         : iconTint,
                                   ),
                                 ),
@@ -199,7 +208,9 @@ class ChatAppBar extends StatelessWidget {
                                 height: 20,
                                 colorFilter: ColorFilter.mode(
                                   isCompanionModeEnabled
-                                      ? const Color(0xFF1930D9)
+                                      ? (context.isDarkTheme
+                                            ? palette.accentPrimary
+                                            : const Color(0xFF1930D9))
                                       : iconTint,
                                   BlendMode.srcIn,
                                 ),
@@ -591,6 +602,12 @@ class _ChatToolSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final activeGradient = context.isDarkTheme
+        ? _kDarkChatAccentGradient
+        : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
+    final activeShadowColor = context.isDarkTheme
+        ? _kDarkChatAccentShadow
+        : const Color(0x291930D9);
     return SizedBox(
       height: 32,
       child: Container(
@@ -611,15 +628,15 @@ class _ChatToolSlider extends StatelessWidget {
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 1),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                      colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x291930D9),
+                        color: activeShadowColor,
                         blurRadius: 10,
                         offset: Offset(0, 4),
                       ),
@@ -725,7 +742,7 @@ class _ChatToolSlider extends StatelessWidget {
     final color = !isEnabled
         ? inactiveColor.withValues(alpha: 0.72)
         : isSelected
-        ? Colors.white
+        ? Theme.of(context).colorScheme.onPrimary
         : inactiveColor;
     return Tooltip(
       message: tooltip,
@@ -816,6 +833,12 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
 
   @override
   Widget build(BuildContext context) {
+    final activeGradient = context.isDarkTheme
+        ? _kDarkChatAccentGradient
+        : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
+    final activeShadowColor = context.isDarkTheme
+        ? _kDarkChatAccentShadow
+        : const Color(0x291930D9);
     final alignment = _activeVisibleModeIndex == 0
         ? Alignment.centerLeft
         : Alignment.centerRight;
@@ -859,15 +882,15 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 1),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                      colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x291930D9),
+                        color: activeShadowColor,
                         blurRadius: 10,
                         offset: Offset(0, 4),
                       ),
@@ -910,7 +933,9 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
     final inactiveColor = context.isDarkTheme
         ? context.omniPalette.textSecondary
         : widget.visualProfile.secondaryTextColor;
-    final color = isSelected ? Colors.white : inactiveColor;
+    final color = isSelected
+        ? Theme.of(context).colorScheme.onPrimary
+        : inactiveColor;
     return Center(
       child: AnimatedScale(
         duration: const Duration(milliseconds: 220),

@@ -33,6 +33,22 @@ const String _kLucideMicSvg =
     '</defs>'
     '</svg>';
 
+const String _kLucideMicSvgDark =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="url(#paint0_linear_mic_dark)" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-mic-icon lucide-mic">'
+    '<path d="M12 19v3"/>'
+    '<path d="M19 10v2a7 7 0 0 1-14 0v-2"/>'
+    '<rect x="9" y="2" width="6" height="13" rx="3"/>'
+    '<defs>'
+    '<linearGradient id="paint0_linear_mic_dark" x1="3.4" y1="-1.8" x2="27.6" y2="7.9" gradientUnits="userSpaceOnUse">'
+    '<stop stop-color="#8C775D"/>'
+    '<stop offset="1" stop-color="#9DAE95"/>'
+    '</linearGradient>'
+    '</defs>'
+    '</svg>';
+
 enum RecordingState { idle, starting, recording, stopping, waitingServerStop }
 
 class ChatInputAttachment {
@@ -300,7 +316,6 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
   late Widget _sendSvg;
   late Widget _pauseSvg;
   late Widget _addSvg;
-  late Widget _closeSvg;
 
   // 按钮动画相关
   final Duration _buttonAnimationDuration = const Duration(milliseconds: 200);
@@ -314,7 +329,7 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     widget.controller.addListener(_onTextChanged);
     widget.focusNode.addListener(_onFocusChanged);
 
-    _micSvg = SvgPicture.string(_kLucideMicSvg, width: 24, height: 24);
+    _micSvg = const SizedBox.shrink();
     _sendSvg = SvgPicture.asset(
       'assets/home/send_icon.svg',
       width: 24,
@@ -330,12 +345,6 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
       width: 20,
       height: 20,
     );
-    _closeSvg = SvgPicture.asset(
-      'assets/home/input_add_close_icon.svg',
-      width: 20,
-      height: 20,
-    );
-
     // 进入界面先预取 asr ws token（仅用于 WS 握手）
     _initSpeechRecognition();
     _composerFlowController = AnimationController(
@@ -343,6 +352,16 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
       duration: const Duration(milliseconds: 8000),
     )..repeat();
     _reportInputHeightAfterBuild();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _micSvg = SvgPicture.string(
+      context.isDarkTheme ? _kLucideMicSvgDark : _kLucideMicSvg,
+      width: 24,
+      height: 24,
+    );
   }
 
   Future<void> _initSpeechRecognition() async {
