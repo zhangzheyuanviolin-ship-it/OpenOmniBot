@@ -1076,7 +1076,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         SwitchListTile(
           value: resolvedConfig.autoStartOnAppOpen,
           title: const Text('打开 App 自动预热本地推理'),
-          subtitle: const Text('仅在打开 Omnibot 时自动恢复本地模型服务'),
+          subtitle: const Text('仅在打开小万时自动恢复本地模型服务'),
           contentPadding: EdgeInsets.zero,
           onChanged: (value) async {
             final config = await MnnLocalModelsService.saveConfig(

@@ -331,15 +331,8 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   Widget _buildBreadcrumbHeader() {
     final palette = context.omniPalette;
     final breadcrumbs = _workspaceBreadcrumbs;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
-      decoration: BoxDecoration(
-        color: palette.surfacePrimary.withValues(
-          alpha: widget.translucentSurfaces ? 0.3 : 0.72,
-        ),
-        border: Border(bottom: BorderSide(color: palette.borderSubtle)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -388,11 +381,11 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     final palette = context.omniPalette;
     final labelStyle = TextStyle(
       fontSize: 12,
-      fontWeight: segment.isCurrent ? FontWeight.w700 : FontWeight.w500,
-      color: segment.isCurrent ? palette.textPrimary : palette.accentPrimary,
+      fontWeight: segment.isCurrent ? FontWeight.w600 : FontWeight.w500,
+      color: segment.isCurrent ? palette.textPrimary : palette.textSecondary,
     );
     return Material(
-      color: segment.isCurrent ? palette.segmentThumb : Colors.transparent,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -484,16 +477,10 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                 ? _buildStatusList(message: '工作区不存在')
                 : itemCount == 0
                 ? _buildStatusList(message: '当前目录为空')
-                : ListView.separated(
+                : ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                     itemCount: itemCount,
-                    separatorBuilder: (_, __) => const Divider(
-                      height: 1,
-                      thickness: 1,
-                      indent: 12,
-                      endIndent: 12,
-                    ),
                     itemBuilder: (context, index) {
                       final isFirst = index == 0;
                       final isLast = index == itemCount - 1;
@@ -567,6 +554,14 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         isDirectory &&
         canExpandInline &&
         _expandedDirectoryPaths.contains(entry.path);
+    final itemBorderRadius = isExpanded
+        ? BorderRadius.only(
+            topLeft: borderRadius.topLeft,
+            topRight: borderRadius.topRight,
+            bottomLeft: Radius.zero,
+            bottomRight: Radius.zero,
+          )
+        : borderRadius;
 
     final trailing = isDirectory
         ? Icon(
@@ -583,7 +578,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     Widget row = _buildWorkspaceItem(
       title: name,
       leading: _buildDraggableLeadingIcon(entry: entry, isExpanded: isExpanded),
-      borderRadius: borderRadius,
+      borderRadius: itemBorderRadius,
       trailing: trailing,
       onTap: () {
         if (entry is Directory) {
@@ -607,7 +602,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     if (isDirectory) {
       row = _buildDirectoryDropTarget(
         child: row,
-        borderRadius: borderRadius,
+        borderRadius: itemBorderRadius,
         targetDirectoryPath: entry.path,
       );
     }
@@ -737,7 +732,6 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
               ? BoxDecoration(
                   color: const Color(0x142C7FEB),
                   borderRadius: borderRadius,
-                  border: Border.all(color: const Color(0x882C7FEB), width: 1),
                 )
               : null,
           child: child,
@@ -1150,7 +1144,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
 
     if (entries.isEmpty) {
       return Padding(
-        padding: EdgeInsets.only(left: indent + 12, top: 6, bottom: 6),
+        padding: EdgeInsets.only(left: indent + 12, top: 0, bottom: 6),
         child: Text(
           '空文件夹',
           style: TextStyle(
@@ -1162,55 +1156,39 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     }
 
     Widget buildItem(BuildContext context, int index) {
+      final isLast = index == entries.length - 1;
       return _buildEntryNode(
         entry: entries[index],
         depth: depth,
         currentShellPath: currentShellPath,
+        borderRadius: BorderRadius.only(
+          bottomLeft: isLast ? const Radius.circular(4) : Radius.zero,
+          bottomRight: isLast ? const Radius.circular(4) : Radius.zero,
+        ),
       );
     }
 
     final listContent = entries.length > _maxExpandedItemsBeforeScroll
         ? SizedBox(
-            height: (_itemHeight + 1) * _maxExpandedItemsBeforeScroll - 1,
-            child: ListView.separated(
+            height: _itemHeight * _maxExpandedItemsBeforeScroll,
+            child: ListView.builder(
               primary: false,
               physics: const ClampingScrollPhysics(),
               itemCount: entries.length,
-              separatorBuilder: (_, __) => const Divider(
-                height: 1,
-                thickness: 1,
-                indent: 12,
-                endIndent: 12,
-              ),
               itemBuilder: buildItem,
             ),
           )
         : Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (var index = 0; index < entries.length; index++) ...[
-                if (index > 0)
-                  const Divider(
-                    height: 1,
-                    thickness: 1,
-                    indent: 12,
-                    endIndent: 12,
-                  ),
+              for (var index = 0; index < entries.length; index++)
                 buildItem(context, index),
-              ],
             ],
           );
 
     return Padding(
-      padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: _surfaceColor(),
-          borderRadius: const BorderRadius.all(Radius.circular(4)),
-          boxShadow: [AppColors.boxShadow],
-        ),
-        child: listContent,
-      ),
+      padding: EdgeInsets.only(left: indent),
+      child: listContent,
     );
   }
 
@@ -1245,16 +1223,6 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       decoration: BoxDecoration(
         color: _surfaceColor(),
         borderRadius: borderRadius,
-        border: Border.all(color: palette.borderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: palette.shadowColor.withValues(
-              alpha: context.isDarkTheme ? 0.26 : 0.08,
-            ),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Material(
         color: Colors.transparent,

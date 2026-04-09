@@ -372,6 +372,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           workspacePath: paths.rootPath,
           workspaceShellPath: paths.shellRootPath,
           translucentSurfaces: AppBackgroundService.current.isActive,
+          showBreadcrumbHeader: true,
+          showHeaderTitle: false,
           onCanGoUpChanged: (canGoUp) {
             if (_workspaceBrowserCanGoUp == canGoUp || !mounted) return;
             setState(() {
