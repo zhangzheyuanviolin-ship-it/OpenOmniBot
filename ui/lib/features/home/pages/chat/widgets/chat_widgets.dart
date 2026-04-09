@@ -101,11 +101,7 @@ class ChatAppBar extends StatelessWidget {
         : Colors.grey[800]!;
     const updateTint = Color(0xFFD4A017);
     return ColoredBox(
-      color: translucent
-          ? Colors.transparent
-          : context.isDarkTheme
-          ? palette.pageBackground
-          : const Color(0xFFF9FCFF),
+      color: translucent ? Colors.transparent : palette.pageBackground,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: SizedBox(

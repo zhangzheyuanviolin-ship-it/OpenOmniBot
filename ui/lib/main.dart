@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/scheduled_task_scheduler_service.dart';
@@ -114,13 +115,15 @@ class MyApp extends ConsumerStatefulWidget {
 }
 
 class _MyAppState extends ConsumerState<MyApp> {
+  late final GoRouter _router;
+
   @override
   void initState() {
     super.initState();
 
     final initStart = DateTime.now();
     debugPrint('🎨 [FlutterStartup] MyApp initState start');
-    super.initState();
+    _router = GoRouterManager.createRouter(ref);
     _initializeApp();
     debugPrint(
       "⏱️  [FlutterStartup] MyApp initState cost: ${DateTime.now().difference(initStart).inMilliseconds}ms",
@@ -144,12 +147,6 @@ class _MyAppState extends ConsumerState<MyApp> {
     final buildStart = DateTime.now();
     debugPrint('🎨 [FlutterStartup] MyApp build start');
 
-    final routerStart = DateTime.now();
-    final router = GoRouterManager.createRouter(ref);
-    debugPrint(
-      "⏱️  [FlutterStartup] createRouter cost: ${DateTime.now().difference(routerStart).inMilliseconds}ms",
-    );
-
     final widgetBuildStart = DateTime.now();
     final themeMode = ref.watch(appThemeModeProvider).materialThemeMode;
     final widget = MaterialApp.router(
@@ -159,7 +156,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       themeMode: themeMode,
       themeAnimationCurve: Curves.easeInOutCubic,
       themeAnimationDuration: const Duration(milliseconds: 220),
-      routerConfig: router,
+      routerConfig: _router,
       builder: (context, child) {
         final mediaQuery = MediaQuery.of(context);
         final brightness = Theme.of(context).brightness;
