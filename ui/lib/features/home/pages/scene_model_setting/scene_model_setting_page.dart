@@ -5,6 +5,7 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -114,6 +115,30 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   Map<String, SceneModelBindingEntry> get _bindingMap {
     return {for (final item in _bindings) item.sceneId: item};
   }
+
+  bool get _isDarkTheme => context.isDarkTheme;
+  Color get _pageBackground =>
+      _isDarkTheme ? context.omniPalette.pageBackground : AppColors.background;
+  Color get _cardColor =>
+      _isDarkTheme ? context.omniPalette.surfacePrimary : Colors.white;
+  Color get _surfaceColor => _isDarkTheme
+      ? context.omniPalette.surfaceSecondary
+      : const Color(0xFFF8FAFC);
+  Color get _primaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textPrimary : AppColors.text;
+  Color get _secondaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textSecondary : AppColors.text70;
+  Color get _tertiaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textTertiary : AppColors.text50;
+  List<BoxShadow>? get _cardShadow => _isDarkTheme
+      ? [
+          BoxShadow(
+            color: context.omniPalette.shadowColor.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ]
+      : [AppColors.boxShadow];
 
   String _sceneDisplayName(String sceneId) {
     return _sceneDisplayNameMap[sceneId] ?? sceneId;
@@ -394,7 +419,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
 
     final result = await showMenu<_SceneSelectionAction>(
       context: context,
-      color: Colors.white,
+      color: _cardColor,
       elevation: 8,
       constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
       position: position,
@@ -431,9 +456,12 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardColor,
         borderRadius: BorderRadius.circular(10),
-        boxShadow: [AppColors.boxShadow],
+        border: _isDarkTheme
+            ? Border.all(color: context.omniPalette.borderSubtle)
+            : null,
+        boxShadow: _cardShadow,
       ),
       child: child,
     );
@@ -457,9 +485,13 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: _surfaceColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0x14000000)),
+        border: Border.all(
+          color: _isDarkTheme
+              ? context.omniPalette.borderSubtle
+              : const Color(0x14000000),
+        ),
       ),
       child: Row(
         children: [
@@ -474,8 +506,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                   Flexible(
                     child: Text(
                       _sceneDisplayName(scene.sceneId),
-                      style: const TextStyle(
-                        color: AppColors.text,
+                      style: TextStyle(
+                        color: _primaryTextColor,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         fontFamily: 'PingFang SC',
@@ -484,11 +516,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Icon(
-                    Icons.info_outline,
-                    size: 15,
-                    color: AppColors.text50,
-                  ),
+                  Icon(Icons.info_outline, size: 15, color: _tertiaryTextColor),
                 ],
               ),
             ),
@@ -509,9 +537,13 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                       vertical: 11,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: _cardColor,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0x1A000000)),
+                      border: Border.all(
+                        color: _isDarkTheme
+                            ? context.omniPalette.borderSubtle
+                            : const Color(0x1A000000),
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -520,18 +552,18 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                             _selectionLabel(scene),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.text,
+                            style: TextStyle(
+                              color: _primaryTextColor,
                               fontSize: 13,
                               fontFamily: 'PingFang SC',
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Icon(
+                        Icon(
                           Icons.keyboard_arrow_down_rounded,
                           size: 18,
-                          color: AppColors.text50,
+                          color: _tertiaryTextColor,
                         ),
                       ],
                     ),
@@ -556,7 +588,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: _pageBackground,
       appBar: const CommonAppBar(title: '场景模型配置', primary: true),
       body: SafeArea(
         top: false,
@@ -571,11 +603,11 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                       children: [
                         Row(
                           children: [
-                            const Expanded(
+                            Expanded(
                               child: Text(
                                 '场景与模型映射',
                                 style: TextStyle(
-                                  color: AppColors.text,
+                                  color: _primaryTextColor,
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
                                   fontFamily: 'PingFang SC',
@@ -584,27 +616,27 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                             ),
                             if (_showManualRefreshButton)
                               OutlinedButton.icon(
-                              onPressed: _isRefreshingModels
-                                  ? null
-                                  : _refreshProviderModels,
-                              icon: _isRefreshingModels
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.refresh, size: 16),
-                              label: const Text('刷新模型列表'),
-                            ),
+                                onPressed: _isRefreshingModels
+                                    ? null
+                                    : _refreshProviderModels,
+                                icon: _isRefreshingModels
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh, size: 16),
+                                label: const Text('刷新模型列表'),
+                              ),
                           ],
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           '点击右侧按钮后，可按 Provider 搜索、折叠并选择模型；顶部搜索框固定不随列表滚动。',
                           style: TextStyle(
-                            color: AppColors.text70,
+                            color: _secondaryTextColor,
                             fontSize: 12,
                             height: 1.5,
                             fontFamily: 'PingFang SC',
@@ -612,12 +644,12 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                         ),
                         const SizedBox(height: 12),
                         if (_orderedCatalog.isEmpty)
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.symmetric(vertical: 12),
                             child: Text(
                               '暂无可配置场景',
                               style: TextStyle(
-                                color: AppColors.text70,
+                                color: _secondaryTextColor,
                                 fontSize: 12,
                                 fontFamily: 'PingFang SC',
                               ),
@@ -743,30 +775,44 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
     return _expandedProfileIds.contains(profileId);
   }
 
+  bool get _isDarkTheme => context.isDarkTheme;
+  Color get _surfaceColor => _isDarkTheme
+      ? context.omniPalette.surfaceSecondary
+      : const Color(0xFFF8FAFD);
+  Color get _selectedSurfaceColor =>
+      _isDarkTheme ? context.omniPalette.segmentThumb : const Color(0xFFEAF3FF);
+  Color get _primaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textPrimary : AppColors.text;
+  Color get _secondaryTextColor => _isDarkTheme
+      ? context.omniPalette.textSecondary
+      : const Color(0xFF64748B);
+  Color get _tertiaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textTertiary : const Color(0xFF94A3B8);
+
   Widget _buildSearchRow() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       child: Row(
         children: [
-          const Icon(Icons.search, size: 18, color: Color(0xFF9AA4B6)),
+          Icon(Icons.search, size: 18, color: _tertiaryTextColor),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _searchController,
               autofocus: false,
               scrollPadding: EdgeInsets.zero,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: Color(0xFF1F2937),
+                color: _primaryTextColor,
                 fontWeight: FontWeight.w500,
                 fontFamily: 'PingFang SC',
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 isDense: true,
                 hintText: '快速筛选模型 ID',
                 hintStyle: TextStyle(
                   fontSize: 13,
-                  color: Color(0xFF9AA4B6),
+                  color: _tertiaryTextColor,
                   fontWeight: FontWeight.w500,
                   fontFamily: 'PingFang SC',
                 ),
@@ -794,8 +840,11 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
+            color: selected ? _selectedSurfaceColor : _surfaceColor,
             borderRadius: BorderRadius.circular(12),
+            border: _isDarkTheme
+                ? Border.all(color: context.omniPalette.borderSubtle)
+                : null,
           ),
           child: Row(
             children: [
@@ -804,9 +853,9 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                   '恢复默认（${widget.scene.defaultModel}）',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: AppColors.text,
+                    color: _primaryTextColor,
                     fontWeight: FontWeight.w500,
                     fontFamily: 'PingFang SC',
                   ),
@@ -849,8 +898,11 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFFF4F6FA),
+            color: _surfaceColor,
             borderRadius: BorderRadius.circular(12),
+            border: _isDarkTheme
+                ? Border.all(color: context.omniPalette.borderSubtle)
+                : null,
           ),
           child: Row(
             children: [
@@ -859,9 +911,9 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                   profile.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF64748B),
+                    color: _secondaryTextColor,
                     fontWeight: FontWeight.w600,
                     fontFamily: 'PingFang SC',
                   ),
@@ -869,9 +921,9 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
               ),
               Text(
                 profile.configured ? '${models.length}' : '未配置',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: Color(0xFF9AA4B6),
+                  color: _tertiaryTextColor,
                   fontWeight: FontWeight.w600,
                   fontFamily: 'PingFang SC',
                 ),
@@ -892,7 +944,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                     ? Icons.expand_less_rounded
                     : Icons.expand_more_rounded,
                 size: 16,
-                color: const Color(0xFF94A3B8),
+                color: _tertiaryTextColor,
               ),
             ],
           ),
@@ -925,10 +977,11 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: selected
-                  ? const Color(0xFFEAF3FF)
-                  : const Color(0xFFF8FAFD),
+              color: selected ? _selectedSurfaceColor : _surfaceColor,
               borderRadius: BorderRadius.circular(12),
+              border: _isDarkTheme
+                  ? Border.all(color: context.omniPalette.borderSubtle)
+                  : null,
             ),
             child: Row(
               children: [
@@ -937,9 +990,9 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                     item.id,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: AppColors.text,
+                      color: _primaryTextColor,
                       fontWeight: FontWeight.w500,
                       fontFamily: 'PingFang SC',
                     ),
@@ -977,28 +1030,28 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
             _buildSearchRow(),
             _buildRestoreDefaultTile(),
             if (widget.profiles.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
                   '还没有可用 Provider，请先配置模型提供商。',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                    color: _tertiaryTextColor,
                     fontWeight: FontWeight.w500,
                     fontFamily: 'PingFang SC',
                   ),
                 ),
               )
             else if (visibleProfiles.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
                   '没有匹配的模型',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                    color: _tertiaryTextColor,
                     fontWeight: FontWeight.w500,
                     fontFamily: 'PingFang SC',
                   ),
@@ -1021,7 +1074,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                           if (expanded)
                             profile.configured
                                 ? models.isEmpty
-                                      ? const Padding(
+                                      ? Padding(
                                           padding: EdgeInsets.fromLTRB(
                                             12,
                                             4,
@@ -1032,7 +1085,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                                             '当前 Provider 没有可选模型',
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: Color(0xFF94A3B8),
+                                              color: _tertiaryTextColor,
                                               fontFamily: 'PingFang SC',
                                             ),
                                           ),
@@ -1045,13 +1098,13 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                                             );
                                           }).toList(),
                                         )
-                                : const Padding(
+                                : Padding(
                                     padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
                                     child: Text(
                                       '请先在模型提供商页配置该 Provider',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Color(0xFF94A3B8),
+                                        color: _tertiaryTextColor,
                                         fontFamily: 'PingFang SC',
                                       ),
                                     ),

@@ -4,6 +4,7 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -138,8 +139,11 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: const CommonAppBar(title: '闹钟设置', primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -175,11 +179,23 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
   }
 
   Widget _buildSourceCard() {
+    final palette = context.omniPalette;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.circular(8),
-        boxShadow: [AppColors.boxShadow],
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(alpha: 0.16),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [AppColors.boxShadow],
       ),
       child: Column(
         children: [
@@ -208,6 +224,7 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
     required String title,
     required String subtitle,
   }) {
+    final palette = context.omniPalette;
     return RadioListTile<String>(
       value: value,
       groupValue: _source,
@@ -215,15 +232,18 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
       activeColor: AppColors.primaryBlue,
       title: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
-          color: AppColors.text,
+          color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(fontSize: 12, color: AppColors.text70),
+        style: TextStyle(
+          fontSize: 12,
+          color: context.isDarkTheme ? palette.textSecondary : AppColors.text70,
+        ),
       ),
       onChanged: (next) {
         if (next == null) return;
@@ -235,31 +255,48 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
   }
 
   Widget _buildLocalFileCard() {
+    final palette = context.omniPalette;
     final displayPath = _localPath.isEmpty ? '未选择文件' : _localPath;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.circular(8),
-        boxShadow: [AppColors.boxShadow],
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(alpha: 0.16),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [AppColors.boxShadow],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '本地文件',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: AppColors.text,
+              color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             displayPath,
-            style: const TextStyle(fontSize: 12, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 12,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
           ),
@@ -278,23 +315,35 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
   }
 
   Widget _buildRemoteUrlCard() {
+    final palette = context.omniPalette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.circular(8),
-        boxShadow: [AppColors.boxShadow],
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(alpha: 0.16),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [AppColors.boxShadow],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'mp3 直链',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: AppColors.text,
+              color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
             ),
           ),
           const SizedBox(height: 8),

@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:ui/services/speech_channel_service.dart';
 import 'package:ui/services/special_permission.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/widgets/image_preview_overlay.dart';
 import 'package:ui/widgets/text_input_context_menu.dart';
 
@@ -143,10 +144,7 @@ class _ContextUsageRing extends StatelessWidget {
         curve: Curves.easeOutCubic,
         builder: (context, value, _) {
           return CustomPaint(
-            painter: _ContextUsageRingPainter(
-              progress: value,
-              color: color,
-            ),
+            painter: _ContextUsageRingPainter(progress: value, color: color),
           );
         },
       ),
@@ -172,14 +170,13 @@ class _ContextUsageRingButton extends StatelessWidget {
       height: 22,
       child: Center(child: _ContextUsageRing(ratio: ratio)),
     );
-    final interactiveChild =
-        onLongPress == null
-            ? child
-            : GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onLongPress: onLongPress,
-                child: child,
-              );
+    final interactiveChild = onLongPress == null
+        ? child
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPress: onLongPress,
+            child: child,
+          );
     final tooltip = tooltipMessage?.trim() ?? '';
     if (tooltip.isEmpty) {
       return interactiveChild;
@@ -213,11 +210,9 @@ class _ContextUsageRingButton extends StatelessWidget {
     );
   }
 }
+
 class _ContextUsageRingPainter extends CustomPainter {
-  const _ContextUsageRingPainter({
-    required this.progress,
-    required this.color,
-  });
+  const _ContextUsageRingPainter({required this.progress, required this.color});
 
   final double progress;
   final Color color;
@@ -416,5 +411,3 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     });
   }
 }
-
-

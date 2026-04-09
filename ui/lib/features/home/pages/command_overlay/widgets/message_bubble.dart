@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
+import '../../../../../theme/theme_context.dart';
 import '../../../../../widgets/streaming_text.dart';
 import 'thinking_dots_indicator.dart';
 import 'cards/card_widget_factory.dart';
@@ -54,6 +55,23 @@ class MessageBubble extends StatelessWidget {
 
   double get _chatTextSize => appearanceConfig.chatTextSize;
   double get _chatTextScale => resolvedChatTextScale(appearanceConfig);
+
+  bool _usesThemeDrivenText() {
+    return !appearanceConfig.isActive &&
+        appearanceConfig.chatTextColorMode != AppBackgroundTextColorMode.custom;
+  }
+
+  Color _resolvedAiPrimaryTextColor(BuildContext context) {
+    return _usesThemeDrivenText()
+        ? context.omniPalette.textPrimary
+        : visualProfile.primaryTextColor;
+  }
+
+  Color _resolvedAiSecondaryTextColor(BuildContext context) {
+    return _usesThemeDrivenText()
+        ? context.omniPalette.textSecondary
+        : visualProfile.secondaryTextColor;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,13 +169,13 @@ class MessageBubble extends StatelessWidget {
 
     if (attachments.isEmpty) {
       // AI消息：简单文本样式，无背景
-      return _buildAiText(text);
+      return _buildAiText(context, text);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (text.isNotEmpty) _buildAiText(text),
+        if (text.isNotEmpty) _buildAiText(context, text),
         if (text.isNotEmpty) const SizedBox(height: 8),
         _buildUserAttachmentList(context, attachments),
       ],
@@ -463,14 +481,14 @@ class MessageBubble extends StatelessWidget {
   }
 
   /// 构建AI文本（使用StreamingText组件）
-  Widget _buildAiText(String text) {
+  Widget _buildAiText(BuildContext context, String text) {
+    final aiPrimaryTextColor = _resolvedAiPrimaryTextColor(context);
+    final aiSecondaryTextColor = _resolvedAiSecondaryTextColor(context);
     // 如果是 loading 状态，显示浮动三个点动画（左对齐，与回复文本位置一致）
     if (message.isLoading) {
       return Align(
         alignment: Alignment.centerLeft,
-        child: ThinkingDotsIndicator(
-          dotColor: visualProfile.secondaryTextColor,
-        ),
+        child: ThinkingDotsIndicator(dotColor: aiSecondaryTextColor),
       );
     }
 
@@ -496,7 +514,7 @@ class MessageBubble extends StatelessWidget {
             selectable: true,
             style: TextStyle(
               fontSize: _chatTextSize,
-              color: visualProfile.primaryTextColor,
+              color: aiPrimaryTextColor,
               height: 1.57,
             ),
           ),
@@ -510,7 +528,7 @@ class MessageBubble extends StatelessWidget {
       selectable: true,
       style: TextStyle(
         fontSize: _chatTextSize,
-        color: visualProfile.primaryTextColor,
+        color: aiPrimaryTextColor,
         height: 1.57,
       ),
     );

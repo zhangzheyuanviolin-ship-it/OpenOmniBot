@@ -8,6 +8,7 @@ import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/terminal_output_utils.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 
 const ValueKey<String> kChatToolActivityBarKey = ValueKey<String>(
   'chat-tool-activity-bar',
@@ -319,14 +320,23 @@ class _ActivityDrawerSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final surfaceColor = context.isDarkTheme
+        ? palette.surfacePrimary
+        : _kToolActivitySurfaceColor;
+    final dividerColor = context.isDarkTheme
+        ? palette.borderSubtle.withValues(alpha: 0.52)
+        : const Color(0x140F2034);
     final bottomReveal = suppressShadow
         ? _kToolActivityAttachedBorderReveal
         : 0.0;
     return PhysicalShape(
       key: kChatToolActivityBarKey,
-      color: _kToolActivitySurfaceColor,
+      color: surfaceColor,
       shadowColor: suppressShadow
           ? Colors.transparent
+          : context.isDarkTheme
+          ? palette.shadowColor.withValues(alpha: 0.42)
           : const Color(0x18111B2D),
       elevation: suppressShadow ? 0 : (expanded ? 8 : 6),
       clipBehavior: Clip.antiAlias,
@@ -335,7 +345,7 @@ class _ActivityDrawerSurface extends StatelessWidget {
         bottomReveal: bottomReveal,
       ),
       child: ColoredBox(
-        color: _kToolActivitySurfaceColor,
+        color: surfaceColor,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -366,7 +376,7 @@ class _ActivityDrawerSurface extends StatelessWidget {
               curve: Curves.easeOutCubic,
               height: expanded ? 1 : 0,
               margin: const EdgeInsets.only(left: 18, right: 10),
-              color: const Color(0x140F2034),
+              color: dividerColor,
             ),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -397,6 +407,9 @@ class _ActivityBarTrailing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = context.isDarkTheme
+        ? context.omniPalette.textSecondary
+        : const Color(0xFF657891);
     return GestureDetector(
       key: kChatToolActivityToggleKey,
       behavior: HitTestBehavior.opaque,
@@ -407,11 +420,7 @@ class _ActivityBarTrailing extends StatelessWidget {
           turns: expanded ? 0 : 0.5,
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          child: const Icon(
-            Icons.keyboard_arrow_up_rounded,
-            size: 14,
-            color: Color(0xFF657891),
-          ),
+          child: Icon(Icons.keyboard_arrow_up_rounded, size: 14, color: color),
         ),
       ),
     );
@@ -433,6 +442,9 @@ class _HistoryDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dividerColor = context.isDarkTheme
+        ? context.omniPalette.borderSubtle.withValues(alpha: 0.52)
+        : const Color(0x140F2034);
     final scrollable = cards.length > 4;
     return Container(
       key: kChatToolActivityPanelKey,
@@ -456,12 +468,7 @@ class _HistoryDrawer extends StatelessWidget {
               decoration: BoxDecoration(
                 border: isBottomMost
                     ? null
-                    : Border(
-                        bottom: BorderSide(
-                          color: const Color(0x140F2034),
-                          width: 1,
-                        ),
-                      ),
+                    : Border(bottom: BorderSide(color: dividerColor, width: 1)),
               ),
               child: Material(
                 color: Colors.transparent,
@@ -494,6 +501,13 @@ class ToolActivityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final primaryTextColor = context.isDarkTheme
+        ? palette.textPrimary
+        : AppColors.text;
+    final secondaryTextColor = context.isDarkTheme
+        ? palette.textSecondary
+        : const Color(0xFF7C8DA5);
     final status = (card['status'] ?? 'running').toString();
     final toolTypeLabel = resolveAgentToolTypeLabel(card);
     final statusLabel = resolveAgentToolStatusLabel(card);
@@ -521,8 +535,8 @@ class ToolActivityRow extends StatelessWidget {
                     resolveAgentToolTitle(card),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.text,
+                    style: TextStyle(
+                      color: primaryTextColor,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       letterSpacing: -0.2,
@@ -541,8 +555,8 @@ class ToolActivityRow extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.right,
-                            style: const TextStyle(
-                              color: Color(0xFF7C8DA5),
+                            style: TextStyle(
+                              color: secondaryTextColor,
                               fontSize: 9,
                               fontWeight: FontWeight.w600,
                               letterSpacing: -0.1,

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:ui/models/remote_mcp_server.dart';
 import 'package:ui/services/remote_mcp_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -123,7 +124,9 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
     final saved = await showModalBottomSheet<RemoteMcpServer>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: context.isDarkTheme
+          ? context.omniPalette.surfacePrimary
+          : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -161,8 +164,11 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: const CommonAppBar(title: 'MCP 工具', primary: true),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showServerEditor(),
@@ -186,16 +192,26 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
   }
 
   Widget _buildEmpty() {
+    final palette = context.omniPalette;
     return ListView(
       padding: const EdgeInsets.all(24),
-      children: const [
-        SizedBox(height: 120),
-        Icon(Icons.extension, size: 48, color: AppColors.text50),
-        SizedBox(height: 12),
+      children: [
+        const SizedBox(height: 120),
+        Icon(
+          Icons.extension,
+          size: 48,
+          color: context.isDarkTheme ? palette.textTertiary : AppColors.text50,
+        ),
+        const SizedBox(height: 12),
         Center(
           child: Text(
             '暂无远端 MCP 服务',
-            style: TextStyle(fontSize: 16, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 16,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
           ),
         ),
       ],
@@ -203,13 +219,25 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
   }
 
   Widget _buildServerCard(RemoteMcpServer server) {
+    final palette = context.omniPalette;
     final busy = _busyIds.contains(server.id);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow],
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [AppColors.boxShadow],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,18 +250,22 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
                   children: [
                     Text(
                       server.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.text,
+                        color: context.isDarkTheme
+                            ? palette.textPrimary
+                            : AppColors.text,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       server.endpointUrl,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.text50,
+                        color: context.isDarkTheme
+                            ? palette.textTertiary
+                            : AppColors.text50,
                       ),
                     ),
                   ],
@@ -418,10 +450,7 @@ class _RemoteMcpServerEditorSheetState
         children: [
           Text(
             widget.server == null ? '添加 MCP 服务' : '编辑 MCP 服务',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
           _InputField(
@@ -436,10 +465,7 @@ class _RemoteMcpServerEditorSheetState
             hint: 'https://example.com/mcp',
           ),
           const SizedBox(height: 12),
-          _InputField(
-            controller: _tokenController,
-            label: 'Bearer Token（可选）',
-          ),
+          _InputField(controller: _tokenController, label: 'Bearer Token（可选）'),
           const SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -450,10 +476,7 @@ class _RemoteMcpServerEditorSheetState
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _submit,
-              child: const Text('保存'),
-            ),
+            child: ElevatedButton(onPressed: _submit, child: const Text('保存')),
           ),
         ],
       ),
@@ -470,15 +493,28 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color ?? AppColors.background,
+        color:
+            color ??
+            (context.isDarkTheme
+                ? palette.surfaceSecondary
+                : AppColors.background),
         borderRadius: BorderRadius.circular(999),
+        border: color == null && context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 12, color: textColor ?? AppColors.text70),
+        style: TextStyle(
+          fontSize: 12,
+          color:
+              textColor ??
+              (context.isDarkTheme ? palette.textSecondary : AppColors.text70),
+        ),
       ),
     );
   }

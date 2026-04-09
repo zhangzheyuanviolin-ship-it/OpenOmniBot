@@ -6,6 +6,7 @@ import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -206,8 +207,11 @@ class _WorkspaceMemorySettingPageState
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: const CommonAppBar(title: 'Workspace 记忆', primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -269,12 +273,24 @@ class _WorkspaceMemorySettingPageState
     required ValueChanged<bool> onChanged,
     Widget? footer,
   }) {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow],
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [AppColors.boxShadow],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,10 +300,12 @@ class _WorkspaceMemorySettingPageState
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.text,
+                    color: context.isDarkTheme
+                        ? palette.textPrimary
+                        : AppColors.text,
                   ),
                 ),
               ),
@@ -297,7 +315,12 @@ class _WorkspaceMemorySettingPageState
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 12, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 12,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
           ),
           if (footer != null) ...[const SizedBox(height: 8), footer],
         ],
@@ -311,22 +334,34 @@ class _WorkspaceMemorySettingPageState
     required bool saving,
     required Future<void> Function() onSave,
   }) {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow],
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [AppColors.boxShadow],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: AppColors.text,
+              color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
             ),
           ),
           const SizedBox(height: 8),

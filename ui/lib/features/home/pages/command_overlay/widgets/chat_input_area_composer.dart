@@ -5,6 +5,7 @@ mixin _ChatInputAreaComposerMixin
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.omniPalette;
     final composer = switch ((
       widget.useLargeComposerStyle,
       widget.useFrostedGlass,
@@ -19,8 +20,15 @@ mixin _ChatInputAreaComposerMixin
               height: 44,
               padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
               decoration: BoxDecoration(
-                color: const Color(0xE6F1F8FF), // rgba(241,248,255,0.9)
+                color: context.isDarkTheme
+                    ? palette.surfacePrimary.withValues(alpha: 0.86)
+                    : const Color(0xE6F1F8FF),
                 borderRadius: BorderRadius.circular(8),
+                border: context.isDarkTheme
+                    ? Border.all(
+                        color: palette.borderSubtle.withValues(alpha: 0.72),
+                      )
+                    : null,
               ),
               child: _buildInputContent(theme),
             ),
@@ -31,13 +39,21 @@ mixin _ChatInputAreaComposerMixin
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+            boxShadow: context.isDarkTheme
+                ? [
+                    BoxShadow(
+                      color: palette.shadowColor.withValues(alpha: 0.22),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
@@ -45,8 +61,13 @@ mixin _ChatInputAreaComposerMixin
               height: 44,
               padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: context.isDarkTheme
+                    ? palette.surfacePrimary
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(8),
+                border: context.isDarkTheme
+                    ? Border.all(color: palette.borderSubtle)
+                    : null,
               ),
               child: _buildInputContent(theme),
             ),
@@ -161,14 +182,24 @@ mixin _ChatInputAreaComposerMixin
 
   Widget _buildSelectedModelOverrideChip() {
     final modelId = (widget.selectedModelOverrideId ?? '').trim();
+    final palette = context.omniPalette;
+    final chipColor = context.isDarkTheme
+        ? palette.surfaceSecondary
+        : const Color(0xFFF4F7FD);
+    final textColor = context.isDarkTheme
+        ? palette.textSecondary
+        : const Color(0xFF54627A);
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 230),
         padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
         decoration: BoxDecoration(
-          color: const Color(0xFFF4F7FD),
+          color: chipColor,
           borderRadius: BorderRadius.circular(999),
+          border: context.isDarkTheme
+              ? Border.all(color: palette.borderSubtle)
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -178,9 +209,9 @@ mixin _ChatInputAreaComposerMixin
                 '@$modelId',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: Color(0xFF54627A),
+                  color: textColor,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -194,14 +225,10 @@ mixin _ChatInputAreaComposerMixin
                   width: 14,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF54627A).withValues(alpha: 0.12),
+                    color: textColor.withValues(alpha: 0.16),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.close_rounded,
-                    size: 10,
-                    color: Color(0xFF54627A),
-                  ),
+                  child: Icon(Icons.close_rounded, size: 10, color: textColor),
                 ),
               ),
             ],
@@ -276,6 +303,7 @@ mixin _ChatInputAreaComposerMixin
   Widget _buildLargeComposerShell(ThemeData theme) {
     final content = RepaintBoundary(child: _buildLargeComposer(theme));
     final useFrostedGlass = widget.useFrostedGlass;
+    final palette = context.omniPalette;
     return MouseRegion(
       onEnter: (_) {
         if (_isComposerHovered) return;
@@ -289,9 +317,13 @@ mixin _ChatInputAreaComposerMixin
         valueListenable: _isFocusedNotifier,
         child: content,
         builder: (context, focused, child) {
-          const inputSurfaceColor = Color(0xFFF9FCFF);
+          final inputSurfaceColor = context.isDarkTheme
+              ? palette.surfacePrimary
+              : const Color(0xFFF9FCFF);
           final shellSurfaceColor = useFrostedGlass
-              ? Colors.white.withValues(alpha: 0.76)
+              ? (context.isDarkTheme
+                    ? palette.surfacePrimary.withValues(alpha: 0.82)
+                    : Colors.white.withValues(alpha: 0.76))
               : inputSurfaceColor;
           final hovered = _isComposerHovered;
           const minShellHeight = 72.0;
@@ -309,15 +341,19 @@ mixin _ChatInputAreaComposerMixin
               borderRadius: BorderRadius.circular(shellRadius),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0x1F2F7BFF).withValues(
-                    alpha: focused
-                        ? 0.2
-                        : hovered
-                        ? 0.15
-                        : 0.1,
-                  ),
-                  blurRadius: focused ? 16 : 12,
-                  offset: const Offset(0, 4),
+                  color:
+                      (context.isDarkTheme
+                              ? palette.accentPrimary
+                              : const Color(0xFF2F7BFF))
+                          .withValues(
+                            alpha: focused
+                                ? (context.isDarkTheme ? 0.18 : 0.2)
+                                : hovered
+                                ? (context.isDarkTheme ? 0.12 : 0.15)
+                                : (context.isDarkTheme ? 0.08 : 0.1),
+                          ),
+                  blurRadius: focused ? 18 : 12,
+                  offset: const Offset(0, 6),
                 ),
               ],
             ),
@@ -342,13 +378,17 @@ mixin _ChatInputAreaComposerMixin
                           color: shellSurfaceColor,
                           borderRadius: BorderRadius.circular(innerRadius),
                           border: Border.all(
-                            color: Colors.white.withValues(
-                              alpha: focused
-                                  ? 0.32
-                                  : hovered
-                                  ? 0.2
-                                  : 0.1,
-                            ),
+                            color:
+                                (context.isDarkTheme
+                                        ? palette.borderStrong
+                                        : Colors.white)
+                                    .withValues(
+                                      alpha: focused
+                                          ? (context.isDarkTheme ? 0.74 : 0.32)
+                                          : hovered
+                                          ? (context.isDarkTheme ? 0.56 : 0.2)
+                                          : (context.isDarkTheme ? 0.42 : 0.1),
+                                    ),
                             width: 1,
                           ),
                         ),
@@ -386,8 +426,7 @@ mixin _ChatInputAreaComposerMixin
 
   Widget _buildAttachmentPreview() {
     // Collect all image sources for multi-image preview
-    final imageItems =
-        widget.attachments.where((a) => a.isImage).toList();
+    final imageItems = widget.attachments.where((a) => a.isImage).toList();
     final imageSources = imageItems
         .map((a) => FileImageSource(a.path) as ImagePreviewSource)
         .toList();
@@ -407,7 +446,10 @@ mixin _ChatInputAreaComposerMixin
           if (item.isImage) {
             final imageIndex = imageItems.indexOf(item);
             return _buildImageAttachmentTile(
-              item, imageSources, imageIndex, heroTags,
+              item,
+              imageSources,
+              imageIndex,
+              heroTags,
             );
           }
           return _buildFileAttachmentTile(item);
@@ -423,6 +465,7 @@ mixin _ChatInputAreaComposerMixin
     List<String> heroTags,
   ) {
     final heroTag = heroTags[tappedIndex];
+    final palette = context.omniPalette;
     return GestureDetector(
       onTap: () => ImagePreviewOverlay.showAll(
         context,
@@ -437,8 +480,15 @@ mixin _ChatInputAreaComposerMixin
             height: 72,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFD3E3FB), width: 1),
-              color: const Color(0xFFF1F6FF),
+              border: Border.all(
+                color: context.isDarkTheme
+                    ? palette.borderSubtle
+                    : const Color(0xFFD3E3FB),
+                width: 1,
+              ),
+              color: context.isDarkTheme
+                  ? palette.surfaceSecondary
+                  : const Color(0xFFF1F6FF),
             ),
             clipBehavior: Clip.antiAlias,
             child: Hero(
@@ -464,6 +514,19 @@ mixin _ChatInputAreaComposerMixin
 
   Widget _buildFileAttachmentTile(ChatInputAttachment item) {
     final sizeText = _formatAttachmentSize(item.size);
+    final palette = context.omniPalette;
+    final tileColor = context.isDarkTheme
+        ? palette.surfaceSecondary
+        : const Color(0xFFF1F6FF);
+    final tileBorderColor = context.isDarkTheme
+        ? palette.borderSubtle
+        : const Color(0xFFD3E3FB);
+    final textColor = context.isDarkTheme
+        ? palette.textSecondary
+        : const Color(0xFF35517A);
+    final iconColor = context.isDarkTheme
+        ? palette.accentPrimary
+        : const Color(0xFF3B6FD6);
     return Stack(
       children: [
         Container(
@@ -471,16 +534,16 @@ mixin _ChatInputAreaComposerMixin
           height: 72,
           padding: const EdgeInsets.fromLTRB(10, 8, 28, 8),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F6FF),
+            color: tileColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFD3E3FB), width: 1),
+            border: Border.all(color: tileBorderColor, width: 1),
           ),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.insert_drive_file_outlined,
                 size: 18,
-                color: Color(0xFF3B6FD6),
+                color: iconColor,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -488,9 +551,9 @@ mixin _ChatInputAreaComposerMixin
                   sizeText.isEmpty ? item.name : '${item.name}\n$sizeText',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF35517A),
+                    color: textColor,
                     fontWeight: FontWeight.w500,
                     height: 1.3,
                   ),
@@ -618,10 +681,17 @@ mixin _ChatInputAreaComposerMixin
 
   /// 统一的输入框组件（录音模式和输入模式共用）
   Widget _buildTextField({bool multiline = false}) {
+    final palette = context.omniPalette;
+    final textColor = context.isDarkTheme
+        ? palette.textPrimary
+        : const Color(0xFF353E53);
+    final hintColor = context.isDarkTheme
+        ? palette.textTertiary
+        : const Color(0x80353E53);
     final textStyle = TextStyle(
       fontSize: multiline ? 15.0 : 14.0,
       height: multiline ? 1.45 : 1.43,
-      color: const Color(0xFF353E53),
+      color: textColor,
       letterSpacing: 0.333,
     );
     return GestureDetector(
@@ -654,7 +724,7 @@ mixin _ChatInputAreaComposerMixin
             hintText: isRecording ? '输入或直接说，我在听' : '请输入内容',
             hintStyle: TextStyle(
               fontSize: multiline ? 15.0 : 14.0,
-              color: const Color(0x80353E53), // rgba(53,62,83,0.5)
+              color: hintColor,
               height: multiline ? 1.45 : 1.43,
               letterSpacing: 0.333,
             ),
