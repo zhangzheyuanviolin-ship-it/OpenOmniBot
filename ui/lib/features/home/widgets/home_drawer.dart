@@ -2,22 +2,48 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/core/router/go_router_manager.dart';
-import 'package:ui/features/home/widgets/conversation_mode_badge.dart';
-import 'package:ui/services/agent_skill_store_service.dart';
+import 'package:ui/features/home/widgets/conversation_slidable.dart';
+import 'package:ui/models/conversation_model.dart';
+import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/services/conversation_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
-import 'package:ui/models/conversation_model.dart';
-import 'package:ui/models/conversation_thread_target.dart';
-import 'package:ui/services/conversation_service.dart';
-import 'package:ui/features/memory/services/mem0_memory_service.dart';
+
+const String _kDrawerMemoryIconSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-brain-icon lucide-brain">'
+    '<path d="M12 18V5"/>'
+    '<path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/>'
+    '<path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"/>'
+    '<path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/>'
+    '<path d="M18 18a4 4 0 0 0 2-7.464"/>'
+    '<path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/>'
+    '<path d="M6 18a4 4 0 0 1-2-7.464"/>'
+    '<path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/>'
+    '</svg>';
+
+const String _kDrawerSkillStoreIconSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-container-icon lucide-container">'
+    '<path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 '
+    '6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0'
+    'l10.3-6c.5-.3.9-1 .9-1.5Z"/>'
+    '<path d="M10 21.9V14L2.1 9.1"/>'
+    '<path d="m10 14 11.9-6.9"/>'
+    '<path d="M14 19.8v-8.1"/>'
+    '<path d="M18 17.5V9.4"/>'
+    '</svg>';
 
 /// 首页侧边栏
 class HomeDrawer extends ConsumerStatefulWidget {
@@ -42,27 +68,20 @@ class HomeDrawer extends ConsumerStatefulWidget {
 
 class HomeDrawerState extends ConsumerState<HomeDrawer> {
   static const double _conversationActionIconSize = 18;
-  int _localMemoryCount = 0;
-  int _cloudMemoryCount = 0;
-  int _installedSkillCount = 0;
-  int _enabledSkillCount = 0;
-  List<ConversationModel> conversations = [];
-  final Set<String> _busyConversationKeys = <String>{};
-  bool isLoadingConversations = true;
-  StreamSubscription<Map<String, dynamic>>?
-  _conversationListChangedSubscription;
   static const BorderRadius _drawerTrailingActionRadius = BorderRadius.only(
     topRight: Radius.circular(4),
     bottomRight: Radius.circular(4),
   );
 
-  int get _totalMemoryCount => _localMemoryCount + _cloudMemoryCount;
+  List<ConversationModel> conversations = [];
+  final Set<String> _busyConversationKeys = <String>{};
+  bool isLoadingConversations = true;
+  StreamSubscription<Map<String, dynamic>>?
+  _conversationListChangedSubscription;
 
-  /// 根据时间段获取问候语
   Map<String, String> _getGreetingByTime() {
     final hour = DateTime.now().hour;
 
-    // 02:00 - 06:00: 深夜未眠 / 凌晨早起
     if (hour >= 2 && hour < 6) {
       final greetings = [
         {'title': '凌晨啦', 'subtitle': '还没休息吗？'},
@@ -72,7 +91,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 06:00 - 08:00: 清晨通勤 / 准备早餐
     if (hour >= 6 && hour < 8) {
       final greetings = [
         {'title': '早安！', 'subtitle': '开启元气一天'},
@@ -81,7 +99,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 08:00 - 12:00: 工作 / 学习时段
     if (hour >= 8 && hour < 12) {
       final greetings = [
         {'title': '上午好！', 'subtitle': '再忙也别忘了活动下肩膀'},
@@ -90,7 +107,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 12:00 - 14:00: 午餐 / 午休时段
     if (hour >= 12 && hour < 14) {
       final greetings = [
         {'title': '午饭时间到！', 'subtitle': '好好吃饭，别凑合'},
@@ -100,7 +116,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 14:00 - 18:00: 下午工作 / 学习 / 接娃
     if (hour >= 14 && hour < 18) {
       final greetings = [
         {'title': '喝杯茶提提神', 'subtitle': '剩下的任务也能轻松搞定～'},
@@ -109,7 +124,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 18:00 - 20:00: 下班 / 放学 / 准备晚餐
     if (hour >= 18 && hour < 20) {
       final greetings = [
         {'title': '回家路上慢点', 'subtitle': '今晚好好放松～'},
@@ -119,7 +133,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 20:00 - 22:00: 休闲放松 / 陪伴家人
     if (hour >= 20 && hour < 22) {
       final greetings = [
         {'title': '晚上好！', 'subtitle': '享受属于自己的时光吧～'},
@@ -129,7 +142,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 22:00 - 02:00: 睡前放松 / 深夜未眠
     final greetings = [
       {'title': '放下手机早点睡', 'subtitle': '明天才能元气满满～'},
       {'title': '深夜了', 'subtitle': '好好和今天说晚安～'},
@@ -145,7 +157,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         .listen((_) {
           unawaited(_loadConversations());
         });
-    _syncMemoryCount();
     _loadConversations();
   }
 
@@ -155,62 +166,8 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     super.dispose();
   }
 
-  @override
-  void didUpdateWidget(covariant HomeDrawer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.memoryCount != oldWidget.memoryCount) {
-      if (widget.memoryCount != null) {
-        setState(() {
-          _localMemoryCount = widget.memoryCount!;
-        });
-      } else if (oldWidget.memoryCount != null) {
-        _loadMemoryCount();
-      }
-    }
-  }
-
   void reloadConversations() {
     _loadConversations();
-    _syncMemoryCount();
-  }
-
-  void _syncMemoryCount() {
-    if (widget.memoryCount != null) {
-      _localMemoryCount = widget.memoryCount!;
-    } else {
-      _loadMemoryCount();
-    }
-    _loadCloudMemoryCount();
-    _loadSkillCounts();
-  }
-
-  Future<void> _loadMemoryCount() async {
-    try {
-      final favoriteRecords = await CacheUtil.getAllFavoriteRecords();
-      if (mounted) {
-        setState(() {
-          _localMemoryCount = favoriteRecords.length;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading memory count: $e');
-    }
-  }
-
-  Future<void> _loadCloudMemoryCount() async {
-    try {
-      final snapshot = await Mem0MemoryService.getMemories(limit: 200);
-      if (!mounted) return;
-      setState(() {
-        _cloudMemoryCount = snapshot.configured ? snapshot.items.length : 0;
-      });
-    } catch (e) {
-      debugPrint('Error loading cloud memory count: $e');
-      if (!mounted) return;
-      setState(() {
-        _cloudMemoryCount = 0;
-      });
-    }
   }
 
   Future<void> _loadConversations() async {
@@ -223,38 +180,42 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       final loadedConversations =
           await ConversationService.getAllConversations();
       debugPrint('[HomeDrawer] 加载到 ${loadedConversations.length} 条聊天记录');
-      if (mounted) {
-        setState(() {
-          conversations = loadedConversations;
-          isLoadingConversations = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('[HomeDrawer] 加载聊天记录出错: $e');
-      if (mounted) {
-        setState(() {
-          isLoadingConversations = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _loadSkillCounts() async {
-    try {
-      final skills = await AgentSkillStoreService.listSkills();
       if (!mounted) return;
       setState(() {
-        _installedSkillCount = skills.where((item) => item.installed).length;
-        _enabledSkillCount = skills
-            .where((item) => item.installed && item.enabled)
-            .length;
+        conversations = loadedConversations;
+        isLoadingConversations = false;
       });
     } catch (e) {
-      debugPrint('Error loading skill count: $e');
+      debugPrint('[HomeDrawer] 加载聊天记录出错: $e');
+      if (!mounted) return;
+      setState(() {
+        isLoadingConversations = false;
+      });
     }
   }
 
   bool get _shouldCloseOnNavigate => widget.closeOnNavigate && !widget.embedded;
+
+  Color get _drawerBackgroundColor {
+    if (!context.isDarkTheme) {
+      return AppColors.background;
+    }
+    return context.omniPalette.pageBackground;
+  }
+
+  Color get _drawerTextColor {
+    if (!context.isDarkTheme) {
+      return AppColors.text;
+    }
+    return context.omniPalette.textPrimary;
+  }
+
+  Color get _drawerSecondaryTextColor {
+    if (!context.isDarkTheme) {
+      return AppColors.text.withValues(alpha: 0.4);
+    }
+    return context.omniPalette.textSecondary;
+  }
 
   void _maybeCloseDrawer() {
     if (!_shouldCloseOnNavigate || !Navigator.of(context).canPop()) {
@@ -310,39 +271,13 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 13),
+            const SizedBox(height: 16),
             _buildUserHeader(),
-
-            const SizedBox(height: 24),
-
-            _buildQuickAccessCards(context),
-
-            const SizedBox(height: 16),
-
-            _buildMenuItem(
-              icon: 'assets/home/task_record_icon.svg',
-              title: '任务记录',
-              onTap: () => _navigateTo('/task/execution_history'),
-            ),
-
-            _buildMenuItem(
-              icon: 'assets/common/schedule_icon.svg',
-              title: '定时',
-              onTap: () => _navigateTo('/task/scheduled_tasks'),
-            ),
-            const SizedBox(height: 16),
-
+            const SizedBox(height: 20),
             Expanded(child: _buildConversationSection()),
-
-            const SizedBox(height: 16),
-            _buildMenuSection([
-              _DrawerMenuItem(
-                icon: 'assets/home/setting_icon.svg',
-                title: '设置',
-                onTap: () => _navigateTo('/home/settings'),
-              ),
-            ]),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            _buildFooterShortcutBar(),
+            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -357,63 +292,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
   }
 
-  Color get _drawerBackgroundColor {
-    if (!context.isDarkTheme) {
-      return AppColors.background;
-    }
-    return context.omniPalette.pageBackground;
-  }
-
-  Color get _drawerTextColor {
-    if (!context.isDarkTheme) {
-      return AppColors.text;
-    }
-    return context.omniPalette.textPrimary;
-  }
-
-  Color get _drawerSecondaryTextColor {
-    if (!context.isDarkTheme) {
-      return AppColors.text.withValues(alpha: 0.4);
-    }
-    return context.omniPalette.textSecondary;
-  }
-
-  Gradient get _drawerQuickCardGradient {
-    if (!context.isDarkTheme) {
-      return const LinearGradient(
-        begin: Alignment(-0.17, -0.47),
-        end: Alignment(1.48, 1.69),
-        colors: [Color(0xFF0056FA), Color(0xB2609CF7)],
-      );
-    }
-
-    final palette = context.omniPalette;
-    return LinearGradient(
-      begin: const Alignment(-0.17, -0.47),
-      end: const Alignment(1.48, 1.69),
-      colors: [
-        Color.lerp(palette.surfaceSecondary, palette.accentPrimary, 0.08)!,
-        Color.lerp(palette.surfaceElevated, palette.accentPrimary, 0.16)!,
-      ],
-    );
-  }
-
-  BoxDecoration _drawerPanelDecoration({
-    required BorderRadius borderRadius,
-    required Color darkColor,
-  }) {
-    if (!context.isDarkTheme) {
-      return BoxDecoration(
-        color: Colors.white,
-        borderRadius: borderRadius,
-        boxShadow: [AppColors.boxShadow],
-      );
-    }
-
-    return BoxDecoration(color: darkColor, borderRadius: borderRadius);
-  }
-
-  /// 用户头像和问候语
   Widget _buildUserHeader() {
     final greeting = _getGreetingByTime();
 
@@ -445,277 +323,34 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
   }
 
-  /// 快捷访问卡片
-  Widget _buildQuickAccessCards(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildQuickCard(
-              title: '记忆中心',
-              subtitle: '记忆 $_totalMemoryCount 碎片',
-              gradient: _drawerQuickCardGradient,
-              onTap: () {
-                _navigateTo("/memory/memory_center_page");
-              },
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildQuickCard(
-              title: '技能仓库',
-              subtitle: '启用 $_enabledSkillCount / $_installedSkillCount 技能',
-              gradient: _drawerQuickCardGradient,
-              onTap: () {
-                _navigateTo('/home/skill_store');
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 快捷卡片组件
-  Widget _buildQuickCard({
-    required String title,
-    required String subtitle,
-    required Gradient gradient,
-    required VoidCallback onTap,
-  }) {
-    final palette = context.omniPalette;
-    final titleColor = context.isDarkTheme ? palette.textPrimary : Colors.white;
-    final subtitleColor = context.isDarkTheme
-        ? palette.textSecondary
-        : Colors.white.withValues(alpha: 0.8);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(8),
-          border: context.isDarkTheme
-              ? Border.all(color: palette.borderSubtle)
-              : null,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: titleColor,
-                fontFamily: 'PingFang SC',
-                height: 1.3,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w400,
-                color: subtitleColor,
-                fontFamily: 'PingFang SC',
-                height: 1.2,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 单个菜单项（白色背景卡片）
-  Widget _buildMenuItem({
-    required String icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        decoration: _drawerPanelDecoration(
-          borderRadius: BorderRadius.circular(4),
-          darkColor: context.omniPalette.surfacePrimary,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-              child: Row(
-                children: [
-                  // Icon placeholder - 使用 Container 代替实际图标
-                  SvgPicture.asset(
-                    icon,
-                    width: 16,
-                    height: 16,
-                    colorFilter: ColorFilter.mode(
-                      _drawerTextColor,
-                      BlendMode.srcIn,
-                    ),
-                    errorBuilder: (context, error, stackTrace) =>
-                        Icon(Icons.settings, size: 16, color: _drawerTextColor),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: _drawerTextColor,
-                      fontFamily: 'PingFang SC',
-                      height: 1.57,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 菜单组（白色背景卡片，包含多个菜单项）
-  Widget _buildMenuSection(List<_DrawerMenuItem> items) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        decoration: _drawerPanelDecoration(
-          borderRadius: BorderRadius.circular(4),
-          darkColor: context.omniPalette.surfacePrimary,
-        ),
-        child: Column(
-          children: [
-            for (int index = 0; index < items.length; index++) ...[
-              if (index > 0)
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(
-                    height: 0.5,
-                    thickness: 0.5,
-                    color: context.isDarkTheme
-                        ? context.omniPalette.borderSubtle.withValues(
-                            alpha: 0.45,
-                          )
-                        : AppColors.borderStandard,
-                  ),
-                ),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: items[index].onTap,
-                  borderRadius: BorderRadius.vertical(
-                    top: index == 0 ? const Radius.circular(4) : Radius.zero,
-                    bottom: index == items.length - 1
-                        ? const Radius.circular(4)
-                        : Radius.zero,
-                  ),
-                  child: Container(
-                    padding: EdgeInsets.fromLTRB(
-                      12,
-                      index == 0 ? 13 : 12,
-                      12,
-                      index == items.length - 1 ? 16 : 12,
-                    ),
-                    child: Row(
-                      children: [
-                        // Icon placeholder
-                        SvgPicture.asset(
-                          items[index].icon,
-                          width: 16,
-                          height: 16,
-                          colorFilter: ColorFilter.mode(
-                            _drawerTextColor,
-                            BlendMode.srcIn,
-                          ),
-                          errorBuilder: (context, error, stackTrace) => Icon(
-                            Icons.settings,
-                            size: 16,
-                            color: _drawerTextColor,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          items[index].title,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: _drawerTextColor,
-                            fontFamily: 'PingFang SC',
-                            height: 1.57,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildConversationSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          decoration: _drawerPanelDecoration(
-            borderRadius: BorderRadius.circular(8),
-            darkColor: context.omniPalette.surfacePrimary,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '聊天记录',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: _drawerTextColor,
-                  ),
-                ),
-                Row(
-                  children: [
-                    _buildIconActionButton(
-                      iconPath: 'assets/home/archive_icon.svg',
-                      onTap: () => _navigateTo('/home/archived_conversations'),
-                    ),
-                    const SizedBox(width: 12),
-                    _buildIconActionButton(
-                      iconPath: 'assets/home/chat_add_icon.svg',
-                      onTap: _openNewConversation,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _buildSectionActionButton(
+                iconPath: 'assets/home/archive_icon.svg',
+                tooltip: '归档对话',
+                onTap: () => _navigateTo('/home/archived_conversations'),
+              ),
+              const SizedBox(width: 10),
+              _buildSectionActionButton(
+                iconPath: 'assets/home/chat_add_icon.svg',
+                tooltip: '新对话',
+                onTap: _openNewConversation,
+                isPrimary: true,
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
         Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: isLoadingConversations
                 ? Center(
                     child: SizedBox(
@@ -732,14 +367,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                 : conversations.isEmpty
                 ? _buildEmptyConversation()
                 : SlidableAutoCloseBehavior(
-                    child: ListView.builder(
+                    child: ListView(
                       padding: EdgeInsets.zero,
-                      itemCount: conversations.length,
-                      itemBuilder: (context, index) {
-                        return _buildSwipeConversationItem(
-                          conversations[index],
-                        );
-                      },
+                      children: _buildConversationTimelineChildren(),
                     ),
                   ),
           ),
@@ -768,19 +398,15 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment(0.14, -1.09),
-                    end: Alignment(1.10, 1.26),
-                    colors: [Color(0xFF1930D9), Color(0xFF2CA5F0)],
-                  ),
+                  color: context.omniPalette.accentPrimary,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
+                child: Text(
                   '开始对话',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onPrimary,
                   ),
                 ),
               ),
@@ -791,50 +417,224 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
   }
 
-  Widget _buildIconActionButton({
+  List<Widget> _buildConversationTimelineChildren() {
+    final sections = _buildConversationSections();
+    final children = <Widget>[];
+    for (int sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
+      final section = sections[sectionIndex];
+      if (sectionIndex > 0) {
+        children.add(const SizedBox(height: 14));
+      }
+      children.add(_buildConversationSectionHeader(section.label));
+      children.add(const SizedBox(height: 4));
+      for (
+        int itemIndex = 0;
+        itemIndex < section.conversations.length;
+        itemIndex++
+      ) {
+        children.add(
+          _buildSwipeConversationItem(
+            section.conversations[itemIndex],
+            showDivider: itemIndex != section.conversations.length - 1,
+          ),
+        );
+      }
+    }
+    return children;
+  }
+
+  List<_ConversationSection> _buildConversationSections() {
+    final sections = <_ConversationSection>[];
+    for (final conversation in conversations) {
+      final label = conversation.timeDisplay;
+      if (sections.isEmpty || sections.last.label != label) {
+        sections.add(
+          _ConversationSection(
+            label: label,
+            conversations: <ConversationModel>[conversation],
+          ),
+        );
+      } else {
+        sections.last.conversations.add(conversation);
+      }
+    }
+    return sections;
+  }
+
+  Widget _buildConversationSectionHeader(String label) {
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.6,
+              color: palette.textTertiary,
+              fontFamily: 'PingFang SC',
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: palette.borderSubtle.withValues(
+                alpha: context.isDarkTheme ? 0.56 : 0.8,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionActionButton({
     required String iconPath,
+    required String tooltip,
     required VoidCallback onTap,
     bool isPrimary = false,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: isPrimary
-              ? const Color(0xFF1930D9)
-              : context.isDarkTheme
-              ? context.omniPalette.surfaceSecondary
-              : Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            if (!isPrimary)
-              if (!context.isDarkTheme)
+    final palette = context.omniPalette;
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: isPrimary
+                ? context.omniPalette.accentPrimary
+                : context.isDarkTheme
+                ? palette.surfaceSecondary
+                : Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              if (!isPrimary && !context.isDarkTheme)
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
-          ],
-        ),
-        padding: const EdgeInsets.all(
-          8,
-        ), // Padding to scale down the icon if needed
-        child: SvgPicture.asset(
-          iconPath,
-          width: 16,
-          height: 16,
-          colorFilter: ColorFilter.mode(
-            isPrimary ? Colors.white : _drawerTextColor,
-            BlendMode.srcIn,
+            ],
+          ),
+          padding: const EdgeInsets.all(8),
+          child: SvgPicture.asset(
+            iconPath,
+            width: 16,
+            height: 16,
+            colorFilter: ColorFilter.mode(
+              isPrimary
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : _drawerTextColor,
+              BlendMode.srcIn,
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// 单个聊天记录项
+  Widget _buildFooterShortcutBar() {
+    final items = <_DrawerShortcutAction>[
+      _DrawerShortcutAction(
+        label: '设置',
+        assetPath: 'assets/home/setting_icon.svg',
+        onTap: () => _navigateTo('/home/settings'),
+      ),
+      _DrawerShortcutAction(
+        label: '记忆中心',
+        svgString: _kDrawerMemoryIconSvg,
+        onTap: () => _navigateTo('/memory/memory_center_page'),
+      ),
+      _DrawerShortcutAction(
+        label: '技能仓库',
+        svgString: _kDrawerSkillStoreIconSvg,
+        onTap: () => _navigateTo('/home/skill_store'),
+      ),
+      _DrawerShortcutAction(
+        label: '任务记录',
+        assetPath: 'assets/home/task_record_icon.svg',
+        onTap: () => _navigateTo('/task/execution_history'),
+      ),
+      _DrawerShortcutAction(
+        label: '定时',
+        assetPath: 'assets/common/schedule_icon.svg',
+        onTap: () => _navigateTo('/task/scheduled_tasks'),
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: items
+            .map((item) => Expanded(child: _buildFooterShortcutButton(item)))
+            .toList(growable: false),
+      ),
+    );
+  }
+
+  Widget _buildFooterShortcutButton(_DrawerShortcutAction item) {
+    final palette = context.omniPalette;
+    final circleColor = context.isDarkTheme
+        ? palette.surfaceSecondary
+        : Colors.white;
+    final iconColor = context.isDarkTheme
+        ? palette.textPrimary
+        : AppColors.text;
+    final icon = item.assetPath != null
+        ? SvgPicture.asset(
+            item.assetPath!,
+            width: 18,
+            height: 18,
+            colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+          )
+        : SvgPicture.string(
+            item.svgString!,
+            width: 18,
+            height: 18,
+            colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+          );
+
+    return Tooltip(
+      message: item.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: item.onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Center(
+              child: Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: circleColor,
+                  shape: BoxShape.circle,
+                  boxShadow: context.isDarkTheme
+                      ? const []
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                ),
+                alignment: Alignment.center,
+                child: icon,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openConversationFromDrawer(ConversationModel conversation) {
     if (_busyConversationKeys.contains(conversation.threadKey)) {
       return;
@@ -888,7 +688,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     });
 
     showToast(
-      deleted ? '\u5df2\u5220\u9664' : '\u5220\u9664\u5931\u8d25',
+      deleted ? '已删除' : '删除失败',
       type: deleted ? ToastType.success : ToastType.error,
     );
   }
@@ -973,8 +773,21 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     ];
   }
 
-  Widget _buildSwipeConversationItem(ConversationModel conversation) {
+  String _resolveConversationTitle(ConversationModel conversation) {
+    final title = conversation.title.trim();
+    if (title.isNotEmpty) {
+      return title;
+    }
+    final summary = (conversation.summary ?? '').trim();
+    return summary.isNotEmpty ? summary : '未命名对话';
+  }
+
+  Widget _buildSwipeConversationItem(
+    ConversationModel conversation, {
+    required bool showDivider,
+  }) {
     final isBusy = _busyConversationKeys.contains(conversation.threadKey);
+    final title = _resolveConversationTitle(conversation);
 
     return ConversationSlidable(
       itemKey: conversation.threadKey,
@@ -983,73 +796,68 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       actions: _buildDrawerActions(conversation),
       onDismissed: () => _deleteConversation(conversation),
       onFullSwipe: () => _archiveConversation(conversation),
-      margin: const EdgeInsets.only(bottom: 6),
-      child: Container(
-        decoration: _drawerPanelDecoration(
-          borderRadius: BorderRadius.circular(8),
-          darkColor: context.omniPalette.surfaceSecondary,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
-            onTap: () => _openConversationFromDrawer(conversation),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            conversation.summary ?? conversation.title,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: _drawerTextColor,
-                              fontFamily: 'PingFang SC',
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+      child: Column(
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _openConversationFromDrawer(conversation),
+              borderRadius: BorderRadius.circular(14),
+              splashColor: context.omniPalette.accentPrimary.withValues(
+                alpha: 0.08,
+              ),
+              highlightColor: Colors.transparent,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 9, 2, 9),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: _drawerTextColor,
+                          height: 1.35,
+                          fontFamily: 'PingFang SC',
                         ),
-                        const SizedBox(width: 8),
-                        ConversationModeBadge(
-                          mode: conversation.mode,
-                          compact: true,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    conversation.timeDisplay,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _drawerSecondaryTextColor,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
+          if (showDivider) const SizedBox(height: 2),
+        ],
       ),
     );
   }
 }
 
-/// 菜单项数据模型
-class _DrawerMenuItem {
-  final String icon;
-  final String title;
-  final VoidCallback onTap;
-
-  _DrawerMenuItem({
-    required this.icon,
-    required this.title,
+class _DrawerShortcutAction {
+  const _DrawerShortcutAction({
+    required this.label,
     required this.onTap,
-  });
+    this.assetPath,
+    this.svgString,
+  }) : assert(
+         assetPath != null || svgString != null,
+         'assetPath or svgString is required',
+       );
+
+  final String label;
+  final VoidCallback onTap;
+  final String? assetPath;
+  final String? svgString;
+}
+
+class _ConversationSection {
+  _ConversationSection({required this.label, required this.conversations});
+
+  final String label;
+  final List<ConversationModel> conversations;
 }

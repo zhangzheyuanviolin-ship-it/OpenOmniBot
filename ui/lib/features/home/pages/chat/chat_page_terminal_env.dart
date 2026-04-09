@@ -74,12 +74,21 @@ mixin _ChatPageTerminalEnvMixin on _ChatPageStateBase {
       estimatedMenuHeight: popupMaxHeight,
       reservedBottom: MediaQuery.of(context).viewInsets.bottom,
     );
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     await showMenu<String>(
       context: context,
-      color: Colors.white,
-      elevation: 8,
+      color: isDark ? palette.surfacePrimary : Colors.white,
+      elevation: isDark ? 0 : 8,
+      shadowColor: isDark ? palette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
       constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: isDark
+            ? BorderSide(color: palette.borderSubtle)
+            : BorderSide.none,
+      ),
       position: position,
       items: [
         _TerminalEnvironmentEditorPopupEntry(
@@ -187,13 +196,16 @@ class _TerminalEnvironmentEditorPopupEntryState
   }
 
   Widget _buildVariableRow(ChatTerminalEnvironmentVariable item) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFD),
+          color: isDark ? palette.surfaceSecondary : const Color(0xFFF8FAFD),
           borderRadius: BorderRadius.circular(12),
+          border: isDark ? Border.all(color: palette.borderSubtle) : null,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,9 +219,11 @@ class _TerminalEnvironmentEditorPopupEntryState
                     item.normalizedKey,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: Color(0xFF1F2937),
+                      color: isDark
+                          ? palette.textPrimary
+                          : const Color(0xFF1F2937),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -218,9 +232,11 @@ class _TerminalEnvironmentEditorPopupEntryState
                     item.value.isEmpty ? '(空字符串)' : item.value,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF64748B),
+                      color: isDark
+                          ? palette.textSecondary
+                          : const Color(0xFF64748B),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -233,12 +249,14 @@ class _TerminalEnvironmentEditorPopupEntryState
                 _handleDelete(item);
               },
               borderRadius: BorderRadius.circular(999),
-              child: const Padding(
-                padding: EdgeInsets.all(4),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
                 child: Icon(
                   Icons.delete_outline_rounded,
                   size: 18,
-                  color: Color(0xFF8FA1BC),
+                  color: isDark
+                      ? palette.textTertiary
+                      : const Color(0xFF8FA1BC),
                 ),
               ),
             ),
@@ -249,6 +267,8 @@ class _TerminalEnvironmentEditorPopupEntryState
   }
 
   Widget _buildAddForm() {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       child: Column(
@@ -261,18 +281,43 @@ class _TerminalEnvironmentEditorPopupEntryState
             autofocus: false,
             scrollPadding: EdgeInsets.zero,
             textInputAction: TextInputAction.next,
-            style: const TextStyle(
+            cursorColor: isDark ? palette.accentPrimary : null,
+            style: TextStyle(
               fontSize: 13,
-              color: Color(0xFF1F2937),
+              color: isDark ? palette.textPrimary : const Color(0xFF1F2937),
               fontWeight: FontWeight.w500,
             ),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
               hintText: '变量名，例如 OPENAI_API_KEY',
-              border: OutlineInputBorder(
+              hintStyle: TextStyle(
+                fontSize: 13,
+                color: isDark ? palette.textTertiary : const Color(0xFF9AA4B6),
+                fontWeight: FontWeight.w500,
+              ),
+              filled: true,
+              fillColor: isDark ? palette.surfaceSecondary : Colors.white,
+              border: const OutlineInputBorder(
                 borderRadius: BorderRadius.all(Radius.circular(12)),
               ),
-              contentPadding: EdgeInsets.symmetric(
+              enabledBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(
+                  color: isDark
+                      ? palette.borderSubtle
+                      : const Color(0xFFE2EAF4),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(
+                  color: isDark
+                      ? palette.accentPrimary
+                      : const Color(0xFF2C7FEB),
+                  width: 1.2,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
                 vertical: 10,
               ),
@@ -287,18 +332,43 @@ class _TerminalEnvironmentEditorPopupEntryState
             autofocus: false,
             scrollPadding: EdgeInsets.zero,
             textInputAction: TextInputAction.done,
-            style: const TextStyle(
+            cursorColor: isDark ? palette.accentPrimary : null,
+            style: TextStyle(
               fontSize: 13,
-              color: Color(0xFF1F2937),
+              color: isDark ? palette.textPrimary : const Color(0xFF1F2937),
               fontWeight: FontWeight.w500,
             ),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
               hintText: '变量值，允许为空',
-              border: OutlineInputBorder(
+              hintStyle: TextStyle(
+                fontSize: 13,
+                color: isDark ? palette.textTertiary : const Color(0xFF9AA4B6),
+                fontWeight: FontWeight.w500,
+              ),
+              filled: true,
+              fillColor: isDark ? palette.surfaceSecondary : Colors.white,
+              border: const OutlineInputBorder(
                 borderRadius: BorderRadius.all(Radius.circular(12)),
               ),
-              contentPadding: EdgeInsets.symmetric(
+              enabledBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(
+                  color: isDark
+                      ? palette.borderSubtle
+                      : const Color(0xFFE2EAF4),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(
+                  color: isDark
+                      ? palette.accentPrimary
+                      : const Color(0xFF2C7FEB),
+                  width: 1.2,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
                 vertical: 10,
               ),
@@ -311,9 +381,11 @@ class _TerminalEnvironmentEditorPopupEntryState
             const SizedBox(height: 8),
             Text(
               _errorText!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: Color(0xFFD93025),
+                color: isDark
+                    ? const Color(0xFFE69C8F)
+                    : const Color(0xFFD93025),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -327,7 +399,15 @@ class _TerminalEnvironmentEditorPopupEntryState
               label: const Text('添加'),
               style: FilledButton.styleFrom(
                 visualDensity: VisualDensity.compact,
-                foregroundColor: const Color(0xFF1930D9),
+                foregroundColor: isDark
+                    ? palette.textPrimary
+                    : const Color(0xFF1930D9),
+                backgroundColor: isDark
+                    ? Color.alphaBlend(
+                        palette.accentPrimary.withValues(alpha: 0.18),
+                        palette.surfaceSecondary,
+                      )
+                    : null,
               ),
             ),
           ),
@@ -339,6 +419,8 @@ class _TerminalEnvironmentEditorPopupEntryState
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     final dynamicMaxHeight =
         (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
             .clamp(220.0, widget.estimatedHeight)
@@ -354,27 +436,33 @@ class _TerminalEnvironmentEditorPopupEntryState
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.tune_rounded,
                     size: 16,
-                    color: Color(0xFF617390),
+                    color: isDark
+                        ? palette.textSecondary
+                        : const Color(0xFF617390),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '终端环境变量',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
-                        color: Color(0xFF1F2937),
+                        color: isDark
+                            ? palette.textPrimary
+                            : const Color(0xFF1F2937),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
                   Text(
                     '${_variables.length}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
-                      color: Color(0xFF8FA1BC),
+                      color: isDark
+                          ? palette.textTertiary
+                          : const Color(0xFF8FA1BC),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -382,14 +470,16 @@ class _TerminalEnvironmentEditorPopupEntryState
               ),
             ),
             if (_variables.isEmpty)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                 child: Text(
                   '还没有环境变量',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                    color: isDark
+                        ? palette.textTertiary
+                        : const Color(0xFF94A3B8),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -406,7 +496,10 @@ class _TerminalEnvironmentEditorPopupEntryState
                   ),
                 ),
               ),
-            const Divider(height: 1, color: Color(0xFFE5EDF8)),
+            Divider(
+              height: 1,
+              color: isDark ? palette.borderSubtle : const Color(0xFFE5EDF8),
+            ),
             _buildAddForm(),
           ],
         ),
