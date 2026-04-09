@@ -332,9 +332,16 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       _,
       message, {
       bool isFinal = true,
+      double? prefillTokensPerSecond,
+      double? decodeTokensPerSecond,
     }) {
       if (!mounted) return;
-      handleAgentChatMessage(message, isFinal: isFinal);
+      handleAgentChatMessage(
+        message,
+        isFinal: isFinal,
+        prefillTokensPerSecond: prefillTokensPerSecond,
+        decodeTokensPerSecond: decodeTokensPerSecond,
+      );
     });
 
     AssistsMessageService.setOnAgentClarifyCallback((

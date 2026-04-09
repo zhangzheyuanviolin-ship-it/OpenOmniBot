@@ -69,7 +69,9 @@ void main() {
     await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
       'taskId': taskId,
       'message': 'hello from agent',
-      'isFinal': false,
+      'isFinal': true,
+      'prefillTokensPerSecond': 123.4,
+      'decodeTokensPerSecond': 56.7,
     });
 
     final runtimeB = coordinator.runtimeFor(
@@ -80,6 +82,14 @@ void main() {
     expect(runtimeA.messages, hasLength(1));
     expect(runtimeA.messages.first.id, '$taskId-text');
     expect(runtimeA.messages.first.text, 'hello from agent');
+    expect(
+      runtimeA.messages.first.content?['prefillTokensPerSecond'],
+      123.4,
+    );
+    expect(
+      runtimeA.messages.first.content?['decodeTokensPerSecond'],
+      56.7,
+    );
     expect(runtimeB.messages, isEmpty);
   });
 

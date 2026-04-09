@@ -86,7 +86,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     _configChangedSubscription = AssistsMessageService
         .agentAiConfigChangedStream
         .listen((event) {
-          if (event.source != 'file' || !mounted) {
+          if ((event.source != 'file' && event.source != 'store') || !mounted) {
             return;
           }
           unawaited(_loadData());

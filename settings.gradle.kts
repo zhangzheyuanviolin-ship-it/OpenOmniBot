@@ -36,13 +36,12 @@ apply(from = File(filePath))
 include(":baselib")
 include(":accessibility")
 include(":omniintelligence")
-include(":mnn_local")
-include(":mnn_tts")
-project(":mnn_tts").projectDir =
-    File(settingsDir, "third_party/mnn_android/apps/frameworks/mnn_tts/android")
+include(":omniinfer-server")
+project(":omniinfer-server").projectDir =
+    File(settingsDir, "third_party/omniinfer/android/omniinfer-server")
 include(":model_downloader")
 project(":model_downloader").projectDir =
-    File(settingsDir, "third_party/mnn_android/apps/frameworks/model_downloader/android")
+    File(settingsDir, "third_party/omniinfer/framework/mnn/apps/frameworks/model_downloader/android")
 include(":uikit")
 include(":core:main")
 project(":core:main").projectDir = File(settingsDir, "ReTerminal/core/main")
@@ -54,3 +53,6 @@ include(":core:terminal-emulator")
 project(":core:terminal-emulator").projectDir = File(settingsDir, "ReTerminal/core/terminal-emulator")
 include(":core:terminal-view")
 project(":core:terminal-view").projectDir = File(settingsDir, "ReTerminal/core/terminal-view")
+
+
+

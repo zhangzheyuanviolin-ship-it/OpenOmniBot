@@ -43,7 +43,13 @@ typedef AgentToolCallStartCallback = void Function(AgentToolEventData event);
 typedef AgentToolCallProgressCallback = void Function(AgentToolEventData event);
 typedef AgentToolCallCompleteCallback = void Function(AgentToolEventData event);
 typedef AgentChatMessageCallback =
-    void Function(String taskId, String message, {bool isFinal});
+    void Function(
+      String taskId,
+      String message, {
+      bool isFinal,
+      double? prefillTokensPerSecond,
+      double? decodeTokensPerSecond,
+    });
 typedef AgentPromptTokenUsageCallback =
     void Function(
       String taskId,
@@ -420,10 +426,16 @@ class AssistsMessageService {
               : (isFinalRaw is bool
                     ? isFinalRaw
                     : isFinalRaw.toString().toLowerCase() == 'true');
+          final double? prefillTokensPerSecond =
+              _asNullableDouble(data['prefillTokensPerSecond']);
+          final double? decodeTokensPerSecond =
+              _asNullableDouble(data['decodeTokensPerSecond']);
           _onAgentChatMessageCallback?.call(
             (data['taskId'] ?? '').toString(),
             (data['message'] ?? '').toString(),
             isFinal: isFinal,
+            prefillTokensPerSecond: prefillTokensPerSecond,
+            decodeTokensPerSecond: decodeTokensPerSecond,
           );
           break;
         case 'onAgentPromptTokenUsageChanged':
@@ -679,6 +691,13 @@ class AssistsMessageService {
     if (raw is int) return raw;
     if (raw is num) return raw.toInt();
     if (raw is String) return int.tryParse(raw);
+    return null;
+  }
+
+  static double? _asNullableDouble(dynamic raw) {
+    if (raw is double) return raw;
+    if (raw is num) return raw.toDouble();
+    if (raw is String) return double.tryParse(raw.trim());
     return null;
   }
 

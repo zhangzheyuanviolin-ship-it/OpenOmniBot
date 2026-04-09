@@ -209,6 +209,18 @@ interface AgentCallback {
     }
 
     /**
+     * 聊天消息（支持流式增量 + 本地推理吞吐）
+     */
+    suspend fun onChatMessage(
+        message: String,
+        isFinal: Boolean,
+        prefillTokensPerSecond: Double?,
+        decodeTokensPerSecond: Double?
+    ) {
+        onChatMessage(message, isFinal)
+    }
+
+    /**
      * 主模型一轮调用结束后的 prompt token 统计更新
      */
     suspend fun onPromptTokenUsageChanged(

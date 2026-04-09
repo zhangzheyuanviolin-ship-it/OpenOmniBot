@@ -31,6 +31,7 @@ class AgentLlmStreamAccumulator(
     private val toolCallBuilders: SortedMap<Int, MutableToolCallBuilder> = TreeMap()
     private var finishReason: String? = null
     private var usage: ChatCompletionUsage? = null
+    private var decodeTokensPerSecond: Double? = null
     private var seenChunk = false
     private var lastChunkPreview: String = ""
     private var thinkSectionOpen = false
@@ -64,6 +65,7 @@ class AgentLlmStreamAccumulator(
     private fun consumeJsonChunk(root: JsonObject): Boolean {
         seenChunk = true
         usage = decodeUsage(root["usage"]) ?: usage
+        decodeTokensPerSecond = decodeTimings(root["timings"]) ?: decodeTokensPerSecond
 
         var chunkHasPayload = false
         val choices = root["choices"] as? JsonArray
@@ -206,7 +208,7 @@ class AgentLlmStreamAccumulator(
             ),
             reasoning = reasoningBuffer.toString(),
             finishReason = finishReason,
-            usage = usage
+            usage = usageWithDecodedTiming()
         )
     }
 
@@ -354,9 +356,38 @@ class AgentLlmStreamAccumulator(
             promptTokens = obj["prompt_tokens"]?.jsonPrimitive?.intOrNull,
             completionTokens = obj["completion_tokens"]?.jsonPrimitive?.intOrNull,
             totalTokens = obj["total_tokens"]?.jsonPrimitive?.intOrNull,
+            prefillTokensPerSecond =
+                obj["prefill_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
+            decodeTokensPerSecond =
+                obj["decode_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
             promptTokensDetails = obj["prompt_tokens_details"],
             completionTokensDetails = obj["completion_tokens_details"]
         )
+    }
+
+    private fun usageWithDecodedTiming(): ChatCompletionUsage? {
+        val decode = decodeTokensPerSecond
+        val currentUsage = usage
+        if (decode == null) {
+            return currentUsage
+        }
+        if (currentUsage?.decodeTokensPerSecond == decode) {
+            return currentUsage
+        }
+        return ChatCompletionUsage(
+            promptTokens = currentUsage?.promptTokens,
+            completionTokens = currentUsage?.completionTokens,
+            totalTokens = currentUsage?.totalTokens,
+            prefillTokensPerSecond = currentUsage?.prefillTokensPerSecond,
+            decodeTokensPerSecond = decode,
+            promptTokensDetails = currentUsage?.promptTokensDetails,
+            completionTokensDetails = currentUsage?.completionTokensDetails
+        )
+    }
+
+    private fun decodeTimings(element: JsonElement?): Double? {
+        val obj = element as? JsonObject ?: return null
+        return obj["predicted_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
     }
 
     private fun appendReasoningPayload(element: JsonElement?) {

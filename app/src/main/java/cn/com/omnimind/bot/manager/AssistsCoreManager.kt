@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import cn.com.omnimind.accessibility.api.Constant
 import cn.com.omnimind.assists.AssistsCore
 import cn.com.omnimind.assists.api.bean.TaskParams
@@ -63,7 +65,7 @@ import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.agent.resolveToolExecutionStatus
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
-import cn.com.omnimind.bot.mnnlocal.MnnLocalModelsManager
+import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
 import cn.com.omnimind.bot.webchat.ConversationDomainService
 import cn.com.omnimind.bot.webchat.FlutterChatSyncBridge
@@ -122,6 +124,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         @Volatile
         private var sharedInstance: AssistsCoreManager? = null
 
+        private val mainHandler = Handler(Looper.getMainLooper())
+
         fun bindMainEngineChannel(channel: MethodChannel) {
             mainEngineChannel = channel
             FlutterChatSyncBridge.bindMainChannel(channel)
@@ -149,7 +153,16 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 "path" to path
             )
             runCatching {
-                mainEngineChannel?.invokeMethod("onAgentAiConfigChanged", payload)
+                mainHandler.post {
+                    runCatching {
+                        mainEngineChannel?.invokeMethod("onAgentAiConfigChanged", payload)
+                    }.onFailure {
+                        OmniLog.w(
+                            "[AssistsCoreManager]",
+                            "dispatchAgentAiConfigChanged failed: ${it.message}"
+                        )
+                    }
+                }
             }.onFailure {
                 OmniLog.w("[AssistsCoreManager]", "dispatchAgentAiConfigChanged failed: ${it.message}")
             }
@@ -2031,7 +2044,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     fallbackConfigId = currentConfig.id
                 )
                 val models = if (isBuiltinLocalRequest) {
-                    MnnLocalModelsManager.listInstalledModels()
+                    OmniInferLocalRuntime.listBuiltinProviderModels()
                         .mapNotNull { item ->
                             val modelId = item["id"]?.toString()?.trim().orEmpty()
                             if (modelId.isEmpty()) {
@@ -2080,7 +2093,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     fallbackConfigId = currentConfig.id
                 )
                 val checkResult = if (isBuiltinLocalRequest) {
-                    val installed = MnnLocalModelsManager.listInstalledModels()
+                    val installed = OmniInferLocalRuntime.listBuiltinProviderModels()
                     val exists = installed.any { item ->
                         item["id"]?.toString()?.trim() == model
                     }
@@ -3309,6 +3322,20 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         dispatchAgentChatMessage(message, isFinal)
                     }
 
+                    override suspend fun onChatMessage(
+                        message: String,
+                        isFinal: Boolean,
+                        prefillTokensPerSecond: Double?,
+                        decodeTokensPerSecond: Double?
+                    ) {
+                        dispatchAgentChatMessage(
+                            message = message,
+                            isFinal = isFinal,
+                            prefillTokensPerSecond = prefillTokensPerSecond,
+                            decodeTokensPerSecond = decodeTokensPerSecond
+                        )
+                    }
+
                     override suspend fun onPromptTokenUsageChanged(
                         latestPromptTokens: Int,
                         promptTokenThreshold: Int?
@@ -3426,7 +3453,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                     private suspend fun dispatchAgentChatMessage(
                         message: String,
-                        isFinal: Boolean
+                        isFinal: Boolean,
+                        prefillTokensPerSecond: Double? = null,
+                        decodeTokensPerSecond: Double? = null
                     ) {
                         val normalizedMessage = message.trim()
                         if (normalizedMessage.isNotEmpty()) {
@@ -3449,10 +3478,16 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         }
                         sendEvent(
                             "onAgentChatMessage",
-                            mapOf(
-                                "message" to message,
-                                "isFinal" to isFinal
-                            )
+                            buildMap {
+                                put("message", message)
+                                put("isFinal", isFinal)
+                                if (prefillTokensPerSecond != null) {
+                                    put("prefillTokensPerSecond", prefillTokensPerSecond)
+                                }
+                                if (decodeTokensPerSecond != null) {
+                                    put("decodeTokensPerSecond", decodeTokensPerSecond)
+                                }
+                            }
                         )
                     }
 
@@ -4292,3 +4327,5 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 }
+
+

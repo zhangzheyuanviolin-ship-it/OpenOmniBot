@@ -15,8 +15,9 @@ val buildFlutterWebBundle by tasks.registering(Exec::class) {
     group = "flutter web"
     description = "Build the dedicated web chat Flutter bundle."
     workingDir = rootProject.file("ui")
+    val flutterCmd = if (org.gradle.internal.os.OperatingSystem.current().isWindows) "flutter.bat" else "flutter"
     commandLine(
-        "flutter",
+        flutterCmd,
         "build",
         "web",
         "--target",
@@ -161,7 +162,8 @@ dependencies {
     implementation(project(":flutter"))
     implementation(project(":uikit"))
     implementation(project(":baselib"))
-    implementation(project(":mnn_local"))
+    implementation(project(":omniinfer-server"))
+    implementation(project(":model_downloader"))
     implementation(project(":core:main"))
     implementation(project(":core:terminal-view"))
     implementation(project(":core:terminal-emulator"))
@@ -196,3 +198,4 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest )
 }
+

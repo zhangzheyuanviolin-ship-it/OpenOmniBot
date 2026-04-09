@@ -290,6 +290,35 @@ class AgentOrchestratorTest {
         assertEquals(listOf(321, 654), callback.promptTokenUpdates)
     }
 
+    @Test
+    fun usageSpeedMetricsAreReportedInFinalChatMessage() = runBlocking {
+        val callback = RecordingCallback()
+
+        createOrchestrator(
+            llmClient = FakeLlmClient(
+                turns = listOf(
+                    assistantTurn(
+                        content = "已完成。",
+                        prefillTokensPerSecond = 123.4,
+                        decodeTokensPerSecond = 56.7
+                    )
+                )
+            ),
+            toolExecutor = FakeToolExecutor()
+        ).run(
+            AgentOrchestrator.Input(
+                callback = callback,
+                initialMessages = initialMessages("继续"),
+                executionEnv = FakeExecutionEnvironment("继续")
+            )
+        )
+
+        assertNotNull(callback.lastPrefillTokensPerSecond)
+        assertNotNull(callback.lastDecodeTokensPerSecond)
+        assertEquals(123.4, callback.lastPrefillTokensPerSecond!!, 0.0)
+        assertEquals(56.7, callback.lastDecodeTokensPerSecond!!, 0.0)
+    }
+
     private fun createOrchestrator(
         llmClient: FakeLlmClient,
         toolExecutor: FakeToolExecutor
@@ -315,7 +344,9 @@ class AgentOrchestratorTest {
     private fun assistantTurn(
         content: String = "",
         toolCalls: List<AssistantToolCall> = emptyList(),
-        promptTokens: Int? = null
+        promptTokens: Int? = null,
+        prefillTokensPerSecond: Double? = null,
+        decodeTokensPerSecond: Double? = null
     ): ChatCompletionTurn {
         return ChatCompletionTurn(
             message = ChatCompletionMessage(
@@ -323,7 +354,20 @@ class AgentOrchestratorTest {
                 content = if (content.isBlank()) null else JsonPrimitive(content),
                 toolCalls = toolCalls.ifEmpty { null }
             ),
-            usage = promptTokens?.let { ChatCompletionUsage(promptTokens = it) }
+            usage =
+                if (
+                    promptTokens == null &&
+                    prefillTokensPerSecond == null &&
+                    decodeTokensPerSecond == null
+                ) {
+                    null
+                } else {
+                    ChatCompletionUsage(
+                        promptTokens = promptTokens,
+                        prefillTokensPerSecond = prefillTokensPerSecond,
+                        decodeTokensPerSecond = decodeTokensPerSecond
+                    )
+                }
         )
     }
 
@@ -409,6 +453,8 @@ class AgentOrchestratorTest {
         val promptTokenUpdates = mutableListOf<Int>()
         val errors = mutableListOf<String>()
         var completedResult: AgentResult? = null
+        var lastPrefillTokensPerSecond: Double? = null
+        var lastDecodeTokensPerSecond: Double? = null
 
         override suspend fun onThinkingStart() = Unit
 
@@ -433,6 +479,17 @@ class AgentOrchestratorTest {
 
         override suspend fun onChatMessage(message: String, isFinal: Boolean) {
             chatMessages += message to isFinal
+        }
+
+        override suspend fun onChatMessage(
+            message: String,
+            isFinal: Boolean,
+            prefillTokensPerSecond: Double?,
+            decodeTokensPerSecond: Double?
+        ) {
+            chatMessages += message to isFinal
+            lastPrefillTokensPerSecond = prefillTokensPerSecond
+            lastDecodeTokensPerSecond = decodeTokensPerSecond
         }
 
         override suspend fun onPromptTokenUsageChanged(

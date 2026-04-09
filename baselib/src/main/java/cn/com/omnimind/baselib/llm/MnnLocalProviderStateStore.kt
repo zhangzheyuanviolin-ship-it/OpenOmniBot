@@ -3,15 +3,19 @@ package cn.com.omnimind.baselib.llm
 import com.tencent.mmkv.MMKV
 
 object MnnLocalProviderStateStore {
-    const val BUILTIN_PROFILE_ID = "mnn-local"
-    const val BUILTIN_PROFILE_NAME = "Mnn Local"
+    const val BUILTIN_PROFILE_ID = "omniinfer-local"
+    const val LEGACY_BUILTIN_PROFILE_ID = "mnn-local"
+    const val BUILTIN_PROFILE_NAME = "OmniInfer"
 
     private const val KEY_PORT = "mnn_local_provider_port"
     private const val KEY_API_KEY = "mnn_local_provider_api_key"
     private const val KEY_READY = "mnn_local_provider_ready"
 
     fun isBuiltinProfileId(profileId: String?): Boolean {
-        return profileId?.trim() == BUILTIN_PROFILE_ID
+        return when (profileId?.trim()) {
+            BUILTIN_PROFILE_ID, LEGACY_BUILTIN_PROFILE_ID -> true
+            else -> false
+        }
     }
 
     fun update(port: Int, apiKey: String, ready: Boolean) {
@@ -31,7 +35,7 @@ object MnnLocalProviderStateStore {
             name = BUILTIN_PROFILE_NAME,
             baseUrl = "http://127.0.0.1:$port",
             apiKey = apiKey,
-            sourceType = "mnn_local",
+            sourceType = "omniinfer",
             readOnly = true,
             ready = ready,
             statusText = if (ready) "已就绪" else "未就绪"
@@ -45,7 +49,7 @@ object MnnLocalProviderStateStore {
             name = profile.name,
             baseUrl = profile.baseUrl,
             apiKey = profile.apiKey,
-            source = "mnn_local",
+            source = "omniinfer",
             providerType = profile.sourceType,
             readOnly = profile.readOnly,
             ready = profile.ready,

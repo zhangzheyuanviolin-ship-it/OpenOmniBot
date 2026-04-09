@@ -71,6 +71,7 @@ object AgentSystemPrompt {
         return """
             你是在 Alpine 工作环境内的 AI Agent，你同时能通过工具调用操作用户的手机 。
 
+
             当前 workspace：
             - conversationContextId: ${workspace.id}
             - shellWorkspaceRoot: ${workspace.rootPath}
@@ -127,6 +128,8 @@ object AgentSystemPrompt {
             $loadedSkillSection
             $soulSection
             $memorySection
+
+            
         """.trimIndent()
     }
 }

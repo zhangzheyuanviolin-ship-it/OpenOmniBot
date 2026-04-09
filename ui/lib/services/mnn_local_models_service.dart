@@ -2,6 +2,22 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+const String _llamaCppBackend = 'llama.cpp';
+const String _omniinferMnnBackend = 'omniinfer-mnn';
+
+String _normalizeInferenceBackend(Object? raw) {
+  final value = (raw ?? '').toString().trim();
+  switch (value) {
+    case _llamaCppBackend:
+      return _llamaCppBackend;
+    case 'mnn':
+    case _omniinferMnnBackend:
+      return _omniinferMnnBackend;
+    default:
+      return _llamaCppBackend;
+  }
+}
+
 class MnnLocalDownloadInfo {
   final int state;
   final String stateLabel;
@@ -67,6 +83,7 @@ class MnnLocalModel {
   final String formattedSize;
   final int lastUsedAt;
   final int downloadedAt;
+  final bool readOnly;
   final MnnLocalDownloadInfo? download;
 
   const MnnLocalModel({
@@ -88,6 +105,7 @@ class MnnLocalModel {
     required this.formattedSize,
     required this.lastUsedAt,
     required this.downloadedAt,
+    required this.readOnly,
     this.download,
   });
 
@@ -115,6 +133,7 @@ class MnnLocalModel {
       formattedSize: (map?['formattedSize'] ?? '').toString(),
       lastUsedAt: (map?['lastUsedAt'] as num?)?.toInt() ?? 0,
       downloadedAt: (map?['downloadedAt'] as num?)?.toInt() ?? 0,
+      readOnly: map?['readOnly'] == true,
       download: map?['download'] is Map
           ? MnnLocalDownloadInfo.fromMap(map?['download'] as Map?)
           : null,
@@ -123,79 +142,53 @@ class MnnLocalModel {
 }
 
 class MnnLocalConfig {
+  final String backend;
   final bool autoStartOnAppOpen;
-  final bool apiEnabled;
-  final bool apiLanEnabled;
   final bool apiRunning;
   final bool apiReady;
   final String apiState;
   final String apiHost;
   final int apiPort;
-  final String apiKey;
   final String baseUrl;
   final String activeModelId;
-  final String speechRecognitionProvider;
-  final String defaultAsrModelId;
-  final String defaultTtsModelId;
   final String downloadProvider;
   final List<String> availableSources;
-  final bool voiceReady;
-  final String voiceStatusText;
-  final List<MnnLocalModel> installedAsrModels;
-  final List<MnnLocalModel> installedTtsModels;
+  final String loadedBackend;
+  final String loadedModelId;
 
   const MnnLocalConfig({
+    required this.backend,
     required this.autoStartOnAppOpen,
-    required this.apiEnabled,
-    required this.apiLanEnabled,
     required this.apiRunning,
     required this.apiReady,
     required this.apiState,
     required this.apiHost,
     required this.apiPort,
-    required this.apiKey,
     required this.baseUrl,
     required this.activeModelId,
-    required this.speechRecognitionProvider,
-    required this.defaultAsrModelId,
-    required this.defaultTtsModelId,
     required this.downloadProvider,
     required this.availableSources,
-    required this.voiceReady,
-    required this.voiceStatusText,
-    required this.installedAsrModels,
-    required this.installedTtsModels,
+    required this.loadedBackend,
+    required this.loadedModelId,
   });
 
   factory MnnLocalConfig.fromMap(Map<dynamic, dynamic>? map) {
     return MnnLocalConfig(
+      backend: _normalizeInferenceBackend(map?['backend']),
       autoStartOnAppOpen: map?['autoStartOnAppOpen'] == true,
-      apiEnabled: map?['apiEnabled'] == true,
-      apiLanEnabled: map?['apiLanEnabled'] == true,
       apiRunning: map?['apiRunning'] == true,
       apiReady: map?['apiReady'] == true,
       apiState: (map?['apiState'] ?? 'stopped').toString(),
-      apiHost: (map?['apiHost'] ?? '').toString(),
-      apiPort: (map?['apiPort'] as num?)?.toInt() ?? 8080,
-      apiKey: (map?['apiKey'] ?? '').toString(),
+      apiHost: (map?['apiHost'] ?? '127.0.0.1').toString(),
+      apiPort: (map?['apiPort'] as num?)?.toInt() ?? 9099,
       baseUrl: (map?['baseUrl'] ?? '').toString(),
       activeModelId: (map?['activeModelId'] ?? '').toString(),
-      speechRecognitionProvider: (map?['speechRecognitionProvider'] ?? 'system')
-          .toString(),
-      defaultAsrModelId: (map?['defaultAsrModelId'] ?? '').toString(),
-      defaultTtsModelId: (map?['defaultTtsModelId'] ?? '').toString(),
       downloadProvider: (map?['downloadProvider'] ?? 'ModelScope').toString(),
       availableSources: ((map?['availableSources'] as List?) ?? const [])
           .map((item) => item.toString())
           .toList(),
-      voiceReady: map?['voiceReady'] == true,
-      voiceStatusText: (map?['voiceStatusText'] ?? '').toString(),
-      installedAsrModels: ((map?['installedAsrModels'] as List?) ?? const [])
-          .map((item) => MnnLocalModel.fromMap(item as Map?))
-          .toList(),
-      installedTtsModels: ((map?['installedTtsModels'] as List?) ?? const [])
-          .map((item) => MnnLocalModel.fromMap(item as Map?))
-          .toList(),
+      loadedBackend: _normalizeInferenceBackend(map?['loadedBackend']),
+      loadedModelId: (map?['loadedModelId'] ?? '').toString(),
     );
   }
 }
@@ -249,159 +242,6 @@ class MnnLocalOverviewPayload {
   }
 }
 
-class MnnLocalBenchmarkProgress {
-  final int progress;
-  final String statusMessage;
-  final String progressType;
-  final int currentIteration;
-  final int totalIterations;
-  final int nPrompt;
-  final int nGenerate;
-  final double runTimeSeconds;
-  final double prefillTimeSeconds;
-  final double decodeTimeSeconds;
-  final double prefillSpeed;
-  final double decodeSpeed;
-
-  const MnnLocalBenchmarkProgress({
-    required this.progress,
-    required this.statusMessage,
-    required this.progressType,
-    required this.currentIteration,
-    required this.totalIterations,
-    required this.nPrompt,
-    required this.nGenerate,
-    required this.runTimeSeconds,
-    required this.prefillTimeSeconds,
-    required this.decodeTimeSeconds,
-    required this.prefillSpeed,
-    required this.decodeSpeed,
-  });
-
-  factory MnnLocalBenchmarkProgress.fromMap(Map<dynamic, dynamic>? map) {
-    return MnnLocalBenchmarkProgress(
-      progress: (map?['progress'] as num?)?.toInt() ?? 0,
-      statusMessage: (map?['statusMessage'] ?? '').toString(),
-      progressType: (map?['progressType'] ?? 'unknown').toString(),
-      currentIteration: (map?['currentIteration'] as num?)?.toInt() ?? 0,
-      totalIterations: (map?['totalIterations'] as num?)?.toInt() ?? 0,
-      nPrompt: (map?['nPrompt'] as num?)?.toInt() ?? 0,
-      nGenerate: (map?['nGenerate'] as num?)?.toInt() ?? 0,
-      runTimeSeconds: (map?['runTimeSeconds'] as num?)?.toDouble() ?? 0,
-      prefillTimeSeconds: (map?['prefillTimeSeconds'] as num?)?.toDouble() ?? 0,
-      decodeTimeSeconds: (map?['decodeTimeSeconds'] as num?)?.toDouble() ?? 0,
-      prefillSpeed: (map?['prefillSpeed'] as num?)?.toDouble() ?? 0,
-      decodeSpeed: (map?['decodeSpeed'] as num?)?.toDouble() ?? 0,
-    );
-  }
-}
-
-class MnnLocalBenchmarkResult {
-  final bool success;
-  final String errorMessage;
-  final String backend;
-  final String modelId;
-  final int repeat;
-  final int nPrompt;
-  final int nGenerate;
-  final int threads;
-  final bool useMmap;
-  final double prefillSpeedAvg;
-  final double decodeSpeedAvg;
-  final List<double> prefillSpeedSamples;
-  final List<double> decodeSpeedSamples;
-  final List<int> prefillUs;
-  final List<int> decodeUs;
-  final String title;
-
-  const MnnLocalBenchmarkResult({
-    required this.success,
-    required this.errorMessage,
-    required this.backend,
-    required this.modelId,
-    required this.repeat,
-    required this.nPrompt,
-    required this.nGenerate,
-    required this.threads,
-    required this.useMmap,
-    required this.prefillSpeedAvg,
-    required this.decodeSpeedAvg,
-    required this.prefillSpeedSamples,
-    required this.decodeSpeedSamples,
-    required this.prefillUs,
-    required this.decodeUs,
-    required this.title,
-  });
-
-  factory MnnLocalBenchmarkResult.fromMap(Map<dynamic, dynamic>? map) {
-    return MnnLocalBenchmarkResult(
-      success: map?['success'] == true,
-      errorMessage: (map?['errorMessage'] ?? '').toString(),
-      backend: (map?['backend'] ?? 'cpu').toString(),
-      modelId: (map?['modelId'] ?? '').toString(),
-      repeat: (map?['repeat'] as num?)?.toInt() ?? 0,
-      nPrompt: (map?['nPrompt'] as num?)?.toInt() ?? 0,
-      nGenerate: (map?['nGenerate'] as num?)?.toInt() ?? 0,
-      threads: (map?['threads'] as num?)?.toInt() ?? 0,
-      useMmap: map?['useMmap'] == true,
-      prefillSpeedAvg: (map?['prefillSpeedAvg'] as num?)?.toDouble() ?? 0,
-      decodeSpeedAvg: (map?['decodeSpeedAvg'] as num?)?.toDouble() ?? 0,
-      prefillSpeedSamples: ((map?['prefillSpeedSamples'] as List?) ?? const [])
-          .map((item) => (item as num).toDouble())
-          .toList(),
-      decodeSpeedSamples: ((map?['decodeSpeedSamples'] as List?) ?? const [])
-          .map((item) => (item as num).toDouble())
-          .toList(),
-      prefillUs: ((map?['prefillUs'] as List?) ?? const [])
-          .map((item) => (item as num).toInt())
-          .toList(),
-      decodeUs: ((map?['decodeUs'] as List?) ?? const [])
-          .map((item) => (item as num).toInt())
-          .toList(),
-      title: (map?['title'] ?? '').toString(),
-    );
-  }
-}
-
-class MnnLocalBenchmarkState {
-  final bool running;
-  final String status;
-  final String modelId;
-  final String backend;
-  final String errorMessage;
-  final int updatedAt;
-  final MnnLocalBenchmarkProgress? progress;
-  final List<MnnLocalBenchmarkResult> results;
-
-  const MnnLocalBenchmarkState({
-    required this.running,
-    required this.status,
-    required this.modelId,
-    required this.backend,
-    required this.errorMessage,
-    required this.updatedAt,
-    required this.progress,
-    required this.results,
-  });
-
-  factory MnnLocalBenchmarkState.fromMap(Map<dynamic, dynamic>? map) {
-    return MnnLocalBenchmarkState(
-      running: map?['running'] == true,
-      status: (map?['status'] ?? 'idle').toString(),
-      modelId: (map?['modelId'] ?? '').toString(),
-      backend: (map?['backend'] ?? 'cpu').toString(),
-      errorMessage: (map?['errorMessage'] ?? '').toString(),
-      updatedAt: (map?['updatedAt'] as num?)?.toInt() ?? 0,
-      progress: map?['progress'] is Map
-          ? MnnLocalBenchmarkProgress.fromMap(map?['progress'] as Map?)
-          : null,
-      results: ((map?['results'] as List?) ?? const [])
-          .map((item) => MnnLocalBenchmarkResult.fromMap(item as Map?))
-          .toList(),
-    );
-  }
-}
-
 class MnnLocalEvent {
   final String type;
   final Map<String, dynamic> payload;
@@ -433,12 +273,14 @@ class MnnLocalModelsService {
     String marketQuery = '',
     String marketCategory = 'llm',
   }) async {
-    final result = await _channel
-        .invokeMethod<Map<dynamic, dynamic>>('getOverview', {
-          'installedQuery': installedQuery,
-          'marketQuery': marketQuery,
-          'marketCategory': marketCategory.trim().toLowerCase(),
-        });
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'getOverview',
+      {
+        'installedQuery': installedQuery,
+        'marketQuery': marketQuery,
+        'marketCategory': marketCategory.trim().toLowerCase(),
+      },
+    );
     return MnnLocalOverviewPayload.fromMap(result);
   }
 
@@ -469,10 +311,13 @@ class MnnLocalModelsService {
     String category = 'llm',
     bool refresh = false,
   }) async {
-    final normalizedCategory = category.trim().toLowerCase();
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'listMarketModels',
-      {'query': query, 'category': normalizedCategory, 'refresh': refresh},
+      {
+        'query': query,
+        'category': category.trim().toLowerCase(),
+        'refresh': refresh,
+      },
     );
     return MnnLocalMarketPayload.fromMap(result);
   }
@@ -486,29 +331,20 @@ class MnnLocalModelsService {
 
   static Future<MnnLocalConfig> saveConfig({
     bool? autoStartOnAppOpen,
-    bool? apiLanEnabled,
     int? apiPort,
-    String? apiKey,
     String? activeModelId,
-    String? speechRecognitionProvider,
-    String? defaultAsrModelId,
-    String? defaultTtsModelId,
     String? downloadProvider,
   }) async {
-    final result = await _channel
-        .invokeMethod<Map<dynamic, dynamic>>('saveConfig', {
-          if (autoStartOnAppOpen != null)
-            'autoStartOnAppOpen': autoStartOnAppOpen,
-          if (apiLanEnabled != null) 'apiLanEnabled': apiLanEnabled,
-          if (apiPort != null) 'apiPort': apiPort,
-          if (apiKey != null) 'apiKey': apiKey,
-          if (activeModelId != null) 'activeModelId': activeModelId,
-          if (speechRecognitionProvider != null)
-            'speechRecognitionProvider': speechRecognitionProvider,
-          if (defaultAsrModelId != null) 'defaultAsrModelId': defaultAsrModelId,
-          if (defaultTtsModelId != null) 'defaultTtsModelId': defaultTtsModelId,
-          if (downloadProvider != null) 'downloadProvider': downloadProvider,
-        });
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'saveConfig',
+      {
+        if (autoStartOnAppOpen != null)
+          'autoStartOnAppOpen': autoStartOnAppOpen,
+        if (apiPort != null) 'apiPort': apiPort,
+        if (activeModelId != null) 'activeModelId': activeModelId,
+        if (downloadProvider != null) 'downloadProvider': downloadProvider,
+      },
+    );
     return MnnLocalConfig.fromMap(result);
   }
 
@@ -552,71 +388,16 @@ class MnnLocalModelsService {
         .toList();
   }
 
-  static Future<Map<dynamic, dynamic>?> startGeneration({
-    required String prompt,
-    String? modelId,
-    String? imagePath,
-    String? audioPath,
-    String? videoPath,
-    String? outputPath,
-    bool enableAudioOutput = false,
-    int steps = 20,
-    int seed = 1024,
-    bool useCfg = true,
-    double cfgScale = 4.5,
-  }) {
-    return _channel.invokeMethod<Map<dynamic, dynamic>>('startGeneration', {
-      'prompt': prompt,
-      if (modelId != null) 'modelId': modelId,
-      if (imagePath != null) 'imagePath': imagePath,
-      if (audioPath != null) 'audioPath': audioPath,
-      if (videoPath != null) 'videoPath': videoPath,
-      if (outputPath != null) 'outputPath': outputPath,
-      'enableAudioOutput': enableAudioOutput,
-      'steps': steps,
-      'seed': seed,
-      'useCfg': useCfg,
-      'cfgScale': cfgScale,
-    });
+  static Future<String> getBackend() async {
+    final result = await _channel.invokeMethod<String>('getBackend');
+    return _normalizeInferenceBackend(result);
   }
 
-  static Future<void> stopGeneration() {
-    return _channel.invokeMethod('stopGeneration');
-  }
-
-  static Future<void> resetInferenceSession() {
-    return _channel.invokeMethod('resetInferenceSession');
-  }
-
-  static Future<MnnLocalBenchmarkState> getBenchmarkState() async {
-    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-      'getBenchmarkState',
+  static Future<String> setBackend(String backend) async {
+    final result = await _channel.invokeMethod<String>(
+      'setBackend',
+      {'backend': backend},
     );
-    return MnnLocalBenchmarkState.fromMap(result);
-  }
-
-  static Future<MnnLocalBenchmarkState> startBenchmark({
-    required String modelId,
-    String backend = 'cpu',
-    int nPrompt = 512,
-    int nGenerate = 128,
-    int repeat = 5,
-  }) async {
-    final result = await _channel
-        .invokeMethod<Map<dynamic, dynamic>>('startBenchmark', {
-          'modelId': modelId,
-          'backend': backend,
-          'nPrompt': nPrompt,
-          'nGenerate': nGenerate,
-          'repeat': repeat,
-        });
-    return MnnLocalBenchmarkState.fromMap(result);
-  }
-
-  static Future<MnnLocalBenchmarkState> stopBenchmark() async {
-    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-      'stopBenchmark',
-    );
-    return MnnLocalBenchmarkState.fromMap(result);
+    return _normalizeInferenceBackend(result ?? backend);
   }
 }
