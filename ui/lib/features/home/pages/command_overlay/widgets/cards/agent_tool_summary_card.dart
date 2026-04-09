@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/chat/tool_activity_utils.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_transcript.dart';
 import 'package:ui/services/app_background_service.dart';
+import 'package:ui/theme/theme_context.dart';
 
 class AgentToolSummaryCard extends StatelessWidget {
   const AgentToolSummaryCard({
@@ -23,6 +24,19 @@ class AgentToolSummaryCard extends StatelessWidget {
     final preview = resolveAgentToolPreview(cardData);
     final typeLabel = resolveAgentToolTypeLabel(cardData);
     final statusColor = resolveAgentToolStatusColor(status);
+    final palette = context.omniPalette;
+    final cardBackgroundColor = context.isDarkTheme
+        ? Color.lerp(palette.surfaceSecondary, statusColor, 0.14)!
+        : statusColor.withValues(alpha: 0.08);
+    final cardBorderColor = context.isDarkTheme
+        ? Color.lerp(palette.borderSubtle, statusColor, 0.22)!
+        : Colors.transparent;
+    final statusTagBackgroundColor = context.isDarkTheme
+        ? Color.lerp(palette.surfaceElevated, statusColor, 0.16)!
+        : Colors.white.withValues(alpha: 0.78);
+    final statusTagTextColor = context.isDarkTheme
+        ? Color.lerp(palette.textPrimary, statusColor, 0.42)!
+        : statusColor;
 
     final tooltipLines = <String>[title];
     if (preview.isNotEmpty && preview != title) {
@@ -42,8 +56,9 @@ class AgentToolSummaryCard extends StatelessWidget {
             margin: const EdgeInsets.only(top: 6, bottom: 2),
             padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
             decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.08),
+              color: cardBackgroundColor,
               borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: cardBorderColor),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -70,13 +85,18 @@ class AgentToolSummaryCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.78),
+                    color: statusTagBackgroundColor,
                     borderRadius: BorderRadius.circular(999),
+                    border: context.isDarkTheme
+                        ? Border.all(
+                            color: statusTagTextColor.withValues(alpha: 0.18),
+                          )
+                        : null,
                   ),
                   child: Text(
                     status == 'running' ? typeLabel : statusLabel,
                     style: TextStyle(
-                      color: statusColor,
+                      color: statusTagTextColor,
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       height: 1,

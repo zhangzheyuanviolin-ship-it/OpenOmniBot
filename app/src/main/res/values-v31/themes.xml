@@ -14,6 +14,17 @@
        <item name="android:windowLightStatusBar">false</item>
        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
    </style>
-</resources>
 
+   <style name="Theme.OmnibotApp.Splash.Dark" parent="android:Theme.Material.NoActionBar">
+       <item name="android:windowSplashScreenBackground">#151617</item>
+       <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+       <item name="android:windowSplashScreenIconBackgroundColor">#151617</item>
+       <item name="android:windowSplashScreenAnimationDuration">200</item>
+       <item name="android:windowBackground">@drawable/splash_background_dark</item>
+       <item name="android:statusBarColor">#151617</item>
+       <item name="android:navigationBarColor">#151617</item>
+       <item name="android:windowLightStatusBar">false</item>
+       <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+   </style>
+</resources>
 

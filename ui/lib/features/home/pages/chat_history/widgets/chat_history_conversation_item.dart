@@ -3,6 +3,7 @@ import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/features/home/widgets/conversation_mode_badge.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 
 class ChatHistoryConversationItem extends StatelessWidget {
   const ChatHistoryConversationItem({
@@ -27,6 +28,7 @@ class ChatHistoryConversationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return ConversationSlidable(
       itemKey: conversation.threadKey,
       groupTag: slidableGroupTag,
@@ -43,15 +45,28 @@ class ChatHistoryConversationItem extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.isDarkTheme
+                  ? palette.surfacePrimary
+                  : Colors.white,
               borderRadius: _cardRadius,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+              border: context.isDarkTheme
+                  ? Border.all(color: palette.borderSubtle)
+                  : null,
+              boxShadow: context.isDarkTheme
+                  ? [
+                      BoxShadow(
+                        color: palette.shadowColor.withValues(alpha: 0.18),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
             ),
             child: Row(
               children: [
@@ -59,17 +74,36 @@ class ChatHistoryConversationItem extends StatelessWidget {
                   Container(
                     width: 40,
                     height: 40,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Color(0xFF1930D9), Color(0xFF2CA5F0)],
+                        colors: context.isDarkTheme
+                            ? <Color>[
+                                Color.lerp(
+                                  palette.surfaceElevated,
+                                  palette.accentPrimary,
+                                  0.18,
+                                )!,
+                                Color.lerp(
+                                  palette.surfaceSecondary,
+                                  palette.accentPrimary,
+                                  0.3,
+                                )!,
+                              ]
+                            : const <Color>[
+                                Color(0xFF1930D9),
+                                Color(0xFF2CA5F0),
+                              ],
                       ),
-                      borderRadius: BorderRadius.all(
-                        Radius.circular(8),
-                      ),
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                      border: context.isDarkTheme
+                          ? Border.all(color: palette.borderSubtle)
+                          : null,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.chat_bubble_outline,
-                      color: Colors.white,
+                      color: context.isDarkTheme
+                          ? palette.textPrimary
+                          : Colors.white,
                       size: 20,
                     ),
                   ),
@@ -86,10 +120,12 @@ class ChatHistoryConversationItem extends StatelessWidget {
                               conversation.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w500,
-                                color: AppColors.text,
+                                color: context.isDarkTheme
+                                    ? palette.textPrimary
+                                    : AppColors.text,
                               ),
                             ),
                           ),
@@ -108,7 +144,9 @@ class ChatHistoryConversationItem extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 14,
-                            color: AppColors.text.withOpacity(0.6),
+                            color: context.isDarkTheme
+                                ? palette.textSecondary
+                                : AppColors.text.withValues(alpha: 0.6),
                           ),
                         ),
                       ],
@@ -123,7 +161,9 @@ class ChatHistoryConversationItem extends StatelessWidget {
                       conversation.timeDisplay,
                       style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.text.withOpacity(0.4),
+                        color: context.isDarkTheme
+                            ? palette.textTertiary
+                            : AppColors.text.withValues(alpha: 0.4),
                       ),
                     ),
                     if (conversation.messageCount > 0) ...[
@@ -132,7 +172,9 @@ class ChatHistoryConversationItem extends StatelessWidget {
                         '${conversation.messageCount} \u6761\u6d88\u606f',
                         style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.text.withOpacity(0.4),
+                          color: context.isDarkTheme
+                              ? palette.textTertiary
+                              : AppColors.text.withValues(alpha: 0.4),
                         ),
                       ),
                     ],

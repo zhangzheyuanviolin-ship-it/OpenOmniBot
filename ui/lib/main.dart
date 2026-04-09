@@ -20,7 +20,7 @@ void main(List<String> args) async {
   // 可以在这里处理从原生传递过来的参数
   if (args.isNotEmpty) {
     // 处理参数的逻辑
-    print('Received args from native: $args');
+    debugPrint('Received args from native: $args');
 
     // 检查是否有路由参数
     for (var arg in args) {
@@ -29,7 +29,7 @@ void main(List<String> args) async {
       }
     }
   } else {
-    print('No args received from native');
+    debugPrint('No args received from native');
   }
 
   // 设置初始路由
@@ -39,22 +39,17 @@ void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   WidgetsBinding.instance.deferFirstFrame();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarDividerColor: Colors.transparent,
-      systemNavigationBarContrastEnforced: false,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
 
   final container = ProviderContainer();
   await StorageService.init();
   await AppBackgroundService.load();
   await ScheduledTaskSchedulerService.initialize();
   await OmnibotResourceService.ensureWorkspacePathsLoaded();
+  SystemChrome.setSystemUIOverlayStyle(
+    AppTheme.overlayStyleForBrightness(
+      _resolveStartupBrightness(StorageService.getThemeMode()),
+    ),
+  );
 
   runApp(
     UncontrolledProviderScope(
@@ -81,22 +76,17 @@ void subEngineMain(List<String> args) async {
   }
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarDividerColor: Colors.transparent,
-      systemNavigationBarContrastEnforced: false,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
 
   final container = ProviderContainer();
   await StorageService.init();
   await AppBackgroundService.load();
   await ScheduledTaskSchedulerService.initialize();
   await OmnibotResourceService.ensureWorkspacePathsLoaded();
+  SystemChrome.setSystemUIOverlayStyle(
+    AppTheme.overlayStyleForBrightness(
+      _resolveStartupBrightness(StorageService.getThemeMode()),
+    ),
+  );
 
   runApp(
     UncontrolledProviderScope(
@@ -104,6 +94,15 @@ void subEngineMain(List<String> args) async {
       child: MyApp(args: args),
     ),
   );
+}
+
+Brightness _resolveStartupBrightness(AppThemeMode mode) {
+  return switch (mode) {
+    AppThemeMode.light => Brightness.light,
+    AppThemeMode.dark => Brightness.dark,
+    AppThemeMode.system =>
+      WidgetsBinding.instance.platformDispatcher.platformBrightness,
+  };
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -120,10 +119,10 @@ class _MyAppState extends ConsumerState<MyApp> {
     super.initState();
 
     final initStart = DateTime.now();
-    print('🎨 [FlutterStartup] MyApp initState start');
+    debugPrint('🎨 [FlutterStartup] MyApp initState start');
     super.initState();
     _initializeApp();
-    print(
+    debugPrint(
       "⏱️  [FlutterStartup] MyApp initState cost: ${DateTime.now().difference(initStart).inMilliseconds}ms",
     );
   }
@@ -132,22 +131,22 @@ class _MyAppState extends ConsumerState<MyApp> {
     final appInitStart = DateTime.now();
     try {
       ref.read(eventListenerProvider);
-      print(
+      debugPrint(
         "⏱️  [FlutterStartup] eventListenerProvider init cost: ${DateTime.now().difference(appInitStart).inMilliseconds}ms",
       );
     } catch (e) {
-      print('⚠️  [FlutterStartup] initializeApp error: $e');
+      debugPrint('⚠️  [FlutterStartup] initializeApp error: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final buildStart = DateTime.now();
-    print('🎨 [FlutterStartup] MyApp build start');
+    debugPrint('🎨 [FlutterStartup] MyApp build start');
 
     final routerStart = DateTime.now();
     final router = GoRouterManager.createRouter(ref);
-    print(
+    debugPrint(
       "⏱️  [FlutterStartup] createRouter cost: ${DateTime.now().difference(routerStart).inMilliseconds}ms",
     );
 
@@ -189,10 +188,10 @@ class _MyAppState extends ConsumerState<MyApp> {
       supportedLocales: [const Locale('en', 'US'), const Locale('zh', 'CN')],
     );
 
-    print(
+    debugPrint(
       "⏱️  [FlutterStartup] Widget tree build cost: ${DateTime.now().difference(widgetBuildStart).inMilliseconds}ms",
     );
-    print(
+    debugPrint(
       "✅ [FlutterStartup] MyApp build total cost: ${DateTime.now().difference(buildStart).inMilliseconds}ms",
     );
 

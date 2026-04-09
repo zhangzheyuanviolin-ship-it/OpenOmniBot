@@ -953,7 +953,13 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       ),
       ConversationSlideAction(
         onPressed: () => _archiveConversation(conversation),
-        backgroundColor: AppColors.buttonPrimary,
+        backgroundColor: context.isDarkTheme
+            ? Color.lerp(
+                context.omniPalette.surfaceElevated,
+                context.omniPalette.accentPrimary,
+                0.3,
+              )!
+            : AppColors.buttonPrimary,
         borderRadius: _drawerTrailingActionRadius,
         child: Center(
           child: SvgPicture.asset(

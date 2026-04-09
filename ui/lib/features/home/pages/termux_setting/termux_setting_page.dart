@@ -687,6 +687,20 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                         foregroundColor: task.enabled
                             ? const Color(0xFF2563EB)
                             : const Color(0xFF64748B),
+                        darkBackgroundColor: task.enabled
+                            ? Color.lerp(
+                                context.omniPalette.surfaceSecondary,
+                                context.omniPalette.accentPrimary,
+                                0.14,
+                              )
+                            : context.omniPalette.surfaceSecondary,
+                        darkForegroundColor: task.enabled
+                            ? Color.lerp(
+                                context.omniPalette.textPrimary,
+                                context.omniPalette.accentPrimary,
+                                0.38,
+                              )
+                            : context.omniPalette.textSecondary,
                       ),
                       _buildLegendTag(
                         label: task.running ? 'running' : 'idle',
@@ -696,6 +710,20 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                         foregroundColor: task.running
                             ? const Color(0xFF17803D)
                             : const Color(0xFFC2410C),
+                        darkBackgroundColor: task.running
+                            ? Color.lerp(
+                                context.omniPalette.surfaceSecondary,
+                                const Color(0xFF72A778),
+                                0.22,
+                              )
+                            : Color.lerp(
+                                context.omniPalette.surfaceSecondary,
+                                const Color(0xFFB88B61),
+                                0.18,
+                              ),
+                        darkForegroundColor: task.running
+                            ? const Color(0xFFD6E7D6)
+                            : const Color(0xFFE7D2B6),
                       ),
                     ],
                   ),
@@ -852,6 +880,20 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                   foregroundColor: item.ready
                       ? const Color(0xFF17803D)
                       : const Color(0xFF2563EB),
+                  darkBackgroundColor: item.ready
+                      ? Color.lerp(
+                          context.omniPalette.surfaceSecondary,
+                          const Color(0xFF72A778),
+                          0.22,
+                        )
+                      : Color.lerp(
+                          context.omniPalette.surfaceSecondary,
+                          const Color(0xFF79808A),
+                          0.16,
+                        ),
+                  darkForegroundColor: item.ready
+                      ? const Color(0xFFD6E7D6)
+                      : const Color(0xFFD7DADF),
                 ),
               const SizedBox(height: 6),
               Text(
@@ -875,17 +917,28 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     required String label,
     required Color backgroundColor,
     required Color foregroundColor,
+    Color? darkBackgroundColor,
+    Color? darkForegroundColor,
   }) {
+    final resolvedBackgroundColor = context.isDarkTheme
+        ? (darkBackgroundColor ?? context.omniPalette.surfaceSecondary)
+        : backgroundColor;
+    final resolvedForegroundColor = context.isDarkTheme
+        ? (darkForegroundColor ?? context.omniPalette.textSecondary)
+        : foregroundColor;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: resolvedBackgroundColor,
         borderRadius: BorderRadius.circular(999),
+        border: context.isDarkTheme
+            ? Border.all(color: resolvedForegroundColor.withValues(alpha: 0.16))
+            : null,
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: foregroundColor,
+          color: resolvedForegroundColor,
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
