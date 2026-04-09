@@ -25,20 +25,30 @@ class AgentToolSummaryCard extends StatelessWidget {
     final typeLabel = resolveAgentToolTypeLabel(cardData);
     final statusColor = resolveAgentToolStatusColor(status);
     final palette = context.omniPalette;
-    const darkChipBase = Color(0xFFEAE4D9);
-    const darkChipTagBase = Color(0xFFF2ECE2);
     final cardBackgroundColor = context.isDarkTheme
-        ? Color.lerp(darkChipBase, statusColor, 0.08)!
+        ? Color.alphaBlend(
+            statusColor.withValues(alpha: status == 'running' ? 0.11 : 0.09),
+            palette.surfaceSecondary,
+          )
         : statusColor.withValues(alpha: 0.08);
-    final cardBorderColor = Colors.transparent;
+    final cardBorderColor = context.isDarkTheme
+        ? Color.lerp(
+            palette.borderSubtle,
+            statusColor,
+            0.18,
+          )!.withValues(alpha: 0.92)
+        : Colors.transparent;
     final statusTagBackgroundColor = context.isDarkTheme
-        ? Color.lerp(darkChipTagBase, statusColor, 0.16)!
+        ? Color.alphaBlend(
+            statusColor.withValues(alpha: 0.14),
+            palette.surfaceElevated,
+          )
         : Colors.white.withValues(alpha: 0.78);
     final statusTagTextColor = context.isDarkTheme
-        ? Color.lerp(palette.pageBackground, statusColor, 0.44)!
+        ? Color.lerp(palette.textSecondary, statusColor, 0.38)!
         : statusColor;
     final titleColor = context.isDarkTheme
-        ? palette.pageBackground
+        ? palette.textPrimary
         : visualProfile.primaryTextColor;
 
     final tooltipLines = <String>[title];
@@ -120,10 +130,13 @@ class _StatusIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = resolveAgentToolStatusColor(status);
     final backgroundColor = context.isDarkTheme
-        ? Color.lerp(const Color(0xFFF2ECE2), color, 0.14)!
+        ? Color.alphaBlend(
+            color.withValues(alpha: 0.14),
+            context.omniPalette.surfaceElevated,
+          )
         : color.withValues(alpha: 0.12);
     final iconColor = context.isDarkTheme
-        ? Color.lerp(context.omniPalette.pageBackground, color, 0.42)!
+        ? Color.lerp(context.omniPalette.textSecondary, color, 0.38)!
         : color;
     return Container(
       width: 18,

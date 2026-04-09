@@ -1029,8 +1029,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   @override
   Widget build(BuildContext context) {
+    final pageBackgroundColor =
+        !widget.appearanceConfig.isActive && context.isDarkTheme
+        ? context.omniPalette.pageBackground
+        : null;
+
+    final Widget content;
     if (widget.messages.isEmpty) {
-      return GestureDetector(
+      content = GestureDetector(
         onVerticalDragUpdate: (_) {},
         behavior: HitTestBehavior.opaque,
         child: Center(
@@ -1048,51 +1054,59 @@ class _ChatMessageListState extends State<ChatMessageList> {
           ),
         ),
       );
+    } else {
+      content = ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ListView.builder(
+            controller: widget.scrollController,
+            reverse: false,
+            shrinkWrap: true,
+            physics: const ClampingScrollPhysics(),
+            clipBehavior: Clip.hardEdge,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            itemCount: widget.messages.length,
+            itemBuilder: (context, index) {
+              final dataIndex = widget.messages.length - 1 - index;
+              final message = widget.messages[dataIndex];
+              final isNewestMessage = dataIndex == 0;
+              final isOldestMessage = dataIndex == widget.messages.length - 1;
+              final bottomPadding = isNewestMessage
+                  ? widget.bottomOverlayInset
+                  : 0.0;
+              final needTopPadding = isOldestMessage && message.user != 1;
+              return Padding(
+                key: ValueKey('chat-message-list-item-$dataIndex'),
+                padding: EdgeInsets.only(
+                  top: needTopPadding ? 24.0 : 0.0,
+                  bottom: bottomPadding,
+                ),
+                child: MessageBubble(
+                  message: message,
+                  key: ValueKey(
+                    message.dbId ?? message.contentId ?? message.id,
+                  ),
+                  onBeforeTaskExecute: widget.onBeforeTaskExecute,
+                  onCancelTask: widget.onCancelTask,
+                  enableThinkingCollapse: true,
+                  parentScrollController: widget.scrollController,
+                  onRequestAuthorize: widget.onRequestAuthorize,
+                  onUserMessageLongPressStart:
+                      widget.onUserMessageLongPressStart,
+                  visualProfile: widget.visualProfile,
+                  appearanceConfig: widget.appearanceConfig,
+                ),
+              );
+            },
+          ),
+        ),
+      );
     }
 
-    return ClipRect(
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ListView.builder(
-          controller: widget.scrollController,
-          reverse: false,
-          shrinkWrap: true,
-          physics: const ClampingScrollPhysics(),
-          clipBehavior: Clip.hardEdge,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          itemCount: widget.messages.length,
-          itemBuilder: (context, index) {
-            final dataIndex = widget.messages.length - 1 - index;
-            final message = widget.messages[dataIndex];
-            final isNewestMessage = dataIndex == 0;
-            final isOldestMessage = dataIndex == widget.messages.length - 1;
-            final bottomPadding = isNewestMessage
-                ? widget.bottomOverlayInset
-                : 0.0;
-            final needTopPadding = isOldestMessage && message.user != 1;
-            return Padding(
-              key: ValueKey('chat-message-list-item-$dataIndex'),
-              padding: EdgeInsets.only(
-                top: needTopPadding ? 24.0 : 0.0,
-                bottom: bottomPadding,
-              ),
-              child: MessageBubble(
-                message: message,
-                key: ValueKey(message.dbId ?? message.contentId ?? message.id),
-                onBeforeTaskExecute: widget.onBeforeTaskExecute,
-                onCancelTask: widget.onCancelTask,
-                enableThinkingCollapse: true,
-                parentScrollController: widget.scrollController,
-                onRequestAuthorize: widget.onRequestAuthorize,
-                onUserMessageLongPressStart: widget.onUserMessageLongPressStart,
-                visualProfile: widget.visualProfile,
-                appearanceConfig: widget.appearanceConfig,
-              ),
-            );
-          },
-        ),
-      ),
-    );
+    if (pageBackgroundColor == null) {
+      return content;
+    }
+    return ColoredBox(color: pageBackgroundColor, child: content);
   }
 }
 
