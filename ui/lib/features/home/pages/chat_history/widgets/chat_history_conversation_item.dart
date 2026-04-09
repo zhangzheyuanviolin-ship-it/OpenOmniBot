@@ -14,6 +14,7 @@ class ChatHistoryConversationItem extends StatelessWidget {
     required this.onDelete,
     this.isBusy = false,
     this.showLeadingIcon = true,
+    this.compact = false,
   });
 
   final ConversationModel conversation;
@@ -22,33 +23,41 @@ class ChatHistoryConversationItem extends StatelessWidget {
   final VoidCallback onDelete;
   final bool isBusy;
   final bool showLeadingIcon;
+  final bool compact;
 
   static const String slidableGroupTag = 'chat-history';
-  static const BorderRadius _cardRadius = BorderRadius.all(Radius.circular(8));
 
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
+    final borderRadius = BorderRadius.circular(compact ? 7 : 8);
+    final contentPadding = EdgeInsets.symmetric(
+      horizontal: compact ? 14 : 16,
+      vertical: compact ? 12 : 16,
+    );
+    final metaText = conversation.messageCount > 0
+        ? '${conversation.timeDisplay} · ${conversation.messageCount} 条消息'
+        : conversation.timeDisplay;
     return ConversationSlidable(
       itemKey: conversation.threadKey,
       groupTag: slidableGroupTag,
       isBusy: isBusy,
       actions: actions,
       onDismissed: onDelete,
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.only(bottom: compact ? 8 : 12),
       child: Material(
         color: Colors.transparent,
-        borderRadius: _cardRadius,
+        borderRadius: borderRadius,
         child: InkWell(
           onTap: onTap,
-          borderRadius: _cardRadius,
+          borderRadius: borderRadius,
           child: Container(
-            padding: const EdgeInsets.all(16),
+            padding: contentPadding,
             decoration: BoxDecoration(
               color: context.isDarkTheme
                   ? palette.surfacePrimary
                   : Colors.white,
-              borderRadius: _cardRadius,
+              borderRadius: borderRadius,
               border: context.isDarkTheme
                   ? Border.all(color: palette.borderSubtle)
                   : null,
@@ -63,17 +72,18 @@ class ChatHistoryConversationItem extends StatelessWidget {
                   : [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
+                        blurRadius: compact ? 8 : 10,
+                        offset: Offset(0, compact ? 1.5 : 2),
                       ),
                     ],
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 if (showLeadingIcon) ...[
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: compact ? 36 : 40,
+                    height: compact ? 36 : 40,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: context.isDarkTheme
@@ -94,7 +104,9 @@ class ChatHistoryConversationItem extends StatelessWidget {
                                 Color(0xFF2CA5F0),
                               ],
                       ),
-                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(compact ? 7 : 8),
+                      ),
                       border: context.isDarkTheme
                           ? Border.all(color: palette.borderSubtle)
                           : null,
@@ -104,16 +116,18 @@ class ChatHistoryConversationItem extends StatelessWidget {
                       color: context.isDarkTheme
                           ? palette.textPrimary
                           : Colors.white,
-                      size: 20,
+                      size: compact ? 18 : 20,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: compact ? 10 : 12),
                 ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
                             child: Text(
@@ -121,15 +135,16 @@ class ChatHistoryConversationItem extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: compact ? 15 : 16,
                                 fontWeight: FontWeight.w500,
                                 color: context.isDarkTheme
                                     ? palette.textPrimary
                                     : AppColors.text,
+                                height: compact ? 1.2 : 1.25,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          SizedBox(width: compact ? 6 : 8),
                           ConversationModeBadge(
                             mode: conversation.mode,
                             compact: true,
@@ -137,39 +152,43 @@ class ChatHistoryConversationItem extends StatelessWidget {
                         ],
                       ),
                       if ((conversation.summary ?? '').isNotEmpty) ...[
-                        const SizedBox(height: 4),
+                        SizedBox(height: compact ? 2 : 4),
                         Text(
                           conversation.summary!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: compact ? 13 : 14,
                             color: context.isDarkTheme
                                 ? palette.textSecondary
                                 : AppColors.text.withValues(alpha: 0.6),
+                            height: compact ? 1.2 : 1.3,
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: compact ? 10 : 12),
                 Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      conversation.timeDisplay,
+                      compact ? metaText : conversation.timeDisplay,
+                      textAlign: TextAlign.right,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: compact ? 11 : 12,
                         color: context.isDarkTheme
                             ? palette.textTertiary
                             : AppColors.text.withValues(alpha: 0.4),
+                        height: compact ? 1.15 : 1.2,
                       ),
                     ),
-                    if (conversation.messageCount > 0) ...[
+                    if (!compact && conversation.messageCount > 0) ...[
                       const SizedBox(height: 4),
                       Text(
-                        '${conversation.messageCount} \u6761\u6d88\u606f',
+                        '${conversation.messageCount} 条消息',
                         style: TextStyle(
                           fontSize: 12,
                           color: context.isDarkTheme

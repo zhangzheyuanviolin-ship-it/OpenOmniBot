@@ -1,8 +1,10 @@
 package cn.com.omnimind.bot.agent
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.file.Files
 
 class SkillRuntimeBehaviorTest {
     private fun entry(
@@ -87,5 +89,56 @@ class SkillRuntimeBehaviorTest {
         assertTrue(prompt.contains("id=active-skill"))
         assertFalse(prompt.contains("id=disabled-skill"))
         assertFalse(prompt.contains("id=removed-skill"))
+    }
+
+    @Test
+    fun failureHookWritesErrorsLogAndFindsRelatedHints() {
+        val skillsRoot = Files.createTempDirectory("self-improving-skill-test").toFile()
+        val skillRoot = skillsRoot.resolve(SelfImprovingSkillFailureHook.SKILL_ID)
+        val dataDir = skillRoot.resolve("data").apply { mkdirs() }
+        val errorsFile = dataDir.resolve("ERRORS.md")
+        errorsFile.writeText(
+            """
+            # Errors
+
+            ## [ERR-20260409-OLD] terminal_execute
+
+            **记录时间**: 2026-04-09T00:00:00Z
+            **优先级**: high
+            **状态**: pending
+            **领域**: runtime
+
+            ### 摘要
+            旧的终端失败
+
+            ---
+            """.trimIndent() + "\n"
+        )
+
+        val payload = SelfImprovingSkillFailureHook.capture(
+            skillsRoot = skillsRoot,
+            skill = ResolvedSkillContext(
+                skillId = SelfImprovingSkillFailureHook.SKILL_ID,
+                frontmatter = mapOf("name" to SelfImprovingSkillFailureHook.SKILL_ID),
+                bodyMarkdown = "先检查失败原因\n不要重复相同步骤",
+                triggerReason = "test"
+            ),
+            userMessage = "修复终端命令报错",
+            toolName = "terminal_execute",
+            toolType = "terminal",
+            argumentsJson = """{"command":"bad cmd"}""",
+            result = ToolExecutionResult.TerminalResult(
+                toolName = "terminal_execute",
+                summaryText = "命令执行失败",
+                previewJson = "{}",
+                rawResultJson = """{"stderr":"not found"}""",
+                success = false
+            )
+        )
+
+        assertNotNull(payload)
+        assertTrue(errorsFile.readText().contains("命令执行失败"))
+        assertTrue(payload!!.guidance.contains("self-improving-agent"))
+        assertTrue(payload.relatedHints.any { it.contains("ERR-20260409-OLD") })
     }
 }

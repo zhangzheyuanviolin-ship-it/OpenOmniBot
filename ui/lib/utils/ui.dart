@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/theme/omni_theme_palette.dart';
+import 'package:ui/theme/theme_context.dart';
 
 /// 把 #RRGGBB / #AARRGGBB 转换成 [Color]
 Color hexToColor(String hex) {
@@ -23,20 +25,18 @@ class Loading {
 
     final navigatorState = GoRouterManager.rootNavigatorKey.currentState;
     if (navigatorState == null) {
-      print('Warning: Navigator state is null, cannot show loading overlay');
+      debugPrint(
+        'Warning: Navigator state is null, cannot show loading overlay',
+      );
       return;
     }
 
     final context = navigatorState.overlay!.context;
     _overlayEntry = OverlayEntry(
-      builder: (_) => Center(
-        child: _CustomLoadingWidget(message: message ?? '加载中'),
-      ),
+      builder: (_) =>
+          Center(child: _CustomLoadingWidget(message: message ?? '加载中')),
     );
-    Navigator
-        .of(context)
-        .overlay!
-        .insert(_overlayEntry!);
+    Navigator.of(context).overlay!.insert(_overlayEntry!);
   }
 
   static void hide() {
@@ -123,14 +123,46 @@ class AppToast {
   }
 
   /// 便捷方法
-  static void success(String message, {Duration duration = const Duration(seconds: 2), ToastPosition position = ToastPosition.top}) =>
-      show(message, type: ToastType.success, duration: duration, position: position);
-  static void error(String message, {Duration duration = const Duration(seconds: 2), ToastPosition position = ToastPosition.top}) =>
-      show(message, type: ToastType.error, duration: duration, position: position);
-  static void warning(String message, {Duration duration = const Duration(seconds: 2), ToastPosition position = ToastPosition.top}) =>
-      show(message, type: ToastType.warning, duration: duration, position: position);
-  static void info(String message, {Duration duration = const Duration(seconds: 2), ToastPosition position = ToastPosition.top}) =>
-      show(message, type: ToastType.info, duration: duration, position: position);
+  static void success(
+    String message, {
+    Duration duration = const Duration(seconds: 2),
+    ToastPosition position = ToastPosition.top,
+  }) => show(
+    message,
+    type: ToastType.success,
+    duration: duration,
+    position: position,
+  );
+  static void error(
+    String message, {
+    Duration duration = const Duration(seconds: 2),
+    ToastPosition position = ToastPosition.top,
+  }) => show(
+    message,
+    type: ToastType.error,
+    duration: duration,
+    position: position,
+  );
+  static void warning(
+    String message, {
+    Duration duration = const Duration(seconds: 2),
+    ToastPosition position = ToastPosition.top,
+  }) => show(
+    message,
+    type: ToastType.warning,
+    duration: duration,
+    position: position,
+  );
+  static void info(
+    String message, {
+    Duration duration = const Duration(seconds: 2),
+    ToastPosition position = ToastPosition.top,
+  }) => show(
+    message,
+    type: ToastType.info,
+    duration: duration,
+    position: position,
+  );
 
   static Alignment _alignmentFor(ToastPosition position) {
     switch (position) {
@@ -156,7 +188,9 @@ class AppToast {
 }
 
 enum ToastType { info, success, warning, error }
+
 enum ToastPosition { top, center, bottom }
+
 enum DialogType { confirm, alert, input, select, loading }
 
 class _ToastContainer extends StatefulWidget {
@@ -194,9 +228,10 @@ class _ToastContainerState extends State<_ToastContainer>
     final begin = widget.alignment == Alignment.bottomCenter
         ? const Offset(0, 0.06)
         : const Offset(0, -0.06);
-    _offset = Tween<Offset>(begin: begin, end: Offset.zero).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
+    _offset = Tween<Offset>(
+      begin: begin,
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
     // 延迟一帧启动动画，避免 Overlay 初始闪烁
     WidgetsBinding.instance.addPostFrameCallback((_) => _controller.forward());
@@ -210,13 +245,18 @@ class _ToastContainerState extends State<_ToastContainer>
 
   @override
   Widget build(BuildContext context) {
-    final _colors = _ToastColors.of(widget.type);
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final colors = _ToastColors.of(widget.type);
+    final surfaceColors = _ToastSurfaceColors.resolve(
+      palette: palette,
+      isDark: isDark,
+    );
     final message = widget.message.trim();
     final isMultiLine = message.contains('\n') || message.length > 26;
-    final maxWidth = (MediaQuery.sizeOf(context).width - 32).clamp(
-      220.0,
-      360.0,
-    ).toDouble();
+    final maxWidth = (MediaQuery.sizeOf(context).width - 32)
+        .clamp(220.0, 360.0)
+        .toDouble();
     final fontSize = _fontSizeFor(message);
     final lineHeight = isMultiLine ? 1.3 : 1.0;
 
@@ -245,24 +285,17 @@ class _ToastContainerState extends State<_ToastContainer>
                     ),
                     decoration: ShapeDecoration(
                       gradient: LinearGradient(
-                        begin: Alignment(0.25, 0.21),
-                        end: Alignment(0.97, 1.01),
-                        colors: [
-                          Colors.white,
-                          Colors.white.withValues(alpha: 0.80),
-                        ],
+                        begin: const Alignment(0.25, 0.21),
+                        end: const Alignment(0.97, 1.01),
+                        colors: surfaceColors.gradientColors,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(isMultiLine ? 18 : 50),
-                      ),
-                      shadows: [
-                        BoxShadow(
-                          color: Color(0x0C000000),
-                          blurRadius: 10,
-                          offset: Offset(5, 5),
-                          spreadRadius: 0,
+                        borderRadius: BorderRadius.circular(
+                          isMultiLine ? 18 : 50,
                         ),
-                      ],
+                        side: BorderSide(color: surfaceColors.borderColor),
+                      ),
+                      shadows: surfaceColors.shadows,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -274,8 +307,8 @@ class _ToastContainerState extends State<_ToastContainer>
                         Padding(
                           padding: EdgeInsets.only(top: isMultiLine ? 1 : 0),
                           child: Icon(
-                            _colors.icon,
-                            color: _colors.color,
+                            colors.icon,
+                            color: colors.color,
                             size: 14,
                           ),
                         ),
@@ -288,7 +321,7 @@ class _ToastContainerState extends State<_ToastContainer>
                             softWrap: true,
                             textAlign: TextAlign.left,
                             style: TextStyle(
-                              color: Colors.black.withValues(alpha: 0.50),
+                              color: surfaceColors.textColor,
                               fontSize: fontSize,
                               fontFamily: 'PingFang SC',
                               fontWeight: FontWeight.w400,
@@ -321,6 +354,56 @@ class _ToastContainerState extends State<_ToastContainer>
   }
 }
 
+class _ToastSurfaceColors {
+  final List<Color> gradientColors;
+  final Color borderColor;
+  final Color textColor;
+  final List<BoxShadow> shadows;
+
+  const _ToastSurfaceColors({
+    required this.gradientColors,
+    required this.borderColor,
+    required this.textColor,
+    required this.shadows,
+  });
+
+  static _ToastSurfaceColors resolve({
+    required OmniThemePalette palette,
+    required bool isDark,
+  }) {
+    if (isDark) {
+      return _ToastSurfaceColors(
+        gradientColors: [
+          palette.surfaceElevated.withValues(alpha: 0.98),
+          palette.surfaceSecondary.withValues(alpha: 0.94),
+        ],
+        borderColor: palette.borderStrong.withValues(alpha: 0.5),
+        textColor: palette.textPrimary.withValues(alpha: 0.92),
+        shadows: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.24),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      );
+    }
+
+    return _ToastSurfaceColors(
+      gradientColors: [Colors.white, Colors.white.withValues(alpha: 0.80)],
+      borderColor: palette.borderSubtle.withValues(alpha: 0.35),
+      textColor: palette.textPrimary.withValues(alpha: 0.78),
+      shadows: [
+        BoxShadow(
+          color: palette.shadowColor.withValues(alpha: 0.12),
+          blurRadius: 10,
+          offset: const Offset(5, 5),
+        ),
+      ],
+    );
+  }
+}
+
 class _ToastColors {
   final Color color;
   final IconData icon;
@@ -329,7 +412,10 @@ class _ToastColors {
   static _ToastColors of(ToastType type) {
     switch (type) {
       case ToastType.success:
-        return _ToastColors(const Color(0xFF22C55E), Icons.check_circle_rounded);
+        return _ToastColors(
+          const Color(0xFF22C55E),
+          Icons.check_circle_rounded,
+        );
       case ToastType.warning:
         return _ToastColors(const Color(0xFFFFAA2C), Icons.warning_rounded);
       case ToastType.error:
@@ -342,39 +428,6 @@ class _ToastColors {
   }
 }
 
-/// 带背景模糊和阴影的卡片，近似 Figma Toast 的视觉
-class _FrostedCard extends StatelessWidget {
-  const _FrostedCard({required this.child, this.shadowColor});
-  final Widget child;
-  final Color? shadowColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: (shadowColor ?? Colors.black.withOpacity(0.15)),
-                blurRadius: 20,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 24, 12),
-            child: child,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// 顶层便捷函数：全局弹出 Toast
 void showToast(
   String message, {
@@ -382,12 +435,7 @@ void showToast(
   Duration duration = const Duration(seconds: 2),
   ToastPosition position = ToastPosition.top,
 }) {
-  AppToast.show(
-    message,
-    type: type,
-    duration: duration,
-    position: position,
-  );
+  AppToast.show(message, type: type, duration: duration, position: position);
 }
 
 /// Dialog组件工具类
@@ -620,7 +668,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
                     widget.type == DialogType.loading) ...[
                   const SizedBox(height: 16),
                   _buildBody(),
-                    ],
+                ],
                 if (widget.type != DialogType.loading) ...[
                   const SizedBox(height: 16),
                   _buildButtons(),
@@ -705,10 +753,14 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
                     padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                     margin: EdgeInsets.only(bottom: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? Color(0xFF00AEFF).withOpacity(0.1) : Colors.transparent,
+                      color: isSelected
+                          ? const Color(0xFF00AEFF).withValues(alpha: 0.1)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: isSelected ? Color(0xFF00AEFF) : Colors.grey.shade300,
+                        color: isSelected
+                            ? Color(0xFF00AEFF)
+                            : Colors.grey.shade300,
                       ),
                     ),
                     child: Text(
@@ -918,44 +970,41 @@ class _CustomLoadingWidgetState extends State<_CustomLoadingWidget>
               borderRadius: BorderRadius.circular(16),
             ),
           ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 50,
-            height: 50,
-            child: RotationTransition(
-              turns: _controller,
-              child: SvgPicture.asset(
-                'assets/common/loading.svg',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 50,
+                height: 50,
+                child: RotationTransition(
+                  turns: _controller,
+                  child: SvgPicture.asset('assets/common/loading.svg'),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: 101,
-            height: 25,
-            child: Text(
-              widget.message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontFamily: 'PingFang SC',
-                fontWeight: FontWeight.w400,
-                height: 1.5,
-                letterSpacing: 0.39,
-                decoration: TextDecoration.none
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 101,
+                height: 25,
+                child: Text(
+                  widget.message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontFamily: 'PingFang SC',
+                    fontWeight: FontWeight.w400,
+                    height: 1.5,
+                    letterSpacing: 0.39,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
         ),
       ),
     );
   }
 }
-

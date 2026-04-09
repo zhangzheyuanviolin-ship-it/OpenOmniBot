@@ -9,6 +9,8 @@ This built-in skill is fixed-injected for Omnibot agent runs.
 
 Use it to maintain a lightweight learning loop without interrupting the user's main task.
 
+The runtime may auto-read this skill after a tool failure and auto-record the failure into `data/ERRORS.md`.
+
 ## When To Record
 
 Record after the immediate task is safe or complete when any of these happens:

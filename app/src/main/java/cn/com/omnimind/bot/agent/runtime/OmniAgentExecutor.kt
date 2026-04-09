@@ -73,6 +73,10 @@ class OmniAgentExecutor(
             val skillIndexService = SkillIndexService(context, workspaceManager)
             val skillLoader = SkillLoader(workspaceManager)
             val installedSkills = skillIndexService.listInstalledSkills()
+            val failureLearningSkill = SelfImprovingSkillFailureHook.resolveInstalledSkill(
+                installedSkills = installedSkills,
+                skillLoader = skillLoader
+            )
             val resolvedSkills = SkillTriggerMatcher.resolveMatches(
                 userMessage = userMessage,
                 entries = installedSkills
@@ -141,6 +145,7 @@ class OmniAgentExecutor(
                         runtimeContextRepository = runtimeContextRepository,
                         workspaceDescriptor = workspaceDescriptor,
                         resolvedSkills = resolvedSkills,
+                        failureLearningSkill = failureLearningSkill,
                         workspaceManager = workspaceManager,
                         workspaceMemoryService = memoryService,
                         conversationMode = conversationMode,

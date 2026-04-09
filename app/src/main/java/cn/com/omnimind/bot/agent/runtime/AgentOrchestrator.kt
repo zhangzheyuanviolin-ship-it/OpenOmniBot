@@ -150,13 +150,21 @@ class AgentOrchestrator(
                             toolCall.function.name,
                             error.message ?: "Invalid tool arguments JSON"
                         )
+                        val failureLearning = buildFailureLearningPayload(
+                            env = input.executionEnv,
+                            toolCall = toolCall,
+                            descriptor = descriptor,
+                            argumentsJson = null,
+                            result = result
+                        )
                         executedTools.add(result)
                         callback.onToolCallComplete(toolCall.function.name, result)
                         appendToolResultMessage(
                             messages = messages,
                             toolCall = toolCall,
                             descriptor = descriptor,
-                            result = result
+                            result = result,
+                            failureLearning = failureLearning
                         )
                         hasUserFacingOutput =
                             hasUserFacingOutput || eventAdapter.hasUserVisibleOutput(result)
@@ -172,13 +180,21 @@ class AgentOrchestrator(
                             toolCall.function.name,
                             validationError.message ?: "Tool arguments validation failed"
                         )
+                        val failureLearning = buildFailureLearningPayload(
+                            env = input.executionEnv,
+                            toolCall = toolCall,
+                            descriptor = descriptor,
+                            argumentsJson = parsedArgs.toString(),
+                            result = result
+                        )
                         executedTools.add(result)
                         callback.onToolCallComplete(toolCall.function.name, result)
                         appendToolResultMessage(
                             messages = messages,
                             toolCall = toolCall,
                             descriptor = descriptor,
-                            result = result
+                            result = result,
+                            failureLearning = failureLearning
                         )
                         hasUserFacingOutput =
                             hasUserFacingOutput || eventAdapter.hasUserVisibleOutput(result)
@@ -196,12 +212,20 @@ class AgentOrchestrator(
                     )
 
                     executedTools.add(result)
+                    val failureLearning = buildFailureLearningPayload(
+                        env = input.executionEnv,
+                        toolCall = toolCall,
+                        descriptor = descriptor,
+                        argumentsJson = parsedArgs.toString(),
+                        result = result
+                    )
                     callback.onToolCallComplete(toolCall.function.name, result)
                     appendToolResultMessage(
                         messages = messages,
                         toolCall = toolCall,
                         descriptor = descriptor,
-                        result = result
+                        result = result,
+                        failureLearning = failureLearning
                     )
 
                     if (eventAdapter.hasUserVisibleOutput(result)) {
@@ -268,9 +292,14 @@ class AgentOrchestrator(
         messages: MutableList<ChatCompletionMessage>,
         toolCall: AssistantToolCall,
         descriptor: AgentToolRegistry.RuntimeToolDescriptor,
-        result: ToolExecutionResult
+        result: ToolExecutionResult,
+        failureLearning: FailureLearningHookPayload? = null
     ) {
-        val textContent = eventAdapter.toolResultContent(descriptor, result)
+        val textContent = eventAdapter.toolResultContent(
+            descriptor = descriptor,
+            result = result,
+            extras = failureLearning?.toPayload() ?: emptyMap()
+        )
         val imageDataUrl = (result as? ToolExecutionResult.ContextResult)?.imageDataUrl
 
         val content: JsonElement = if (imageDataUrl != null) {
@@ -296,6 +325,31 @@ class AgentOrchestrator(
                 toolCallId = toolCall.id,
                 content = content
             )
+        )
+    }
+
+    private fun buildFailureLearningPayload(
+        env: AgentExecutionEnvironment,
+        toolCall: AssistantToolCall,
+        descriptor: AgentToolRegistry.RuntimeToolDescriptor,
+        argumentsJson: String?,
+        result: ToolExecutionResult
+    ): FailureLearningHookPayload? {
+        if (!SelfImprovingSkillFailureHook.shouldHandle(result)) {
+            return null
+        }
+        val skill = env.failureLearningSkill ?: return null
+        val payload = SelfImprovingSkillFailureHook.capture(
+            skillsRoot = env.workspaceManager.skillsRoot(),
+            skill = skill,
+            userMessage = env.userMessage,
+            toolName = toolCall.function.name,
+            toolType = descriptor.toolType,
+            argumentsJson = argumentsJson,
+            result = result
+        ) ?: return null
+        return payload.copy(
+            logShellPath = env.workspaceManager.shellPathForAndroid(payload.logFile)
         )
     }
 
