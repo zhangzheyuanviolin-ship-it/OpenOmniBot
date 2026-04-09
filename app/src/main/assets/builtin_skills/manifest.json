@@ -1,6 +1,16 @@
 {
   "skills": [
     {
+      "id": "self-improving-agent",
+      "name": "self-improving-agent",
+      "description": "Built-in self-improvement loop for Omnibot agents. Use to record non-trivial failures, user corrections, outdated assumptions, and reusable best practices into structured workspace learnings, then promote stable rules into memory.",
+      "assetPath": "builtin_skills/self-improving-agent",
+      "hasScripts": true,
+      "hasReferences": false,
+      "hasAssets": false,
+      "hasEvals": false
+    },
+    {
       "id": "skill-creator",
       "name": "skill-creator",
       "description": "Guide for creating and updating effective Omnibot skills. Use when the user wants to add a new skill or improve an existing skill for the built-in Alpine workspace, tool workflows, or reusable domain knowledge.",
