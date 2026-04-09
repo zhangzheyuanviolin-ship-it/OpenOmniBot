@@ -317,6 +317,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
           conversation: conversation,
           actions: _buildActions(conversation),
           isBusy: _busyKeys.contains(conversation.threadKey),
+          compact: widget.archivedOnly,
           showLeadingIcon: !widget.archivedOnly,
           onTap: () => _openConversation(conversation),
           onDelete: () => _deleteConversation(conversation),

@@ -47,7 +47,8 @@ class AgentEventAdapter(
 
     fun toolResultContent(
         descriptor: AgentToolRegistry.RuntimeToolDescriptor,
-        result: ToolExecutionResult
+        result: ToolExecutionResult,
+        extras: Map<String, Any?> = emptyMap()
     ): String {
         val payload: Map<String, Any?> = when (result) {
             is ToolExecutionResult.ChatMessage -> mapOf(
@@ -160,6 +161,9 @@ class AgentEventAdapter(
         result.workspaceId?.let { enriched["workspaceId"] = it }
         if (result.actions.isNotEmpty()) {
             enriched["actions"] = result.actions.map { it.toPayload() }
+        }
+        if (extras.isNotEmpty()) {
+            enriched.putAll(extras)
         }
         return json.encodeToString(mapToJsonElement(enriched))
     }

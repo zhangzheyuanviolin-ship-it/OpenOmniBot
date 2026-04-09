@@ -9,6 +9,7 @@ interface AgentExecutionEnvironment {
     val runtimeContextRepository: AgentRuntimeContextRepository
     val workspaceDescriptor: AgentWorkspaceDescriptor
     val resolvedSkills: List<ResolvedSkillContext>
+    val failureLearningSkill: ResolvedSkillContext?
     val workspaceManager: AgentWorkspaceManager
     val workspaceMemoryService: WorkspaceMemoryService
     val conversationMode: String
@@ -22,6 +23,7 @@ data class DefaultAgentExecutionEnvironment(
     override val runtimeContextRepository: AgentRuntimeContextRepository,
     override val workspaceDescriptor: AgentWorkspaceDescriptor,
     override val resolvedSkills: List<ResolvedSkillContext>,
+    override val failureLearningSkill: ResolvedSkillContext? = null,
     override val workspaceManager: AgentWorkspaceManager,
     override val workspaceMemoryService: WorkspaceMemoryService,
     override val conversationMode: String,
