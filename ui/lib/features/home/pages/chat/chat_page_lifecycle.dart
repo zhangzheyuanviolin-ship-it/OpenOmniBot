@@ -567,7 +567,9 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   void didPop() {}
 
   @override
-  void didPushNext() {}
+  void didPushNext() {
+    _dismissChatInputFocus();
+  }
 
   Future<void> _handleDidPopNext() async {
     await checkConversationExists();

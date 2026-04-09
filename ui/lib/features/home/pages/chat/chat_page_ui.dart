@@ -372,6 +372,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           workspacePath: paths.rootPath,
           workspaceShellPath: paths.shellRootPath,
           translucentSurfaces: AppBackgroundService.current.isActive,
+          showBreadcrumbHeader: true,
+          showHeaderTitle: false,
           onCanGoUpChanged: (canGoUp) {
             if (_workspaceBrowserCanGoUp == canGoUp || !mounted) return;
             setState(() {
@@ -473,6 +475,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final appBarMode = showSurfaceSwitcher
         ? _activeSurfaceMode
         : ChatSurfaceMode.normal;
+    final bottomRegionBackgroundColor = !backgroundActive && context.isDarkTheme
+        ? context.omniPalette.pageBackground
+        : Colors.transparent;
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
@@ -549,50 +554,56 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             if (_isInputAreaVisible)
               _buildNormalSurfaceTransition(
                 viewportWidth: constraints.maxWidth,
-                child: Container(
-                  key: _inputAreaKey,
-                  child: ChatInputWrapper(
-                    inputAreaKey: _chatInputAreaKey,
-                    controller: _messageController,
-                    focusNode: _inputFocusNode,
-                    isProcessing: _isAiResponding,
-                    onSendMessage: _sendMessage,
-                    onCancelTask: _onCancelTask,
-                    onPopupVisibilityChanged: _onPopupVisibilityChanged,
-                    useLargeComposerStyle: true,
-                    useAttachmentPickerForPlus: true,
-                    onPickAttachment: _pickAttachments,
-                    attachments: _pendingAttachments,
-                    onRemoveAttachment: _removePendingAttachment,
-                    selectedModelOverrideId:
-                        _activeMode == ChatPageMode.normal &&
-                            _showConversationModelMentionChip
-                        ? _activeConversationModelOverrideSelection?.modelId
-                        : null,
-                    contextUsageRatio: _activeMode == ChatPageMode.normal
-                        ? _currentConversation?.contextUsageRatio
-                        : null,
-                    contextUsageTooltipMessage:
-                        _activeMode == ChatPageMode.normal
-                        ? _buildContextUsageTooltipMessage()
-                        : null,
-                    onLongPressContextUsageRing:
-                        _activeMode == ChatPageMode.normal
-                        ? _handleContextUsageRingLongPress
-                        : null,
-                    onInputHeightChanged: _handleInputAreaHeightChanged,
-                    onClearSelectedModelOverride:
-                        _activeMode == ChatPageMode.normal &&
-                            _activeConversationModelOverrideSelection != null
-                        ? () {
-                            unawaited(_clearConversationModelOverride());
-                          }
-                        : null,
-                    translucent: backgroundActive,
+                child: ColoredBox(
+                  color: bottomRegionBackgroundColor,
+                  child: Container(
+                    key: _inputAreaKey,
+                    child: ChatInputWrapper(
+                      inputAreaKey: _chatInputAreaKey,
+                      controller: _messageController,
+                      focusNode: _inputFocusNode,
+                      isProcessing: _isAiResponding,
+                      onSendMessage: _sendMessage,
+                      onCancelTask: _onCancelTask,
+                      onPopupVisibilityChanged: _onPopupVisibilityChanged,
+                      useLargeComposerStyle: true,
+                      useAttachmentPickerForPlus: true,
+                      onPickAttachment: _pickAttachments,
+                      attachments: _pendingAttachments,
+                      onRemoveAttachment: _removePendingAttachment,
+                      selectedModelOverrideId:
+                          _activeMode == ChatPageMode.normal &&
+                              _showConversationModelMentionChip
+                          ? _activeConversationModelOverrideSelection?.modelId
+                          : null,
+                      contextUsageRatio: _activeMode == ChatPageMode.normal
+                          ? _currentConversation?.contextUsageRatio
+                          : null,
+                      contextUsageTooltipMessage:
+                          _activeMode == ChatPageMode.normal
+                          ? _buildContextUsageTooltipMessage()
+                          : null,
+                      onLongPressContextUsageRing:
+                          _activeMode == ChatPageMode.normal
+                          ? _handleContextUsageRingLongPress
+                          : null,
+                      onInputHeightChanged: _handleInputAreaHeightChanged,
+                      onClearSelectedModelOverride:
+                          _activeMode == ChatPageMode.normal &&
+                              _activeConversationModelOverrideSelection != null
+                          ? () {
+                              unawaited(_clearConversationModelOverride());
+                            }
+                          : null,
+                      translucent: backgroundActive,
+                    ),
                   ),
                 ),
               ),
-            SizedBox(height: inputBottomPadding + keyboardSpacer),
+            ColoredBox(
+              color: bottomRegionBackgroundColor,
+              child: SizedBox(height: inputBottomPadding + keyboardSpacer),
+            ),
           ],
         ),
         if (!hideWorkspaceOverlays &&
@@ -932,6 +943,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                     return;
                   }
                   if (isOpen) {
+                    _dismissChatInputFocus();
                     _drawerKey.currentState?.reloadConversations();
                   } else {
                     checkAndHandleDeletedConversation();
@@ -941,11 +953,16 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   fit: StackFit.expand,
                   children: [
                     Positioned.fill(
-                      child: AppBackgroundLayer(
-                        config: backgroundConfig,
-                        fallbackColor: context.omniPalette.previewFallback,
-                        layerKey: const ValueKey('chat-page-background'),
-                      ),
+                      child: backgroundActive
+                          ? AppBackgroundLayer(
+                              config: backgroundConfig,
+                              fallbackColor:
+                                  context.omniPalette.previewFallback,
+                              layerKey: const ValueKey('chat-page-background'),
+                            )
+                          : ColoredBox(
+                              color: context.omniPalette.pageBackground,
+                            ),
                     ),
                     SafeArea(
                       child: ClipRect(
@@ -1015,8 +1032,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                           _isWorkspaceSurface,
                                       showMenuButton: true,
                                       showSurfaceSwitcher: true,
-                                      onMenuTap: () => _scaffoldKey.currentState
-                                          ?.openDrawer(),
+                                      onMenuTap: () {
+                                        _dismissChatInputFocus();
+                                        _scaffoldKey.currentState?.openDrawer();
+                                      },
                                     );
                                   },
                                 ),

@@ -314,7 +314,13 @@ class _ChatPreviewChrome extends StatelessWidget {
               opacity: 0.72,
             ),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: visualProfile.islandBorderColor),
+            boxShadow: [
+              BoxShadow(
+                color: palette.shadowColor.withValues(alpha: 0.16),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 18),

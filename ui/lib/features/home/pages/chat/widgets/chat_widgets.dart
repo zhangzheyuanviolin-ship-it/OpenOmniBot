@@ -496,14 +496,25 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
           opacity: 0.78,
         ),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: widget.translucent
-              ? widget.visualProfile.islandBorderColor
-              : context.isDarkTheme
-              ? palette.borderSubtle
-              : const Color(0xFFD9E6FB),
-          width: 1,
-        ),
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                    alpha: widget.translucent ? 0.18 : 0.14,
+                  ),
+                  blurRadius: widget.translucent ? 18 : 14,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(
+                    alpha: widget.translucent ? 0.2 : 0.12,
+                  ),
+                  blurRadius: widget.translucent ? 22 : 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
@@ -1029,8 +1040,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   @override
   Widget build(BuildContext context) {
+    final pageBackgroundColor =
+        !widget.appearanceConfig.isActive && context.isDarkTheme
+        ? context.omniPalette.pageBackground
+        : null;
+
+    final Widget content;
     if (widget.messages.isEmpty) {
-      return GestureDetector(
+      content = GestureDetector(
         onVerticalDragUpdate: (_) {},
         behavior: HitTestBehavior.opaque,
         child: Center(
@@ -1048,51 +1065,59 @@ class _ChatMessageListState extends State<ChatMessageList> {
           ),
         ),
       );
+    } else {
+      content = ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ListView.builder(
+            controller: widget.scrollController,
+            reverse: false,
+            shrinkWrap: true,
+            physics: const ClampingScrollPhysics(),
+            clipBehavior: Clip.hardEdge,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            itemCount: widget.messages.length,
+            itemBuilder: (context, index) {
+              final dataIndex = widget.messages.length - 1 - index;
+              final message = widget.messages[dataIndex];
+              final isNewestMessage = dataIndex == 0;
+              final isOldestMessage = dataIndex == widget.messages.length - 1;
+              final bottomPadding = isNewestMessage
+                  ? widget.bottomOverlayInset
+                  : 0.0;
+              final needTopPadding = isOldestMessage && message.user != 1;
+              return Padding(
+                key: ValueKey('chat-message-list-item-$dataIndex'),
+                padding: EdgeInsets.only(
+                  top: needTopPadding ? 24.0 : 0.0,
+                  bottom: bottomPadding,
+                ),
+                child: MessageBubble(
+                  message: message,
+                  key: ValueKey(
+                    message.dbId ?? message.contentId ?? message.id,
+                  ),
+                  onBeforeTaskExecute: widget.onBeforeTaskExecute,
+                  onCancelTask: widget.onCancelTask,
+                  enableThinkingCollapse: true,
+                  parentScrollController: widget.scrollController,
+                  onRequestAuthorize: widget.onRequestAuthorize,
+                  onUserMessageLongPressStart:
+                      widget.onUserMessageLongPressStart,
+                  visualProfile: widget.visualProfile,
+                  appearanceConfig: widget.appearanceConfig,
+                ),
+              );
+            },
+          ),
+        ),
+      );
     }
 
-    return ClipRect(
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ListView.builder(
-          controller: widget.scrollController,
-          reverse: false,
-          shrinkWrap: true,
-          physics: const ClampingScrollPhysics(),
-          clipBehavior: Clip.hardEdge,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          itemCount: widget.messages.length,
-          itemBuilder: (context, index) {
-            final dataIndex = widget.messages.length - 1 - index;
-            final message = widget.messages[dataIndex];
-            final isNewestMessage = dataIndex == 0;
-            final isOldestMessage = dataIndex == widget.messages.length - 1;
-            final bottomPadding = isNewestMessage
-                ? widget.bottomOverlayInset
-                : 0.0;
-            final needTopPadding = isOldestMessage && message.user != 1;
-            return Padding(
-              key: ValueKey('chat-message-list-item-$dataIndex'),
-              padding: EdgeInsets.only(
-                top: needTopPadding ? 24.0 : 0.0,
-                bottom: bottomPadding,
-              ),
-              child: MessageBubble(
-                message: message,
-                key: ValueKey(message.dbId ?? message.contentId ?? message.id),
-                onBeforeTaskExecute: widget.onBeforeTaskExecute,
-                onCancelTask: widget.onCancelTask,
-                enableThinkingCollapse: true,
-                parentScrollController: widget.scrollController,
-                onRequestAuthorize: widget.onRequestAuthorize,
-                onUserMessageLongPressStart: widget.onUserMessageLongPressStart,
-                visualProfile: widget.visualProfile,
-                appearanceConfig: widget.appearanceConfig,
-              ),
-            );
-          },
-        ),
-      ),
-    );
+    if (pageBackgroundColor == null) {
+      return content;
+    }
+    return ColoredBox(color: pageBackgroundColor, child: content);
   }
 }
 

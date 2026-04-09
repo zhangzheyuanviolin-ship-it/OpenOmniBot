@@ -85,14 +85,13 @@ Future<void> showAgentToolDetailDialog(
             maxWidth: 520,
           ),
           decoration: BoxDecoration(
-            color: const Color(0xFF0C1220),
+            color: kTerminalSurfaceBlack,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFF22324B)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x6610182B),
-                blurRadius: 28,
-                offset: Offset(0, 18),
+                color: kTerminalSurfaceShadow,
+                blurRadius: 32,
+                offset: Offset(0, 20),
               ),
             ],
           ),
@@ -351,7 +350,7 @@ String _buildPreviewText(
   if (preview.length <= maxChars) {
     return preview;
   }
-  return preview.substring(0, maxChars - 1).trimRight() + '…';
+  return '${preview.substring(0, maxChars - 1).trimRight()}…';
 }
 
 List<String> _formatCliArguments(String key, dynamic value) {
@@ -825,11 +824,14 @@ class _DialogStatusTag extends StatelessWidget {
 
 BoxDecoration buildAgentToolTranscriptDecoration() {
   return BoxDecoration(
-    color: const Color(0xFF0E1422),
+    color: kTerminalSurfaceBlackElevated,
     borderRadius: _kTranscriptSurfaceRadius,
-    border: Border.all(color: const Color(0xFF24334A)),
     boxShadow: const [
-      BoxShadow(color: Color(0x2610182B), blurRadius: 16, offset: Offset(0, 8)),
+      BoxShadow(
+        color: kTerminalSurfaceShadow,
+        blurRadius: 18,
+        offset: Offset(0, 8),
+      ),
     ],
   );
 }

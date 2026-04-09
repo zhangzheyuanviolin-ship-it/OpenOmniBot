@@ -599,8 +599,12 @@ class _StatusDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = resolveAgentToolStatusColor(status);
+    final palette = context.omniPalette;
     final outerColor = context.isDarkTheme
-        ? Color.lerp(const Color(0xFFF0EADF), color, 0.12)!
+        ? Color.alphaBlend(
+            color.withValues(alpha: 0.14),
+            palette.surfaceElevated,
+          )
         : color.withValues(alpha: 0.16);
     return Container(
       width: 8,
@@ -625,11 +629,15 @@ class _StatusTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = resolveAgentToolStatusColor(status);
+    final palette = context.omniPalette;
     final backgroundColor = context.isDarkTheme
-        ? Color.lerp(const Color(0xFFF2ECE2), color, 0.16)!
+        ? Color.alphaBlend(
+            color.withValues(alpha: 0.14),
+            palette.surfaceElevated,
+          )
         : color.withValues(alpha: 0.11);
     final textColor = context.isDarkTheme
-        ? Color.lerp(context.omniPalette.pageBackground, color, 0.42)!
+        ? Color.lerp(palette.textSecondary, color, 0.38)!
         : color.withValues(alpha: 0.9);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -665,11 +673,11 @@ class _TerminalThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PhysicalModel(
-      color: const Color(0xFF12161E),
+      color: kTerminalSurfaceBlack,
       borderRadius: _kToolActivityPreviewBorderRadius,
       clipBehavior: Clip.antiAlias,
-      elevation: 8,
-      shadowColor: const Color(0x2B0B1220),
+      elevation: 6,
+      shadowColor: kTerminalSurfaceShadow,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -680,12 +688,11 @@ class _TerminalThumbnail extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF1A2231), Color(0xFF0E1422)],
+                colors: [kTerminalSurfaceBlackElevated, kTerminalSurfaceBlack],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: _kToolActivityPreviewBorderRadius,
-              border: Border.all(color: const Color(0xFF2C3B52)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

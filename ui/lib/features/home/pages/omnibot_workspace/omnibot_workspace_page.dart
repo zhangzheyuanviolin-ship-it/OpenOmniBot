@@ -81,6 +81,8 @@ class _OmnibotWorkspacePageState extends State<OmnibotWorkspacePage> {
                           workspaceShellPath: widget.workspaceShellPath,
                           enableSystemBackHandler: false,
                           translucentSurfaces: backgroundActive,
+                          showBreadcrumbHeader: true,
+                          showHeaderTitle: false,
                           onCanGoUpChanged: (canGoUp) {
                             if (_browserCanGoUp == canGoUp || !mounted) {
                               return;

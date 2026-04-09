@@ -604,7 +604,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                       ? null
                       : () => openNativeTerminal(),
                   icon: const Icon(Icons.terminal_rounded),
-                  label: const Text('打开 终端'),
+                  label: const Text('打开终端'),
                 ),
               ),
             ],
@@ -1078,7 +1078,7 @@ class _AutoStartTaskDialogState extends State<_AutoStartTaskDialog> {
                   _enabled = value;
                 });
               },
-              title: const Text('打开 Omnibot 时自动启动'),
+              title: const Text('打开小万时自动启动'),
             ),
           ],
         ),

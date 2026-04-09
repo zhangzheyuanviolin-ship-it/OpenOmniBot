@@ -385,13 +385,22 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   void _handleEmbeddedDrawerThreadTargetSelected(
     ConversationThreadTarget target,
   ) {
+    _dismissChatInputFocus();
     unawaited(_applyConversationThreadTarget(target));
   }
 
   void _toggleHdPadLeftPaneCollapsed() {
+    _dismissChatInputFocus();
     setState(() {
       _hdPadLeftPaneCollapsed = !_hdPadLeftPaneCollapsed;
     });
+  }
+
+  void _dismissChatInputFocus() {
+    if (_inputFocusNode.hasFocus) {
+      _inputFocusNode.unfocus();
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   ConversationThreadTarget get _threadTargetForMode {
