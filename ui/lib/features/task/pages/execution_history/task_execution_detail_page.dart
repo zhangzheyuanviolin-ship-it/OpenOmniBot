@@ -9,6 +9,7 @@ import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/image_util.dart';
 import 'package:ui/widgets/image/cached_image.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/theme/theme_context.dart';
 
 /// 执行记录详情页参数
 class TaskExecutionDetailParams {
@@ -133,8 +134,11 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : const Color(0xFFF5F5F5),
       appBar: const CommonAppBar(primary: true),
       body: SafeArea(
         top: false,
@@ -164,6 +168,7 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
 
   /// 构建任务标题区
   Widget _buildTaskHeader() {
+    final palette = context.omniPalette;
     // 限制每行最多12个字
     String title = widget.params.title;
     if (title.length > 12) {
@@ -182,10 +187,10 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w500,
-              color: Color(0xFF1F2336),
+              color: palette.textPrimary,
               height: 1.5,
               letterSpacing: 0.5,
             ),
@@ -216,24 +221,29 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
               width: 20,
               height: 20,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => _buildDefaultAppIcon(),
+              errorBuilder: (context, error, stackTrace) =>
+                  _buildDefaultAppIcon(),
             )
           : _buildDefaultAppIcon(),
     );
   }
 
   Widget _buildDefaultAppIcon() {
+    final palette = context.omniPalette;
     return Container(
       width: 20,
       height: 20,
       decoration: BoxDecoration(
-        color: Colors.grey[300],
+        color: context.isDarkTheme ? palette.surfaceElevated : Colors.grey[300],
         borderRadius: BorderRadius.circular(2),
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
       ),
       child: Icon(
         Icons.apps,
         size: 16,
-        color: Colors.grey[600],
+        color: context.isDarkTheme ? palette.textSecondary : Colors.grey[600],
       ),
     );
   }
@@ -245,30 +255,30 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
     final iconUrl = widget.params.iconUrl;
 
     return iconUrl != null && iconUrl.isNotEmpty
-          ? CachedImage(
-              imageUrl: iconUrl,
-              width: iconSize,
-              height: iconSize,
-              fit: BoxFit.cover,
-              errorWidget: _buildDefaultTypeIcon(type, iconSize),
-            )
-          : type.defaultIconPath.isNotEmpty
-              ? _buildDefaultTypeIcon(type, iconSize)
-              : SizedBox.shrink();
-              // : Container(
-              //     width: iconSize,
-              //     height: iconSize,
-              //     decoration: BoxDecoration(
-              //       color: const Color(0xFF1676FE),
-              //       borderRadius: BorderRadius.circular(4),
-              //     ),
-              //     padding: const EdgeInsets.all(2),
-              //     child:const Icon(
-              //       Icons.auto_awesome,
-              //       size: iconSize - 4,
-              //       color: Colors.white,
-              //     )
-              //   );
+        ? CachedImage(
+            imageUrl: iconUrl,
+            width: iconSize,
+            height: iconSize,
+            fit: BoxFit.cover,
+            errorWidget: _buildDefaultTypeIcon(type, iconSize),
+          )
+        : type.defaultIconPath.isNotEmpty
+        ? _buildDefaultTypeIcon(type, iconSize)
+        : SizedBox.shrink();
+    // : Container(
+    //     width: iconSize,
+    //     height: iconSize,
+    //     decoration: BoxDecoration(
+    //       color: const Color(0xFF1676FE),
+    //       borderRadius: BorderRadius.circular(4),
+    //     ),
+    //     padding: const EdgeInsets.all(2),
+    //     child:const Icon(
+    //       Icons.auto_awesome,
+    //       size: iconSize - 4,
+    //       color: Colors.white,
+    //     )
+    //   );
   }
 
   /// 构建默认类型图标（SVG）
@@ -281,37 +291,44 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
         borderRadius: BorderRadius.circular(2),
       ),
       padding: const EdgeInsets.all(2),
-      child: 
-      type.defaultIconPath.isEmpty
-      ? SizedBox.shrink()
-      : SvgPicture.asset(
-          type.defaultIconPath,
-          width: size - 4,
-          height: size - 4,
-        ),
+      child: type.defaultIconPath.isEmpty
+          ? SizedBox.shrink()
+          : SvgPicture.asset(
+              type.defaultIconPath,
+              width: size - 4,
+              height: size - 4,
+            ),
     );
   }
 
   /// 构建分割线
   Widget _buildDivider() {
+    final palette = context.omniPalette;
     return Container(
       height: 0.5,
       width: double.infinity,
-      color: const Color(0x99E9E9E9),
+      color: context.isDarkTheme
+          ? palette.borderSubtle
+          : const Color(0x99E9E9E9),
     );
   }
 
   /// 构建统计行
   Widget _buildStatsRow() {
-    final lastTimeLabel = _formatLastExecutionTime(widget.params.lastExecutionTime);
-    
+    final palette = context.omniPalette;
+    final lastTimeLabel = _formatLastExecutionTime(
+      widget.params.lastExecutionTime,
+    );
+
     return Row(
       children: [
         Text(
           '最近执行：$lastTimeLabel',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 10,
-            color: AppColors.text70,
+            color: context.isDarkTheme
+                ? palette.textSecondary
+                : AppColors.text70,
             height: 1.6,
           ),
         ),
@@ -319,13 +336,15 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
           margin: const EdgeInsets.symmetric(horizontal: 10),
           width: 0.5,
           height: 7,
-          color: AppColors.text70,
+          color: context.isDarkTheme ? palette.textSecondary : AppColors.text70,
         ),
         Text(
           '共执行 ${_executionRecords.isNotEmpty ? _executionRecords.length : widget.params.totalCount} 次',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 10,
-            color: AppColors.text70,
+            color: context.isDarkTheme
+                ? palette.textSecondary
+                : AppColors.text70,
             height: 1.6,
           ),
         ),
@@ -346,8 +365,9 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
 
   /// 构建总结内容（Markdown）
   Widget _buildSummaryContent() {
+    final palette = context.omniPalette;
     final content = widget.params.content;
-    
+
     if (content == null || content.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(32),
@@ -356,7 +376,9 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
             '暂无总结内容',
             style: TextStyle(
               fontSize: AppTextStyles.fontSizeMain,
-              color: AppColors.text50,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text50,
             ),
           ),
         ),
@@ -369,7 +391,7 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
         Text(
           '小万总结',
           style: TextStyle(
-            color: const Color(0xFF1F2336),
+            color: palette.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w500,
             height: 1.38,
@@ -385,47 +407,53 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
               fontWeight: AppTextStyles.fontWeightRegular,
               height: AppTextStyles.lineHeightH2,
               letterSpacing: AppTextStyles.letterSpacingWide,
-              color: Color(0xFF1F2336),
+              color: palette.textPrimary,
             ),
             h1: TextStyle(
               fontSize: AppTextStyles.fontSizeH1,
               fontWeight: AppTextStyles.fontWeightMedium,
               height: AppTextStyles.lineHeightH1,
               letterSpacing: AppTextStyles.letterSpacingWide,
-              color: Color(0xFF1F2336),
+              color: palette.textPrimary,
             ),
             h2: TextStyle(
               fontSize: AppTextStyles.fontSizeH2,
               fontWeight: AppTextStyles.fontWeightMedium,
               height: AppTextStyles.lineHeightH1,
               letterSpacing: AppTextStyles.letterSpacingWide,
-              color: Color(0xFF1F2336),
+              color: palette.textPrimary,
             ),
             h3: TextStyle(
               fontSize: AppTextStyles.fontSizeH3,
               fontWeight: AppTextStyles.fontWeightMedium,
               height: AppTextStyles.lineHeightH2,
               letterSpacing: AppTextStyles.letterSpacingWide,
-              color: Color(0xFF1F2336),
+              color: palette.textPrimary,
             ),
             strong: TextStyle(
               fontSize: AppTextStyles.fontSizeMain,
               fontWeight: AppTextStyles.fontWeightMedium,
               height: AppTextStyles.lineHeightH2,
               letterSpacing: AppTextStyles.letterSpacingWide,
-              color: Color(0xFF1F2336),
+              color: palette.textPrimary,
             ),
             code: TextStyle(
               fontSize: AppTextStyles.fontSizeMain,
               fontWeight: AppTextStyles.fontWeightRegular,
               height: AppTextStyles.lineHeightH2,
               letterSpacing: AppTextStyles.letterSpacingNormal,
-              color: AppColors.text70,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
               fontFamily: 'monospace',
-              backgroundColor: AppColors.text10,
+              backgroundColor: context.isDarkTheme
+                  ? palette.surfaceSecondary
+                  : AppColors.text10,
             ),
             codeblockDecoration: BoxDecoration(
-              color: AppColors.text10,
+              color: context.isDarkTheme
+                  ? palette.surfaceSecondary
+                  : AppColors.text10,
               borderRadius: BorderRadius.circular(4),
             ),
             listBullet: TextStyle(
@@ -433,25 +461,29 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
               fontWeight: AppTextStyles.fontWeightRegular,
               height: AppTextStyles.lineHeightH2,
               letterSpacing: AppTextStyles.letterSpacingWide,
-              color: Color(0xFF1F2336),
+              color: palette.textPrimary,
             ),
             listBulletPadding: const EdgeInsets.only(right: 8),
           ),
-        )
-      ]
+        ),
+      ],
     );
   }
 
   /// 构建执行记录列表
   Widget _buildExecutionList() {
+    final palette = context.omniPalette;
     if (_executionRecords.isEmpty) {
       return _buildEmptyState();
     }
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.circular(4),
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -467,6 +499,7 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
 
   /// 构建单条执行记录
   Widget _buildExecutionItem(ExecutionRecord record, bool isLast) {
+    final palette = context.omniPalette;
     final status = record.status.displayName;
     final timeLabel = _formatRecordTime(record.createdAt);
 
@@ -475,9 +508,11 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
       decoration: BoxDecoration(
         border: isLast
             ? null
-            : const Border(
+            : Border(
                 bottom: BorderSide(
-                  color: Color(0xFFEEEEEE),
+                  color: context.isDarkTheme
+                      ? palette.borderSubtle
+                      : const Color(0xFFEEEEEE),
                   width: 0.5,
                 ),
               ),
@@ -491,19 +526,21 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
               children: [
                 Text(
                   status,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: Colors.black,
+                    color: palette.textPrimary,
                     height: 1.5,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   timeLabel,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
-                    color: Color(0xFF999999),
+                    color: context.isDarkTheme
+                        ? palette.textSecondary
+                        : const Color(0xFF999999),
                     height: 1.6,
                   ),
                 ),
@@ -517,6 +554,7 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
 
   /// 构建空状态
   Widget _buildEmptyState() {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.all(32),
       child: Center(
@@ -524,7 +562,9 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
           '暂无执行记录',
           style: TextStyle(
             fontSize: AppTextStyles.fontSizeMain,
-            color: AppColors.text50,
+            color: context.isDarkTheme
+                ? palette.textSecondary
+                : AppColors.text50,
           ),
         ),
       ),
@@ -539,9 +579,7 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
         child: SizedBox(
           width: 32,
           height: 32,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.5,
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2.5),
         ),
       ),
     );
@@ -550,15 +588,17 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
   /// 格式化最后执行时间
   String _formatLastExecutionTime(int timestamp) {
     if (timestamp == 0) return '未知';
-    
+
     final now = DateTime.now();
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    
-    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day) {
       return '今天 ${DateFormat('HH:mm').format(date)}';
-    } else if (date.year == now.year && 
-               date.month == now.month && 
-               date.day == now.day - 1) {
+    } else if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day - 1) {
       return '昨天 ${DateFormat('HH:mm').format(date)}';
     } else {
       return DateFormat('yyyy/MM/dd HH:mm').format(date);
@@ -568,15 +608,17 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
   /// 格式化记录时间
   String _formatRecordTime(int timestamp) {
     if (timestamp == 0) return '未知';
-    
+
     final now = DateTime.now();
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    
-    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day) {
       return '今天 ${DateFormat('HH:mm').format(date)}';
-    } else if (date.year == now.year && 
-               date.month == now.month && 
-               date.day == now.day - 1) {
+    } else if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day - 1) {
       return '昨天 ${DateFormat('HH:mm').format(date)}';
     } else {
       return DateFormat('yyyy/MM/dd HH:mm').format(date);

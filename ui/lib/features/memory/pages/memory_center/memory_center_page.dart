@@ -969,6 +969,8 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
     required double height,
     BorderRadius? borderRadius,
   }) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return AnimatedBuilder(
       animation: _shimmerController,
       builder: (context, child) {
@@ -980,11 +982,21 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [
-                Color(0xFF2DA5F0).withOpacity(0.1),
-                Color(0xFF1930D9).withOpacity(0.25),
-                Color(0xFF2DA5F0).withOpacity(0.1),
-              ],
+              colors: isDark
+                  ? [
+                      palette.surfaceSecondary,
+                      Color.lerp(
+                        palette.surfaceSecondary,
+                        palette.accentPrimary,
+                        0.18,
+                      )!,
+                      palette.surfaceSecondary,
+                    ]
+                  : [
+                      Color(0xFF2DA5F0).withValues(alpha: 0.1),
+                      Color(0xFF1930D9).withValues(alpha: 0.25),
+                      Color(0xFF2DA5F0).withValues(alpha: 0.1),
+                    ],
               stops: [0.0, _shimmerController.value, 1.0],
             ),
           ),
@@ -994,6 +1006,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   Widget _buildMemorySuggestion() {
+    final palette = context.omniPalette;
     // 默认文案
     final defaultText = '你好呀，\n小万会在这里收集你的记忆！';
     // 使用 LLM 生成的建议或默认文案
@@ -1027,16 +1040,26 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                 ],
               )
             else
-              GradientText(
-                suggestionText,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  height: 1.5,
-                  color: Colors.black,
-                ),
-                colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
-              ),
+              context.isDarkTheme
+                  ? Text(
+                      suggestionText,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        height: 1.5,
+                        color: palette.textPrimary,
+                      ),
+                    )
+                  : GradientText(
+                      suggestionText,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        height: 1.5,
+                        color: Colors.black,
+                      ),
+                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                    ),
           ],
         ),
       ),
@@ -1107,13 +1130,14 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
 
   Widget _buildMemoryTabSwitcher() {
     final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
         height: 40,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-          color: palette.surfacePrimary,
+          color: isDark ? palette.segmentTrack : palette.surfacePrimary,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: palette.borderSubtle),
         ),
@@ -1131,18 +1155,40 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                   margin: const EdgeInsets.symmetric(horizontal: 1),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x1F1930D9),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
+                    gradient: isDark
+                        ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color.lerp(
+                                palette.surfaceElevated,
+                                palette.accentPrimary,
+                                0.18,
+                              )!,
+                              Color.lerp(
+                                palette.surfaceSecondary,
+                                palette.accentPrimary,
+                                0.30,
+                              )!,
+                            ],
+                          )
+                        : const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                          ),
+                    boxShadow: isDark
+                        ? null
+                        : const [
+                            BoxShadow(
+                              color: Color(0x1F1930D9),
+                              blurRadius: 10,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                    border: isDark
+                        ? Border.all(color: palette.borderSubtle)
+                        : null,
                   ),
                 ),
               ),
@@ -1176,7 +1222,9 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
               style: TextStyle(
-                color: selected ? Colors.white : palette.textSecondary,
+                color: selected
+                    ? (context.isDarkTheme ? palette.textPrimary : Colors.white)
+                    : palette.textSecondary,
                 fontSize: AppTextStyles.fontSizeMain,
                 fontWeight: selected
                     ? AppTextStyles.fontWeightSemiBold
