@@ -242,6 +242,8 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
     String? subtitle,
     required VoidCallback onTap,
   }) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -249,8 +251,9 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFD),
+          color: isDark ? palette.surfaceSecondary : const Color(0xFFF8FAFD),
           borderRadius: BorderRadius.circular(12),
+          border: isDark ? Border.all(color: palette.borderSubtle) : null,
         ),
         child: Row(
           children: [
@@ -262,19 +265,23 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1F2937),
+                      color: isDark
+                          ? palette.textPrimary
+                          : const Color(0xFF1F2937),
                     ),
                   ),
                   if (subtitle != null && subtitle.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF64748B),
+                        color: isDark
+                            ? palette.textSecondary
+                            : const Color(0xFF64748B),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -282,10 +289,10 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
               size: 16,
-              color: Color(0xFF94A3B8),
+              color: isDark ? palette.textTertiary : const Color(0xFF94A3B8),
             ),
           ],
         ),

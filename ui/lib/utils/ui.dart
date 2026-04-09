@@ -638,6 +638,8 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return Dialog(
       backgroundColor: Colors.transparent,
       alignment: Alignment.center,
@@ -650,8 +652,12 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
             width: 325,
             padding: const EdgeInsets.all(24),
             decoration: ShapeDecoration(
-              color: Colors.white.withValues(alpha: 0.8),
+              color: (isDark ? palette.surfacePrimary : Colors.white)
+                  .withValues(alpha: isDark ? 0.94 : 0.88),
               shape: RoundedRectangleBorder(
+                side: isDark
+                    ? BorderSide(color: palette.borderSubtle)
+                    : BorderSide.none,
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
@@ -682,11 +688,12 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
   }
 
   Widget _buildTitle() {
+    final palette = context.omniPalette;
     return Text(
       widget.title,
       textAlign: TextAlign.center,
       style: TextStyle(
-        color: Colors.black.withValues(alpha: 0.90),
+        color: palette.textPrimary,
         fontSize: 16,
         fontFamily: 'PingFang SC',
         fontWeight: FontWeight.w500,
@@ -697,6 +704,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
   }
 
   Widget _buildContent() {
+    final palette = context.omniPalette;
     if (widget.content is Widget) {
       return widget.content as Widget;
     } else if (widget.content is String) {
@@ -704,7 +712,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
         widget.content as String,
         textAlign: TextAlign.center,
         style: TextStyle(
-          color: Colors.black.withValues(alpha: 0.70),
+          color: palette.textSecondary,
           fontSize: 14,
           fontFamily: 'PingFang SC',
           fontWeight: FontWeight.w400,
@@ -718,23 +726,44 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
   }
 
   Widget _buildBody() {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     switch (widget.type) {
       case DialogType.input:
         return TextField(
           controller: _textController,
           maxLines: widget.maxLines,
           keyboardType: widget.keyboardType,
+          style: TextStyle(
+            color: palette.textPrimary,
+            fontSize: 14,
+            fontFamily: 'PingFang SC',
+          ),
           decoration: InputDecoration(
             hintText: widget.hintText,
+            hintStyle: TextStyle(
+              color: palette.textTertiary,
+              fontSize: 14,
+              fontFamily: 'PingFang SC',
+            ),
+            filled: true,
+            fillColor: isDark ? palette.surfaceSecondary : Colors.white,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: palette.borderSubtle),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: palette.borderSubtle),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Color(0xFF00AEFF)),
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: palette.accentPrimary),
             ),
-            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
           ),
         );
       case DialogType.select:
@@ -754,19 +783,25 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
                     margin: EdgeInsets.only(bottom: 8),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? const Color(0xFF00AEFF).withValues(alpha: 0.1)
-                          : Colors.transparent,
+                          ? palette.accentPrimary.withValues(
+                              alpha: isDark ? 0.18 : 0.1,
+                            )
+                          : (isDark
+                                ? palette.surfaceSecondary
+                                : Colors.transparent),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: isSelected
-                            ? Color(0xFF00AEFF)
-                            : Colors.grey.shade300,
+                            ? palette.accentPrimary
+                            : palette.borderSubtle,
                       ),
                     ),
                     child: Text(
                       option,
                       style: TextStyle(
-                        color: isSelected ? Color(0xFF00AEFF) : Colors.black87,
+                        color: isSelected
+                            ? palette.accentPrimary
+                            : palette.textPrimary,
                         fontSize: 14,
                         fontFamily: 'PingFang SC',
                       ),
@@ -795,7 +830,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
               Text(
                 '请稍候...',
                 style: TextStyle(
-                  color: Colors.black.withValues(alpha: 0.70),
+                  color: palette.textSecondary,
                   fontSize: 14,
                   fontFamily: 'PingFang SC',
                 ),
@@ -809,6 +844,9 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
   }
 
   Widget _buildButtons() {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final confirmColor = widget.confirmButtonColor ?? palette.accentPrimary;
     if (widget.type == DialogType.alert) {
       return Center(
         child: IntrinsicWidth(
@@ -820,9 +858,9 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
                 height: 44,
                 padding: EdgeInsets.symmetric(horizontal: 24),
                 decoration: ShapeDecoration(
-                  color: Colors.white,
+                  color: isDark ? palette.surfacePrimary : Colors.white,
                   shape: RoundedRectangleBorder(
-                    side: BorderSide(width: 1, color: const Color(0xFF00AEFF)),
+                    side: BorderSide(width: 1, color: confirmColor),
                     borderRadius: BorderRadius.circular(50),
                   ),
                 ),
@@ -831,7 +869,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
                     widget.confirmText ?? '确定',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: const Color(0xFF00AEFF),
+                      color: confirmColor,
                       fontSize: widget.buttonTextSize ?? 16,
                       fontFamily: 'PingFang SC',
                       fontWeight: FontWeight.w500,
@@ -855,9 +893,9 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
             child: Container(
               height: 44,
               decoration: ShapeDecoration(
-                color: Colors.white,
+                color: isDark ? palette.surfacePrimary : Colors.white,
                 shape: RoundedRectangleBorder(
-                  side: BorderSide(width: 1, color: const Color(0xFF00AEFF)),
+                  side: BorderSide(width: 1, color: confirmColor),
                   borderRadius: BorderRadius.circular(50),
                 ),
               ),
@@ -866,7 +904,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
                   widget.cancelText ?? '取消',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: const Color(0xFF00AEFF),
+                    color: confirmColor,
                     fontSize: widget.buttonTextSize ?? 16,
                     fontFamily: 'PingFang SC',
                     fontWeight: FontWeight.w500,
@@ -899,7 +937,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
             child: Container(
               height: 44,
               decoration: ShapeDecoration(
-                color: widget.confirmButtonColor ?? Color(0xFF00AEFF),
+                color: confirmColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(50),
                 ),

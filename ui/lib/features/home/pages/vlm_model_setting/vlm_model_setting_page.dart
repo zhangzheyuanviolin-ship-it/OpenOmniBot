@@ -38,6 +38,18 @@ const double _kProviderSwitchPopupMaxHeight = 320;
 
 enum _ProviderModelSource { manual, remote }
 
+class _ProtocolTypeOption {
+  const _ProtocolTypeOption({required this.value, required this.label});
+
+  final String value;
+  final String label;
+}
+
+const List<_ProtocolTypeOption> _kProtocolTypeOptions = <_ProtocolTypeOption>[
+  _ProtocolTypeOption(value: 'openai_compatible', label: 'OpenAI'),
+  _ProtocolTypeOption(value: 'anthropic', label: 'Anthropic'),
+];
+
 class _ProviderModelItem {
   const _ProviderModelItem({required this.id, required this.source});
 
@@ -115,6 +127,15 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         ? context.omniPalette.borderSubtle
         : const Color(0x1A000000),
   );
+
+  String get _selectedProtocolLabel {
+    for (final option in _kProtocolTypeOptions) {
+      if (option.value == _selectedProtocolType) {
+        return option.label;
+      }
+    }
+    return 'OpenAI';
+  }
 
   List<_ProviderModelItem> get _modelItems {
     final items = <_ProviderModelItem>[];
@@ -651,58 +672,91 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     }
   }
 
-  Widget _buildProtocolOption({
-    required String label,
-    required String value,
-  }) {
-    final selected = _selectedProtocolType == value;
-    return GestureDetector(
-      onTap: () async {
-        if (_selectedProtocolType == value) return;
-        final current = _currentProfile;
-        if (current == null || current.readOnly) return;
-        setState(() => _selectedProtocolType = value);
-        try {
-          final saved = await ModelProviderConfigService.saveProfile(
-            id: current.id,
-            name: current.name,
-            baseUrl: current.baseUrl,
-            apiKey: current.apiKey,
-            protocolType: value,
-          );
-          if (!mounted) return;
-          setState(() {
-            _profiles = _profiles
-                .map((p) => p.id == saved.id ? saved : p)
-                .toList();
-          });
-        } catch (_) {
-          if (!mounted) return;
-          setState(() => _selectedProtocolType = current.protocolType);
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF2C7FEB) : const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: selected
-                ? const Color(0xFF2C7FEB)
-                : const Color(0x1A000000),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: selected ? Colors.white : AppColors.text,
-            fontFamily: 'PingFang SC',
-          ),
-        ),
-      ),
+  Future<void> _selectProtocolType(String value) async {
+    if (_selectedProtocolType == value) {
+      return;
+    }
+    final current = _currentProfile;
+    if (current == null || current.readOnly) {
+      return;
+    }
+    final previousValue = _selectedProtocolType;
+    setState(() => _selectedProtocolType = value);
+    try {
+      final saved = await ModelProviderConfigService.saveProfile(
+        id: current.id,
+        name: _nameController.text.trim().isEmpty
+            ? current.name
+            : _nameController.text.trim(),
+        baseUrl: _baseUrlController.text.trim(),
+        apiKey: _apiKeyController.text.trim(),
+        protocolType: value,
+      );
+      if (!mounted) return;
+      setState(() {
+        _profiles = _profiles.map((p) => p.id == saved.id ? saved : p).toList();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _selectedProtocolType = previousValue);
+    }
+  }
+
+  Future<void> _openProtocolTypeMenu(BuildContext anchorContext) async {
+    final current = _currentProfile;
+    if (current == null || current.readOnly) {
+      return;
+    }
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+      return;
+    }
+    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final bottomRight = anchorBox.localToGlobal(
+      anchorBox.size.bottomRight(Offset.zero),
+      ancestor: overlay,
     );
+    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
+    final popupWidth = anchorRect.width.clamp(132.0, 180.0).toDouble();
+    final estimatedHeight = (_kProtocolTypeOptions.length * 48 + 24)
+        .clamp(120.0, _kProviderSwitchPopupMaxHeight)
+        .toDouble();
+    final position = PopupMenuAnchorPosition.fromAnchorRect(
+      anchorRect: anchorRect,
+      overlaySize: overlay.size,
+      estimatedMenuHeight: estimatedHeight,
+      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
+      verticalGap: 6,
+    );
+    final selected = await showMenu<String>(
+      context: context,
+      color: _cardColor,
+      elevation: _isDarkTheme ? 0 : 8,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: _isDarkTheme
+            ? BorderSide(color: context.omniPalette.borderSubtle)
+            : BorderSide.none,
+      ),
+      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
+      position: position,
+      items: [
+        _ProtocolTypePopupEntry(
+          width: popupWidth,
+          estimatedHeight: estimatedHeight,
+          options: _kProtocolTypeOptions,
+          selectedValue: _selectedProtocolType,
+        ),
+      ],
+    );
+    if (selected == null) {
+      return;
+    }
+    await _selectProtocolType(selected);
   }
 
   Widget _buildCard({required Widget child}) {
@@ -710,30 +764,37 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   }
 
   InputDecoration _buildInputDecoration({
-    required String hint,
+    required String label,
+    String? hint,
     Widget? suffixIcon,
   }) {
     return InputDecoration(
+      labelText: label,
       hintText: hint,
+      labelStyle: TextStyle(
+        color: _secondaryTextColor,
+        fontSize: 13,
+        fontFamily: 'PingFang SC',
+      ),
       hintStyle: TextStyle(
         color: _tertiaryTextColor,
         fontSize: 13,
         fontFamily: 'PingFang SC',
       ),
       filled: true,
-      fillColor: _surfaceColor,
+      fillColor: _cardColor,
       suffixIcon: suffixIcon,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         borderSide: _subtleBorder,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         borderSide: _subtleBorder,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
           color: _isDarkTheme
               ? context.omniPalette.accentPrimary
@@ -949,8 +1010,15 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     final selected = await showMenu<String>(
       context: context,
       color: _cardColor,
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: _isDarkTheme ? 0 : 8,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: _isDarkTheme
+            ? BorderSide(color: context.omniPalette.borderSubtle)
+            : BorderSide.none,
+      ),
       constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
       position: position,
       items: [
@@ -968,13 +1036,14 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     await _switchToProfile(selected);
   }
 
-  Widget _buildProviderConfigTitle() {
+  Widget _buildProviderConfigTitle({double? maxWidth}) {
     final current = _currentProfile;
     final name = current?.name.trim();
     final displayName = (name == null || name.isEmpty) ? 'Provider' : name;
     return Builder(
       builder: (anchorContext) {
         return InkWell(
+          key: const Key('provider-config-title'),
           onTap: _profiles.isEmpty
               ? null
               : () {
@@ -987,12 +1056,16 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 190),
+                  constraints: BoxConstraints(
+                    maxWidth: maxWidth ?? double.infinity,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         displayName,
+                        key: const Key('provider-config-title-text'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -1026,7 +1099,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                 ),
                 if (current?.readOnly == true)
                   Padding(
-                    padding: EdgeInsets.only(left: 6),
+                    padding: const EdgeInsets.only(left: 6),
                     child: Icon(
                       Icons.lock_outline,
                       size: 14,
@@ -1040,6 +1113,62 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                   color: _secondaryTextColor,
                 ),
               ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildProtocolTypeButton() {
+    final current = _currentProfile;
+    final enabled = !(current?.readOnly ?? false);
+    return Builder(
+      builder: (anchorContext) {
+        return Opacity(
+          opacity: enabled ? 1 : 0.68,
+          child: InkWell(
+            key: const Key('provider-protocol-type-button'),
+            onTap: enabled
+                ? () {
+                    unawaited(_openProtocolTypeMenu(anchorContext));
+                  }
+                : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 88),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _selectedProtocolLabel,
+                          key: const Key('provider-protocol-type-text'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _primaryTextColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'PingFang SC',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: _secondaryTextColor,
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -1071,7 +1200,34 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                       children: [
                         Row(
                           children: [
-                            Expanded(child: _buildProviderConfigTitle()),
+                            Expanded(
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  const protocolButtonReservedWidth = 116.0;
+                                  const titleSpacing = 4.0;
+                                  final providerTitleMaxWidth =
+                                      (constraints.maxWidth -
+                                              protocolButtonReservedWidth -
+                                              titleSpacing)
+                                          .clamp(72.0, constraints.maxWidth)
+                                          .toDouble();
+                                  return Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _buildProviderConfigTitle(
+                                          maxWidth: providerTitleMaxWidth,
+                                        ),
+                                        const SizedBox(width: titleSpacing),
+                                        _buildProtocolTypeButton(),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             _buildModelActionButton(
                               svg: '''
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1100,7 +1256,8 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           controller: _nameController,
                           enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
-                            hint: 'Provider 名称',
+                            label: 'Provider 名称',
+                            hint: '例如：DeepSeek',
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -1108,6 +1265,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           controller: _baseUrlController,
                           enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
+                            label: 'Base URL',
                             hint: '例如：https://api.openai.com 或 https://xxx/v1',
                           ),
                         ),
@@ -1135,6 +1293,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           enabled: !(_currentProfile?.readOnly ?? false),
                           obscureText: _obscureApiKey,
                           decoration: _buildInputDecoration(
+                            label: 'API Key',
                             hint: '例如：sk-xxxx',
                             suffixIcon: IconButton(
                               splashRadius: 18,
@@ -1160,33 +1319,6 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             color: _tertiaryTextColor,
                             fontSize: 12,
                             fontFamily: 'PingFang SC',
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          '协议类型',
-                          style: TextStyle(
-                            color: AppColors.text70,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            fontFamily: 'PingFang SC',
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        IgnorePointer(
-                          ignoring: _currentProfile?.readOnly ?? false,
-                          child: Row(
-                            children: [
-                              _buildProtocolOption(
-                                label: 'OpenAI Compatible',
-                                value: 'openai_compatible',
-                              ),
-                              const SizedBox(width: 8),
-                              _buildProtocolOption(
-                                label: 'Anthropic',
-                                value: 'anthropic',
-                              ),
-                            ],
                           ),
                         ),
                       ],
@@ -1413,6 +1545,104 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
                   },
                 ),
               ),
+      ),
+    );
+  }
+}
+
+class _ProtocolTypePopupEntry extends PopupMenuEntry<String> {
+  const _ProtocolTypePopupEntry({
+    required this.width,
+    required this.estimatedHeight,
+    required this.options,
+    required this.selectedValue,
+  });
+
+  final double width;
+  final double estimatedHeight;
+  final List<_ProtocolTypeOption> options;
+  final String selectedValue;
+
+  @override
+  double get height => estimatedHeight;
+
+  @override
+  bool represents(String? value) => false;
+
+  @override
+  State<_ProtocolTypePopupEntry> createState() =>
+      _ProtocolTypePopupEntryState();
+}
+
+class _ProtocolTypePopupEntryState extends State<_ProtocolTypePopupEntry> {
+  Widget _buildProtocolTile(_ProtocolTypeOption option) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final selected = option.value == widget.selectedValue;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: InkWell(
+        onTap: () => Navigator.of(context).pop(option.value),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected
+                ? (isDark ? palette.segmentThumb : const Color(0xFFEAF3FF))
+                : (isDark ? palette.surfaceSecondary : const Color(0xFFF8FAFD)),
+            borderRadius: BorderRadius.circular(12),
+            border: isDark ? Border.all(color: palette.borderSubtle) : null,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  option.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? palette.textPrimary : AppColors.text,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+              if (selected)
+                Icon(
+                  Icons.check_rounded,
+                  size: 16,
+                  color: isDark
+                      ? palette.accentPrimary
+                      : const Color(0xFF2C7FEB),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final dynamicMaxHeight =
+        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
+            .clamp(120.0, widget.estimatedHeight)
+            .toDouble();
+    return SizedBox(
+      width: widget.width,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+        child: Scrollbar(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: widget.options.length,
+            itemBuilder: (context, index) {
+              return _buildProtocolTile(widget.options[index]);
+            },
+          ),
+        ),
       ),
     );
   }
