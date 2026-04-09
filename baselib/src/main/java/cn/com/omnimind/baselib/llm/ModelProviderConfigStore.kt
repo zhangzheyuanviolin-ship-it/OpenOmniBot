@@ -94,7 +94,8 @@ object ModelProviderConfigStore {
                             existingId = null
                         ),
                         baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
-                        apiKey = profile.apiKey.trim()
+                        apiKey = profile.apiKey.trim(),
+                        protocolType = profile.protocolType.trim().ifEmpty { "openai_compatible" }
                     )
                 )
             }
@@ -122,15 +123,18 @@ object ModelProviderConfigStore {
         id: String? = null,
         name: String,
         baseUrl: String,
-        apiKey: String
+        apiKey: String,
+        protocolType: String = "openai_compatible"
     ): ModelProviderProfile {
         ModelProviderMigration.ensureMigrated()
         require(!MnnLocalProviderStateStore.isBuiltinProfileId(id)) { "builtin provider is read only" }
+        val normalizedProtocolType = protocolType.trim().ifEmpty { "openai_compatible" }
         val mmkv = MMKV.defaultMMKV() ?: return ModelProviderProfile(
             id = id?.trim().orEmpty().ifEmpty { DEFAULT_PROFILE_ID },
             name = name.trim().ifEmpty { DEFAULT_PROFILE_NAME },
             baseUrl = normalizeBaseUrl(baseUrl).orEmpty(),
-            apiKey = apiKey.trim()
+            apiKey = apiKey.trim(),
+            protocolType = normalizedProtocolType
         )
 
         val current = readProfiles(mmkv).toMutableList().ifEmpty {
@@ -147,7 +151,8 @@ object ModelProviderConfigStore {
             id = normalizedId,
             name = sanitizedName,
             baseUrl = normalizeBaseUrl(baseUrl).orEmpty(),
-            apiKey = apiKey.trim()
+            apiKey = apiKey.trim(),
+            protocolType = normalizedProtocolType
         )
 
         if (currentIndex >= 0) {
@@ -208,7 +213,8 @@ object ModelProviderConfigStore {
             id = current.id,
             name = current.name,
             baseUrl = baseUrl,
-            apiKey = apiKey
+            apiKey = apiKey,
+            protocolType = current.protocolType
         )
     }
 
@@ -219,7 +225,8 @@ object ModelProviderConfigStore {
             id = current.id,
             name = current.name,
             baseUrl = "",
-            apiKey = ""
+            apiKey = "",
+            protocolType = current.protocolType
         )
     }
 
@@ -368,7 +375,8 @@ object ModelProviderConfigStore {
                     id = normalizedId,
                     name = profile.name.trim().ifEmpty { DEFAULT_PROFILE_NAME },
                     baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
-                    apiKey = profile.apiKey.trim()
+                    apiKey = profile.apiKey.trim(),
+                    protocolType = profile.protocolType.trim().ifEmpty { "openai_compatible" }
                 )
             }
         } catch (t: Throwable) {
@@ -388,7 +396,8 @@ object ModelProviderConfigStore {
                 id = id,
                 name = profile.name.trim().ifEmpty { "Provider ${index + 1}" },
                 baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
-                apiKey = profile.apiKey.trim()
+                apiKey = profile.apiKey.trim(),
+                protocolType = profile.protocolType.trim().ifEmpty { "openai_compatible" }
             )
         }
         mmkv.encode(KEY_PROVIDER_PROFILES, gson.toJson(normalized))

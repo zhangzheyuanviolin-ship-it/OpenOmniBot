@@ -73,6 +73,7 @@ class ModelProviderProfileSummary {
   final bool ready;
   final String statusText;
   final bool configured;
+  final String protocolType;
 
   const ModelProviderProfileSummary({
     required this.id,
@@ -84,6 +85,7 @@ class ModelProviderProfileSummary {
     required this.ready,
     required this.statusText,
     required this.configured,
+    this.protocolType = 'openai_compatible',
   });
 
   factory ModelProviderProfileSummary.fromMap(Map<dynamic, dynamic>? map) {
@@ -97,6 +99,7 @@ class ModelProviderProfileSummary {
       ready: map?['ready'] == true,
       statusText: (map?['statusText'] ?? '').toString(),
       configured: map?['configured'] == true,
+      protocolType: (map?['protocolType'] ?? 'openai_compatible').toString(),
     );
   }
 
@@ -215,6 +218,7 @@ class ModelProviderConfigService {
     required String name,
     required String baseUrl,
     required String apiKey,
+    String protocolType = 'openai_compatible',
   }) async {
     final result = await AssistsMessageService.assistCore
         .invokeMethod<Map<dynamic, dynamic>>('saveModelProviderProfile', {
@@ -222,6 +226,7 @@ class ModelProviderConfigService {
           'name': name,
           'baseUrl': baseUrl,
           'apiKey': apiKey,
+          'protocolType': protocolType,
         });
     return ModelProviderProfileSummary.fromMap(result);
   }
