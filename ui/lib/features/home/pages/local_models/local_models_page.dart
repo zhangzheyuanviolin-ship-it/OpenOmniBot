@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ui/services/mnn_local_models_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -55,6 +56,37 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   String _marketCategory = 'llm';
   String _benchmarkBackend = 'cpu';
   String? _benchmarkModelId;
+
+  bool get _isDarkTheme => context.isDarkTheme;
+  Color get _pageBackground =>
+      _isDarkTheme ? context.omniPalette.pageBackground : AppColors.background;
+  Color get _tabSurfaceColor =>
+      _isDarkTheme ? context.omniPalette.surfacePrimary : AppColors.background;
+  Color get _cardColor =>
+      _isDarkTheme ? context.omniPalette.surfacePrimary : Colors.white;
+  Color get _secondarySurfaceColor => _isDarkTheme
+      ? context.omniPalette.surfaceSecondary
+      : const Color(0xFFF8FAFC);
+  Color get _tagSurfaceColor => _isDarkTheme
+      ? context.omniPalette.surfaceElevated
+      : const Color(0xFFF2F4F7);
+  Color get _borderColor =>
+      _isDarkTheme ? context.omniPalette.borderSubtle : const Color(0xFFECEFF4);
+  Color get _primaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textPrimary : AppColors.text;
+  Color get _secondaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textSecondary : AppColors.text70;
+  Color get _tertiaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textTertiary : AppColors.text50;
+  List<BoxShadow>? get _cardShadow => _isDarkTheme
+      ? [
+          BoxShadow(
+            color: context.omniPalette.shadowColor.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ]
+      : null;
 
   @override
   void initState() {
@@ -545,7 +577,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       case 'failed':
         return const Color(0xFFB42318);
       default:
-        return AppColors.text70;
+        return _secondaryTextColor;
     }
   }
 
@@ -763,16 +795,16 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: _pageBackground,
       appBar: const CommonAppBar(title: '本地模型', primary: true),
       body: Column(
         children: [
           Material(
-            color: AppColors.background,
+            color: _tabSurfaceColor,
             child: TabBar(
               controller: _tabController,
-              labelColor: AppColors.text,
-              unselectedLabelColor: AppColors.text50,
+              labelColor: _primaryTextColor,
+              unselectedLabelColor: _tertiaryTextColor,
               indicatorColor: AppColors.buttonPrimary,
               tabs: const [
                 Tab(text: '服务与语音'),
@@ -963,9 +995,9 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               ),
               const SizedBox(height: 6),
               if (serviceModels.isEmpty)
-                const Text(
+                Text(
                   '服务模型：暂无可用模型，请先安装可用于服务的模型。',
-                  style: TextStyle(color: AppColors.text50),
+                  style: TextStyle(color: _tertiaryTextColor),
                 )
               else
                 DropdownButtonFormField<String>(
@@ -1044,7 +1076,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         SwitchListTile(
           value: resolvedConfig.autoStartOnAppOpen,
           title: const Text('打开 App 自动预热本地推理'),
-          subtitle: const Text('仅在打开 Omnibot 时自动恢复本地模型服务'),
+          subtitle: const Text('仅在打开小万时自动恢复本地模型服务'),
           contentPadding: EdgeInsets.zero,
           onChanged: (value) async {
             final config = await MnnLocalModelsService.saveConfig(
@@ -1157,8 +1189,8 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                     : resolvedConfig.voiceStatusText,
                 style: TextStyle(
                   color: resolvedConfig.voiceReady
-                      ? AppColors.text
-                      : AppColors.text50,
+                      ? _primaryTextColor
+                      : _tertiaryTextColor,
                 ),
               ),
             ],
@@ -1231,9 +1263,9 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (llmModels.isEmpty)
-            const Text(
+            Text(
               '当前没有可用于 Benchmark 的 LLM 模型。先到模型市场下载一个文本模型即可开始。',
-              style: TextStyle(height: 1.6, color: AppColors.text50),
+              style: TextStyle(height: 1.6, color: _tertiaryTextColor),
             )
           else ...[
             DropdownButtonFormField<String>(
@@ -1362,7 +1394,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               progress.statusMessage.isEmpty
                   ? '进度 ${progress.progress}%'
                   : '${progress.statusMessage} (${progress.progress}%)',
-              style: const TextStyle(color: AppColors.text50),
+              style: TextStyle(color: _tertiaryTextColor),
             ),
           ],
           if ((benchmarkState?.errorMessage.isNotEmpty ?? false)) ...[
@@ -1388,9 +1420,9 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: _secondarySurfaceColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE6EBF2)),
+        border: Border.all(color: _borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1420,6 +1452,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     final modelSizeText = _resolvedModelSizeText(model);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      color: _cardColor,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: _borderColor),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -1430,9 +1469,10 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 Expanded(
                   child: Text(
                     model.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
+                      color: _primaryTextColor,
                     ),
                   ),
                 ),
@@ -1467,14 +1507,14 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               const SizedBox(height: 8),
               Text(
                 '文件大小：$modelSizeText',
-                style: const TextStyle(fontSize: 12, color: AppColors.text50),
+                style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
               ),
             ],
             if (model.path.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
                 model.path,
-                style: const TextStyle(fontSize: 12, color: AppColors.text50),
+                style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
               ),
             ],
             const SizedBox(height: 12),
@@ -1507,6 +1547,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     final modelSizeText = _resolvedModelSizeText(model);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      color: _cardColor,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: _borderColor),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -1517,19 +1564,17 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 Expanded(
                   child: Text(
                     model.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
+                      color: _primaryTextColor,
                     ),
                   ),
                 ),
                 if (download != null)
                   Text(
                     _downloadStatusLabel(download),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.text50,
-                    ),
+                    style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
                   ),
               ],
             ),
@@ -1537,7 +1582,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             if (model.description.isNotEmpty)
               Text(
                 model.description,
-                style: const TextStyle(color: AppColors.text70, height: 1.5),
+                style: TextStyle(color: _secondaryTextColor, height: 1.5),
               ),
             if (model.description.isNotEmpty) const SizedBox(height: 8),
             Wrap(
@@ -1553,7 +1598,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
               const SizedBox(height: 8),
               Text(
                 '文件大小：$modelSizeText',
-                style: const TextStyle(fontSize: 12, color: AppColors.text50),
+                style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
               ),
             ],
             if (download != null && (isDownloading || isPaused))
@@ -1566,10 +1611,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                     const SizedBox(height: 8),
                     Text(
                       '${(download.progress * 100).toStringAsFixed(1)}% ${download.speedInfo}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.text50,
-                      ),
+                      style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
                     ),
                   ],
                 ),
@@ -1719,16 +1761,21 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFECEFF4)),
+        border: Border.all(color: _borderColor),
+        boxShadow: _cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: _primaryTextColor,
+            ),
           ),
           const SizedBox(height: 10),
           child,
@@ -1741,12 +1788,13 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F4F7),
+        color: _tagSurfaceColor,
         borderRadius: BorderRadius.circular(999),
+        border: _isDarkTheme ? Border.all(color: _borderColor) : null,
       ),
       child: Text(
         value,
-        style: const TextStyle(fontSize: 12, color: AppColors.text70),
+        style: TextStyle(fontSize: 12, color: _secondaryTextColor),
       ),
     );
   }
@@ -1758,22 +1806,26 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.offline_bolt_outlined,
               size: 44,
-              color: AppColors.text50,
+              color: _tertiaryTextColor,
             ),
             const SizedBox(height: 12),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: _primaryTextColor,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(height: 1.6, color: AppColors.text50),
+              style: TextStyle(height: 1.6, color: _tertiaryTextColor),
             ),
           ],
         ),

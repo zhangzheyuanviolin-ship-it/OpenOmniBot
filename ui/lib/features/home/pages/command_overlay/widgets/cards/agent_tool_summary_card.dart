@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/chat/tool_activity_utils.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_transcript.dart';
 import 'package:ui/services/app_background_service.dart';
+import 'package:ui/theme/theme_context.dart';
 
 class AgentToolSummaryCard extends StatelessWidget {
   const AgentToolSummaryCard({
@@ -23,6 +24,32 @@ class AgentToolSummaryCard extends StatelessWidget {
     final preview = resolveAgentToolPreview(cardData);
     final typeLabel = resolveAgentToolTypeLabel(cardData);
     final statusColor = resolveAgentToolStatusColor(status);
+    final palette = context.omniPalette;
+    final cardBackgroundColor = context.isDarkTheme
+        ? Color.alphaBlend(
+            statusColor.withValues(alpha: status == 'running' ? 0.11 : 0.09),
+            palette.surfaceSecondary,
+          )
+        : statusColor.withValues(alpha: 0.08);
+    final cardBorderColor = context.isDarkTheme
+        ? Color.lerp(
+            palette.borderSubtle,
+            statusColor,
+            0.18,
+          )!.withValues(alpha: 0.92)
+        : Colors.transparent;
+    final statusTagBackgroundColor = context.isDarkTheme
+        ? Color.alphaBlend(
+            statusColor.withValues(alpha: 0.14),
+            palette.surfaceElevated,
+          )
+        : Colors.white.withValues(alpha: 0.78);
+    final statusTagTextColor = context.isDarkTheme
+        ? Color.lerp(palette.textSecondary, statusColor, 0.38)!
+        : statusColor;
+    final titleColor = context.isDarkTheme
+        ? palette.textPrimary
+        : visualProfile.primaryTextColor;
 
     final tooltipLines = <String>[title];
     if (preview.isNotEmpty && preview != title) {
@@ -42,8 +69,9 @@ class AgentToolSummaryCard extends StatelessWidget {
             margin: const EdgeInsets.only(top: 6, bottom: 2),
             padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
             decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.08),
+              color: cardBackgroundColor,
               borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: cardBorderColor),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -56,7 +84,7 @@ class AgentToolSummaryCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: visualProfile.primaryTextColor,
+                      color: titleColor,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       height: 1.15,
@@ -70,13 +98,13 @@ class AgentToolSummaryCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.78),
+                    color: statusTagBackgroundColor,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     status == 'running' ? typeLabel : statusLabel,
                     style: TextStyle(
-                      color: statusColor,
+                      color: statusTagTextColor,
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       height: 1,
@@ -101,13 +129,19 @@ class _StatusIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = resolveAgentToolStatusColor(status);
+    final backgroundColor = context.isDarkTheme
+        ? Color.alphaBlend(
+            color.withValues(alpha: 0.14),
+            context.omniPalette.surfaceElevated,
+          )
+        : color.withValues(alpha: 0.12);
+    final iconColor = context.isDarkTheme
+        ? Color.lerp(context.omniPalette.textSecondary, color, 0.38)!
+        : color;
     return Container(
-      width: 16,
-      height: 16,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        shape: BoxShape.circle,
-      ),
+      width: 18,
+      height: 18,
+      decoration: BoxDecoration(color: backgroundColor, shape: BoxShape.circle),
       child: Center(
         child: status == 'running'
             ? SizedBox(
@@ -115,13 +149,13 @@ class _StatusIcon extends StatelessWidget {
                 height: 8,
                 child: CircularProgressIndicator(
                   strokeWidth: 1.4,
-                  valueColor: AlwaysStoppedAnimation<Color>(color),
+                  valueColor: AlwaysStoppedAnimation<Color>(iconColor),
                 ),
               )
             : Icon(
                 resolveAgentToolStatusIcon(status, (toolType ?? '').toString()),
                 size: 10,
-                color: color,
+                color: iconColor,
               ),
       ),
     );

@@ -6,9 +6,11 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 const String _kArrowBigDownSvg = '''
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -93,6 +95,26 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     return _profiles.isEmpty ? null : _profiles.first;
   }
 
+  bool get _isDarkTheme => context.isDarkTheme;
+  Color get _pageBackground =>
+      _isDarkTheme ? context.omniPalette.pageBackground : AppColors.background;
+  Color get _cardColor =>
+      _isDarkTheme ? context.omniPalette.surfacePrimary : Colors.white;
+  Color get _surfaceColor => _isDarkTheme
+      ? context.omniPalette.surfaceSecondary
+      : const Color(0xFFF8FAFC);
+  Color get _primaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textPrimary : AppColors.text;
+  Color get _secondaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textSecondary : AppColors.text70;
+  Color get _tertiaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textTertiary : AppColors.text50;
+  BorderSide get _subtleBorder => BorderSide(
+    color: _isDarkTheme
+        ? context.omniPalette.borderSubtle
+        : const Color(0x1A000000),
+  );
+
   List<_ProviderModelItem> get _modelItems {
     final items = <_ProviderModelItem>[];
     final seen = <String>{};
@@ -134,8 +156,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   void initState() {
     super.initState();
     _loadData();
-    _configChangedSubscription =
-        AssistsMessageService.agentAiConfigChangedStream.listen((event) {
+    _configChangedSubscription = AssistsMessageService
+        .agentAiConfigChangedStream
+        .listen((event) {
           if (event.source != 'file' || !mounted) {
             return;
           }
@@ -338,6 +361,15 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       selection: TextSelection.collapsed(offset: value.length),
     );
     _isSyncingControllers = false;
+  }
+
+  String? _buildBaseUrlHelperText(String rawValue) {
+    final input = rawValue.trim();
+    if (input.isEmpty) {
+      return null;
+    }
+
+    return ModelProviderConfigService.buildChatCompletionsRequestUrl(input);
   }
 
   Future<void> _switchToProfile(String profileId) async {
@@ -617,16 +649,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   }
 
   Widget _buildCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [AppColors.boxShadow],
-      ),
-      child: child,
-    );
+    return SizedBox(width: double.infinity, child: child);
   }
 
   InputDecoration _buildInputDecoration({
@@ -635,26 +658,30 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(
-        color: AppColors.text50,
+      hintStyle: TextStyle(
+        color: _tertiaryTextColor,
         fontSize: 13,
         fontFamily: 'PingFang SC',
       ),
       filled: true,
-      fillColor: const Color(0xFFF8FAFC),
+      fillColor: _surfaceColor,
       suffixIcon: suffixIcon,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Color(0x1A000000)),
+        borderSide: _subtleBorder,
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Color(0x1A000000)),
+        borderSide: _subtleBorder,
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Color(0xFF2C7FEB)),
+        borderSide: BorderSide(
+          color: _isDarkTheme
+              ? context.omniPalette.accentPrimary
+              : const Color(0xFF2C7FEB),
+        ),
       ),
     );
   }
@@ -668,41 +695,55 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     final isEnabled = onPressed != null;
     final useHighlightStyle = highlighted || loading;
     final backgroundColor = !isEnabled && !loading
-        ? const Color(0xFFE8ECF3)
+        ? (_isDarkTheme
+              ? context.omniPalette.surfaceElevated
+              : const Color(0xFFE8ECF3))
         : useHighlightStyle
-        ? const Color(0xFF2C7FEB)
-        : Colors.white;
+        ? (_isDarkTheme
+              ? context.omniPalette.accentPrimary
+              : const Color(0xFF2C7FEB))
+        : _cardColor;
     final iconColor = !isEnabled && !loading
-        ? AppColors.text50
+        ? _tertiaryTextColor
         : useHighlightStyle
-        ? Colors.white
-        : AppColors.text;
+        ? (_isDarkTheme
+              ? Theme.of(context).colorScheme.onPrimary
+              : Colors.white)
+        : _primaryTextColor;
 
     return Material(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onPressed,
-        child: SizedBox(
-          width: 42,
-          height: 42,
-          child: Center(
-            child: loading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: !useHighlightStyle && _isDarkTheme
+              ? Border.all(color: context.omniPalette.borderSubtle)
+              : null,
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onPressed,
+          child: SizedBox(
+            width: 42,
+            height: 42,
+            child: Center(
+              child: loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : SvgPicture.string(
+                      svg,
+                      width: 20,
+                      height: 20,
+                      colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
                     ),
-                  )
-                : SvgPicture.string(
-                    svg,
-                    width: 20,
-                    height: 20,
-                    colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-                  ),
+            ),
           ),
         ),
       ),
@@ -765,16 +806,20 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                 ),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    boxShadow: [AppColors.boxShadow],
+                    color: _surfaceColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isDarkTheme
+                          ? context.omniPalette.borderSubtle
+                          : const Color(0x14000000),
+                    ),
                   ),
                   child: Material(
                     color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(12),
                     child: InkWell(
                       onTap: () {},
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -785,10 +830,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             Expanded(
                               child: Text(
                                 item.id,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
-                                  color: AppColors.text,
+                                  color: _primaryTextColor,
                                   fontFamily: 'PingFang SC',
                                 ),
                                 maxLines: 1,
@@ -800,7 +845,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                               item.sourceLabel,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: AppColors.text.withValues(alpha: 0.4),
+                                color: _tertiaryTextColor,
                               ),
                             ),
                           ],
@@ -846,7 +891,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     );
     final selected = await showMenu<String>(
       context: context,
-      color: Colors.white,
+      color: _cardColor,
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
@@ -890,11 +935,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$displayName 配置',
+                        displayName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.text,
+                        style: TextStyle(
+                          color: _primaryTextColor,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           fontFamily: 'PingFang SC',
@@ -907,11 +952,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           child: Text(
                             current.statusText.isNotEmpty
                                 ? current.statusText
-                                : (current.ready ? '内置 Provider' : '内置 Provider 未就绪'),
+                                : (current.ready
+                                      ? '内置 Provider'
+                                      : '内置 Provider 未就绪'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.text50,
+                            style: TextStyle(
+                              color: _tertiaryTextColor,
                               fontSize: 11,
                               fontFamily: 'PingFang SC',
                             ),
@@ -921,19 +968,19 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                   ),
                 ),
                 if (current?.readOnly == true)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(left: 6),
                     child: Icon(
                       Icons.lock_outline,
                       size: 14,
-                      color: AppColors.text50,
+                      color: _tertiaryTextColor,
                     ),
                   ),
                 const SizedBox(width: 2),
-                const Icon(
+                Icon(
                   Icons.keyboard_arrow_down_rounded,
                   size: 18,
-                  color: AppColors.text70,
+                  color: _secondaryTextColor,
                 ),
               ],
             ),
@@ -948,15 +995,19 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     final modelItems = _modelItems;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: _pageBackground,
       appBar: CommonAppBar(title: '模型提供商', primary: true),
       body: SafeArea(
         top: false,
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
                 children: [
+                  const SettingsSectionTitle(
+                    label: 'Provider 配置',
+                    subtitle: '新增、切换并维护模型服务提供商的名称、地址与密钥。',
+                  ),
                   _buildCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1004,13 +1055,22 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          '支持直接输入根地址、/v1、/v1/chat/completions，会自动归一化。',
-                          style: TextStyle(
-                            color: AppColors.text50,
-                            fontSize: 12,
-                            fontFamily: 'PingFang SC',
-                          ),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _baseUrlController,
+                          builder: (context, value, child) {
+                            final url = _buildBaseUrlHelperText(value.text);
+                            if (url == null) {
+                              return const SizedBox.shrink();
+                            }
+                            return Text(
+                              url,
+                              style: TextStyle(
+                                color: _tertiaryTextColor,
+                                fontSize: 12,
+                                fontFamily: 'PingFang SC',
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 14),
                         TextField(
@@ -1030,17 +1090,17 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                                 _obscureApiKey
                                     ? Icons.visibility_off
                                     : Icons.visibility,
-                                color: AppColors.text50,
+                                color: _tertiaryTextColor,
                                 size: 18,
                               ),
                             ),
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           '未填写 API Key 时，会以无鉴权方式请求 Provider。',
                           style: TextStyle(
-                            color: AppColors.text50,
+                            color: _tertiaryTextColor,
                             fontSize: 12,
                             fontFamily: 'PingFang SC',
                           ),
@@ -1048,7 +1108,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 18),
+                  const SettingsSectionTitle(
+                    label: '模型列表',
+                    subtitle: '支持手动补充模型，也可从当前 Provider 拉取远端模型清单。',
+                  ),
                   _buildCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1056,34 +1120,19 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         Row(
                           children: [
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    '模型列表',
-                                    style: TextStyle(
-                                      color: AppColors.text,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: 'PingFang SC',
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '共 ${modelItems.length} 个模型',
-                                    style: const TextStyle(
-                                      color: AppColors.text70,
-                                      fontSize: 12,
-                                      fontFamily: 'PingFang SC',
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                '共 ${modelItems.length} 个模型',
+                                style: TextStyle(
+                                  color: _secondaryTextColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'PingFang SC',
+                                ),
                               ),
                             ),
                             _buildModelActionButton(
                               svg: _kPlusSvg,
-                              onPressed:
-                                  _currentProfile?.readOnly == true
+                              onPressed: _currentProfile?.readOnly == true
                                   ? null
                                   : _promptAddModel,
                             ),
@@ -1103,9 +1152,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           height: 280,
                           clipBehavior: Clip.antiAlias,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF4F7FB),
+                            color: _surfaceColor,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0x1A000000)),
+                            border: Border.all(
+                              color: _isDarkTheme
+                                  ? context.omniPalette.borderSubtle
+                                  : const Color(0x1A000000),
+                            ),
                           ),
                           child: modelItems.isEmpty
                               ? Padding(
@@ -1118,16 +1171,16 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                                           _kPackageSvg,
                                           width: 64,
                                           height: 64,
-                                          colorFilter: const ColorFilter.mode(
-                                            AppColors.text50,
+                                          colorFilter: ColorFilter.mode(
+                                            _tertiaryTextColor,
                                             BlendMode.srcIn,
                                           ),
                                         ),
                                         const SizedBox(height: 10),
-                                        const Text(
+                                        Text(
                                           '请添加模型！',
                                           style: TextStyle(
-                                            color: AppColors.text70,
+                                            color: _secondaryTextColor,
                                             fontSize: 14,
                                             fontWeight: FontWeight.w600,
                                             fontFamily: 'PingFang SC',
@@ -1183,6 +1236,7 @@ class _ProviderSwitchPopupEntry extends PopupMenuEntry<String> {
 
 class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
   Widget _buildProviderTile(ModelProviderProfileSummary profile) {
+    final palette = context.omniPalette;
     final selected = profile.id == widget.selectedProfileId;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
@@ -1194,8 +1248,17 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
+            color: selected
+                ? (_isDarkTheme(context)
+                      ? palette.segmentThumb
+                      : const Color(0xFFEAF3FF))
+                : (_isDarkTheme(context)
+                      ? palette.surfaceSecondary
+                      : const Color(0xFFF8FAFD)),
             borderRadius: BorderRadius.circular(12),
+            border: _isDarkTheme(context)
+                ? Border.all(color: palette.borderSubtle)
+                : null,
           ),
           child: Row(
             children: [
@@ -1204,19 +1267,23 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
                   profile.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: AppColors.text,
+                    color: _isDarkTheme(context)
+                        ? palette.textPrimary
+                        : AppColors.text,
                     fontWeight: FontWeight.w500,
                     fontFamily: 'PingFang SC',
                   ),
                 ),
               ),
               if (selected)
-                const Icon(
+                Icon(
                   Icons.check_rounded,
                   size: 16,
-                  color: Color(0xFF2C7FEB),
+                  color: _isDarkTheme(context)
+                      ? palette.accentPrimary
+                      : const Color(0xFF2C7FEB),
                 ),
             ],
           ),
@@ -1227,6 +1294,7 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     final mediaQuery = MediaQuery.of(context);
     final dynamicMaxHeight =
         (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
@@ -1237,14 +1305,16 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
         child: widget.profiles.isEmpty
-            ? const Padding(
+            ? Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
                   '暂无 Provider',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                    color: _isDarkTheme(context)
+                        ? palette.textTertiary
+                        : const Color(0xFF94A3B8),
                     fontWeight: FontWeight.w500,
                     fontFamily: 'PingFang SC',
                   ),
@@ -1263,6 +1333,8 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
     );
   }
 }
+
+bool _isDarkTheme(BuildContext context) => context.isDarkTheme;
 
 class _AddModelIdDialog extends StatefulWidget {
   const _AddModelIdDialog();

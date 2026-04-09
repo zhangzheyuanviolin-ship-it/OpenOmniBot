@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/thinking_animation.dart';
+import 'package:ui/theme/theme_context.dart';
 
 class BotStatus extends StatelessWidget {
   final BotStatusType status;
@@ -48,10 +49,14 @@ class BotStatus extends StatelessWidget {
     String? costTime,
     String? timeDescSuffix = '',
   }) {
+    final palette = context.omniPalette;
+    final defaultTextColor = context.isDarkTheme
+        ? palette.textSecondary
+        : const Color(0x80353E53);
     final resolvedTextStyle =
         textStyle ??
-        const TextStyle(
-          color: Color(0x80353E53),
+        TextStyle(
+          color: defaultTextColor,
           fontSize: 12,
           fontFamily: 'PingFang SC',
           fontWeight: FontWeight.w400,
@@ -62,9 +67,20 @@ class BotStatus extends StatelessWidget {
     if (customIcon != null) {
       iconWidget = customIcon;
     } else if (svgPath != null) {
-      iconWidget = SvgPicture.asset(svgPath, width: 16, height: 16);
+      iconWidget = SvgPicture.asset(
+        svgPath,
+        width: 16,
+        height: 16,
+        colorFilter: context.isDarkTheme
+            ? ColorFilter.mode(defaultTextColor, BlendMode.srcIn)
+            : null,
+      );
     } else if (icon != null) {
-      iconWidget = Icon(icon, size: 16);
+      iconWidget = Icon(
+        icon,
+        size: 16,
+        color: resolvedTextStyle.color ?? defaultTextColor,
+      );
     } else {
       iconWidget = const SizedBox.shrink();
     }

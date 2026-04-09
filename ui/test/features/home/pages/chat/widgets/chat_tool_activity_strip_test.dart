@@ -65,6 +65,107 @@ void main() {
     },
   );
 
+  testWidgets(
+    'expanded history stacks previous calls by recency from bottom to top',
+    (tester) async {
+      final messages = [
+        ChatMessageModel.cardMessage({
+          'type': 'agent_tool_summary',
+          'status': 'running',
+          'toolType': 'terminal',
+          'toolTitle': '当前调用',
+          'summary': '正在执行当前调用',
+        }),
+        ChatMessageModel.cardMessage({
+          'type': 'agent_tool_summary',
+          'status': 'success',
+          'toolType': 'workspace',
+          'toolTitle': '最近一条',
+          'summary': '最近一条结果',
+        }),
+        ChatMessageModel.cardMessage({
+          'type': 'agent_tool_summary',
+          'status': 'success',
+          'toolType': 'browser',
+          'toolTitle': '最近第二条',
+          'summary': '最近第二条结果',
+        }),
+        ChatMessageModel.cardMessage({
+          'type': 'agent_tool_summary',
+          'status': 'success',
+          'toolType': 'workspace',
+          'toolTitle': '最早一条',
+          'summary': '最早一条结果',
+        }),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: ChatToolActivityStrip(messages: messages)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(kChatToolActivityToggleKey));
+      await tester.pumpAndSettle();
+
+      final currentY = tester.getCenter(find.text('当前调用')).dy;
+      final recentY = tester.getCenter(find.text('最近一条')).dy;
+      final secondRecentY = tester.getCenter(find.text('最近第二条')).dy;
+      final earliestY = tester.getCenter(find.text('最早一条')).dy;
+
+      expect(currentY, greaterThan(recentY));
+      expect(recentY, greaterThan(secondRecentY));
+      expect(secondRecentY, greaterThan(earliestY));
+    },
+  );
+
+  testWidgets(
+    'expanded scrollable history opens anchored to the most recent items',
+    (tester) async {
+      final messages = [
+        ChatMessageModel.cardMessage({
+          'type': 'agent_tool_summary',
+          'status': 'running',
+          'toolType': 'terminal',
+          'toolTitle': '当前调用',
+          'summary': '当前调用结果',
+        }),
+        for (final title in const [
+          '最近一条',
+          '最近第二条',
+          '最近第三条',
+          '最近第四条',
+          '最近第五条',
+          '最早第二条',
+          '最早一条',
+        ])
+          ChatMessageModel.cardMessage({
+            'type': 'agent_tool_summary',
+            'status': 'success',
+            'toolType': 'workspace',
+            'toolTitle': title,
+            'summary': '$title 结果',
+          }),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: ChatToolActivityStrip(messages: messages)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(kChatToolActivityToggleKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('最近一条').hitTestable(), findsOneWidget);
+      expect(find.text('最近第二条').hitTestable(), findsOneWidget);
+      expect(find.text('最早一条').hitTestable(), findsNothing);
+      expect(find.text('最早第二条').hitTestable(), findsNothing);
+    },
+  );
+
   testWidgets('thumbnail opens current tool detail only', (tester) async {
     final messages = [
       ChatMessageModel.cardMessage({

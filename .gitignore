@@ -13,6 +13,7 @@ local.properties
 /misc
 
 .claude/
+.vscode/
 
 release.jks
 *.jks

@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:ui/models/remote_mcp_server.dart';
 import 'package:ui/services/remote_mcp_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class RemoteMcpServersPage extends StatefulWidget {
   const RemoteMcpServersPage({super.key});
@@ -123,7 +125,9 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
     final saved = await showModalBottomSheet<RemoteMcpServer>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: context.isDarkTheme
+          ? context.omniPalette.surfacePrimary
+          : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -161,8 +165,11 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: const CommonAppBar(title: 'MCP 工具', primary: true),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showServerEditor(),
@@ -174,28 +181,41 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
           ? _buildEmpty()
           : RefreshIndicator(
               onRefresh: _loadServers,
-              child: ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemBuilder: (context, index) =>
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+                children: [
+                  const SettingsSectionTitle(label: '远端服务'),
+                  for (int index = 0; index < _servers.length; index++) ...[
                     _buildServerCard(_servers[index]),
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemCount: _servers.length,
+                    if (index != _servers.length - 1) const Divider(height: 24),
+                  ],
+                ],
               ),
             ),
     );
   }
 
   Widget _buildEmpty() {
+    final palette = context.omniPalette;
     return ListView(
       padding: const EdgeInsets.all(24),
-      children: const [
-        SizedBox(height: 120),
-        Icon(Icons.extension, size: 48, color: AppColors.text50),
-        SizedBox(height: 12),
+      children: [
+        const SizedBox(height: 120),
+        Icon(
+          Icons.extension,
+          size: 48,
+          color: context.isDarkTheme ? palette.textTertiary : AppColors.text50,
+        ),
+        const SizedBox(height: 12),
         Center(
           child: Text(
             '暂无远端 MCP 服务',
-            style: TextStyle(fontSize: 16, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 16,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
           ),
         ),
       ],
@@ -204,86 +224,73 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
 
   Widget _buildServerCard(RemoteMcpServer server) {
     final busy = _busyIds.contains(server.id);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      server.name,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.text,
-                      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    server.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      server.endpointUrl,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.text50,
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    server.endpointUrl,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.omniPalette.textSecondary,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Switch(
-                value: server.enabled,
-                onChanged: busy
-                    ? null
-                    : (value) => _toggleServer(server, value),
+            ),
+            Switch(
+              value: server.enabled,
+              onChanged: busy ? null : (value) => _toggleServer(server, value),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _MetaChip(label: _healthLabel(server.lastHealth)),
+            _MetaChip(label: '工具 ${server.toolCount}'),
+            if ((server.lastError ?? '').isNotEmpty)
+              _MetaChip(
+                label: server.lastError!,
+                color: AppColors.alertRed.withValues(alpha: 0.08),
+                textColor: AppColors.alertRed,
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MetaChip(label: _healthLabel(server.lastHealth)),
-              _MetaChip(label: '工具 ${server.toolCount}'),
-              if ((server.lastError ?? '').isNotEmpty)
-                _MetaChip(
-                  label: server.lastError!,
-                  color: AppColors.alertRed.withValues(alpha: 0.08),
-                  textColor: AppColors.alertRed,
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              TextButton(
-                onPressed: busy ? null : () => _refreshTools(server),
-                child: const Text('刷新工具'),
-              ),
-              TextButton(
-                onPressed: busy
-                    ? null
-                    : () => _showServerEditor(server: server),
-                child: const Text('编辑'),
-              ),
-              const Spacer(),
-              TextButton(
-                onPressed: busy ? null : () => _deleteServer(server),
-                child: const Text('删除'),
-              ),
-            ],
-          ),
-        ],
-      ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            TextButton(
+              onPressed: busy ? null : () => _refreshTools(server),
+              child: const Text('刷新工具'),
+            ),
+            TextButton(
+              onPressed: busy ? null : () => _showServerEditor(server: server),
+              child: const Text('编辑'),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: busy ? null : () => _deleteServer(server),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -418,10 +425,7 @@ class _RemoteMcpServerEditorSheetState
         children: [
           Text(
             widget.server == null ? '添加 MCP 服务' : '编辑 MCP 服务',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
           _InputField(
@@ -436,10 +440,7 @@ class _RemoteMcpServerEditorSheetState
             hint: 'https://example.com/mcp',
           ),
           const SizedBox(height: 12),
-          _InputField(
-            controller: _tokenController,
-            label: 'Bearer Token（可选）',
-          ),
+          _InputField(controller: _tokenController, label: 'Bearer Token（可选）'),
           const SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -450,10 +451,7 @@ class _RemoteMcpServerEditorSheetState
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _submit,
-              child: const Text('保存'),
-            ),
+            child: ElevatedButton(onPressed: _submit, child: const Text('保存')),
           ),
         ],
       ),
@@ -470,15 +468,28 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color ?? AppColors.background,
+        color:
+            color ??
+            (context.isDarkTheme
+                ? palette.surfaceSecondary
+                : AppColors.background),
         borderRadius: BorderRadius.circular(999),
+        border: color == null && context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 12, color: textColor ?? AppColors.text70),
+        style: TextStyle(
+          fontSize: 12,
+          color:
+              textColor ??
+              (context.isDarkTheme ? palette.textSecondary : AppColors.text70),
+        ),
       ),
     );
   }

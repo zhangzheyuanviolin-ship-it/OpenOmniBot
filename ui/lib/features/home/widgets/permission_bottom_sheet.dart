@@ -2,24 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/authorize/widgets/permission_section.dart';
 import 'package:ui/services/permission_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 
 /// 权限缺失底部弹窗
 /// 当用户在首页有权限未授权时展示
 class PermissionBottomSheet extends StatefulWidget {
   /// 权限全部授权后的回调
   final VoidCallback? onAllAuthorized;
-  
+
   /// 预加载的权限列表（必需）
   final List<PermissionData> initialPermissions;
-  
+
   /// 设备品牌（必需）
   final String deviceBrand;
-  
+
   /// 按钮文案（可选，默认为"开启陪伴"）
   final String buttonText;
 
   const PermissionBottomSheet({
-    super.key, 
+    super.key,
     this.onAllAuthorized,
     required this.initialPermissions,
     required this.deviceBrand,
@@ -61,7 +62,7 @@ class _PermissionBottomSheetState extends State<PermissionBottomSheet>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+
     // 使用预加载的数据
     permissions = widget.initialPermissions;
     _isCompactMode = permissions.length >= 5;
@@ -92,17 +93,23 @@ class _PermissionBottomSheetState extends State<PermissionBottomSheet>
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.75,
       ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: isDark ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(8),
           topRight: Radius.circular(8),
         ),
+        border: isDark
+            ? Border(top: BorderSide(color: palette.borderSubtle))
+            : null,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -113,10 +120,10 @@ class _PermissionBottomSheetState extends State<PermissionBottomSheet>
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 '请检查下列权限',
                 style: TextStyle(
-                  color: AppColors.text,
+                  color: isDark ? null : AppColors.text,
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
                   height: 1.5,
@@ -156,18 +163,38 @@ class _PermissionBottomSheetState extends State<PermissionBottomSheet>
                       constraints: const BoxConstraints(maxWidth: 288),
                       height: 48,
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment(0.14, -1.09),
-                          end: Alignment(1.10, 1.26),
-                          colors: [Color(0xFF1930D9), Color(0xFF2CA5F0)],
-                        ),
+                        gradient: isDark
+                            ? LinearGradient(
+                                begin: const Alignment(0.14, -1.09),
+                                end: const Alignment(1.10, 1.26),
+                                colors: [
+                                  Color.lerp(
+                                    palette.surfaceElevated,
+                                    palette.accentPrimary,
+                                    0.18,
+                                  )!,
+                                  Color.lerp(
+                                    palette.surfaceSecondary,
+                                    palette.accentPrimary,
+                                    0.34,
+                                  )!,
+                                ],
+                              )
+                            : const LinearGradient(
+                                begin: Alignment(0.14, -1.09),
+                                end: Alignment(1.10, 1.26),
+                                colors: [Color(0xFF1930D9), Color(0xFF2CA5F0)],
+                              ),
                         borderRadius: BorderRadius.circular(8),
+                        border: isDark
+                            ? Border.all(color: palette.borderSubtle)
+                            : null,
                       ),
                       child: Center(
                         child: Text(
                           widget.buttonText,
                           style: TextStyle(
-                            color: Colors.white,
+                            color: isDark ? palette.textPrimary : Colors.white,
                             fontSize: 16,
                             fontFamily: 'PingFang SC',
                             fontWeight: FontWeight.w600,

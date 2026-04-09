@@ -8,6 +8,7 @@ import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/terminal_output_utils.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 
 const ValueKey<String> kChatToolActivityBarKey = ValueKey<String>(
   'chat-tool-activity-bar',
@@ -32,6 +33,7 @@ const double _kToolActivityDrawerMaxHeight = 264;
 const double _kToolActivityTypeSlotWidth = 34;
 const double _kToolActivityStatusSlotWidth = 42;
 const double _kToolActivityTrailingSlotWidth = 18;
+const double _kToolActivityAttachedBorderReveal = 1.5;
 const Color _kToolActivitySurfaceColor = Color(0xFFF9FCFF);
 const BorderRadius _kToolActivitySurfaceBorderRadius = BorderRadius.only(
   topLeft: Radius.circular(_kToolActivitySurfaceRadius),
@@ -49,6 +51,7 @@ class ChatToolActivityStrip extends StatefulWidget {
     this.onOccupiedHeightChanged,
     this.expanded,
     this.onExpandedChanged,
+    this.suppressSurfaceShadow = false,
   });
 
   final List<ChatMessageModel> messages;
@@ -56,6 +59,7 @@ class ChatToolActivityStrip extends StatefulWidget {
   final ValueChanged<double>? onOccupiedHeightChanged;
   final bool? expanded;
   final ValueChanged<bool>? onExpandedChanged;
+  final bool suppressSurfaceShadow;
 
   @override
   State<ChatToolActivityStrip> createState() => _ChatToolActivityStripState();
@@ -81,8 +85,6 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
     final activeCardId = _cardIdentity(activeCard);
     final historyCards = cards
         .where((card) => _cardIdentity(card) != activeCardId)
-        .toList(growable: false)
-        .reversed
         .toList(growable: false);
     final canExpand = historyCards.isNotEmpty;
     final isExpanded = _resolvedExpanded && canExpand;
@@ -131,6 +133,7 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
                 historyHeight: historyHeight,
                 expanded: isExpanded,
                 canExpand: canExpand,
+                suppressShadow: widget.suppressSurfaceShadow,
                 leadingInset: isExpanded ? 0 : collapsedLeadingInset,
                 onToggle: () => _handleExpandedChanged(!isExpanded),
                 onOpenCard: (cardData) =>
@@ -295,6 +298,7 @@ class _ActivityDrawerSurface extends StatelessWidget {
     required this.historyHeight,
     required this.expanded,
     required this.canExpand,
+    required this.suppressShadow,
     required this.leadingInset,
     required this.onToggle,
     required this.onOpenCard,
@@ -307,6 +311,7 @@ class _ActivityDrawerSurface extends StatelessWidget {
   final double historyHeight;
   final bool expanded;
   final bool canExpand;
+  final bool suppressShadow;
   final double leadingInset;
   final VoidCallback onToggle;
   final ValueChanged<Map<String, dynamic>> onOpenCard;
@@ -315,15 +320,32 @@ class _ActivityDrawerSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final surfaceColor = context.isDarkTheme
+        ? palette.surfacePrimary
+        : _kToolActivitySurfaceColor;
+    final dividerColor = context.isDarkTheme
+        ? palette.borderSubtle.withValues(alpha: 0.52)
+        : const Color(0x140F2034);
+    final bottomReveal = suppressShadow
+        ? _kToolActivityAttachedBorderReveal
+        : 0.0;
     return PhysicalShape(
       key: kChatToolActivityBarKey,
-      color: _kToolActivitySurfaceColor,
-      shadowColor: const Color(0x18111B2D),
-      elevation: expanded ? 8 : 6,
+      color: surfaceColor,
+      shadowColor: suppressShadow
+          ? Colors.transparent
+          : context.isDarkTheme
+          ? palette.shadowColor.withValues(alpha: 0.42)
+          : const Color(0x18111B2D),
+      elevation: suppressShadow ? 0 : (expanded ? 8 : 6),
       clipBehavior: Clip.antiAlias,
-      clipper: _ActivityDrawerClipper(showPreviewCutout: !expanded),
+      clipper: _ActivityDrawerClipper(
+        showPreviewCutout: !expanded,
+        bottomReveal: bottomReveal,
+      ),
       child: ColoredBox(
-        color: _kToolActivitySurfaceColor,
+        color: surfaceColor,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -354,7 +376,7 @@ class _ActivityDrawerSurface extends StatelessWidget {
               curve: Curves.easeOutCubic,
               height: expanded ? 1 : 0,
               margin: const EdgeInsets.only(left: 18, right: 10),
-              color: const Color(0x140F2034),
+              color: dividerColor,
             ),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -385,6 +407,9 @@ class _ActivityBarTrailing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = context.isDarkTheme
+        ? context.omniPalette.textSecondary
+        : const Color(0xFF657891);
     return GestureDetector(
       key: kChatToolActivityToggleKey,
       behavior: HitTestBehavior.opaque,
@@ -395,11 +420,7 @@ class _ActivityBarTrailing extends StatelessWidget {
           turns: expanded ? 0 : 0.5,
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          child: const Icon(
-            Icons.keyboard_arrow_up_rounded,
-            size: 14,
-            color: Color(0xFF657891),
-          ),
+          child: Icon(Icons.keyboard_arrow_up_rounded, size: 14, color: color),
         ),
       ),
     );
@@ -421,6 +442,9 @@ class _HistoryDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dividerColor = context.isDarkTheme
+        ? context.omniPalette.borderSubtle.withValues(alpha: 0.52)
+        : const Color(0x140F2034);
     final scrollable = cards.length > 4;
     return Container(
       key: kChatToolActivityPanelKey,
@@ -431,6 +455,7 @@ class _HistoryDrawer extends StatelessWidget {
         onPointerUp: (event) => onPointerEnd(event.pointer),
         onPointerCancel: (event) => onPointerEnd(event.pointer),
         child: ListView.separated(
+          reverse: true,
           padding: EdgeInsets.zero,
           shrinkWrap: true,
           physics: scrollable
@@ -438,17 +463,12 @@ class _HistoryDrawer extends StatelessWidget {
               : const NeverScrollableScrollPhysics(),
           itemBuilder: (context, index) {
             final card = cards[index];
-            final isLast = index == cards.length - 1;
+            final isBottomMost = index == 0;
             return DecoratedBox(
               decoration: BoxDecoration(
-                border: isLast
+                border: isBottomMost
                     ? null
-                    : Border(
-                        bottom: BorderSide(
-                          color: const Color(0x140F2034),
-                          width: 1,
-                        ),
-                      ),
+                    : Border(bottom: BorderSide(color: dividerColor, width: 1)),
               ),
               child: Material(
                 color: Colors.transparent,
@@ -481,6 +501,13 @@ class ToolActivityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final primaryTextColor = context.isDarkTheme
+        ? palette.textPrimary
+        : AppColors.text;
+    final secondaryTextColor = context.isDarkTheme
+        ? palette.textSecondary
+        : const Color(0xFF7C8DA5);
     final status = (card['status'] ?? 'running').toString();
     final toolTypeLabel = resolveAgentToolTypeLabel(card);
     final statusLabel = resolveAgentToolStatusLabel(card);
@@ -508,8 +535,8 @@ class ToolActivityRow extends StatelessWidget {
                     resolveAgentToolTitle(card),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.text,
+                    style: TextStyle(
+                      color: primaryTextColor,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       letterSpacing: -0.2,
@@ -528,8 +555,8 @@ class ToolActivityRow extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.right,
-                            style: const TextStyle(
-                              color: Color(0xFF7C8DA5),
+                            style: TextStyle(
+                              color: secondaryTextColor,
                               fontSize: 9,
                               fontWeight: FontWeight.w600,
                               letterSpacing: -0.1,
@@ -572,14 +599,17 @@ class _StatusDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = resolveAgentToolStatusColor(status);
+    final palette = context.omniPalette;
+    final outerColor = context.isDarkTheme
+        ? Color.alphaBlend(
+            color.withValues(alpha: 0.14),
+            palette.surfaceElevated,
+          )
+        : color.withValues(alpha: 0.16);
     return Container(
       width: 8,
       height: 8,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        shape: BoxShape.circle,
-        border: Border.all(color: color.withValues(alpha: 0.55), width: 1),
-      ),
+      decoration: BoxDecoration(color: outerColor, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: Container(
         width: 3,
@@ -599,19 +629,28 @@ class _StatusTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = resolveAgentToolStatusColor(status);
+    final palette = context.omniPalette;
+    final backgroundColor = context.isDarkTheme
+        ? Color.alphaBlend(
+            color.withValues(alpha: 0.14),
+            palette.surfaceElevated,
+          )
+        : color.withValues(alpha: 0.11);
+    final textColor = context.isDarkTheme
+        ? Color.lerp(palette.textSecondary, color, 0.38)!
+        : color.withValues(alpha: 0.9);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.11),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Text(
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: color.withValues(alpha: 0.9),
+          color: textColor,
           fontSize: 8.4,
           fontWeight: FontWeight.w700,
           height: 1,
@@ -634,11 +673,11 @@ class _TerminalThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PhysicalModel(
-      color: const Color(0xFF12161E),
+      color: kTerminalSurfaceBlack,
       borderRadius: _kToolActivityPreviewBorderRadius,
       clipBehavior: Clip.antiAlias,
-      elevation: 8,
-      shadowColor: const Color(0x2B0B1220),
+      elevation: 6,
+      shadowColor: kTerminalSurfaceShadow,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -649,12 +688,11 @@ class _TerminalThumbnail extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF1A2231), Color(0xFF0E1422)],
+                colors: [kTerminalSurfaceBlackElevated, kTerminalSurfaceBlack],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: _kToolActivityPreviewBorderRadius,
-              border: Border.all(color: const Color(0xFF2C3B52)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -700,14 +738,24 @@ class _TerminalThumbnail extends StatelessWidget {
 }
 
 class _ActivityDrawerClipper extends CustomClipper<Path> {
-  const _ActivityDrawerClipper({required this.showPreviewCutout});
+  const _ActivityDrawerClipper({
+    required this.showPreviewCutout,
+    this.bottomReveal = 0,
+  });
 
   final bool showPreviewCutout;
+  final double bottomReveal;
 
   @override
   Path getClip(Size size) {
+    final resolvedBottomReveal = bottomReveal.clamp(0.0, size.height);
+    final surfaceHeight = math.max(0.0, size.height - resolvedBottomReveal);
     final surfacePath = Path()
-      ..addRRect(_kToolActivitySurfaceBorderRadius.toRRect(Offset.zero & size));
+      ..addRRect(
+        _kToolActivitySurfaceBorderRadius.toRRect(
+          Rect.fromLTWH(0, 0, size.width, surfaceHeight),
+        ),
+      );
     if (!showPreviewCutout) {
       return surfacePath;
     }
@@ -726,6 +774,7 @@ class _ActivityDrawerClipper extends CustomClipper<Path> {
 
   @override
   bool shouldReclip(covariant _ActivityDrawerClipper oldClipper) {
-    return oldClipper.showPreviewCutout != showPreviewCutout;
+    return oldClipper.showPreviewCutout != showPreviewCutout ||
+        oldClipper.bottomReveal != bottomReveal;
   }
 }

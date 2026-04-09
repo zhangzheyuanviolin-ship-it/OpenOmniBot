@@ -38,10 +38,10 @@ import 'package:ui/services/permission_registry.dart';
 import 'package:ui/services/permission_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
 import 'package:ui/services/shared_open_draft_service.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/services/storage_service.dart';
-import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
 
 // 导入 Mixins
@@ -252,7 +252,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   static const Duration _normalSurfaceModelRevealDelay = Duration(
     milliseconds: 1700,
   );
-  int _workspaceSurfaceSeed = 0;
   bool _workspaceBrowserCanGoUp = false;
   Future<OmnibotWorkspacePaths>? _workspacePathsLoadFuture;
   bool _hasInitializedHalfScreen = false;
@@ -276,14 +275,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   String? _lastObservedBrowserSnapshotSignature;
   int? _pageGesturePointerId;
   double _pageVerticalDragDelta = 0;
-  static const double _newConversationPullThreshold = 156;
-  static const double _newConversationPullMaxDistance = 236;
-  static const double _newConversationPullActivationZoneHeight = 120;
-  bool _isNewConversationPullTracking = false;
-  double _newConversationPullDistance = 0;
-  bool _newConversationPullThresholdReached = false;
-  bool _newConversationPullHapticTriggered = false;
-  bool _isCreatingConversationFromPull = false;
   Timer? _normalSurfaceModelRevealTimer;
   bool _normalSurfaceModelRevealInterrupted = false;
   int _surfaceSwitchRequestId = 0;
@@ -345,6 +336,20 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
+  double get _surfacePageProgress {
+    final fallback = _pageIndexForSurface(_activeSurfaceMode).toDouble();
+    if (!_modePageController.hasClients) {
+      return fallback;
+    }
+    final page = _modePageController.page;
+    if (page == null || !page.isFinite) {
+      return fallback;
+    }
+    return page.clamp(0.0, 1.0).toDouble();
+  }
+
+  double get _normalSurfaceVisibility =>
+      (1.0 - _surfacePageProgress).clamp(0.0, 1.0).toDouble();
   bool _isHdPadLandscapeForMediaQuery(MediaQueryData mediaQuery) {
     final size = mediaQuery.size;
     final shortestSide = math.min(size.width, size.height);
@@ -380,13 +385,22 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   void _handleEmbeddedDrawerThreadTargetSelected(
     ConversationThreadTarget target,
   ) {
+    _dismissChatInputFocus();
     unawaited(_applyConversationThreadTarget(target));
   }
 
   void _toggleHdPadLeftPaneCollapsed() {
+    _dismissChatInputFocus();
     setState(() {
       _hdPadLeftPaneCollapsed = !_hdPadLeftPaneCollapsed;
     });
+  }
+
+  void _dismissChatInputFocus() {
+    if (_inputFocusNode.hasFocus) {
+      _inputFocusNode.unfocus();
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   ConversationThreadTarget get _threadTargetForMode {
@@ -1330,8 +1344,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   _ActiveModelMentionToken? _parseActiveModelMentionToken(
     TextEditingValue value,
   );
-
-  ModelProviderProfileSummary? _findProviderProfile(String profileId);
 
   Future<void> _openConversationModelSelector(BuildContext anchorContext);
 

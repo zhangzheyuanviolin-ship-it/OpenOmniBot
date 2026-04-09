@@ -11,6 +11,7 @@ import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -215,12 +216,15 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   String get _emptyTitle => widget.archivedOnly ? '暂无归档对话' : '暂无聊天记录';
 
   List<ConversationSlideAction> _buildActions(ConversationModel conversation) {
+    final palette = context.omniPalette;
     final primaryAction = ConversationSlideAction(
       onPressed: () => _setConversationArchived(
         conversation,
         archived: !widget.archivedOnly,
       ),
-      backgroundColor: AppColors.buttonPrimary,
+      backgroundColor: context.isDarkTheme
+          ? Color.lerp(palette.surfaceElevated, palette.accentPrimary, 0.3)!
+          : AppColors.buttonPrimary,
       child: Center(
         child: widget.archivedOnly
             ? const Icon(
@@ -260,15 +264,24 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: CommonAppBar(
         title: _pageTitle,
         primary: true,
         trailing: widget.archivedOnly
             ? null
             : IconButton(
-                icon: Icon(Icons.add, color: Colors.grey[600], size: 24),
+                icon: Icon(
+                  Icons.add,
+                  color: context.isDarkTheme
+                      ? palette.textSecondary
+                      : Colors.grey[600],
+                  size: 24,
+                ),
                 onPressed: _createConversation,
                 tooltip: '\u65b0\u5efa\u5bf9\u8bdd',
               ),
@@ -278,10 +291,15 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   }
 
   Widget _buildBody() {
+    final palette = context.omniPalette;
     if (_isLoading) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1930D9)),
+          valueColor: AlwaysStoppedAnimation<Color>(
+            context.isDarkTheme
+                ? palette.accentPrimary
+                : const Color(0xFF1930D9),
+          ),
         ),
       );
     }
@@ -308,23 +326,40 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   }
 
   Widget _buildEmptyHint() {
+    final palette = context.omniPalette;
     if (!widget.archivedOnly) {
       return GestureDetector(
         onTap: _createConversation,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF1930D9), Color(0xFF2CA5F0)],
+              colors: context.isDarkTheme
+                  ? <Color>[
+                      Color.lerp(
+                        palette.surfaceElevated,
+                        palette.accentPrimary,
+                        0.24,
+                      )!,
+                      Color.lerp(
+                        palette.surfaceSecondary,
+                        palette.accentPrimary,
+                        0.36,
+                      )!,
+                    ]
+                  : const <Color>[Color(0xFF1930D9), Color(0xFF2CA5F0)],
             ),
             borderRadius: BorderRadius.all(Radius.circular(24)),
+            border: context.isDarkTheme
+                ? Border.all(color: palette.borderSubtle)
+                : null,
           ),
-          child: const Text(
+          child: Text(
             '\u5f00\u59cb\u5bf9\u8bdd',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
-              color: Colors.white,
+              color: context.isDarkTheme ? palette.textPrimary : Colors.white,
             ),
           ),
         ),
@@ -333,11 +368,15 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
 
     return Text(
       '左滑聊天记录即可归档',
-      style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+      style: TextStyle(
+        fontSize: 13,
+        color: context.isDarkTheme ? palette.textSecondary : Colors.grey[500],
+      ),
     );
   }
 
   Widget _buildEmptyState() {
+    final palette = context.omniPalette;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -347,12 +386,19 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
                 ? Icons.archive_outlined
                 : Icons.chat_bubble_outline,
             size: 64,
-            color: Colors.grey[300],
+            color: context.isDarkTheme
+                ? palette.borderStrong
+                : Colors.grey[300],
           ),
           const SizedBox(height: 16),
           Text(
             _emptyTitle,
-            style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+            style: TextStyle(
+              fontSize: 16,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : Colors.grey[500],
+            ),
           ),
           const SizedBox(height: 24),
           _buildEmptyHint(),

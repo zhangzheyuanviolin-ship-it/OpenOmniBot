@@ -2,11 +2,15 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/features/home/pages/settings/background_setting_page.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/storage_service.dart';
+import 'package:ui/theme/app_theme.dart';
+import 'package:ui/theme/app_theme_controller.dart';
+import 'package:ui/theme/app_theme_mode.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
 
 class _SvgTestAssetBundle extends CachingAssetBundle {
@@ -42,6 +46,24 @@ void main() {
     AppBackgroundService.notifier.value = AppBackgroundConfig.defaults;
   });
 
+  Widget buildTestApp(Widget child) {
+    return ProviderScope(
+      child: Consumer(
+        builder: (context, ref, _) {
+          return MaterialApp(
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: ref.watch(appThemeModeProvider).materialThemeMode,
+            home: DefaultAssetBundle(
+              bundle: _SvgTestAssetBundle(),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   testWidgets('supports auto-saving appearance updates from the preview', (
     tester,
   ) async {
@@ -57,21 +79,23 @@ void main() {
       focalY: -0.1,
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: DefaultAssetBundle(
-          bundle: _SvgTestAssetBundle(),
-          child: const BackgroundSettingPage(),
-        ),
-      ),
-    );
+    await tester.pumpWidget(buildTestApp(const BackgroundSettingPage()));
 
     expect(find.text('外观设置'), findsOneWidget);
+    expect(find.byKey(const ValueKey('theme-mode-slider')), findsOneWidget);
     expect(find.byType(AppBackgroundPreview), findsOneWidget);
     expect(find.textContaining('聊天文本 ·'), findsOneWidget);
     expect(find.byKey(const ValueKey('background-save-button')), findsNothing);
     expect(find.byKey(const ValueKey('background-reset-button')), findsNothing);
     expect(find.byKey(const ValueKey('background-source-none')), findsNothing);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('theme-mode-slider'))).dy,
+      lessThan(tester.getTopLeft(find.byType(AppBackgroundPreview)).dy),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('theme-mode-option-dark')));
+    await tester.pumpAndSettle();
+    expect(StorageService.getThemeMode(), AppThemeMode.dark);
 
     final workspacePreviewChip = find.byKey(
       const ValueKey('background-preview-kind-workspace'),
@@ -80,7 +104,7 @@ void main() {
     await tester.tap(workspacePreviewChip, warnIfMissed: false);
     await tester.pumpAndSettle();
 
-    expect(find.text('Workspace 预览'), findsOneWidget);
+    expect(find.byType(AppBackgroundPreview), findsOneWidget);
 
     final remoteSourceChip = find.byKey(
       const ValueKey('background-source-remote'),
@@ -130,14 +154,7 @@ void main() {
       focalY: -0.1,
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: DefaultAssetBundle(
-          bundle: _SvgTestAssetBundle(),
-          child: const BackgroundSettingPage(),
-        ),
-      ),
-    );
+    await tester.pumpWidget(buildTestApp(const BackgroundSettingPage()));
 
     await tester.enterText(
       find.byKey(const ValueKey('appearance-text-color-field')),

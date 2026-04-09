@@ -63,6 +63,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val mainActivityStart = System.currentTimeMillis()
         OmniLog.d(TAG, "MainActivity onCreate start")
+        setTheme(StartupThemeResolver.resolveSplashTheme(this))
         applyResponsiveOrientation()
         super.onCreate(savedInstanceState)
         val channelStart = System.currentTimeMillis()
