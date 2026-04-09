@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ui/theme/app_theme_controller.dart';
 import 'package:ui/theme/app_theme_mode.dart';
 import 'package:ui/theme/theme_context.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class ThemeModeSettingCard extends ConsumerWidget {
   const ThemeModeSettingCard({
@@ -16,55 +17,23 @@ class ThemeModeSettingCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final palette = context.omniPalette;
     final mode = ref.watch(appThemeModeProvider);
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.surfacePrimary,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: palette.borderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: palette.shadowColor.withValues(
-              alpha: context.isDarkTheme ? 0.52 : 0.10,
-            ),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: palette.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 12,
-              color: palette.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 14),
-          _ThemeModeSlider(
-            value: mode,
-            onChanged: (nextMode) {
-              ref.read(appThemeModeProvider.notifier).setThemeMode(nextMode);
-            },
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SettingsSectionTitle(
+          label: title,
+          subtitle: subtitle,
+          bottomPadding: 10,
+        ),
+        _ThemeModeSlider(
+          value: mode,
+          onChanged: (nextMode) {
+            ref.read(appThemeModeProvider.notifier).setThemeMode(nextMode);
+          },
+        ),
+      ],
     );
   }
 }
@@ -112,15 +81,6 @@ class _ThemeModeSlider extends StatelessWidget {
                     color: palette.segmentThumb,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: palette.borderStrong),
-                    boxShadow: [
-                      BoxShadow(
-                        color: palette.shadowColor.withValues(
-                          alpha: context.isDarkTheme ? 0.48 : 0.12,
-                        ),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
                   ),
                 ),
               ),

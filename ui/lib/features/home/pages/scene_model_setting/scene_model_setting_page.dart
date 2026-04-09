@@ -9,6 +9,7 @@ import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 const double _kSceneSelectionPopupMaxHeight = 420;
 
@@ -121,24 +122,12 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       _isDarkTheme ? context.omniPalette.pageBackground : AppColors.background;
   Color get _cardColor =>
       _isDarkTheme ? context.omniPalette.surfacePrimary : Colors.white;
-  Color get _surfaceColor => _isDarkTheme
-      ? context.omniPalette.surfaceSecondary
-      : const Color(0xFFF8FAFC);
   Color get _primaryTextColor =>
       _isDarkTheme ? context.omniPalette.textPrimary : AppColors.text;
   Color get _secondaryTextColor =>
       _isDarkTheme ? context.omniPalette.textSecondary : AppColors.text70;
   Color get _tertiaryTextColor =>
       _isDarkTheme ? context.omniPalette.textTertiary : AppColors.text50;
-  List<BoxShadow>? get _cardShadow => _isDarkTheme
-      ? [
-          BoxShadow(
-            color: context.omniPalette.shadowColor.withValues(alpha: 0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ]
-      : [AppColors.boxShadow];
 
   String _sceneDisplayName(String sceneId) {
     return _sceneDisplayNameMap[sceneId] ?? sceneId;
@@ -452,19 +441,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   }
 
   Widget _buildCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(10),
-        border: _isDarkTheme
-            ? Border.all(color: context.omniPalette.borderSubtle)
-            : null,
-        boxShadow: _cardShadow,
-      ),
-      child: child,
-    );
+    return SizedBox(width: double.infinity, child: child);
   }
 
   String _selectionLabel(SceneCatalogItem scene) {
@@ -482,17 +459,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   Widget _buildSceneRow(SceneCatalogItem scene) {
     final isSaving = _isSavingScene(scene.sceneId);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: _surfaceColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: _isDarkTheme
-              ? context.omniPalette.borderSubtle
-              : const Color(0x14000000),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           Expanded(
@@ -595,44 +563,37 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
                 children: [
+                  const SettingsSectionTitle(
+                    label: '场景映射',
+                    subtitle: '按场景绑定 Provider 与模型，未绑定的场景会继续使用默认模型。',
+                  ),
                   _buildCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '场景与模型映射',
-                                style: TextStyle(
-                                  color: _primaryTextColor,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  fontFamily: 'PingFang SC',
-                                ),
-                              ),
+                        if (_showManualRefreshButton)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: OutlinedButton.icon(
+                              onPressed: _isRefreshingModels
+                                  ? null
+                                  : _refreshProviderModels,
+                              icon: _isRefreshingModels
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.refresh, size: 16),
+                              label: const Text('刷新模型列表'),
                             ),
-                            if (_showManualRefreshButton)
-                              OutlinedButton.icon(
-                                onPressed: _isRefreshingModels
-                                    ? null
-                                    : _refreshProviderModels,
-                                icon: _isRefreshingModels
-                                    ? const SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.refresh, size: 16),
-                                label: const Text('刷新模型列表'),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
+                          ),
+                        if (_showManualRefreshButton)
+                          const SizedBox(height: 12),
                         Text(
                           '点击右侧按钮后，可按 Provider 搜索、折叠并选择模型；顶部搜索框固定不随列表滚动。',
                           style: TextStyle(
@@ -664,8 +625,12 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                               final scene = _orderedCatalog[index];
                               return _buildSceneRow(scene);
                             },
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 8),
+                            separatorBuilder: (_, _) => Divider(
+                              height: 20,
+                              thickness: 0.6,
+                              color: context.omniPalette.borderSubtle
+                                  .withValues(alpha: 0.9),
+                            ),
                           ),
                       ],
                     ),

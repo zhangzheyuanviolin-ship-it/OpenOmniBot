@@ -6,6 +6,7 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class RemoteMcpServersPage extends StatefulWidget {
   const RemoteMcpServersPage({super.key});
@@ -180,12 +181,15 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
           ? _buildEmpty()
           : RefreshIndicator(
               onRefresh: _loadServers,
-              child: ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemBuilder: (context, index) =>
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+                children: [
+                  const SettingsSectionTitle(label: '远端服务'),
+                  for (int index = 0; index < _servers.length; index++) ...[
                     _buildServerCard(_servers[index]),
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemCount: _servers.length,
+                    if (index != _servers.length - 1) const Divider(height: 24),
+                  ],
+                ],
               ),
             ),
     );
@@ -219,103 +223,74 @@ class _RemoteMcpServersPageState extends State<RemoteMcpServersPage> {
   }
 
   Widget _buildServerCard(RemoteMcpServer server) {
-    final palette = context.omniPalette;
     final busy = _busyIds.contains(server.id);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: context.isDarkTheme
-            ? Border.all(color: palette.borderSubtle)
-            : null,
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(alpha: 0.18),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : [AppColors.boxShadow],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      server.name,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: context.isDarkTheme
-                            ? palette.textPrimary
-                            : AppColors.text,
-                      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    server.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      server.endpointUrl,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: context.isDarkTheme
-                            ? palette.textTertiary
-                            : AppColors.text50,
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    server.endpointUrl,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.omniPalette.textSecondary,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Switch(
-                value: server.enabled,
-                onChanged: busy
-                    ? null
-                    : (value) => _toggleServer(server, value),
+            ),
+            Switch(
+              value: server.enabled,
+              onChanged: busy ? null : (value) => _toggleServer(server, value),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _MetaChip(label: _healthLabel(server.lastHealth)),
+            _MetaChip(label: '工具 ${server.toolCount}'),
+            if ((server.lastError ?? '').isNotEmpty)
+              _MetaChip(
+                label: server.lastError!,
+                color: AppColors.alertRed.withValues(alpha: 0.08),
+                textColor: AppColors.alertRed,
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MetaChip(label: _healthLabel(server.lastHealth)),
-              _MetaChip(label: '工具 ${server.toolCount}'),
-              if ((server.lastError ?? '').isNotEmpty)
-                _MetaChip(
-                  label: server.lastError!,
-                  color: AppColors.alertRed.withValues(alpha: 0.08),
-                  textColor: AppColors.alertRed,
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              TextButton(
-                onPressed: busy ? null : () => _refreshTools(server),
-                child: const Text('刷新工具'),
-              ),
-              TextButton(
-                onPressed: busy
-                    ? null
-                    : () => _showServerEditor(server: server),
-                child: const Text('编辑'),
-              ),
-              const Spacer(),
-              TextButton(
-                onPressed: busy ? null : () => _deleteServer(server),
-                child: const Text('删除'),
-              ),
-            ],
-          ),
-        ],
-      ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            TextButton(
+              onPressed: busy ? null : () => _refreshTools(server),
+              child: const Text('刷新工具'),
+            ),
+            TextButton(
+              onPressed: busy ? null : () => _showServerEditor(server: server),
+              child: const Text('编辑'),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: busy ? null : () => _deleteServer(server),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

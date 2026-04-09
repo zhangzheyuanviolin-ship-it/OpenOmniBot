@@ -7,6 +7,7 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class _EnvironmentDefinition {
   const _EnvironmentDefinition({
@@ -142,10 +143,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   Color get _pageBackground => _isDarkTheme
       ? context.omniPalette.pageBackground
       : const Color(0xFFF6F8FA);
-  Color get _cardColor =>
-      _isDarkTheme ? context.omniPalette.surfacePrimary : Colors.white;
-  Color get _cardBorderColor =>
-      _isDarkTheme ? context.omniPalette.borderSubtle : Colors.transparent;
   Color get _primaryTextColor =>
       _isDarkTheme ? context.omniPalette.textPrimary : AppColors.text;
   Color get _secondaryTextColor => _isDarkTheme
@@ -156,15 +153,6 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   Color get _mutedSurfaceColor => _isDarkTheme
       ? context.omniPalette.surfaceSecondary
       : const Color(0xFFF8FAFC);
-  List<BoxShadow>? get _cardShadow => _isDarkTheme
-      ? [
-          BoxShadow(
-            color: context.omniPalette.shadowColor.withValues(alpha: 0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ]
-      : [AppColors.boxShadow];
 
   @override
   void initState() {
@@ -906,27 +894,12 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   }
 
   Widget _buildSectionCard({required String title, required Widget child}) {
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _cardBorderColor),
-        boxShadow: _cardShadow,
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: _primaryTextColor,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 14),
+          SettingsSectionTitle(label: title, bottomPadding: 10),
           child,
         ],
       ),

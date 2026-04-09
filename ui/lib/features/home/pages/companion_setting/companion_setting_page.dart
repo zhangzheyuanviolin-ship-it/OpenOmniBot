@@ -7,6 +7,7 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/image_util.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 /// 应用权限授权页面
 class CompanionSettingPage extends StatefulWidget {
@@ -112,26 +113,6 @@ class _CompanionSettingPageState extends State<CompanionSettingPage> {
     }
   }
 
-  BoxDecoration _buildCardDecoration() {
-    final palette = context.omniPalette;
-    return BoxDecoration(
-      color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
-      borderRadius: const BorderRadius.all(Radius.circular(8)),
-      border: context.isDarkTheme
-          ? Border.all(color: palette.borderSubtle)
-          : null,
-      boxShadow: context.isDarkTheme
-          ? [
-              BoxShadow(
-                color: palette.shadowColor.withValues(alpha: 0.18),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ]
-          : null,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
@@ -143,77 +124,71 @@ class _CompanionSettingPageState extends State<CompanionSettingPage> {
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: _buildCardDecoration(),
-                child: Center(
-                  child: Column(
-                    children: [
-                      SvgPicture.asset(
-                        height: 24,
-                        width: 24,
-                        'assets/home/companion_setting_icon.svg',
+              const SettingsSectionTitle(label: '权限说明'),
+              Center(
+                child: Column(
+                  children: [
+                    SvgPicture.asset(
+                      height: 24,
+                      width: 24,
+                      'assets/home/companion_setting_icon.svg',
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '陪伴权限管理',
+                      style: TextStyle(
+                        color: context.isDarkTheme
+                            ? palette.textPrimary
+                            : AppColors.text,
+                        fontSize: 20,
+                        fontFamily: 'PingFang SC',
+                        fontWeight: FontWeight.w500,
+                        height: 1.10,
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '陪伴权限管理',
+                    ),
+                    const SizedBox(height: 12),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 235),
+                      child: Text(
+                        '关闭对应的授权后，小万仍会显示，但不会展示任务执行内容',
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           color: context.isDarkTheme
-                              ? palette.textPrimary
-                              : AppColors.text,
-                          fontSize: 20,
+                              ? palette.textSecondary
+                              : const Color(0xFF999999),
+                          fontSize: 14,
                           fontFamily: 'PingFang SC',
-                          fontWeight: FontWeight.w500,
-                          height: 1.10,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Container(
-                        constraints: BoxConstraints(maxWidth: 235),
-                        child: Text(
-                          '关闭对应的授权后，小万仍会显示，但不会展示任务执行内容',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: context.isDarkTheme
-                                ? palette.textSecondary
-                                : const Color(0xFF999999),
-                            fontSize: 14,
-                            fontFamily: 'PingFang SC',
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
+              const SettingsSectionTitle(label: '授权应用'),
               if (_isLoading)
-                SizedBox(
+                const SizedBox(
                   height: 140,
                   child: Center(child: CircularProgressIndicator()),
                 )
               else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: _buildCardDecoration(),
-                  child: Column(
-                    children: [
-                      ListView.builder(
-                        physics: NeverScrollableScrollPhysics(),
-                        shrinkWrap: true,
-                        itemCount: _appInfos.length,
-                        itemBuilder: (context, index) {
-                          final appInfo = _appInfos[index];
-                          return _buildListItem(appInfo, index);
-                        },
-                      ),
+                Column(
+                  children: [
+                    for (int index = 0; index < _appInfos.length; index++) ...[
+                      _buildListItem(_appInfos[index], index),
+                      if (index != _appInfos.length - 1)
+                        Divider(
+                          height: 1,
+                          thickness: 0.6,
+                          color: palette.borderSubtle.withValues(alpha: 0.92),
+                        ),
                     ],
-                  ),
+                  ],
                 ),
             ],
           ),
@@ -225,8 +200,8 @@ class _CompanionSettingPageState extends State<CompanionSettingPage> {
   Widget _buildListItem(AppInfo appInfo, int index) {
     return Padding(
       padding: EdgeInsets.only(
-        top: index == 0 ? 12 : 7,
-        bottom: index == _appInfos.length - 1 ? 12 : 7,
+        top: index == 0 ? 2 : 8,
+        bottom: index == _appInfos.length - 1 ? 2 : 8,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,

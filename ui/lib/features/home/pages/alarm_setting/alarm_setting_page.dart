@@ -7,6 +7,7 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class AlarmSettingPage extends StatefulWidget {
   const AlarmSettingPage({super.key});
@@ -150,14 +151,22 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
           : SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const SettingsSectionTitle(label: '铃声来源'),
                     _buildSourceCard(),
-                    const SizedBox(height: 10),
-                    if (_source == _sourceLocalMp3) _buildLocalFileCard(),
-                    if (_source == _sourceRemoteMp3) _buildRemoteUrlCard(),
+                    if (_source == _sourceLocalMp3) ...[
+                      const SizedBox(height: 18),
+                      const SettingsSectionTitle(label: '本地文件'),
+                      _buildLocalFileCard(),
+                    ],
+                    if (_source == _sourceRemoteMp3) ...[
+                      const SizedBox(height: 18),
+                      const SettingsSectionTitle(label: '远程地址'),
+                      _buildRemoteUrlCard(),
+                    ],
                     const Spacer(),
                     SizedBox(
                       width: double.infinity,
@@ -179,43 +188,26 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
   }
 
   Widget _buildSourceCard() {
-    final palette = context.omniPalette;
-    return Container(
-      decoration: BoxDecoration(
-        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: context.isDarkTheme
-            ? Border.all(color: palette.borderSubtle)
-            : null,
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(alpha: 0.16),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : [AppColors.boxShadow],
-      ),
-      child: Column(
-        children: [
-          _buildSourceTile(
-            value: _sourceDefault,
-            title: '系统默认铃声',
-            subtitle: '无需额外配置，兼容性最好',
-          ),
-          _buildSourceTile(
-            value: _sourceLocalMp3,
-            title: '本地 mp3',
-            subtitle: '选择手机内 mp3 作为闹钟铃声',
-          ),
-          _buildSourceTile(
-            value: _sourceRemoteMp3,
-            title: 'mp3 直链',
-            subtitle: '使用 http(s) 直链播放在线 mp3',
-          ),
-        ],
-      ),
+    return Column(
+      children: [
+        _buildSourceTile(
+          value: _sourceDefault,
+          title: '系统默认铃声',
+          subtitle: '无需额外配置，兼容性最好',
+        ),
+        const Divider(height: 1),
+        _buildSourceTile(
+          value: _sourceLocalMp3,
+          title: '本地 mp3',
+          subtitle: '选择手机内 mp3 作为闹钟铃声',
+        ),
+        const Divider(height: 1),
+        _buildSourceTile(
+          value: _sourceRemoteMp3,
+          title: 'mp3 直链',
+          subtitle: '使用 http(s) 直链播放在线 mp3',
+        ),
+      ],
     );
   }
 
@@ -225,32 +217,73 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
     required String subtitle,
   }) {
     final palette = context.omniPalette;
-    return RadioListTile<String>(
-      value: value,
-      groupValue: _source,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-      activeColor: AppColors.primaryBlue,
-      title: Text(
-        title,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
+    final isSelected = _source == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _source = value;
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Radio<String>(
+                value: value,
+                groupValue: _source,
+                activeColor: AppColors.primaryBlue,
+                onChanged: (next) {
+                  if (next == null) return;
+                  setState(() {
+                    _source = next;
+                  });
+                },
+              ),
+              const SizedBox(width: 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: context.isDarkTheme
+                            ? palette.textPrimary
+                            : AppColors.text,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.isDarkTheme
+                            ? palette.textSecondary
+                            : AppColors.text70,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSelected)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Icon(
+                    Icons.check_rounded,
+                    size: 16,
+                    color: AppColors.primaryBlue,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      subtitle: Text(
-        subtitle,
-        style: TextStyle(
-          fontSize: 12,
-          color: context.isDarkTheme ? palette.textSecondary : AppColors.text70,
-        ),
-      ),
-      onChanged: (next) {
-        if (next == null) return;
-        setState(() {
-          _source = next;
-        });
-      },
     );
   }
 
@@ -258,25 +291,8 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
     final palette = context.omniPalette;
     final displayPath = _localPath.isEmpty ? '未选择文件' : _localPath;
 
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: context.isDarkTheme
-            ? Border.all(color: palette.borderSubtle)
-            : null,
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(alpha: 0.16),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : [AppColors.boxShadow],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -316,25 +332,8 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
 
   Widget _buildRemoteUrlCard() {
     final palette = context.omniPalette;
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: context.isDarkTheme
-            ? Border.all(color: palette.borderSubtle)
-            : null,
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(alpha: 0.16),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : [AppColors.boxShadow],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

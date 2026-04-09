@@ -10,6 +10,7 @@ import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 const String _kArrowBigDownSvg = '''
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -113,15 +114,6 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         ? context.omniPalette.borderSubtle
         : const Color(0x1A000000),
   );
-  List<BoxShadow>? get _cardShadow => _isDarkTheme
-      ? [
-          BoxShadow(
-            color: context.omniPalette.shadowColor.withValues(alpha: 0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ]
-      : [AppColors.boxShadow];
 
   List<_ProviderModelItem> get _modelItems {
     final items = <_ProviderModelItem>[];
@@ -657,19 +649,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   }
 
   Widget _buildCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(10),
-        border: _isDarkTheme
-            ? Border.all(color: context.omniPalette.borderSubtle)
-            : null,
-        boxShadow: _cardShadow,
-      ),
-      child: child,
-    );
+    return SizedBox(width: double.infinity, child: child);
   }
 
   InputDecoration _buildInputDecoration({
@@ -818,19 +798,20 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                 ),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: _cardColor,
-                    borderRadius: BorderRadius.circular(4),
-                    border: _isDarkTheme
-                        ? Border.all(color: context.omniPalette.borderSubtle)
-                        : null,
-                    boxShadow: _cardShadow,
+                    color: _surfaceColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isDarkTheme
+                          ? context.omniPalette.borderSubtle
+                          : const Color(0x14000000),
+                    ),
                   ),
                   child: Material(
                     color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(12),
                     child: InkWell(
                       onTap: () {},
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -946,7 +927,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$displayName 配置',
+                        displayName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -1013,8 +994,12 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
                 children: [
+                  const SettingsSectionTitle(
+                    label: 'Provider 配置',
+                    subtitle: '新增、切换并维护模型服务提供商的名称、地址与密钥。',
+                  ),
                   _buildCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1115,7 +1100,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 18),
+                  const SettingsSectionTitle(
+                    label: '模型列表',
+                    subtitle: '支持手动补充模型，也可从当前 Provider 拉取远端模型清单。',
+                  ),
                   _buildCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1123,28 +1112,14 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         Row(
                           children: [
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '模型列表',
-                                    style: TextStyle(
-                                      color: _primaryTextColor,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: 'PingFang SC',
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '共 ${modelItems.length} 个模型',
-                                    style: TextStyle(
-                                      color: _secondaryTextColor,
-                                      fontSize: 12,
-                                      fontFamily: 'PingFang SC',
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                '共 ${modelItems.length} 个模型',
+                                style: TextStyle(
+                                  color: _secondaryTextColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'PingFang SC',
+                                ),
                               ),
                             ),
                             _buildModelActionButton(

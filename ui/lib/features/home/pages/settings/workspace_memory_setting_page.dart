@@ -9,6 +9,7 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class WorkspaceMemorySettingPage extends StatefulWidget {
   const WorkspaceMemorySettingPage({super.key});
@@ -216,8 +217,9 @@ class _WorkspaceMemorySettingPageState
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
               children: [
+                const SettingsSectionTitle(label: '记忆能力'),
                 _buildSwitchCard(
                   title: '记忆嵌入检索',
                   subtitle: _embeddingConfig?.configured == true
@@ -232,7 +234,7 @@ class _WorkspaceMemorySettingPageState
                     child: const Text('去场景模型配置记忆嵌入模型'),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const Divider(height: 24),
                 _buildSwitchCard(
                   title: '夜间记忆整理（22:00）',
                   subtitle:
@@ -247,14 +249,15 @@ class _WorkspaceMemorySettingPageState
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 18),
+                const SettingsSectionTitle(label: '文档内容'),
                 _buildEditorCard(
                   title: 'SOUL.md（Agent 灵魂）',
                   controller: _soulController,
                   saving: _savingSoul,
                   onSave: _saveSoul,
                 ),
-                const SizedBox(height: 12),
+                const Divider(height: 24),
                 _buildEditorCard(
                   title: 'MEMORY.md（长期记忆）',
                   controller: _memoryController,
@@ -274,24 +277,8 @@ class _WorkspaceMemorySettingPageState
     Widget? footer,
   }) {
     final palette = context.omniPalette;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: context.isDarkTheme
-            ? Border.all(color: palette.borderSubtle)
-            : null,
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(alpha: 0.18),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : [AppColors.boxShadow],
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -335,24 +322,8 @@ class _WorkspaceMemorySettingPageState
     required Future<void> Function() onSave,
   }) {
     final palette = context.omniPalette;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: context.isDarkTheme
-            ? Border.all(color: palette.borderSubtle)
-            : null,
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(alpha: 0.18),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : [AppColors.boxShadow],
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

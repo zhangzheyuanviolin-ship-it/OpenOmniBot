@@ -9,6 +9,7 @@ import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 import 'package:ui/widgets/theme_mode_setting_card.dart';
 
 class _AppearanceTextColorPreset {
@@ -454,11 +455,14 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
                 ),
               ),
               const ThemeModeSettingCard(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+              const SettingsSectionTitle(label: '背景来源'),
               _buildSourceCard(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+              const SettingsSectionTitle(label: '效果预览'),
               _buildPreviewCard(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+              const SettingsSectionTitle(label: '效果调整'),
               _buildAdjustCard(),
             ],
           ),
@@ -468,40 +472,24 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   }
 
   Widget _buildPreviewCard() {
-    final palette = context.omniPalette;
     return _buildCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(
-                '效果预览',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: palette.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              Wrap(
-                spacing: 8,
-                children: BackgroundPreviewKind.values.map((kind) {
-                  final selected = _previewKind == kind;
-                  final label = kind == BackgroundPreviewKind.chat
-                      ? '聊天'
-                      : '工作区';
-                  return ChoiceChip(
-                    key: ValueKey('background-preview-kind-${kind.name}'),
-                    label: Text(label),
-                    selected: selected,
-                    onSelected: (_) {
-                      setState(() => _previewKind = kind);
-                    },
-                  );
-                }).toList(),
-              ),
-            ],
+          Wrap(
+            spacing: 8,
+            children: BackgroundPreviewKind.values.map((kind) {
+              final selected = _previewKind == kind;
+              final label = kind == BackgroundPreviewKind.chat ? '聊天' : '工作区';
+              return ChoiceChip(
+                key: ValueKey('background-preview-kind-${kind.name}'),
+                label: Text(label),
+                selected: selected,
+                onSelected: (_) {
+                  setState(() => _previewKind = kind);
+                },
+              );
+            }).toList(),
           ),
           const SizedBox(height: 12),
           AppBackgroundPreview(
@@ -612,15 +600,6 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '效果调整',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: palette.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
           _buildSliderRow(
             label: '背景柔化',
             subtitle: '调节图片上方蒙版的柔化程度',
@@ -818,26 +797,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   }
 
   Widget _buildCard({required Widget child}) {
-    final palette = context.omniPalette;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.surfacePrimary,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: palette.borderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: palette.shadowColor.withValues(
-              alpha: context.isDarkTheme ? 0.42 : 0.08,
-            ),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: child,
-    );
+    return SizedBox(width: double.infinity, child: child);
   }
 
   void _scheduleDraftVisualProfileRefresh() {
