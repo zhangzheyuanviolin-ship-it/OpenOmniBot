@@ -219,7 +219,8 @@ class HttpAgentLlmClient(
                 event = listener,
                 explicitApiBase = modelOverride?.apiBase,
                 explicitApiKey = modelOverride?.apiKey,
-                explicitModel = modelOverride?.modelId
+                explicitModel = modelOverride?.modelId,
+                explicitProtocolType = modelOverride?.protocolType
             )
             return streamDone.await()
         } finally {

@@ -22,7 +22,8 @@ data class ModelProviderProfile(
     val sourceType: String = "custom",
     val readOnly: Boolean = false,
     val ready: Boolean = true,
-    val statusText: String? = null
+    val statusText: String? = null,
+    val protocolType: String = "openai_compatible"
 ) {
     fun isConfigured(): Boolean = baseUrl.isNotBlank()
 }

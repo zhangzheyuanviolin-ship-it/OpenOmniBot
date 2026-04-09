@@ -61,7 +61,8 @@ object HttpController {
         val bindingApplied: Boolean,
         val bindingProfileMissing: Boolean,
         val overrideApplied: Boolean,
-        val overrideModel: String?
+        val overrideModel: String?,
+        val protocolType: String = "openai_compatible"
     )
 
     data class ModelAvailabilityCheckResult(
@@ -204,6 +205,7 @@ object HttpController {
         explicitApiBase: String? = null,
         explicitApiKey: String? = null,
         explicitModel: String? = null,
+        explicitProtocolType: String? = null,
         @Suppress("UNUSED_PARAMETER") defaultTransport: ModelSceneRegistry.SceneTransport = ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE
     ): ResolvedSceneRequest {
         val requestedModel = modelOrScene.trim()
@@ -221,6 +223,10 @@ object HttpController {
         val explicitBase = explicitApiBase?.let(::normalizeApiBase)
         val explicitKey = explicitApiKey?.trim()?.takeIf { it.isNotEmpty() }
         val explicitResolvedModel = explicitModel?.trim()?.takeIf { it.isNotEmpty() }
+        val explicitProtocol = explicitProtocolType
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it == "openai_compatible" || it == "anthropic" }
         val providerConfig = if (explicitBase == null) {
             ModelProviderConfigStore.getConfig()
         } else {
@@ -258,6 +264,12 @@ object HttpController {
             providerBase != null -> providerConfig.apiKey.takeIf { it.isNotBlank() }
             else -> null
         }
+        val protocolType = when {
+            explicitProtocol != null -> explicitProtocol
+            explicitBase != null -> "openai_compatible"
+            bindingApplied -> boundProfile?.protocolType?.ifEmpty { "openai_compatible" } ?: "openai_compatible"
+            else -> ModelProviderConfigStore.getEditingProfile().protocolType.ifEmpty { "openai_compatible" }
+        }
         val effectiveTransport = sceneProfile?.transport ?: defaultTransport
         val responseParser = sceneProfile?.responseParser ?: when (effectiveTransport) {
             ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE,
@@ -291,7 +303,8 @@ object HttpController {
             bindingApplied = bindingApplied,
             bindingProfileMissing = bindingProfileMissing,
             overrideApplied = overrideApplied,
-            overrideModel = overrideModel
+            overrideModel = overrideModel,
+            protocolType = protocolType
         )
     }
 
@@ -344,6 +357,495 @@ object HttpController {
         }
         return builder
     }
+
+    // ---- Anthropic protocol helpers ----
+
+    private fun buildAnthropicMessagesUrl(apiBase: String): String {
+        val base = apiBase.trim().trimEnd('/')
+        return if (base.endsWith("/v1", ignoreCase = true)) {
+            "$base/messages"
+        } else {
+            "$base/v1/messages"
+        }
+    }
+
+    private fun hasCacheControl(requestJson: String): Boolean {
+        return requestJson.contains("cache_control")
+    }
+
+    private fun buildAnthropicRequestBuilder(
+        url: String,
+        requestBody: okhttp3.RequestBody,
+        apiKey: String?,
+        hasCacheControl: Boolean = false
+    ): Request.Builder {
+        val builder = Request.Builder()
+            .url(url)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("anthropic-version", "2023-06-01")
+        if (!apiKey.isNullOrBlank()) {
+            builder.addHeader("x-api-key", apiKey.trim())
+        }
+        if (hasCacheControl) {
+            builder.addHeader("anthropic-beta", "prompt-caching-2024-07-31")
+        }
+        builder.post(requestBody)
+        return builder
+    }
+
+    /**
+     * 把内部 OpenAI 风格的 ChatCompletionRequest 转换为 Anthropic Messages API JSON。
+     *
+     * 转换规则：
+     * - system 消息合并提取到顶层 system 字段
+     * - assistant 的 tool_calls → content[].type = "tool_use"
+     * - tool role → user 消息，content[].type = "tool_result"
+     * - tools[].function.parameters → tools[].input_schema
+     * - cache_control 字段原样保留
+     */
+    fun convertToAnthropicRequestJson(request: ChatCompletionRequest): String {
+        val obj = JSONObject()
+        obj.put("model", request.model)
+        obj.put("max_tokens", request.maxTokens ?: request.maxCompletionTokens ?: 4096)
+        request.temperature?.let { obj.put("temperature", it) }
+
+        // Extract system messages → top-level system
+        val systemMessages = request.messages.filter { it.role == "system" }
+        val nonSystemMessages = request.messages.filter { it.role != "system" }
+
+        if (systemMessages.isNotEmpty()) {
+            val systemContent = systemMessages.map { msg ->
+                val contentRaw = msg.content
+                when {
+                    contentRaw == null -> null
+                    contentRaw is kotlinx.serialization.json.JsonPrimitive -> {
+                        val text = contentRaw.content
+                        JSONObject().put("type", "text").put("text", text)
+                    }
+                    contentRaw is kotlinx.serialization.json.JsonArray -> {
+                        // preserve cache_control from array blocks
+                        val arr = JSONArray()
+                        contentRaw.forEach { block ->
+                            if (block is kotlinx.serialization.json.JsonObject) {
+                                arr.put(JSONObject(block.toString()))
+                            }
+                        }
+                        if (arr.length() == 1) arr.optJSONObject(0) else arr
+                    }
+                    else -> JSONObject().put("type", "text").put("text", contentRaw.toString())
+                }
+            }.filterNotNull()
+
+            if (systemContent.size == 1 && systemContent[0] is JSONObject) {
+                val single = systemContent[0] as JSONObject
+                if (!single.has("cache_control")) {
+                    obj.put("system", single.optString("text", ""))
+                } else {
+                    obj.put("system", JSONArray().put(single))
+                }
+            } else {
+                val arr = JSONArray()
+                systemContent.forEach { c ->
+                    when (c) {
+                        is JSONObject -> arr.put(c)
+                        is JSONArray -> for (i in 0 until c.length()) arr.put(c.opt(i))
+                        else -> arr.put(JSONObject().put("type", "text").put("text", c.toString()))
+                    }
+                }
+                obj.put("system", arr)
+            }
+        }
+
+        // Convert messages
+        val messages = JSONArray()
+        for (msg in nonSystemMessages) {
+            when (msg.role) {
+                "assistant" -> {
+                    val toolCalls = msg.toolCalls
+                    if (!toolCalls.isNullOrEmpty()) {
+                        val content = JSONArray()
+                        // optional text part
+                        val textPart = msg.content?.let {
+                            if (it is kotlinx.serialization.json.JsonPrimitive) it.content.trim() else null
+                        }?.takeIf { it.isNotEmpty() }
+                        if (textPart != null) {
+                            content.put(JSONObject().put("type", "text").put("text", textPart))
+                        }
+                        for (tc in toolCalls) {
+                            val inputJson = runCatching { JSONObject(tc.function.arguments) }.getOrElse { JSONObject() }
+                            content.put(
+                                JSONObject()
+                                    .put("type", "tool_use")
+                                    .put("id", tc.id)
+                                    .put("name", tc.function.name)
+                                    .put("input", inputJson)
+                            )
+                        }
+                        messages.put(JSONObject().put("role", "assistant").put("content", content))
+                    } else {
+                        val content = convertContentToAnthropicFormat(msg.content)
+                        if (content != null) {
+                            messages.put(JSONObject().put("role", "assistant").put("content", content))
+                        }
+                    }
+                }
+                "tool" -> {
+                    // merge consecutive tool results into a single user message
+                    val toolResultBlock = JSONObject()
+                        .put("type", "tool_result")
+                        .put("tool_use_id", msg.toolCallId ?: "")
+                        .put("content", msg.content?.let {
+                            if (it is kotlinx.serialization.json.JsonPrimitive) it.content else it.toString()
+                        } ?: "")
+                    // Try to merge with previous user message if it's a tool_result batch
+                    val lastMsg = if (messages.length() > 0) messages.optJSONObject(messages.length() - 1) else null
+                    if (lastMsg != null && lastMsg.optString("role") == "user" &&
+                        lastMsg.opt("content") is JSONArray
+                    ) {
+                        val prevContent = lastMsg.getJSONArray("content")
+                        if (prevContent.length() > 0 &&
+                            prevContent.optJSONObject(0)?.optString("type") == "tool_result"
+                        ) {
+                            prevContent.put(toolResultBlock)
+                        } else {
+                            messages.put(
+                                JSONObject().put("role", "user")
+                                    .put("content", JSONArray().put(toolResultBlock))
+                            )
+                        }
+                    } else {
+                        messages.put(
+                            JSONObject().put("role", "user")
+                                .put("content", JSONArray().put(toolResultBlock))
+                        )
+                    }
+                }
+                else -> {
+                    val content = convertContentToAnthropicFormat(msg.content)
+                    if (content != null) {
+                        messages.put(JSONObject().put("role", msg.role).put("content", content))
+                    }
+                }
+            }
+        }
+        obj.put("messages", messages)
+
+        // Convert tools
+        if (request.tools.isNotEmpty()) {
+            val tools = JSONArray()
+            for (tool in request.tools) {
+                val f = tool.function
+                val toolObj = JSONObject()
+                    .put("name", f.name)
+                if (!f.description.isNullOrBlank()) toolObj.put("description", f.description)
+                val params = f.parameters
+                if (params != null) {
+                    toolObj.put("input_schema", JSONObject(params.toString()))
+                } else {
+                    toolObj.put("input_schema", JSONObject().put("type", "object").put("properties", JSONObject()))
+                }
+                tools.put(toolObj)
+            }
+            obj.put("tools", tools)
+        }
+
+        if (request.stream) {
+            obj.put("stream", true)
+        }
+
+        return obj.toString()
+    }
+
+    private fun convertContentToAnthropicFormat(content: JsonElement?): Any? {
+        return when {
+            content == null -> null
+            content is kotlinx.serialization.json.JsonPrimitive -> content.content
+            content is kotlinx.serialization.json.JsonArray -> {
+                val arr = JSONArray()
+                content.forEach { block ->
+                    if (block is kotlinx.serialization.json.JsonObject) {
+                        arr.put(JSONObject(block.toString()))
+                    }
+                }
+                arr
+            }
+            else -> content.toString()
+        }
+    }
+
+    /**
+     * 解析 Anthropic /v1/messages 非流式响应，转换为内部 SceneChatCompletionResponse。
+     */
+    fun parseAnthropicResponse(
+        body: String?,
+        parser: ModelSceneRegistry.ResponseParser,
+        routeTag: String?
+    ): SceneChatCompletionResponse {
+        return try {
+            val json = JSONObject(body ?: "{}")
+            if (json.has("error")) {
+                val errMsg = json.optJSONObject("error")?.optString("message", "Anthropic error") ?: "Anthropic error"
+                return buildFailureSceneResponse(
+                    code = "400",
+                    message = errMsg,
+                    parser = parser,
+                    routeTag = routeTag,
+                    rawResponseBody = body
+                )
+            }
+            val contentArray = json.optJSONArray("content") ?: JSONArray()
+            val textBuilder = StringBuilder()
+            val toolCalls = mutableListOf<AssistantToolCall>()
+            for (i in 0 until contentArray.length()) {
+                val block = contentArray.optJSONObject(i) ?: continue
+                when (block.optString("type")) {
+                    "text" -> textBuilder.append(block.optString("text", ""))
+                    "tool_use" -> {
+                        val inputObj = block.optJSONObject("input") ?: JSONObject()
+                        toolCalls.add(
+                            AssistantToolCall(
+                                id = block.optString("id", "tool_${i}"),
+                                type = "function",
+                                function = AssistantToolCallFunction(
+                                    name = block.optString("name", ""),
+                                    arguments = inputObj.toString()
+                                )
+                            )
+                        )
+                    }
+                }
+            }
+            val stopReason = json.optString("stop_reason", "").takeIf { it.isNotEmpty() }
+            SceneChatCompletionResponse(
+                success = true,
+                code = "200",
+                message = "success",
+                parser = parser,
+                route = routeTag,
+                content = textBuilder.toString(),
+                finishReason = stopReason,
+                toolCalls = toolCalls,
+                rawResponseBody = body
+            )
+        } catch (e: Exception) {
+            buildFailureSceneResponse(
+                code = "500",
+                message = "Anthropic parse error: ${e.message}",
+                parser = parser,
+                routeTag = routeTag,
+                rawResponseBody = body
+            )
+        }
+    }
+
+    /**
+     * 包装一个 EventSourceListener，将 Anthropic SSE 事件实时翻译为 OpenAI-style chunks
+     * 后转发给 outer，使上层 AgentLlmStreamAccumulator 无需修改。
+     */
+    fun wrapAnthropicListener(outer: EventSourceListener): EventSourceListener {
+        return object : EventSourceListener() {
+            // per-stream state
+            private val toolUseBlocks = mutableMapOf<Int, JSONObject>() // index → {id, name}
+            private val toolArgBuffers = mutableMapOf<Int, StringBuilder>() // index → partial json
+
+            override fun onOpen(eventSource: EventSource, response: okhttp3.Response) {
+                outer.onOpen(eventSource, response)
+            }
+
+            override fun onEvent(
+                eventSource: EventSource,
+                id: String?,
+                type: String?,
+                data: String
+            ) {
+                if (data == "[DONE]") {
+                    outer.onEvent(eventSource, id, type, "[DONE]")
+                    return
+                }
+                val json = runCatching { JSONObject(data) }.getOrNull() ?: return
+                val eventType = type?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: json.optString("type").trim().takeIf { it.isNotEmpty() }
+                if (eventType == null) {
+                    when {
+                        json.has("choices") -> {
+                            // Some providers may return OpenAI-style chunks on Anthropic-compatible route.
+                            outer.onEvent(eventSource, id, type, data)
+                        }
+                        json.has("text") -> {
+                            val text = json.optString("text", "")
+                            if (text.isNotEmpty()) {
+                                outer.onEvent(
+                                    eventSource,
+                                    id,
+                                    type,
+                                    buildOpenAIChunk(
+                                        deltaJson = JSONObject().put("content", text),
+                                        finishReason = null
+                                    )
+                                )
+                            }
+                        }
+                    }
+                    return
+                }
+                when (eventType) {
+                    "content_block_start" -> {
+                        val index = json.optInt("index", 0)
+                        val block = json.optJSONObject("content_block") ?: return
+                        when (block.optString("type")) {
+                            "tool_use" -> {
+                                toolUseBlocks[index] = JSONObject()
+                                    .put("id", block.optString("id", "tool_$index"))
+                                    .put("name", block.optString("name", ""))
+                                toolArgBuffers[index] = StringBuilder()
+                                // emit tool_call header chunk
+                                val chunk = buildOpenAIChunk(
+                                    deltaJson = JSONObject()
+                                        .put("tool_calls", JSONArray().put(
+                                            JSONObject()
+                                                .put("index", index)
+                                                .put("id", block.optString("id", "tool_$index"))
+                                                .put("type", "function")
+                                                .put("function", JSONObject()
+                                                    .put("name", block.optString("name", ""))
+                                                    .put("arguments", ""))
+                                        )),
+                                    finishReason = null
+                                )
+                                outer.onEvent(eventSource, id, type, chunk)
+                            }
+                            "text" -> {
+                                val text = block.optString("text", "")
+                                if (text.isNotEmpty()) {
+                                    val chunk = buildOpenAIChunk(
+                                        deltaJson = JSONObject().put("content", text),
+                                        finishReason = null
+                                    )
+                                    outer.onEvent(eventSource, id, type, chunk)
+                                }
+                            }
+                        }
+                    }
+                    "content_block_delta" -> {
+                        val index = json.optInt("index", 0)
+                        val delta = json.optJSONObject("delta") ?: return
+                        when (delta.optString("type")) {
+                            "text_delta" -> {
+                                val text = delta.optString("text", "")
+                                val chunk = buildOpenAIChunk(
+                                    deltaJson = JSONObject().put("content", text),
+                                    finishReason = null
+                                )
+                                outer.onEvent(eventSource, id, type, chunk)
+                            }
+                            "input_json_delta" -> {
+                                val partialJson = delta.optString("partial_json", "")
+                                toolArgBuffers[index]?.append(partialJson)
+                                val chunk = buildOpenAIChunk(
+                                    deltaJson = JSONObject()
+                                        .put("tool_calls", JSONArray().put(
+                                            JSONObject()
+                                                .put("index", index)
+                                                .put("function", JSONObject().put("arguments", partialJson))
+                                        )),
+                                    finishReason = null
+                                )
+                                outer.onEvent(eventSource, id, type, chunk)
+                            }
+                            "thinking_delta" -> {
+                                val thinking = delta.optString("thinking", "")
+                                if (thinking.isNotEmpty()) {
+                                    val chunk = buildOpenAIChunk(
+                                        deltaJson = JSONObject().put("reasoning_content", thinking),
+                                        finishReason = null
+                                    )
+                                    outer.onEvent(eventSource, id, type, chunk)
+                                }
+                            }
+                        }
+                    }
+                    "message_delta" -> {
+                        val delta = json.optJSONObject("delta") ?: return
+                        val stopReason = delta.optString("stop_reason", "").takeIf { it.isNotEmpty() }
+                        if (stopReason != null) {
+                            val finishReason = if (stopReason == "tool_use") "tool_calls" else stopReason
+                            val chunk = buildOpenAIChunk(
+                                deltaJson = JSONObject(),
+                                finishReason = finishReason
+                            )
+                            outer.onEvent(eventSource, id, type, chunk)
+                        }
+                    }
+                    "message_stop" -> {
+                        outer.onEvent(eventSource, id, type, "[DONE]")
+                    }
+                    "error" -> {
+                        val errMsg = json.optJSONObject("error")?.optString("message", "stream error") ?: "stream error"
+                        outer.onFailure(eventSource, RuntimeException("Anthropic stream error: $errMsg"), null)
+                    }
+                    "completion" -> {
+                        val completion = json.optString("completion", "")
+                        if (completion.isNotEmpty()) {
+                            val chunk = buildOpenAIChunk(
+                                deltaJson = JSONObject().put("content", completion),
+                                finishReason = null
+                            )
+                            outer.onEvent(eventSource, id, type, chunk)
+                        }
+                    }
+                }
+            }
+
+            override fun onClosed(eventSource: EventSource) {
+                outer.onClosed(eventSource)
+            }
+
+            override fun onFailure(
+                eventSource: EventSource,
+                t: Throwable?,
+                response: okhttp3.Response?
+            ) {
+                outer.onFailure(eventSource, t, response)
+            }
+
+            private fun buildOpenAIChunk(deltaJson: JSONObject, finishReason: String?): String {
+                return JSONObject()
+                    .put("choices", JSONArray().put(
+                        JSONObject()
+                            .put("delta", deltaJson)
+                            .put("finish_reason", finishReason)
+                    ))
+                    .toString()
+            }
+        }
+    }
+
+    private suspend fun postAnthropicStreamRequest(
+        resolved: ResolvedSceneRequest,
+        requestJson: String,
+        event: EventSourceListener
+    ): EventSource = withContext(Dispatchers.IO) {
+        val base = normalizeApiBase(resolved.apiBase ?: "")
+            ?: throw IllegalArgumentException("Invalid apiBase for Anthropic")
+        val requestBody = requestJson.toRequestBody("application/json".toMediaType())
+        val request = buildAnthropicRequestBuilder(
+            url = buildAnthropicMessagesUrl(base),
+            requestBody = requestBody,
+            apiKey = resolved.apiKey,
+            hasCacheControl = hasCacheControl(requestJson)
+        )
+            .addHeader("Accept", "text/event-stream")
+            .build()
+        EventSources.createFactory(openAIStreamClient()).newEventSource(
+            request,
+            createLoggingEventListener(
+                "[anthropic stream model=${resolved.resolvedModel}]",
+                wrapAnthropicListener(event)
+            )
+        )
+    }
+
+    // ---- end Anthropic protocol helpers ----
 
     private fun openAIStreamClient(): OkHttpClient {
         return OkHttpClient.Builder()
@@ -656,8 +1158,31 @@ object HttpController {
         apiBase: String?,
         apiKey: String?,
         event: EventSourceListener,
-        routeTag: String? = null
+        routeTag: String? = null,
+        protocolType: String = "openai_compatible"
     ): EventSource = withContext(Dispatchers.IO) {
+        if (protocolType == "anthropic") {
+            val resolved = ResolvedSceneRequest(
+                requestedModel = chatRequest.model,
+                resolvedModel = chatRequest.model,
+                sceneProfile = null,
+                effectiveTransport = ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE,
+                responseParser = ModelSceneRegistry.ResponseParser.TEXT_CONTENT,
+                apiBase = apiBase,
+                apiKey = apiKey,
+                providerProfileId = null,
+                providerProfileName = null,
+                routeTag = routeTag,
+                customApiBaseApplied = !apiBase.isNullOrBlank(),
+                bindingApplied = false,
+                bindingProfileMissing = false,
+                overrideApplied = false,
+                overrideModel = null,
+                protocolType = "anthropic"
+            )
+            val anthropicJson = convertToAnthropicRequestJson(chatRequest.copy(stream = true))
+            return@withContext postAnthropicStreamRequest(resolved, anthropicJson, event)
+        }
         val base = normalizeApiBase(apiBase ?: "")
             ?: throw IllegalArgumentException("Invalid apiBase")
         val requestJson = encodeChatCompletionRequest(chatRequest.copy(stream = true))
@@ -684,6 +1209,17 @@ object HttpController {
         event: EventSourceListener
     ): EventSource = withContext(Dispatchers.IO) {
         prepareLocalProviderIfNeeded(resolved)
+        if (resolved.protocolType == "anthropic") {
+            // Parse the incoming OpenAI JSON back into a request and convert to Anthropic format
+            val parsedRequest = runCatching {
+                val json = completionJson.decodeFromString<ChatCompletionRequest>(requestBodyJson)
+                json.copy(model = resolved.resolvedModel, stream = true)
+            }.getOrElse {
+                return@withContext buildDummyFailureEventSource(event, "Failed to parse request for Anthropic conversion")
+            }
+            val anthropicJson = convertToAnthropicRequestJson(parsedRequest)
+            return@withContext postAnthropicStreamRequest(resolved, anthropicJson, event)
+        }
         val base = normalizeApiBase(resolved.apiBase ?: "")
             ?: throw IllegalArgumentException("Invalid apiBase")
         val requestBody = buildRequestBodyWithResolvedModel(
@@ -706,6 +1242,15 @@ object HttpController {
                 event
             )
         )
+    }
+
+    private fun buildDummyFailureEventSource(event: EventSourceListener, message: String): EventSource {
+        val dummySource = object : EventSource {
+            override fun request(): Request = Request.Builder().url("https://localhost").build()
+            override fun cancel() {}
+        }
+        event.onFailure(dummySource, RuntimeException(message), null)
+        return dummySource
     }
 
     private fun sanitizeShortMessage(raw: String?, maxLen: Int = 200): String {
@@ -754,7 +1299,8 @@ object HttpController {
             apiBase = resolved.apiBase,
             apiKey = resolved.apiKey,
             event = event,
-            routeTag = resolved.routeTag
+            routeTag = resolved.routeTag,
+            protocolType = resolved.protocolType
         )
     }
 
@@ -784,7 +1330,8 @@ object HttpController {
             apiBase = resolved.apiBase,
             apiKey = resolved.apiKey,
             event = event,
-            routeTag = resolved.routeTag
+            routeTag = resolved.routeTag,
+            protocolType = resolved.protocolType
         )
     }
 
@@ -800,13 +1347,15 @@ object HttpController {
         event: EventSourceListener,
         explicitApiBase: String? = null,
         explicitApiKey: String? = null,
-        explicitModel: String? = null
+        explicitModel: String? = null,
+        explicitProtocolType: String? = null
     ): EventSource {
         val resolved = resolveSceneRequest(
             modelOrScene = model,
             explicitApiBase = explicitApiBase,
             explicitApiKey = explicitApiKey,
-            explicitModel = explicitModel
+            explicitModel = explicitModel,
+            explicitProtocolType = explicitProtocolType
         )
         logSceneProfile(resolved)
         return postOpenAIChatCompletionsStreamRequest(
@@ -1044,6 +1593,42 @@ object HttpController {
             )
         }
 
+        if (resolved.protocolType == "anthropic") {
+            val anthropicJson = convertToAnthropicRequestJson(
+                request.copy(model = resolved.resolvedModel, stream = false)
+            )
+            OmniLog.d(TAG, "=== Anthropic Request Debug ===")
+            OmniLog.d(TAG, "URL: ${buildAnthropicMessagesUrl(base)}")
+            OmniLog.d(TAG, "Model: ${resolved.resolvedModel}, hasApiKey=${!resolved.apiKey.isNullOrBlank()}")
+            OmniLog.d(TAG, "Request Body: ${anthropicJson.take(2000)}")
+            OmniLog.d(TAG, "==============================")
+            val requestBody = anthropicJson.toRequestBody("application/json".toMediaType())
+            val requestCall = buildAnthropicRequestBuilder(
+                url = buildAnthropicMessagesUrl(base),
+                requestBody = requestBody,
+                apiKey = resolved.apiKey,
+                hasCacheControl = hasCacheControl(anthropicJson)
+            ).build()
+            val response = OkHttpClient().newCall(requestCall).execute()
+            val responseBody = response.body?.string()
+            OmniLog.d(TAG, "Anthropic Response Status: ${response.code}")
+            logResponseBody("[anthropic model=${resolved.resolvedModel}]", responseBody)
+            if (!response.isSuccessful) {
+                return@withContext buildFailureSceneResponse(
+                    code = response.code.toString(),
+                    message = extractAvailabilityMessage(responseBody),
+                    parser = resolved.responseParser,
+                    routeTag = resolved.routeTag,
+                    rawResponseBody = responseBody
+                )
+            }
+            return@withContext parseAnthropicResponse(
+                body = responseBody,
+                parser = resolved.responseParser,
+                routeTag = resolved.routeTag
+            )
+        }
+
         val url = buildOpenAIChatCompletionsUrl(base)
         val variants = if (retryOnBadRequest) {
             buildSceneRequestVariants(request.copy(model = resolved.resolvedModel, stream = false))
@@ -1205,8 +1790,12 @@ object HttpController {
 
     suspend fun fetchProviderModels(
         apiBase: String,
-        apiKey: String?
+        apiKey: String?,
+        protocolType: String = "openai_compatible"
     ): List<ProviderModelOption> = withContext(Dispatchers.IO) {
+        if (protocolType == "anthropic") {
+            return@withContext emptyList()
+        }
         val normalizedApiBase = normalizeApiBase(apiBase)
             ?: return@withContext emptyList()
         val response = OkHttpClient().newCall(
