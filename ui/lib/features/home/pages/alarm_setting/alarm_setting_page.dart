@@ -4,8 +4,10 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class AlarmSettingPage extends StatefulWidget {
   const AlarmSettingPage({super.key});
@@ -138,30 +140,45 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: const CommonAppBar(title: '闹钟设置', primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const SettingsSectionTitle(label: '铃声来源'),
                     _buildSourceCard(),
-                    const SizedBox(height: 10),
-                    if (_source == _sourceLocalMp3) _buildLocalFileCard(),
-                    if (_source == _sourceRemoteMp3) _buildRemoteUrlCard(),
+                    if (_source == _sourceLocalMp3) ...[
+                      const SizedBox(height: 18),
+                      const SettingsSectionTitle(label: '本地文件'),
+                      _buildLocalFileCard(),
+                    ],
+                    if (_source == _sourceRemoteMp3) ...[
+                      const SizedBox(height: 18),
+                      const SettingsSectionTitle(label: '远程地址'),
+                      _buildRemoteUrlCard(),
+                    ],
                     const Spacer(),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
                         onPressed: _saving ? null : _saveSettings,
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primaryBlue,
-                          foregroundColor: Colors.white,
+                          backgroundColor: context.isDarkTheme
+                              ? palette.accentPrimary
+                              : AppColors.primaryBlue,
+                          foregroundColor: context.isDarkTheme
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : Colors.white,
                           minimumSize: const Size.fromHeight(48),
                         ),
                         child: Text(_saving ? '保存中...' : '保存'),
@@ -175,31 +192,26 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
   }
 
   Widget _buildSourceCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [AppColors.boxShadow],
-      ),
-      child: Column(
-        children: [
-          _buildSourceTile(
-            value: _sourceDefault,
-            title: '系统默认铃声',
-            subtitle: '无需额外配置，兼容性最好',
-          ),
-          _buildSourceTile(
-            value: _sourceLocalMp3,
-            title: '本地 mp3',
-            subtitle: '选择手机内 mp3 作为闹钟铃声',
-          ),
-          _buildSourceTile(
-            value: _sourceRemoteMp3,
-            title: 'mp3 直链',
-            subtitle: '使用 http(s) 直链播放在线 mp3',
-          ),
-        ],
-      ),
+    return Column(
+      children: [
+        _buildSourceTile(
+          value: _sourceDefault,
+          title: '系统默认铃声',
+          subtitle: '无需额外配置，兼容性最好',
+        ),
+        const Divider(height: 1),
+        _buildSourceTile(
+          value: _sourceLocalMp3,
+          title: '本地 mp3',
+          subtitle: '选择手机内 mp3 作为闹钟铃声',
+        ),
+        const Divider(height: 1),
+        _buildSourceTile(
+          value: _sourceRemoteMp3,
+          title: 'mp3 直链',
+          subtitle: '使用 http(s) 直链播放在线 mp3',
+        ),
+      ],
     );
   }
 
@@ -208,58 +220,107 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
     required String title,
     required String subtitle,
   }) {
-    return RadioListTile<String>(
-      value: value,
-      groupValue: _source,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-      activeColor: AppColors.primaryBlue,
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          color: AppColors.text,
+    final palette = context.omniPalette;
+    final isSelected = _source == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _source = value;
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Radio<String>(
+                value: value,
+                groupValue: _source,
+                activeColor: context.isDarkTheme
+                    ? palette.accentPrimary
+                    : AppColors.primaryBlue,
+                onChanged: (next) {
+                  if (next == null) return;
+                  setState(() {
+                    _source = next;
+                  });
+                },
+              ),
+              const SizedBox(width: 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: context.isDarkTheme
+                            ? palette.textPrimary
+                            : AppColors.text,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.isDarkTheme
+                            ? palette.textSecondary
+                            : AppColors.text70,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSelected)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Icon(
+                    Icons.check_rounded,
+                    size: 16,
+                    color: context.isDarkTheme
+                        ? palette.accentPrimary
+                        : AppColors.primaryBlue,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(fontSize: 12, color: AppColors.text70),
-      ),
-      onChanged: (next) {
-        if (next == null) return;
-        setState(() {
-          _source = next;
-        });
-      },
     );
   }
 
   Widget _buildLocalFileCard() {
+    final palette = context.omniPalette;
     final displayPath = _localPath.isEmpty ? '未选择文件' : _localPath;
 
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [AppColors.boxShadow],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '本地文件',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: AppColors.text,
+              color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             displayPath,
-            style: const TextStyle(fontSize: 12, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 12,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
           ),
@@ -267,8 +328,14 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
           OutlinedButton(
             onPressed: _pickLocalMp3,
             style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.primaryBlue,
-              side: const BorderSide(color: AppColors.primaryBlue),
+              foregroundColor: context.isDarkTheme
+                  ? palette.accentPrimary
+                  : AppColors.primaryBlue,
+              side: BorderSide(
+                color: context.isDarkTheme
+                    ? palette.accentPrimary
+                    : AppColors.primaryBlue,
+              ),
             ),
             child: const Text('选择 mp3 文件'),
           ),
@@ -278,23 +345,18 @@ class _AlarmSettingPageState extends State<AlarmSettingPage> {
   }
 
   Widget _buildRemoteUrlCard() {
-    return Container(
+    final palette = context.omniPalette;
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [AppColors.boxShadow],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'mp3 直链',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: AppColors.text,
+              color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
             ),
           ),
           const SizedBox(height: 8),

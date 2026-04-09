@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class _EnvironmentDefinition {
   const _EnvironmentDefinition({
@@ -136,6 +138,21 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   }
 
   bool get _canStartSetup => !_isDetecting && _selectedLostCount > 0;
+
+  bool get _isDarkTheme => context.isDarkTheme;
+  Color get _pageBackground => _isDarkTheme
+      ? context.omniPalette.pageBackground
+      : const Color(0xFFF6F8FA);
+  Color get _primaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textPrimary : AppColors.text;
+  Color get _secondaryTextColor => _isDarkTheme
+      ? context.omniPalette.textSecondary
+      : const Color(0xFF64748B);
+  Color get _tertiaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textTertiary : const Color(0xFF475569);
+  Color get _mutedSurfaceColor => _isDarkTheme
+      ? context.omniPalette.surfaceSecondary
+      : const Color(0xFFF8FAFC);
 
   @override
   void initState() {
@@ -437,7 +454,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8FA),
+      backgroundColor: _pageBackground,
       appBar: const CommonAppBar(title: 'Alpine 环境', primary: true),
       body: SafeArea(
         top: false,
@@ -519,8 +536,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
             _isDetecting
                 ? '正在后台检测 Alpine 内常见开发环境的版本信息。'
                 : '已就绪 $readyCount/${_items.length} 项，可直接勾选缺失项并进入 ReTerminal 自动配置。',
-            style: const TextStyle(
-              color: Color(0xFF64748B),
+            style: TextStyle(
+              color: _secondaryTextColor,
               fontSize: 13,
               fontWeight: FontWeight.w500,
               height: 1.6,
@@ -559,10 +576,10 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '打开 Omnibot 时会在后台检查已启用的任务，并在对应 ReTerminal 会话内启动命令，适合常驻服务。',
             style: TextStyle(
-              color: Color(0xFF64748B),
+              color: _secondaryTextColor,
               fontSize: 13,
               fontWeight: FontWeight.w500,
               height: 1.6,
@@ -607,14 +624,18 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: _mutedSurfaceColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(
+                  color: _isDarkTheme
+                      ? context.omniPalette.borderSubtle
+                      : const Color(0xFFE2E8F0),
+                ),
               ),
-              child: const Text(
+              child: Text(
                 '暂无任务。你可以添加例如 `python app.py`、`node server.js`、`./start.sh` 之类的常驻命令。',
                 style: TextStyle(
-                  color: Color(0xFF64748B),
+                  color: _secondaryTextColor,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   height: 1.6,
@@ -647,8 +668,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                 children: [
                   Text(
                     task.name,
-                    style: const TextStyle(
-                      color: AppColors.text,
+                    style: TextStyle(
+                      color: _primaryTextColor,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
@@ -666,6 +687,20 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                         foregroundColor: task.enabled
                             ? const Color(0xFF2563EB)
                             : const Color(0xFF64748B),
+                        darkBackgroundColor: task.enabled
+                            ? Color.lerp(
+                                context.omniPalette.surfaceSecondary,
+                                context.omniPalette.accentPrimary,
+                                0.14,
+                              )
+                            : context.omniPalette.surfaceSecondary,
+                        darkForegroundColor: task.enabled
+                            ? Color.lerp(
+                                context.omniPalette.textPrimary,
+                                context.omniPalette.accentPrimary,
+                                0.38,
+                              )
+                            : context.omniPalette.textSecondary,
                       ),
                       _buildLegendTag(
                         label: task.running ? 'running' : 'idle',
@@ -675,6 +710,20 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                         foregroundColor: task.running
                             ? const Color(0xFF17803D)
                             : const Color(0xFFC2410C),
+                        darkBackgroundColor: task.running
+                            ? Color.lerp(
+                                context.omniPalette.surfaceSecondary,
+                                const Color(0xFF72A778),
+                                0.22,
+                              )
+                            : Color.lerp(
+                                context.omniPalette.surfaceSecondary,
+                                const Color(0xFFB88B61),
+                                0.18,
+                              ),
+                        darkForegroundColor: task.running
+                            ? const Color(0xFFD6E7D6)
+                            : const Color(0xFFE7D2B6),
                       ),
                     ],
                   ),
@@ -696,17 +745,21 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: _mutedSurfaceColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(
+              color: _isDarkTheme
+                  ? context.omniPalette.borderSubtle
+                  : const Color(0xFFE2E8F0),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 task.command,
-                style: const TextStyle(
-                  color: Color(0xFF0F172A),
+                style: TextStyle(
+                  color: _primaryTextColor,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   height: 1.6,
@@ -716,8 +769,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                 const SizedBox(height: 8),
                 Text(
                   '工作目录：$workingDirectory',
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
+                  style: TextStyle(
+                    color: _secondaryTextColor,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
@@ -788,8 +841,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
             children: [
               Text(
                 item.definition.title,
-                style: const TextStyle(
-                  color: AppColors.text,
+                style: TextStyle(
+                  color: _primaryTextColor,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
@@ -797,8 +850,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
               const SizedBox(height: 4),
               Text(
                 item.definition.description,
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
+                style: TextStyle(
+                  color: _secondaryTextColor,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -827,13 +880,27 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                   foregroundColor: item.ready
                       ? const Color(0xFF17803D)
                       : const Color(0xFF2563EB),
+                  darkBackgroundColor: item.ready
+                      ? Color.lerp(
+                          context.omniPalette.surfaceSecondary,
+                          const Color(0xFF72A778),
+                          0.22,
+                        )
+                      : Color.lerp(
+                          context.omniPalette.surfaceSecondary,
+                          const Color(0xFF79808A),
+                          0.16,
+                        ),
+                  darkForegroundColor: item.ready
+                      ? const Color(0xFFD6E7D6)
+                      : const Color(0xFFD7DADF),
                 ),
               const SizedBox(height: 6),
               Text(
                 versionText,
                 textAlign: TextAlign.right,
-                style: const TextStyle(
-                  color: Color(0xFF475569),
+                style: TextStyle(
+                  color: _tertiaryTextColor,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   height: 1.4,
@@ -850,17 +917,28 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     required String label,
     required Color backgroundColor,
     required Color foregroundColor,
+    Color? darkBackgroundColor,
+    Color? darkForegroundColor,
   }) {
+    final resolvedBackgroundColor = context.isDarkTheme
+        ? (darkBackgroundColor ?? context.omniPalette.surfaceSecondary)
+        : backgroundColor;
+    final resolvedForegroundColor = context.isDarkTheme
+        ? (darkForegroundColor ?? context.omniPalette.textSecondary)
+        : foregroundColor;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: resolvedBackgroundColor,
         borderRadius: BorderRadius.circular(999),
+        border: context.isDarkTheme
+            ? Border.all(color: resolvedForegroundColor.withValues(alpha: 0.16))
+            : null,
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: foregroundColor,
+          color: resolvedForegroundColor,
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
@@ -869,26 +947,12 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   }
 
   Widget _buildSectionCard({required String title, required Widget child}) {
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [AppColors.boxShadow],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 14),
+          SettingsSectionTitle(label: title, bottomPadding: 10),
           child,
         ],
       ),

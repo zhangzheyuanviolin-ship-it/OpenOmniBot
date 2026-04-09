@@ -401,10 +401,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     required bool translucent,
     required AppBackgroundVisualProfile visualProfile,
   }) {
+    final palette = context.omniPalette;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: backgroundSurfaceColor(
           translucent: translucent,
+          baseColor: palette.surfacePrimary,
           opacity: translucent ? 0.72 : 1,
         ),
         borderRadius: BorderRadius.circular(24),
@@ -941,7 +943,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                     Positioned.fill(
                       child: AppBackgroundLayer(
                         config: backgroundConfig,
-                        fallbackColor: const Color(0xFFF9FCFF),
+                        fallbackColor: context.omniPalette.previewFallback,
                         layerKey: const ValueKey('chat-page-background'),
                       ),
                     ),

@@ -26,6 +26,7 @@ class LauncherActivity : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(StartupThemeResolver.resolveSplashTheme(this))
         applyResponsiveOrientation()
         super.onCreate(savedInstanceState)
         OmniLog.d(TAG, "LauncherActivity onCreate")

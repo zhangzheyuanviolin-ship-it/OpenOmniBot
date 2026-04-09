@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:ui/services/app_background_service.dart';
+import 'package:ui/theme/theme_context.dart';
 
 enum BackgroundPreviewKind { chat, workspace }
 
@@ -26,6 +27,10 @@ class AppBackgroundLayer extends StatelessWidget {
     final alignment = Alignment(config.focalX, config.focalY);
     final image = _buildImage(alignment);
     final imageScale = config.imageScale.clamp(1.0, 3.0).toDouble();
+    final gradientTail =
+        ThemeData.estimateBrightnessForColor(fallbackColor) == Brightness.dark
+        ? Color.lerp(fallbackColor, const Color(0xFF1B2840), 0.5)!
+        : Color.lerp(fallbackColor, Colors.white, 0.35)!;
 
     return Stack(
       key: layerKey,
@@ -37,10 +42,7 @@ class AppBackgroundLayer extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                fallbackColor,
-                Color.lerp(fallbackColor, Colors.white, 0.35)!,
-              ],
+              colors: [fallbackColor, gradientTail],
             ),
           ),
         ),
@@ -285,9 +287,10 @@ class _AppBackgroundPreviewState extends State<AppBackgroundPreview> {
 
 Color backgroundSurfaceColor({
   required bool translucent,
+  Color baseColor = Colors.white,
   double opacity = 0.78,
 }) {
-  return translucent ? Colors.white.withValues(alpha: opacity) : Colors.white;
+  return translucent ? baseColor.withValues(alpha: opacity) : baseColor;
 }
 
 class _ChatPreviewChrome extends StatelessWidget {
@@ -298,13 +301,18 @@ class _ChatPreviewChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     final textScale = resolvedChatTextScale(config);
     return Column(
       children: [
         Container(
           height: 54,
           decoration: BoxDecoration(
-            color: backgroundSurfaceColor(translucent: true, opacity: 0.72),
+            color: backgroundSurfaceColor(
+              translucent: true,
+              baseColor: palette.surfacePrimary,
+              opacity: 0.72,
+            ),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: visualProfile.islandBorderColor),
           ),
@@ -315,7 +323,11 @@ class _ChatPreviewChrome extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: backgroundSurfaceColor(translucent: true, opacity: 0.7),
+              color: backgroundSurfaceColor(
+                translucent: true,
+                baseColor: palette.surfacePrimary,
+                opacity: 0.7,
+              ),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
@@ -357,6 +369,7 @@ class _ChatPreviewChrome extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: backgroundSurfaceColor(
                     translucent: true,
+                    baseColor: palette.surfacePrimary,
                     opacity: 0.76,
                   ),
                   borderRadius: BorderRadius.circular(22),
@@ -378,12 +391,17 @@ class _WorkspacePreviewChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Column(
       children: [
         Container(
           height: 48,
           decoration: BoxDecoration(
-            color: backgroundSurfaceColor(translucent: true, opacity: 0.74),
+            color: backgroundSurfaceColor(
+              translucent: true,
+              baseColor: palette.surfacePrimary,
+              opacity: 0.74,
+            ),
             borderRadius: BorderRadius.circular(16),
           ),
         ),
@@ -398,6 +416,7 @@ class _WorkspacePreviewChrome extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: backgroundSurfaceColor(
                       translucent: true,
+                      baseColor: palette.surfacePrimary,
                       opacity: 0.7 + index * 0.02,
                     ),
                     borderRadius: BorderRadius.circular(14),
@@ -461,6 +480,7 @@ class _PreviewMessageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Align(
       alignment: alignment,
       child: FractionallySizedBox(
@@ -471,7 +491,11 @@ class _PreviewMessageCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: userStyle
                 ? visualProfile.userBubbleColor
-                : backgroundSurfaceColor(translucent: true, opacity: 0.54),
+                : backgroundSurfaceColor(
+                    translucent: true,
+                    baseColor: palette.surfacePrimary,
+                    opacity: 0.54,
+                  ),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Column(

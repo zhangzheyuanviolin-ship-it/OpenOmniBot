@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
@@ -108,14 +109,16 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   Color _surfaceColor({double opacity = 0.8}) {
     return backgroundSurfaceColor(
       translucent: widget.translucentSurfaces,
+      baseColor: context.omniPalette.surfacePrimary,
       opacity: opacity,
     );
   }
 
   Color _secondarySurfaceColor({double opacity = 0.64}) {
+    final palette = context.omniPalette;
     return widget.translucentSurfaces
-        ? Colors.white.withValues(alpha: opacity)
-        : const Color(0xFFF7F8FA);
+        ? palette.surfaceSecondary.withValues(alpha: opacity)
+        : palette.surfaceSecondary;
   }
 
   @override
@@ -326,28 +329,27 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   }
 
   Widget _buildBreadcrumbHeader() {
+    final palette = context.omniPalette;
     final breadcrumbs = _workspaceBreadcrumbs;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(
+        color: palette.surfacePrimary.withValues(
           alpha: widget.translucentSurfaces ? 0.3 : 0.72,
         ),
-        border: Border(
-          bottom: BorderSide(color: AppColors.text.withValues(alpha: 0.08)),
-        ),
+        border: Border(bottom: BorderSide(color: palette.borderSubtle)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (widget.showHeaderTitle) ...[
-            const Text(
+            Text(
               '工作区',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: AppColors.text,
+                color: palette.textPrimary,
               ),
             ),
             const SizedBox(height: 6),
@@ -355,10 +357,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
           if (breadcrumbs.isEmpty)
             Text(
               '加载工作区中...',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.text.withValues(alpha: 0.55),
-              ),
+              style: TextStyle(fontSize: 12, color: palette.textSecondary),
             )
           else
             Wrap(
@@ -386,13 +385,14 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   }
 
   Widget _buildWorkspaceBreadcrumbChip(_WorkspaceBreadcrumbSegment segment) {
+    final palette = context.omniPalette;
     final labelStyle = TextStyle(
       fontSize: 12,
       fontWeight: segment.isCurrent ? FontWeight.w700 : FontWeight.w500,
-      color: segment.isCurrent ? AppColors.text : const Color(0xFF1F4ED8),
+      color: segment.isCurrent ? palette.textPrimary : palette.accentPrimary,
     );
     return Material(
-      color: segment.isCurrent ? const Color(0xFFEAF3FF) : Colors.transparent,
+      color: segment.isCurrent ? palette.segmentThumb : Colors.transparent,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -508,7 +508,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                           leading: Icon(
                             Icons.arrow_upward_rounded,
                             size: 20,
-                            color: AppColors.text.withValues(alpha: 0.8),
+                            color: context.omniPalette.textSecondary,
                           ),
                           borderRadius: borderRadius,
                           onTap: openParentDirectory,
@@ -575,7 +575,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                       ? Icons.expand_less_rounded
                       : Icons.expand_more_rounded)
                 : Icons.chevron_right_rounded,
-            color: AppColors.text.withValues(alpha: 0.5),
+            color: context.omniPalette.textSecondary,
             size: 18,
           )
         : null;
@@ -639,7 +639,10 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         _iconAssetForEntry(entry, isExpanded: isExpanded),
         width: size,
         height: size,
-        colorFilter: const ColorFilter.mode(AppColors.text, BlendMode.srcIn),
+        colorFilter: ColorFilter.mode(
+          context.omniPalette.textPrimary,
+          BlendMode.srcIn,
+        ),
       );
     }
 
@@ -663,6 +666,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   }
 
   Widget _buildDragFeedback({required String name, required Widget icon}) {
+    final palette = context.omniPalette;
     return Material(
       color: Colors.transparent,
       child: ConstrainedBox(
@@ -685,10 +689,10 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.text,
+                      color: palette.textPrimary,
                       fontFamily: 'PingFang SC',
                     ),
                   ),
@@ -837,6 +841,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   }
 
   Future<void> _showEntryActionSheet(FileSystemEntity entry) async {
+    final palette = context.omniPalette;
     final name = _entryNameFromPath(entry.path);
     final editable = _canEditEntry(entry);
     final action = await showModalBottomSheet<_WorkspaceEntryAction>(
@@ -856,7 +861,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.text.withValues(alpha: 0.15),
+                    color: palette.borderStrong,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -865,10 +870,10 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.text,
+                    color: palette.textPrimary,
                     fontFamily: 'PingFang SC',
                   ),
                 ),
@@ -877,7 +882,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                   '长按左侧图标并拖动到目标文件夹可移动位置',
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.text.withValues(alpha: 0.55),
+                    color: palette.textSecondary,
                     fontFamily: 'PingFang SC',
                   ),
                 ),
@@ -888,14 +893,14 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     tileColor: _secondarySurfaceColor(),
-                    leading: const Icon(
+                    leading: Icon(
                       Icons.edit_outlined,
-                      color: AppColors.text,
+                      color: palette.textPrimary,
                     ),
-                    title: const Text(
+                    title: Text(
                       '编辑',
                       style: TextStyle(
-                        color: AppColors.text,
+                        color: palette.textPrimary,
                         fontWeight: FontWeight.w600,
                         fontFamily: 'PingFang SC',
                       ),
@@ -911,14 +916,14 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   tileColor: _secondarySurfaceColor(),
-                  leading: const Icon(
+                  leading: Icon(
                     Icons.drive_file_rename_outline_rounded,
-                    color: AppColors.text,
+                    color: palette.textPrimary,
                   ),
-                  title: const Text(
+                  title: Text(
                     '重命名',
                     style: TextStyle(
-                      color: AppColors.text,
+                      color: palette.textPrimary,
                       fontWeight: FontWeight.w600,
                       fontFamily: 'PingFang SC',
                     ),
@@ -955,14 +960,14 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   tileColor: _secondarySurfaceColor(),
-                  leading: const Icon(
+                  leading: Icon(
                     Icons.close_rounded,
-                    color: AppColors.text,
+                    color: palette.textPrimary,
                   ),
-                  title: const Text(
+                  title: Text(
                     '取消',
                     style: TextStyle(
-                      color: AppColors.text,
+                      color: palette.textPrimary,
                       fontWeight: FontWeight.w500,
                       fontFamily: 'PingFang SC',
                     ),
@@ -1150,7 +1155,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
           '空文件夹',
           style: TextStyle(
             fontSize: 12,
-            color: AppColors.text.withValues(alpha: 0.45),
+            color: context.omniPalette.textSecondary,
           ),
         ),
       );
@@ -1210,6 +1215,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   }
 
   Widget _buildStatusList({required String message}) {
+    final palette = context.omniPalette;
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
@@ -1218,10 +1224,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
           child: Center(
             child: Text(
               message,
-              style: TextStyle(
-                color: AppColors.text.withValues(alpha: 0.45),
-                fontSize: 14,
-              ),
+              style: TextStyle(color: palette.textSecondary, fontSize: 14),
             ),
           ),
         ),
@@ -1237,11 +1240,21 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     VoidCallback? onLongPress,
     Widget? trailing,
   }) {
+    final palette = context.omniPalette;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: _surfaceColor(),
         borderRadius: borderRadius,
-        boxShadow: [AppColors.boxShadow],
+        border: Border.all(color: palette.borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: palette.shadowColor.withValues(
+              alpha: context.isDarkTheme ? 0.26 : 0.08,
+            ),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -1263,10 +1276,10 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: AppColors.text,
+                        color: palette.textPrimary,
                         fontFamily: 'PingFang SC',
                       ),
                     ),
@@ -1516,14 +1529,19 @@ class _WorkspaceInlineFilePreviewState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          color: const Color(0xFFF5F7FB),
-          child: Text(
-            statusText,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
-          ),
+        Builder(
+          builder: (context) {
+            final palette = context.omniPalette;
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: palette.surfaceSecondary,
+              child: Text(
+                statusText,
+                style: TextStyle(fontSize: 12, color: palette.textSecondary),
+              ),
+            );
+          },
         ),
         Expanded(
           child: Padding(
@@ -1542,7 +1560,7 @@ class _WorkspaceInlineFilePreviewState
               ),
               decoration: InputDecoration(
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: context.omniPalette.surfacePrimary,
                 hintText: '输入文件内容',
                 alignLabelWithHint: true,
                 border: OutlineInputBorder(
@@ -1654,7 +1672,7 @@ class _WorkspaceInlineFilePreviewState
               fontFamily: _preferMonospace ? 'monospace' : null,
               fontSize: 14,
               height: 1.5,
-              color: AppColors.text,
+              color: context.omniPalette.textPrimary,
             ),
           ),
         );
@@ -1671,7 +1689,7 @@ class _WorkspaceInlineFilePreviewState
                 const SizedBox(height: 8),
                 Text(
                   widget.metadata.mimeType,
-                  style: const TextStyle(color: Color(0xFF667085)),
+                  style: TextStyle(color: context.omniPalette.textSecondary),
                 ),
               ],
             ),
@@ -1682,6 +1700,7 @@ class _WorkspaceInlineFilePreviewState
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Stack(
       children: [
         Positioned.fill(
@@ -1689,7 +1708,7 @@ class _WorkspaceInlineFilePreviewState
             color: Colors.transparent,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.76),
+                color: palette.surfacePrimary.withValues(alpha: 0.76),
               ),
               child: _buildBody(context),
             ),

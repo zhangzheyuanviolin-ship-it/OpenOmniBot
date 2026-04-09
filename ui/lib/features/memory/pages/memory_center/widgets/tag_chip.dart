@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_text_styles.dart';
+import 'package:ui/theme/theme_context.dart';
 
 class TagChip extends StatelessWidget {
   final String title;
@@ -14,9 +13,9 @@ class TagChip extends StatelessWidget {
   final bool showIcon;
 
   const TagChip({
-    Key? key, 
-    required this.title, 
-    this.iconPath, 
+    Key? key,
+    required this.title,
+    this.iconPath,
     this.svgPath,
     this.appIconProvider,
     this.selected = false,
@@ -26,13 +25,24 @@ class TagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       height: 24,
       decoration: BoxDecoration(
-        color: selected ? Color(0xFFE3F1FF) : backgroundColor ?? Colors.white,
+        color: selected
+            ? palette.segmentThumb
+            : backgroundColor ?? palette.surfacePrimary,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow]
+        boxShadow: [
+          BoxShadow(
+            color: palette.shadowColor.withValues(
+              alpha: context.isDarkTheme ? 0.30 : 0.08,
+            ),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -40,7 +50,7 @@ class TagChip extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (showIcon) ...[
-            if (appIconProvider != null)...[
+            if (appIconProvider != null) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(3),
                 child: Image(
@@ -48,10 +58,14 @@ class TagChip extends StatelessWidget {
                   width: 13,
                   height: 13,
                   errorBuilder: (context, error, stackTrace) {
-                    return const Icon(Icons.apps, size: 13, color: AppColors.text);
+                    return Icon(
+                      Icons.apps,
+                      size: 13,
+                      color: palette.textPrimary,
+                    );
                   },
                 ),
-              )
+              ),
             ] else if (svgPath != null) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(3),
@@ -59,14 +73,22 @@ class TagChip extends StatelessWidget {
                   svgPath!,
                   width: 13,
                   height: 13,
-                  color: selected ? AppColors.buttonPrimary : AppColors.text,
-                  placeholderBuilder: (context) => const Icon(Icons.image, size: 13, color: AppColors.text),
+                  colorFilter: ColorFilter.mode(
+                    selected ? palette.accentPrimary : palette.textPrimary,
+                    BlendMode.srcIn,
+                  ),
+                  placeholderBuilder: (context) =>
+                      Icon(Icons.image, size: 13, color: palette.textPrimary),
                 ),
-              )
+              ),
             ] else if (iconPath != null) ...[
-              Icon(iconPath, size: 13, color: selected ? AppColors.buttonPrimary : AppColors.text),
+              Icon(
+                iconPath,
+                size: 13,
+                color: selected ? palette.accentPrimary : palette.textPrimary,
+              ),
             ] else ...[
-              const Icon(Icons.label_outline, size: 13, color: AppColors.text),
+              Icon(Icons.label_outline, size: 13, color: palette.textPrimary),
             ],
             SizedBox(width: 5),
           ],
@@ -74,8 +96,10 @@ class TagChip extends StatelessWidget {
             title,
             style: TextStyle(
               fontSize: AppTextStyles.fontSizeSmall,
-              color: selected ? AppColors.buttonPrimary : AppColors.text,
-              fontWeight: selected? AppTextStyles.fontWeightMedium : AppTextStyles.fontWeightRegular,
+              color: selected ? palette.accentPrimary : palette.textPrimary,
+              fontWeight: selected
+                  ? AppTextStyles.fontWeightMedium
+                  : AppTextStyles.fontWeightRegular,
               height: 0.92,
               letterSpacing: AppTextStyles.letterSpacingWide,
             ),
