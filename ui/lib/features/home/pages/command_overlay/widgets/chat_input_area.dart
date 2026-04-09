@@ -145,11 +145,19 @@ class _ContextUsageRing extends StatelessWidget {
   Widget build(BuildContext context) {
     final normalized = ratio.isFinite ? ratio : 0.0;
     final progress = normalized.clamp(0.0, 1.0).toDouble();
+    final palette = context.omniPalette;
     final color = normalized >= 1.0
         ? const Color(0xFFD65A3A)
         : normalized >= 0.85
         ? const Color(0xFFC69234)
         : const Color(0xFF5A8DDE);
+    final trackColor = context.isDarkTheme
+        ? Color.lerp(
+            palette.surfaceElevated,
+            palette.borderStrong,
+            0.62,
+          )!.withValues(alpha: 0.92)
+        : const Color(0x18000000);
 
     return SizedBox(
       width: 18,
@@ -160,7 +168,11 @@ class _ContextUsageRing extends StatelessWidget {
         curve: Curves.easeOutCubic,
         builder: (context, value, _) {
           return CustomPaint(
-            painter: _ContextUsageRingPainter(progress: value, color: color),
+            painter: _ContextUsageRingPainter(
+              progress: value,
+              color: color,
+              trackColor: trackColor,
+            ),
           );
         },
       ),
@@ -228,10 +240,15 @@ class _ContextUsageRingButton extends StatelessWidget {
 }
 
 class _ContextUsageRingPainter extends CustomPainter {
-  const _ContextUsageRingPainter({required this.progress, required this.color});
+  const _ContextUsageRingPainter({
+    required this.progress,
+    required this.color,
+    required this.trackColor,
+  });
 
   final double progress;
   final Color color;
+  final Color trackColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -245,7 +262,7 @@ class _ContextUsageRingPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
-      ..color = const Color(0x18000000);
+      ..color = trackColor;
     final progressPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
@@ -265,7 +282,9 @@ class _ContextUsageRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ContextUsageRingPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color;
+    return oldDelegate.progress != progress ||
+        oldDelegate.color != color ||
+        oldDelegate.trackColor != trackColor;
   }
 }
 
@@ -355,19 +374,19 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
       'assets/home/send_icon.svg',
       width: 24,
       height: 24,
-      darkColor: Color.lerp(palette.accentPrimary, palette.textPrimary, 0.18)!,
+      darkColor: palette.textPrimary,
     );
     _pauseSvg = _buildComposerIconAsset(
       'assets/home/input_pause_icon.svg',
       width: 20,
       height: 20,
-      darkColor: Color.lerp(palette.accentPrimary, palette.textPrimary, 0.18)!,
+      darkColor: palette.textPrimary,
     );
     _addSvg = _buildComposerIconAsset(
       'assets/home/input_add_icon.svg',
       width: 20,
       height: 20,
-      darkColor: palette.textSecondary,
+      darkColor: Color.lerp(palette.textSecondary, palette.textPrimary, 0.36)!,
     );
   }
 

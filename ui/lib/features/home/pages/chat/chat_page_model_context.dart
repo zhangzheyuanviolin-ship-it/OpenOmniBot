@@ -380,12 +380,20 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
       estimatedMenuHeight: popupMaxHeight,
       reservedBottom: MediaQuery.of(context).viewInsets.bottom,
     );
+    final palette = context.omniPalette;
     final selected = await showMenu<_ChatModelOverrideSelection>(
       context: context,
-      color: Colors.white,
-      elevation: 8,
+      color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
+      elevation: context.isDarkTheme ? 0 : 8,
+      shadowColor: context.isDarkTheme ? palette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
       constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: context.isDarkTheme
+            ? BorderSide(color: palette.borderSubtle)
+            : BorderSide.none,
+      ),
       position: position,
       items: [
         _ConversationModelSelectorPopupEntry(
@@ -826,38 +834,55 @@ class _ConversationModelSelectorPopupEntryState
   }
 
   Widget _buildSearchRow() {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      child: Row(
-        children: [
-          const Icon(Icons.search, size: 18, color: Color(0xFF9AA4B6)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              autofocus: false,
-              scrollPadding: EdgeInsets.zero,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF1F2937),
-                fontWeight: FontWeight.w500,
-              ),
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: '搜索模型 ID',
-                hintStyle: TextStyle(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? palette.surfaceSecondary : const Color(0xFFF4F6FA),
+          borderRadius: BorderRadius.circular(12),
+          border: isDark ? Border.all(color: palette.borderSubtle) : null,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.search,
+              size: 18,
+              color: isDark ? palette.textTertiary : const Color(0xFF9AA4B6),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                autofocus: false,
+                scrollPadding: EdgeInsets.zero,
+                cursorColor: isDark ? palette.accentPrimary : null,
+                style: TextStyle(
                   fontSize: 13,
-                  color: Color(0xFF9AA4B6),
+                  color: isDark ? palette.textPrimary : const Color(0xFF1F2937),
                   fontWeight: FontWeight.w500,
                 ),
-                border: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: '搜索模型 ID',
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: isDark
+                        ? palette.textTertiary
+                        : const Color(0xFF9AA4B6),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  border: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -867,6 +892,8 @@ class _ConversationModelSelectorPopupEntryState
     final models = _filteredModels(profile.id);
     final isSelectedProvider =
         widget.currentSelection?.providerProfileId == profile.id;
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
@@ -887,8 +914,17 @@ class _ConversationModelSelectorPopupEntryState
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFFF4F6FA),
+            color: isDark
+                ? (isSelectedProvider
+                      ? Color.lerp(
+                          palette.surfaceSecondary,
+                          palette.accentPrimary,
+                          0.08,
+                        )!
+                      : palette.surfaceSecondary)
+                : const Color(0xFFF4F6FA),
             borderRadius: BorderRadius.circular(12),
+            border: isDark ? Border.all(color: palette.borderSubtle) : null,
           ),
           child: Row(
             children: [
@@ -897,27 +933,33 @@ class _ConversationModelSelectorPopupEntryState
                   profile.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF64748B),
+                    color: isDark
+                        ? palette.textSecondary
+                        : const Color(0xFF64748B),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
               Text(
                 '${models.length}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: Color(0xFF9AA4B6),
+                  color: isDark
+                      ? palette.textTertiary
+                      : const Color(0xFF9AA4B6),
                   fontWeight: FontWeight.w600,
                 ),
               ),
               if (isSelectedProvider) ...[
                 const SizedBox(width: 6),
-                const Icon(
+                Icon(
                   Icons.check_circle_rounded,
                   size: 13,
-                  color: Color(0xFF2C7FEB),
+                  color: isDark
+                      ? palette.accentPrimary
+                      : const Color(0xFF2C7FEB),
                 ),
               ],
               const SizedBox(width: 6),
@@ -928,7 +970,7 @@ class _ConversationModelSelectorPopupEntryState
                     ? Icons.expand_less_rounded
                     : Icons.expand_more_rounded,
                 size: 16,
-                color: const Color(0xFF94A3B8),
+                color: isDark ? palette.textTertiary : const Color(0xFF94A3B8),
               ),
             ],
           ),
@@ -944,6 +986,8 @@ class _ConversationModelSelectorPopupEntryState
     final selected =
         widget.currentSelection?.providerProfileId == profile.id &&
         widget.currentSelection?.modelId == model.id;
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
       child: _buildChatModelIdTooltip(
@@ -962,9 +1006,18 @@ class _ConversationModelSelectorPopupEntryState
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: selected
-                  ? const Color(0xFFEAF3FF)
-                  : const Color(0xFFF8FAFD),
+                  ? (isDark
+                        ? Color.lerp(
+                            palette.surfaceElevated,
+                            palette.accentPrimary,
+                            0.16,
+                          )!
+                        : const Color(0xFFEAF3FF))
+                  : (isDark
+                        ? palette.surfaceSecondary
+                        : const Color(0xFFF8FAFD)),
               borderRadius: BorderRadius.circular(12),
+              border: isDark ? Border.all(color: palette.borderSubtle) : null,
             ),
             child: Row(
               children: [
@@ -973,18 +1026,22 @@ class _ConversationModelSelectorPopupEntryState
                     model.id,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: Color(0xFF1F2937),
+                      color: isDark
+                          ? palette.textPrimary
+                          : const Color(0xFF1F2937),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
                 if (selected)
-                  const Icon(
+                  Icon(
                     Icons.check_rounded,
                     size: 15,
-                    color: Color(0xFF2C7FEB),
+                    color: isDark
+                        ? palette.accentPrimary
+                        : const Color(0xFF2C7FEB),
                   ),
               ],
             ),
@@ -996,6 +1053,7 @@ class _ConversationModelSelectorPopupEntryState
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     final mediaQuery = MediaQuery.of(context);
     final dynamicMaxHeight =
         (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
@@ -1014,27 +1072,31 @@ class _ConversationModelSelectorPopupEntryState
           children: [
             _buildSearchRow(),
             if (configuredProfiles.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
                   '请先在模型提供商页配置 Provider',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                    color: context.isDarkTheme
+                        ? palette.textTertiary
+                        : const Color(0xFF94A3B8),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               )
             else if (visibleProfiles.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
                   '没有匹配的模型',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                    color: context.isDarkTheme
+                        ? palette.textTertiary
+                        : const Color(0xFF94A3B8),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1055,13 +1117,15 @@ class _ConversationModelSelectorPopupEntryState
                           _buildProfileHeader(profile),
                           if (expanded)
                             if (models.isEmpty)
-                              const Padding(
+                              Padding(
                                 padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
                                 child: Text(
                                   '该 Provider 暂无可选模型',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Color(0xFF94A3B8),
+                                    color: context.isDarkTheme
+                                        ? palette.textTertiary
+                                        : const Color(0xFF94A3B8),
                                   ),
                                 ),
                               )

@@ -25,18 +25,21 @@ class AgentToolSummaryCard extends StatelessWidget {
     final typeLabel = resolveAgentToolTypeLabel(cardData);
     final statusColor = resolveAgentToolStatusColor(status);
     final palette = context.omniPalette;
+    const darkChipBase = Color(0xFFEAE4D9);
+    const darkChipTagBase = Color(0xFFF2ECE2);
     final cardBackgroundColor = context.isDarkTheme
-        ? Color.lerp(palette.surfaceSecondary, statusColor, 0.14)!
+        ? Color.lerp(darkChipBase, statusColor, 0.08)!
         : statusColor.withValues(alpha: 0.08);
-    final cardBorderColor = context.isDarkTheme
-        ? Color.lerp(palette.borderSubtle, statusColor, 0.22)!
-        : Colors.transparent;
+    final cardBorderColor = Colors.transparent;
     final statusTagBackgroundColor = context.isDarkTheme
-        ? Color.lerp(palette.surfaceElevated, statusColor, 0.16)!
+        ? Color.lerp(darkChipTagBase, statusColor, 0.16)!
         : Colors.white.withValues(alpha: 0.78);
     final statusTagTextColor = context.isDarkTheme
-        ? Color.lerp(palette.textPrimary, statusColor, 0.42)!
+        ? Color.lerp(palette.pageBackground, statusColor, 0.44)!
         : statusColor;
+    final titleColor = context.isDarkTheme
+        ? palette.pageBackground
+        : visualProfile.primaryTextColor;
 
     final tooltipLines = <String>[title];
     if (preview.isNotEmpty && preview != title) {
@@ -71,7 +74,7 @@ class AgentToolSummaryCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: visualProfile.primaryTextColor,
+                      color: titleColor,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       height: 1.15,
@@ -87,11 +90,6 @@ class AgentToolSummaryCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: statusTagBackgroundColor,
                     borderRadius: BorderRadius.circular(999),
-                    border: context.isDarkTheme
-                        ? Border.all(
-                            color: statusTagTextColor.withValues(alpha: 0.18),
-                          )
-                        : null,
                   ),
                   child: Text(
                     status == 'running' ? typeLabel : statusLabel,
@@ -121,13 +119,16 @@ class _StatusIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = resolveAgentToolStatusColor(status);
+    final backgroundColor = context.isDarkTheme
+        ? Color.lerp(const Color(0xFFF2ECE2), color, 0.14)!
+        : color.withValues(alpha: 0.12);
+    final iconColor = context.isDarkTheme
+        ? Color.lerp(context.omniPalette.pageBackground, color, 0.42)!
+        : color;
     return Container(
-      width: 16,
-      height: 16,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        shape: BoxShape.circle,
-      ),
+      width: 18,
+      height: 18,
+      decoration: BoxDecoration(color: backgroundColor, shape: BoxShape.circle),
       child: Center(
         child: status == 'running'
             ? SizedBox(
@@ -135,13 +136,13 @@ class _StatusIcon extends StatelessWidget {
                 height: 8,
                 child: CircularProgressIndicator(
                   strokeWidth: 1.4,
-                  valueColor: AlwaysStoppedAnimation<Color>(color),
+                  valueColor: AlwaysStoppedAnimation<Color>(iconColor),
                 ),
               )
             : Icon(
                 resolveAgentToolStatusIcon(status, (toolType ?? '').toString()),
                 size: 10,
-                color: color,
+                color: iconColor,
               ),
       ),
     );

@@ -599,14 +599,13 @@ class _StatusDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = resolveAgentToolStatusColor(status);
+    final outerColor = context.isDarkTheme
+        ? Color.lerp(const Color(0xFFF0EADF), color, 0.12)!
+        : color.withValues(alpha: 0.16);
     return Container(
       width: 8,
       height: 8,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        shape: BoxShape.circle,
-        border: Border.all(color: color.withValues(alpha: 0.55), width: 1),
-      ),
+      decoration: BoxDecoration(color: outerColor, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: Container(
         width: 3,
@@ -626,19 +625,24 @@ class _StatusTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = resolveAgentToolStatusColor(status);
+    final backgroundColor = context.isDarkTheme
+        ? Color.lerp(const Color(0xFFF2ECE2), color, 0.16)!
+        : color.withValues(alpha: 0.11);
+    final textColor = context.isDarkTheme
+        ? Color.lerp(context.omniPalette.pageBackground, color, 0.42)!
+        : color.withValues(alpha: 0.9);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.11),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Text(
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: color.withValues(alpha: 0.9),
+          color: textColor,
           fontSize: 8.4,
           fontWeight: FontWeight.w700,
           height: 1,
