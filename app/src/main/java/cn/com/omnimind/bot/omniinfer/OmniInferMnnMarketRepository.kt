@@ -40,6 +40,7 @@ object OmniInferMnnMarketRepository {
 
     data class ResolvedMarketModel(
         val modelId: String,
+        val downloadId: String,
         val source: String,
         val repoPath: String,
         val item: MarketItem,
@@ -68,8 +69,31 @@ object OmniInferMnnMarketRepository {
         return resolveModels(loadPayload(refresh), source)
     }
 
-    fun findModel(modelId: String): ResolvedMarketModel? {
-        return allModels().firstOrNull { it.modelId == modelId.trim() }
+    fun findModel(
+        modelId: String,
+        preferredSource: String? = null,
+    ): ResolvedMarketModel? {
+        val normalizedModelId = modelId.trim()
+        if (normalizedModelId.isEmpty()) {
+            return null
+        }
+        val models = allModels()
+        models.firstOrNull { it.downloadId == normalizedModelId }?.let { return it }
+        preferredSource
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { source ->
+                models.firstOrNull { it.source == source && it.modelId == normalizedModelId }?.let { return it }
+            }
+        return models.firstOrNull { it.modelId == normalizedModelId }
+    }
+
+    fun normalizeModelId(modelId: String?): String {
+        val normalizedModelId = modelId?.trim().orEmpty()
+        if (normalizedModelId.isEmpty()) {
+            return ""
+        }
+        return findModel(normalizedModelId)?.modelId ?: normalizedModelId
     }
 
     fun allModels(): List<ResolvedMarketModel> {
@@ -142,7 +166,8 @@ object OmniInferMnnMarketRepository {
                     null
                 } else {
                     ResolvedMarketModel(
-                        modelId = "$source/$repoPath",
+                        modelId = item.modelName.trim(),
+                        downloadId = "$source/$repoPath",
                         source = source,
                         repoPath = repoPath,
                         item = item,

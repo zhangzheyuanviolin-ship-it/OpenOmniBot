@@ -25,6 +25,7 @@ object OmniInferMnnModelsManager {
         val name: String,
         val path: String,
         val configPath: String,
+        val downloadModelId: String?,
         val source: String,
         val description: String,
         val vendor: String,
@@ -164,6 +165,7 @@ object OmniInferMnnModelsManager {
                 } else {
                     buildList {
                         add(resolved.modelId)
+                        add(resolved.downloadId)
                         add(resolved.item.modelName)
                         add(resolved.item.vendor.orEmpty())
                         addAll(resolved.item.tags)
@@ -202,7 +204,7 @@ object OmniInferMnnModelsManager {
             "downloadProvider" to getDownloadProvider(),
             "availableSources" to ModelSources.sourceList,
             "loadedBackend" to OmniInferLocalRuntime.getLoadedBackend(),
-            "loadedModelId" to OmniInferLocalRuntime.getLoadedModelId(),
+            "loadedModelId" to getLoadedModelId(),
         )
     }
 
@@ -217,7 +219,7 @@ object OmniInferMnnModelsManager {
             }
         }
         arguments["activeModelId"]?.let {
-            mmkv.encode(KEY_ACTIVE_MODEL_ID, it.toString())
+            mmkv.encode(KEY_ACTIVE_MODEL_ID, normalizeStoredModelId(it.toString()))
         }
         arguments["downloadProvider"]?.let {
             mmkv.encode(KEY_DOWNLOAD_PROVIDER, normalizeSource(it.toString()))
@@ -227,7 +229,7 @@ object OmniInferMnnModelsManager {
     }
 
     fun setActiveModel(modelId: String?): Map<String, Any?> {
-        mmkv.encode(KEY_ACTIVE_MODEL_ID, modelId?.trim().orEmpty())
+        mmkv.encode(KEY_ACTIVE_MODEL_ID, normalizeStoredModelId(modelId))
         emitConfigChanged()
         return getConfig()
     }
@@ -254,7 +256,7 @@ object OmniInferMnnModelsManager {
             return false
         }
         val resolved = findInstalledRecord(normalizedModelId) ?: return false
-        if (OmniInferLocalRuntime.isModelLoaded(BACKEND_NAME, resolved.id)) {
+        if (isModelCurrentlyLoaded(resolved.id)) {
             return true
         }
         mmkv.encode(KEY_ACTIVE_MODEL_ID, resolved.id)
@@ -274,29 +276,33 @@ object OmniInferMnnModelsManager {
     fun startDownload(modelId: String) {
         val context = ensureContext()
         ensureDownloadListenerRegistered(context)
-        ModelDownloadManager.getInstance(context).startDownload(modelId)
-        emitDownloadUpdate(modelId)
+        val resolved = resolveMarketModel(modelId) ?: return
+        val manager = ModelDownloadManager.getInstance(context)
+        manager.startDownload(resolved.downloadId)
+        emitDownloadUpdate(resolved.modelId, manager.getDownloadInfo(resolved.downloadId))
     }
 
     fun pauseDownload(modelId: String) {
         val context = ensureContext()
         ensureDownloadListenerRegistered(context)
-        ModelDownloadManager.getInstance(context).pauseDownload(modelId)
-        emitDownloadUpdate(modelId)
+        val resolved = resolveMarketModel(modelId) ?: return
+        val manager = ModelDownloadManager.getInstance(context)
+        manager.pauseDownload(resolved.downloadId)
+        emitDownloadUpdate(resolved.modelId, manager.getDownloadInfo(resolved.downloadId))
     }
 
     suspend fun deleteModel(modelId: String): List<Map<String, Any?>> {
-        val normalizedModelId = modelId.trim()
+        val normalizedModelId = normalizeStoredModelId(modelId)
         val target = findInstalledRecord(normalizedModelId) ?: return listInstalledModels()
         if (target.readOnly) {
             return listInstalledModels()
         }
         val context = ensureContext()
-        if (OmniInferLocalRuntime.isModelLoaded(BACKEND_NAME, normalizedModelId)) {
+        if (isModelCurrentlyLoaded(target.id)) {
             OmniInferLocalRuntime.stop()
         }
-        ModelDownloadManager.getInstance(context).deleteModel(normalizedModelId)
-        if (getActiveModelId() == normalizedModelId) {
+        ModelDownloadManager.getInstance(context).deleteModel(target.downloadModelId ?: target.id)
+        if (getActiveModelId() == target.id) {
             mmkv.encode(KEY_ACTIVE_MODEL_ID, "")
         }
         emitConfigChanged()
@@ -309,7 +315,12 @@ object OmniInferMnnModelsManager {
     }
 
     private fun getActiveModelId(): String {
-        return mmkv.decodeString(KEY_ACTIVE_MODEL_ID, "").orEmpty()
+        val stored = mmkv.decodeString(KEY_ACTIVE_MODEL_ID, "").orEmpty()
+        val normalized = normalizeStoredModelId(stored)
+        if (normalized != stored) {
+            mmkv.encode(KEY_ACTIVE_MODEL_ID, normalized)
+        }
+        return normalized
     }
 
     private fun shouldAutoStartOnAppOpen(): Boolean {
@@ -332,7 +343,7 @@ object OmniInferMnnModelsManager {
     private fun installedRecords(): List<InstalledModelRecord> {
         val preferredIds = buildSet {
             getActiveModelId().takeIf { it.isNotBlank() }?.let(::add)
-            OmniInferLocalRuntime.getLoadedModelId()
+            getLoadedModelId()
                 .takeIf { it.isNotBlank() }
                 ?.let(::add)
         }
@@ -369,7 +380,7 @@ object OmniInferMnnModelsManager {
                 .lowercase(Locale.getDefault())
         }
 
-        return listOf(record.path, record.configPath, record.id)
+        return listOf(record.id, record.path, record.configPath)
             .map(::normalizePath)
             .firstOrNull { it.isNotBlank() }
             .orEmpty()
@@ -395,16 +406,17 @@ object OmniInferMnnModelsManager {
         val context = ensureContext()
         val downloadManager = ModelDownloadManager.getInstance(context)
         return OmniInferMnnMarketRepository.allModels().mapNotNull { resolved ->
-            val downloadPath = downloadManager.getDownloadedFile(resolved.modelId) ?: return@mapNotNull null
+            val downloadPath = downloadManager.getDownloadedFile(resolved.downloadId) ?: return@mapNotNull null
             val configFile = File(downloadPath, "config.json")
             if (!configFile.exists()) {
                 return@mapNotNull null
             }
             InstalledModelRecord(
                 id = resolved.modelId,
-                name = resolved.item.modelName.ifBlank { resolved.modelId.substringAfterLast('/') },
+                name = resolved.item.modelName.ifBlank { resolved.modelId },
                 path = downloadPath.absolutePath,
                 configPath = configFile.absolutePath,
+                downloadModelId = resolved.downloadId,
                 source = resolved.source,
                 description = buildDescription(resolved.item),
                 vendor = resolved.item.vendor.orEmpty(),
@@ -413,7 +425,7 @@ object OmniInferMnnModelsManager {
                 fileSize = resolved.item.fileSize,
                 downloadedAt = downloadPath.lastModified(),
                 readOnly = false,
-                downloadInfo = downloadManager.getDownloadInfo(resolved.modelId),
+                downloadInfo = downloadManager.getDownloadInfo(resolved.downloadId),
             )
         }
     }
@@ -435,6 +447,7 @@ object OmniInferMnnModelsManager {
                         name = modelDir.name,
                         path = modelDir.absolutePath,
                         configPath = configFile.absolutePath,
+                        downloadModelId = null,
                         source = "local",
                         description = "鎵嬪姩鏀剧疆鐩綍妯″瀷",
                         vendor = "",
@@ -452,15 +465,16 @@ object OmniInferMnnModelsManager {
     }
 
     private fun findInstalledRecord(modelId: String): InstalledModelRecord? {
-        val normalizedModelId = modelId.trim()
+        val normalizedModelId = normalizeStoredModelId(modelId)
         if (normalizedModelId.isEmpty()) {
             return null
         }
-        return rawInstalledRecords().firstOrNull { it.id == normalizedModelId }
+        return installedRecords().firstOrNull { it.id == normalizedModelId }
     }
 
     private fun installedRecordToMap(record: InstalledModelRecord): Map<String, Any?> {
         val activeModelId = getActiveModelId()
+        val loadedModelId = getLoadedModelId()
         val fileSize = record.fileSize.takeIf { it > 0L } ?: record.downloadInfo?.totalSize ?: 0L
         return mapOf(
             "id" to record.id,
@@ -472,7 +486,7 @@ object OmniInferMnnModelsManager {
             "vendor" to record.vendor,
             "tags" to record.tags,
             "extraTags" to record.extraTags,
-            "active" to (record.id == activeModelId || record.id == OmniInferLocalRuntime.getLoadedModelId()),
+            "active" to (record.id == activeModelId || record.id == loadedModelId),
             "isLocal" to true,
             "isPinned" to false,
             "hasUpdate" to (record.downloadInfo?.hasUpdate == true),
@@ -489,8 +503,8 @@ object OmniInferMnnModelsManager {
     private fun marketModelToMap(model: OmniInferMnnMarketRepository.ResolvedMarketModel): Map<String, Any?> {
         val context = ensureContext()
         val downloadManager = ModelDownloadManager.getInstance(context)
-        val downloadedFile = downloadManager.getDownloadedFile(model.modelId)
-        val downloadInfo = downloadManager.getDownloadInfo(model.modelId)
+        val downloadedFile = downloadManager.getDownloadedFile(model.downloadId)
+        val downloadInfo = downloadManager.getDownloadInfo(model.downloadId)
         val fileSize = if (model.item.fileSize > 0L) model.item.fileSize else downloadInfo.totalSize
         return mapOf(
             "id" to model.modelId,
@@ -546,13 +560,35 @@ object OmniInferMnnModelsManager {
         modelId: String,
         downloadInfo: DownloadInfo? = appContext?.let { ModelDownloadManager.getInstance(it).getDownloadInfo(modelId) },
     ) {
+        val publicModelId = normalizeStoredModelId(modelId)
         emitEvent(
             "download_update",
             mapOf(
-                "modelId" to modelId,
+                "modelId" to publicModelId,
                 "download" to downloadInfo?.toMap(),
             )
         )
+    }
+
+    private fun getLoadedModelId(): String {
+        return normalizeStoredModelId(OmniInferLocalRuntime.getLoadedModelId())
+    }
+
+    private fun normalizeStoredModelId(modelId: String?): String {
+        return OmniInferMnnMarketRepository.normalizeModelId(modelId)
+    }
+
+    private fun resolveMarketModel(modelId: String): OmniInferMnnMarketRepository.ResolvedMarketModel? {
+        return OmniInferMnnMarketRepository.findModel(
+            modelId = modelId,
+            preferredSource = getDownloadProvider(),
+        )
+    }
+
+    private fun isModelCurrentlyLoaded(modelId: String): Boolean {
+        return OmniInferLocalRuntime.isReady() &&
+            OmniInferLocalRuntime.getLoadedBackend() == BACKEND_NAME &&
+            getLoadedModelId() == modelId.trim()
     }
 
     private fun emitEvent(type: String, payload: Map<String, Any?>) {

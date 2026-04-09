@@ -8,60 +8,61 @@ import org.junit.Test
 class OmniInferMnnModelsManagerTest {
 
     @Test
-    fun dedupeInstalledRecords_mergesEntriesSharingSameLocalDirectory() {
+    fun dedupeInstalledRecords_mergesEntriesSharingSameModelId() {
         val records = listOf(
             record(
-                id = "ModelScope/MNN/Qwen3.5-2B-MNN",
+                id = "Qwen3.5-2B",
                 path = "/data/user/0/cn.com.omnimind.bot/files/.mnnmodels/modelscope/Qwen3.5-2B-MNN",
             ),
             record(
-                id = "Modelers/MNN/Qwen3.5-2B-MNN",
-                path = "/data/user/0/cn.com.omnimind.bot/files/.mnnmodels/modelscope/Qwen3.5-2B-MNN",
-            ),
-            record(
-                id = "HuggingFace/taobao-mnn/Qwen3.5-2B-MNN",
+                id = "Qwen3.5-2B",
                 path = "/data/user/0/cn.com.omnimind.bot/files/.mnnmodels/hf/Qwen3.5-2B-MNN",
+            ),
+            record(
+                id = "Qwen3.5-7B",
+                path = "/data/user/0/cn.com.omnimind.bot/files/.mnnmodels/modelscope/Qwen3.5-7B-MNN",
             ),
         )
 
         val deduped = OmniInferMnnModelsManager.dedupeInstalledRecords(records)
 
         assertEquals(2, deduped.size)
-        assertEquals("ModelScope/MNN/Qwen3.5-2B-MNN", deduped[0].id)
-        assertEquals("HuggingFace/taobao-mnn/Qwen3.5-2B-MNN", deduped[1].id)
+        assertEquals("Qwen3.5-2B", deduped[0].id)
+        assertEquals("Qwen3.5-7B", deduped[1].id)
     }
 
     @Test
-    fun dedupeInstalledRecords_prefersPreferredIdWhenDirectoriesMatch() {
+    fun dedupeInstalledRecords_prefersWritableRecordWhenModelIdsMatch() {
         val records = listOf(
             record(
-                id = "ModelScope/MNN/Qwen3.5-2B-MNN",
+                id = "Qwen3.5-2B",
                 path = "/data/user/0/cn.com.omnimind.bot/files/.mnnmodels/modelscope/Qwen3.5-2B-MNN",
+                readOnly = true,
             ),
             record(
-                id = "Modelers/MNN/Qwen3.5-2B-MNN",
-                path = "/data/user/0/cn.com.omnimind.bot/files/.mnnmodels/modelscope/Qwen3.5-2B-MNN",
+                id = "Qwen3.5-2B",
+                path = "/data/user/0/cn.com.omnimind.bot/files/.mnnmodels/hf/Qwen3.5-2B-MNN",
+                readOnly = false,
             ),
         )
 
-        val deduped = OmniInferMnnModelsManager.dedupeInstalledRecords(
-            records = records,
-            preferredIds = setOf("Modelers/MNN/Qwen3.5-2B-MNN"),
-        )
+        val deduped = OmniInferMnnModelsManager.dedupeInstalledRecords(records)
 
         assertEquals(1, deduped.size)
-        assertTrue(deduped.single().id == "Modelers/MNN/Qwen3.5-2B-MNN")
+        assertTrue(deduped.single().path.contains("/hf/"))
     }
 
     private fun record(
         id: String,
         path: String,
+        readOnly: Boolean = false,
     ): OmniInferMnnModelsManager.InstalledModelRecord {
         return OmniInferMnnModelsManager.InstalledModelRecord(
             id = id,
             name = id.substringAfterLast('/'),
             path = path,
             configPath = "$path/config.json",
+            downloadModelId = null,
             source = id.substringBefore('/'),
             description = "",
             vendor = "",
@@ -69,7 +70,7 @@ class OmniInferMnnModelsManagerTest {
             extraTags = emptyList(),
             fileSize = 0L,
             downloadedAt = 0L,
-            readOnly = false,
+            readOnly = readOnly,
             downloadInfo = DownloadInfo(),
         )
     }

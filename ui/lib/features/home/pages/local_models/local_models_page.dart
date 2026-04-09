@@ -738,7 +738,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                   decoration: const InputDecoration(
                     labelText: '下载源',
                     border: OutlineInputBorder(),
-                    helperText: 'MNN 市场会按当前下载源生成带前缀的 modelId。',
+                    helperText: 'MNN 模型会统一使用模型名作为 modelId，切换下载源不会改变 modelId。',
                   ),
                   items: (config?.availableSources ?? const <String>[])
                       .map(
