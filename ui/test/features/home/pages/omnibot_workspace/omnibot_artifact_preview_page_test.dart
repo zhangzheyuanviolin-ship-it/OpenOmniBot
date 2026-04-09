@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/omnibot_workspace/omnibot_artifact_preview_page.dart';
+import 'package:ui/theme/app_theme.dart';
+import 'package:ui/theme/omni_theme_palette.dart';
 
 class _SvgTestAssetBundle extends CachingAssetBundle {
   static final Uint8List _svgBytes = Uint8List.fromList(
@@ -84,5 +86,54 @@ void main() {
 
     expect(find.text('系统打开'), findsOneWidget);
     expect(find.text('分享文件'), findsOneWidget);
+  });
+
+  testWidgets('artifact preview keeps path and editor surfaces dark', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.dark,
+        home: OmnibotArtifactPreviewPage(
+          path: file.path,
+          title: 'note.txt',
+          previewKind: 'text',
+          mimeType: 'text/plain',
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump();
+
+    final pathBar = tester.widget<Container>(
+      find.byKey(const ValueKey('artifact-preview-path-bar')),
+    );
+    expect(pathBar.color, OmniThemePalette.dark.surfaceSecondary);
+
+    await tester.tap(find.byTooltip('编辑文件'));
+    await tester.pump();
+    final editorFinder = find.byKey(
+      const ValueKey('artifact-preview-editor-field'),
+    );
+    for (
+      var index = 0;
+      index < 10 && editorFinder.evaluate().isEmpty;
+      index++
+    ) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pump();
+    }
+
+    expect(editorFinder, findsOneWidget);
+    final editor = tester.widget<TextField>(editorFinder);
+    expect(editor.decoration?.fillColor, OmniThemePalette.dark.surfacePrimary);
+    expect(editor.style?.color, OmniThemePalette.dark.textPrimary);
   });
 }

@@ -229,6 +229,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
 
   @override
   Widget _buildSlashCommandPanel() {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     final visible =
         _showModelMentionPanel ||
         (_isOpenClawSurface &&
@@ -255,13 +257,15 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   ? EdgeInsets.zero
                   : const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isDark ? palette.surfacePrimary : Colors.white,
                 borderRadius: BorderRadius.circular(16),
+                border: isDark ? Border.all(color: palette.borderSubtle) : null,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
+                    color: (isDark ? palette.shadowColor : Colors.black)
+                        .withValues(alpha: isDark ? 0.22 : 0.08),
+                    blurRadius: isDark ? 18 : 14,
+                    offset: Offset(0, isDark ? 8 : 6),
                   ),
                 ],
               ),
@@ -269,12 +273,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'OpenClaw 配置',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF1F2937),
+                            color: palette.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 8),

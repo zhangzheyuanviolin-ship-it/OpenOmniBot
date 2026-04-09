@@ -168,6 +168,7 @@ class _AppBackgroundPreviewState extends State<AppBackgroundPreview> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     final resolvedVisualProfile =
         widget.visualProfile ??
         AppBackgroundVisualProfile.derive(config: widget.config);
@@ -182,7 +183,7 @@ class _AppBackgroundPreviewState extends State<AppBackgroundPreview> {
               children: [
                 AppBackgroundLayer(
                   config: widget.config,
-                  fallbackColor: const Color(0xFFF9FCFF),
+                  fallbackColor: palette.previewFallback,
                   layerKey: ValueKey(
                     'app-background-preview-${widget.kind.name}',
                   ),

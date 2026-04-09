@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
@@ -315,22 +316,24 @@ class _OmnibotArtifactPreviewPageState
   }
 
   Widget _buildEditor() {
+    final palette = context.omniPalette;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          color: const Color(0xFFF5F7FB),
+          color: palette.surfaceSecondary,
           child: Text(
             _isDirty ? '编辑中，存在未保存修改' : '编辑中，保存后会立即写回 workspace',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
+            style: TextStyle(fontSize: 12, color: palette.textSecondary),
           ),
         ),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
+              key: const ValueKey('artifact-preview-editor-field'),
               controller: _editorController,
               expands: true,
               minLines: null,
@@ -341,18 +344,24 @@ class _OmnibotArtifactPreviewPageState
                 fontFamily: _preferMonospace ? 'monospace' : null,
                 fontSize: 14,
                 height: 1.5,
+                color: palette.textPrimary,
               ),
               decoration: InputDecoration(
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: palette.surfacePrimary,
                 hintText: '输入文件内容',
                 alignLabelWithHint: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: palette.borderSubtle),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: palette.borderSubtle),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF2C7FEB)),
+                  borderSide: BorderSide(color: palette.accentPrimary),
                 ),
               ),
             ),
@@ -432,7 +441,7 @@ class _OmnibotArtifactPreviewPageState
                 const SizedBox(height: 8),
                 Text(
                   widget.mimeType,
-                  style: const TextStyle(color: Color(0xFF667085)),
+                  style: TextStyle(color: context.omniPalette.textSecondary),
                 ),
                 const SizedBox(height: 16),
                 FilledButton.icon(
@@ -507,10 +516,12 @@ class _OmnibotArtifactPreviewPageState
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return PopScope(
       canPop: _allowPop || !(_isEditing && _isDirty),
       onPopInvokedWithResult: (didPop, _) => _handleBackNavigation(didPop),
       child: Scaffold(
+        backgroundColor: palette.pageBackground,
         appBar: CommonAppBar(
           title: widget.title,
           primary: true,
@@ -520,12 +531,13 @@ class _OmnibotArtifactPreviewPageState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
+              key: const ValueKey('artifact-preview-path-bar'),
               width: double.infinity,
               padding: const EdgeInsets.all(12),
-              color: const Color(0xFFF5F7FB),
+              color: palette.surfaceSecondary,
               child: Text(
                 widget.path,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
+                style: TextStyle(fontSize: 12, color: palette.textSecondary),
               ),
             ),
             Expanded(child: _buildBody()),
