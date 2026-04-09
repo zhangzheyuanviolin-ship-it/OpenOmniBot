@@ -399,6 +399,9 @@ object OmniInferModelsManager {
         }
         activeDownloads.remove(modelId)
         emitConfigChanged()
+        appContext?.let {
+            OmniInferBuiltinProviderRefresher.refreshAsync(it, "llama_delete:$modelId")
+        }
         return listInstalledModels()
     }
 
@@ -624,6 +627,12 @@ object OmniInferModelsManager {
                         tempFile.renameTo(destFile)
                         OmniInferModelsManager.activeDownloads.remove(modelId)
                         OmniInferModelsManager.emitEvent("downloads_changed", mapOf("modelId" to modelId))
+                        OmniInferModelsManager.appContext?.let {
+                            OmniInferBuiltinProviderRefresher.refreshAsync(
+                                it,
+                                "llama_download_finished:$modelId"
+                            )
+                        }
                     }
                 } catch (error: Exception) {
                     if (!cancelled.get()) {

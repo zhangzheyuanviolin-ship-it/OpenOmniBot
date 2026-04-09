@@ -159,7 +159,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     _configChangedSubscription = AssistsMessageService
         .agentAiConfigChangedStream
         .listen((event) {
-          if (event.source != 'file' || !mounted) {
+          if ((event.source != 'file' && event.source != 'store') || !mounted) {
             return;
           }
           unawaited(_loadData());
@@ -303,10 +303,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         ModelProviderConfigService.getManualModelIds(
           profileId: editingProfile.id,
         ),
-        ModelProviderConfigService.getCachedFetchedModels(
-          profileId: editingProfile.id,
-          apiBase: editingProfile.baseUrl,
-        ),
+        _loadRemoteModelsForProfile(editingProfile),
       ]);
       if (!mounted) return;
 
@@ -363,6 +360,28 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     _isSyncingControllers = false;
   }
 
+  Future<List<ProviderModelOption>> _loadRemoteModelsForProfile(
+    ModelProviderProfileSummary profile,
+  ) async {
+    final isBuiltinLocalProvider =
+        profile.readOnly && profile.sourceType == 'omniinfer';
+    if (isBuiltinLocalProvider) {
+      try {
+        return await ModelProviderConfigService.fetchModels(
+          profileId: profile.id,
+        );
+      } catch (_) {
+        return ModelProviderConfigService.getCachedFetchedModels(
+          profileId: profile.id,
+        );
+      }
+    }
+    return ModelProviderConfigService.getCachedFetchedModels(
+      profileId: profile.id,
+      apiBase: profile.baseUrl,
+    );
+  }
+
   String? _buildBaseUrlHelperText(String rawValue) {
     final input = rawValue.trim();
     if (input.isEmpty) {
@@ -390,10 +409,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       );
       final storedModels = await Future.wait<dynamic>([
         ModelProviderConfigService.getManualModelIds(profileId: selected.id),
-        ModelProviderConfigService.getCachedFetchedModels(
-          profileId: selected.id,
-          apiBase: selected.baseUrl,
-        ),
+        _loadRemoteModelsForProfile(selected),
       ]);
       if (!mounted) return;
       _applyProfile(
@@ -542,10 +558,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       );
       final storedModels = await Future.wait<dynamic>([
         ModelProviderConfigService.getManualModelIds(profileId: fallback.id),
-        ModelProviderConfigService.getCachedFetchedModels(
-          profileId: fallback.id,
-          apiBase: fallback.baseUrl,
-        ),
+        _loadRemoteModelsForProfile(fallback),
       ]);
       if (!mounted) return;
       _applyProfile(

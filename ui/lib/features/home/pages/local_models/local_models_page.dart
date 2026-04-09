@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:ui/services/mnn_local_models_service.dart';
-import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/app_text_styles.dart';
+import 'package:ui/theme/omni_theme_palette.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
 enum _LocalModelsTab { service, market }
+
+enum _AccentTone { neutral, accent, success, info, warning, danger }
 
 const String _llamaCppBackend = 'llama.cpp';
 const String _omniinferMnnBackend = 'omniinfer-mnn';
@@ -25,20 +28,32 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
+  OmniThemePalette get _palette => context.omniPalette;
   bool get _isDarkTheme => context.isDarkTheme;
-  Color get _cardColor => context.omniPalette.surfacePrimary;
-  Color get _borderColor => context.omniPalette.borderSubtle;
-  Color get _primaryTextColor => context.omniPalette.textPrimary;
-  Color get _secondaryTextColor => context.omniPalette.textSecondary;
-  Color get _tertiaryTextColor => context.omniPalette.textTertiary;
-  Color get _tagSurfaceColor => context.omniPalette.surfaceSecondary;
-  List<BoxShadow> get _cardShadow => [
-    BoxShadow(
-      color: context.omniPalette.shadowColor,
-      blurRadius: _isDarkTheme ? 16 : 20,
-      offset: const Offset(0, 8),
-    ),
-  ];
+  Color get _cardColor =>
+      _blend(_palette.surfacePrimary, _palette.surfaceSecondary, 0.16);
+  Color get _panelColor =>
+      _blend(_palette.surfaceSecondary, _palette.surfaceElevated, 0.34);
+  Color get _highlightPanelColor =>
+      _blend(_palette.surfacePrimary, _palette.accentPrimary, 0.08);
+  Color get _borderColor => _palette.borderSubtle;
+  Color get _strongBorderColor =>
+      _blend(_palette.borderStrong, _palette.accentPrimary, 0.18);
+  Color get _primaryTextColor => _palette.textPrimary;
+  Color get _secondaryTextColor => _palette.textSecondary;
+  Color get _tertiaryTextColor => _palette.textTertiary;
+  Color get _tagSurfaceColor =>
+      _blend(_palette.surfaceSecondary, _palette.surfacePrimary, 0.34);
+  LinearGradient get _pageGradient => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      _blend(_palette.pageBackground, _palette.accentPrimary, 0.1),
+      _palette.pageBackground,
+      _blend(_palette.pageBackground, _palette.surfaceSecondary, 0.55),
+    ],
+  );
+  List<BoxShadow> get _cardShadow => const [];
 
   final TextEditingController _installedSearchController =
       TextEditingController();
@@ -99,7 +114,9 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   }
 
   List<MnnLocalModel> get _filteredInstalledModels {
-    final normalizedQuery = _installedSearchController.text.trim().toLowerCase();
+    final normalizedQuery = _installedSearchController.text
+        .trim()
+        .toLowerCase();
     return _installedModels.where((item) {
       if (normalizedQuery.isEmpty) {
         return true;
@@ -121,6 +138,20 @@ class _LocalModelsPageState extends State<LocalModelsPage>
 
   List<MnnLocalModel> get _serviceModels =>
       _installedModels.where((item) => item.category == 'llm').toList();
+
+  List<MnnLocalModel> get _sortedMarketModels {
+    final sorted = List<MnnLocalModel>.from(_marketModels);
+    sorted.sort((a, b) {
+      final sizeCompare = _modelSizeSortValue(
+        a,
+      ).compareTo(_modelSizeSortValue(b));
+      if (sizeCompare != 0) {
+        return sizeCompare;
+      }
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return sorted;
+  }
 
   Future<void> _bootstrap() async {
     try {
@@ -384,7 +415,9 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     try {
       final nextConfig = enable
           ? await MnnLocalModelsService.startApiService(
-              modelId: config.activeModelId.isEmpty ? null : config.activeModelId,
+              modelId: config.activeModelId.isEmpty
+                  ? null
+                  : config.activeModelId,
             )
           : await MnnLocalModelsService.stopApiService();
       if (!mounted) return;
@@ -401,6 +434,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       }
     }
   }
+
   void _updateMarketDownloadState(
     String modelId,
     MnnLocalDownloadInfo? download,
@@ -483,7 +517,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
 
   String _apiServiceStateLabel(MnnLocalConfig config) {
     if (config.apiReady) {
-      return 'READY';
+      return '已就绪';
     }
     switch (config.apiState.trim().toLowerCase()) {
       case 'running':
@@ -497,52 +531,252 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     }
   }
 
-  Color _apiServiceStateBackgroundColor(MnnLocalConfig config) {
+  Color _blend(Color first, Color second, double t) {
+    return Color.lerp(first, second, t.clamp(0.0, 1.0))!;
+  }
+
+  Color _alpha(Color color, double opacity) {
+    final safe = opacity.clamp(0.0, 1.0);
+    return color.withAlpha((safe * 255).round());
+  }
+
+  _AccentTone _apiServiceTone(MnnLocalConfig config) {
     if (config.apiReady) {
-      return const Color(0xFFE8F5E9);
+      return _AccentTone.success;
     }
     switch (config.apiState.trim().toLowerCase()) {
       case 'running':
-        return const Color(0xFFE3F2FD);
+        return _AccentTone.info;
       case 'starting':
-        return const Color(0xFFFFF4E5);
+        return _AccentTone.warning;
       case 'failed':
-        return const Color(0xFFFDECEC);
+        return _AccentTone.danger;
       default:
-        return const Color(0xFFF2F4F7);
+        return _AccentTone.neutral;
     }
   }
 
-  Color _apiServiceStateTextColor(MnnLocalConfig config) {
-    if (config.apiReady) {
-      return const Color(0xFF2E7D32);
-    }
-    switch (config.apiState.trim().toLowerCase()) {
-      case 'running':
-        return const Color(0xFF1565C0);
-      case 'starting':
-        return const Color(0xFFB26A00);
-      case 'failed':
-        return const Color(0xFFB42318);
-      default:
+  Color _toneBaseColor(_AccentTone tone) {
+    switch (tone) {
+      case _AccentTone.accent:
+        return _palette.accentPrimary;
+      case _AccentTone.success:
+        return const Color(0xFF3FA66C);
+      case _AccentTone.info:
+        return const Color(0xFF4C8DFF);
+      case _AccentTone.warning:
+        return const Color(0xFFD69A41);
+      case _AccentTone.danger:
+        return const Color(0xFFD86473);
+      case _AccentTone.neutral:
         return _secondaryTextColor;
     }
   }
 
+  Color _toneBackgroundColor(_AccentTone tone) {
+    return _blend(
+      _panelColor,
+      _toneBaseColor(tone),
+      _isDarkTheme ? 0.28 : 0.14,
+    );
+  }
+
+  Color _toneBorderColor(_AccentTone tone) {
+    return _blend(
+      _borderColor,
+      _toneBaseColor(tone),
+      _isDarkTheme ? 0.58 : 0.36,
+    );
+  }
+
+  Color _toneTextColor(_AccentTone tone) {
+    return _blend(
+      _primaryTextColor,
+      _toneBaseColor(tone),
+      _isDarkTheme ? 0.52 : 0.72,
+    );
+  }
+
+  Color _buttonForegroundColor(Color background) {
+    return ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+        ? Colors.white
+        : const Color(0xFF111315);
+  }
+
   Widget _buildApiServiceStateTag(MnnLocalConfig config) {
+    final tone = _apiServiceTone(config);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: _apiServiceStateBackgroundColor(config),
+        color: _toneBackgroundColor(tone),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _toneBorderColor(tone)),
       ),
-      child: Text(
-        _apiServiceStateLabel(config),
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: _apiServiceStateTextColor(config),
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            config.apiReady
+                ? Icons.check_circle_rounded
+                : config.apiRunning
+                ? Icons.radar_rounded
+                : Icons.power_settings_new_rounded,
+            size: 14,
+            color: _toneTextColor(tone),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            _apiServiceStateLabel(config),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: _toneTextColor(tone),
+              fontFamily: AppTextStyles.fontFamily,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _displayModelName(String modelId) {
+    final normalized = modelId.trim();
+    if (normalized.isEmpty) {
+      return '';
+    }
+    for (final model in [..._installedModels, ..._marketModels]) {
+      if (model.id == normalized) {
+        return model.name.trim().isEmpty ? normalized : model.name;
+      }
+    }
+    return normalized;
+  }
+
+  String _shortLabel(
+    String value, {
+    String fallback = '-',
+    int maxLength = 18,
+  }) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) {
+      return fallback;
+    }
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maxLength - 1)}…';
+  }
+
+  String _modelSubtitle(MnnLocalModel model) {
+    final parts = <String>[];
+    if (model.vendor.trim().isNotEmpty) {
+      parts.add(model.vendor.trim());
+    }
+    if (model.id.trim().isNotEmpty) {
+      parts.add(model.id.trim());
+    }
+    if (parts.isEmpty) {
+      return '本地推理模型';
+    }
+    return parts.join('  ·  ');
+  }
+
+  ButtonStyle _filledButtonStyle({required _AccentTone tone}) {
+    final background = tone == _AccentTone.accent
+        ? _blend(_palette.accentPrimary, _cardColor, _isDarkTheme ? 0.08 : 0.0)
+        : _toneBaseColor(tone);
+    return FilledButton.styleFrom(
+      backgroundColor: background,
+      foregroundColor: _buttonForegroundColor(background),
+      disabledBackgroundColor: _alpha(
+        _secondaryTextColor,
+        _isDarkTheme ? 0.18 : 0.1,
+      ),
+      disabledForegroundColor: _tertiaryTextColor,
+      elevation: 0,
+      textStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        fontFamily: AppTextStyles.fontFamily,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    );
+  }
+
+  ButtonStyle _softButtonStyle({required _AccentTone tone}) {
+    return FilledButton.styleFrom(
+      backgroundColor: _toneBackgroundColor(tone),
+      foregroundColor: _toneTextColor(tone),
+      disabledBackgroundColor: _alpha(
+        _secondaryTextColor,
+        _isDarkTheme ? 0.18 : 0.1,
+      ),
+      disabledForegroundColor: _tertiaryTextColor,
+      elevation: 0,
+      textStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        fontFamily: AppTextStyles.fontFamily,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    );
+  }
+
+  ButtonStyle _outlinedButtonStyle({required _AccentTone tone}) {
+    return OutlinedButton.styleFrom(
+      foregroundColor: _toneTextColor(tone),
+      disabledForegroundColor: _tertiaryTextColor,
+      side: BorderSide(color: _toneBorderColor(tone)),
+      textStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        fontFamily: AppTextStyles.fontFamily,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    );
+  }
+
+  InputDecoration _fieldDecoration({
+    required String label,
+    String? helper,
+    IconData? icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      helperText: helper,
+      prefixIcon: icon == null ? null : Icon(icon, size: 20),
+      filled: true,
+      fillColor: _panelColor,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(20),
+        borderSide: BorderSide(color: _borderColor),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(20),
+        borderSide: BorderSide(color: _borderColor),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(20),
+        borderSide: BorderSide(color: _strongBorderColor, width: 1.2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      helperStyle: TextStyle(
+        color: _secondaryTextColor,
+        height: 1.45,
+        fontFamily: AppTextStyles.fontFamily,
+      ),
+      labelStyle: TextStyle(
+        color: _secondaryTextColor,
+        fontWeight: FontWeight.w600,
+        fontFamily: AppTextStyles.fontFamily,
+      ),
+      hintStyle: TextStyle(
+        color: _tertiaryTextColor,
+        fontWeight: FontWeight.w500,
+        fontFamily: AppTextStyles.fontFamily,
       ),
     );
   }
@@ -551,16 +785,21 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     return DropdownButtonFormField<String>(
       key: ValueKey('backend-$backend'),
       initialValue: backend,
-      decoration: const InputDecoration(
-        labelText: '推理后端',
-        helperText: 'llama.cpp 使用 .gguf，omniinfer-mnn 使用目录内 config.json。',
-        border: OutlineInputBorder(),
-        isDense: true,
+      decoration: _fieldDecoration(
+        label: '推理后端',
+        icon: Icons.settings_input_component_rounded,
+      ),
+      dropdownColor: _cardColor,
+      borderRadius: BorderRadius.circular(20),
+      style: TextStyle(
+        color: _primaryTextColor,
+        fontWeight: FontWeight.w600,
+        fontFamily: AppTextStyles.fontFamily,
       ),
       items: const [
         DropdownMenuItem(
           value: _llamaCppBackend,
-          child: Text('llama.cpp (.gguf)'),
+          child: Text('OmniInfer-llama'),
         ),
         DropdownMenuItem(
           value: _omniinferMnnBackend,
@@ -580,12 +819,11 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     }
     final config = _config;
     if (config == null) {
-      return _buildEmptyState(
-        title: '无法加载本地模型配置',
-        subtitle: '请稍后重试。',
-      );
+      return _buildEmptyState(title: '无法加载本地模型配置', subtitle: '请稍后重试。');
     }
     return RefreshIndicator(
+      color: _palette.accentPrimary,
+      backgroundColor: _cardColor,
       onRefresh: () async {
         await Future.wait([
           _refreshConfig(silent: true),
@@ -593,65 +831,53 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         ]);
       },
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
+          _buildHeroCard(
+            title: '本地模型服务',
+            subtitle: '把设备上的模型整理成一个稳定、可切换、可暴露本地接口的推理控制台。',
+            trailing: _buildApiServiceStateTag(config),
+            badges: [
+              '后端 ${_backendLabel(config.backend)}',
+              '已安装 ${_serviceModels.length}',
+              config.activeModelId.isEmpty
+                  ? '未选择默认模型'
+                  : '默认 ${_shortLabel(_displayModelName(config.activeModelId), fallback: '已选择')}',
+            ],
+          ),
+          const SizedBox(height: 16),
           _buildInfoCard(
-            title: '服务',
+            title: '服务控制',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildBackendDropdown(backend: config.backend),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _buildApiServiceStateTag(config),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        config.baseUrl,
-                        style: const TextStyle(color: AppColors.text70),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '共享端口：同一时间只会有一个 OmniInfer 本地服务实例，切换后端不会改变监听端口。',
-                  style: const TextStyle(color: AppColors.text50, height: 1.5),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _portController,
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => _schedulePortSave(),
-                  onSubmitted: (_) => _savePortConfig(),
-                  decoration: const InputDecoration(
-                    labelText: '服务端口',
-                    border: OutlineInputBorder(),
-                    helperText: '修改后会影响内置 OmniInfer provider 的本地 base URL。',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SwitchListTile.adaptive(
-                  value: config.autoStartOnAppOpen,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('打开 App 时自动预热'),
-                  subtitle: const Text('打开App后自动启动本地服务并加载当前模型。'),
-                  onChanged: _toggleAutoStart,
-                ),
-                const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   key: ValueKey(
                     'active-model-${config.backend}-${config.activeModelId}',
                   ),
-                  initialValue: config.activeModelId.isNotEmpty &&
-                          _serviceModels.any((item) => item.id == config.activeModelId)
+                  initialValue:
+                      config.activeModelId.isNotEmpty &&
+                          _serviceModels.any(
+                            (item) => item.id == config.activeModelId,
+                          )
                       ? config.activeModelId
                       : null,
-                  decoration: const InputDecoration(
-                    labelText: '当前模型',
-                    helperText: '启动服务时会加载这里选择的模型。',
-                    border: OutlineInputBorder(),
+                  decoration: _fieldDecoration(
+                    label: '当前模型',
+                    helper: '启动服务时会加载这里选择的模型。',
+                    icon: Icons.memory_rounded,
+                  ),
+                  dropdownColor: _cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  style: TextStyle(
+                    color: _primaryTextColor,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: AppTextStyles.fontFamily,
                   ),
                   items: _serviceModels
                       .map(
@@ -664,12 +890,55 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                   onChanged: _serviceModels.isEmpty ? null : _setActiveModel,
                 ),
                 const SizedBox(height: 12),
+                TextField(
+                  controller: _portController,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) {
+                    setState(() {});
+                    _schedulePortSave();
+                  },
+                  onSubmitted: (_) => _savePortConfig(),
+                  style: TextStyle(
+                    color: _primaryTextColor,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: AppTextStyles.fontFamily,
+                  ),
+                  decoration: _fieldDecoration(
+                    label: '服务端口',
+                    icon: Icons.settings_ethernet_rounded,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '共享端口：同一时间只会有一个 OmniInfer 本地服务实例，切换后端不会改变监听端口。',
+                  style: TextStyle(
+                    color: _secondaryTextColor,
+                    height: 1.55,
+                    fontFamily: AppTextStyles.fontFamily,
+                  ),
+                ),
+                const SizedBox(height: 12),
                 if (config.loadedModelId.isNotEmpty) ...[
-                  Text(
-                    '当前已加载：${_backendLabel(config.loadedBackend)} / ${config.loadedModelId}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.text70,
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _toneBackgroundColor(_AccentTone.success),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: _toneBorderColor(_AccentTone.success),
+                      ),
+                    ),
+                    child: Text(
+                      '当前已加载：${_backendLabel(config.loadedBackend)} / ${_displayModelName(config.loadedModelId)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: _toneTextColor(_AccentTone.success),
+                        fontFamily: AppTextStyles.fontFamily,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -677,24 +946,34 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                 Row(
                   children: [
                     Expanded(
-                      child: FilledButton(
-                        onPressed: _togglingApiService ||
-                                (config.activeModelId.isEmpty && _serviceModels.isEmpty)
+                      child: FilledButton.icon(
+                        onPressed:
+                            _togglingApiService ||
+                                (config.activeModelId.isEmpty &&
+                                    _serviceModels.isEmpty)
                             ? null
                             : () => _toggleApiService(true),
-                        child: Text(
-                          _togglingApiService && !config.apiRunning ? '启动中…' : '启动服务',
+                        style: _filledButtonStyle(tone: _AccentTone.accent),
+                        icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                        label: Text(
+                          _togglingApiService && !config.apiRunning
+                              ? '启动中…'
+                              : '启动服务',
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: OutlinedButton(
+                      child: OutlinedButton.icon(
                         onPressed: _togglingApiService || !config.apiRunning
                             ? null
                             : () => _toggleApiService(false),
-                        child: Text(
-                          _togglingApiService && config.apiRunning ? '停止中…' : '停止服务',
+                        style: _outlinedButtonStyle(tone: _AccentTone.danger),
+                        icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                        label: Text(
+                          _togglingApiService && config.apiRunning
+                              ? '停止中…'
+                              : '停止服务',
                         ),
                       ),
                     ),
@@ -704,39 +983,127 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             ),
           ),
           const SizedBox(height: 16),
-          _buildSearchBar(
-            controller: _installedSearchController,
-            hint: '搜索已安装模型',
-            onSubmitted: (_) => setState(() {}),
-            onRefresh: () => _refreshInstalled(),
-            compact: true,
+          _buildInfoCard(
+            title: '自动预热',
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: _panelColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _borderColor),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '打开 App 时自动预热',
+                          style: TextStyle(
+                            color: _primaryTextColor,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: AppTextStyles.fontFamily,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '打开 App 后自动启动本地服务并加载当前模型。',
+                          style: TextStyle(
+                            color: _secondaryTextColor,
+                            height: 1.5,
+                            fontFamily: AppTextStyles.fontFamily,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Switch.adaptive(
+                    value: config.autoStartOnAppOpen,
+                    onChanged: _toggleAutoStart,
+                    activeThumbColor: Colors.white,
+                    activeTrackColor: _palette.accentPrimary,
+                    inactiveThumbColor: Colors.white,
+                    inactiveTrackColor: _alpha(_secondaryTextColor, 0.28),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
-          if (_loadingInstalled && _installedModels.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 40),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_filteredInstalledModels.isEmpty)
-            _buildEmptyState(
-              title: '还没有可用的本地模型',
-              subtitle: '先去模型市场下载一个模型，或者手动放置 MNN 模型目录。',
-            )
-          else
-            ..._filteredInstalledModels.map(_buildInstalledCard),
+          const SizedBox(height: 16),
+          _buildInfoCard(
+            title: '已安装模型',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSearchBar(
+                  controller: _installedSearchController,
+                  onSubmitted: (_) => setState(() {}),
+                  onRefresh: () => _refreshInstalled(),
+                ),
+                const SizedBox(height: 12),
+                if (_loadingInstalled && _installedModels.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 40),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_filteredInstalledModels.isEmpty)
+                  _buildEmptyState(
+                    title: '还没有可用的本地模型',
+                    subtitle: '先去模型市场下载一个模型，或者手动放置 MNN 模型目录。',
+                  )
+                else
+                  ..._filteredInstalledModels.map(_buildInstalledCard),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
+
   Widget _buildMarketTab() {
     final config = _config;
     return RefreshIndicator(
+      color: _palette.accentPrimary,
+      backgroundColor: _cardColor,
       onRefresh: () => _refreshMarket(refresh: true),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
-          _buildInfoCard(
+          _buildHeroCard(
             title: '模型市场',
+            subtitle: '按当前推理后端浏览可下载模型，统一管理下载源。',
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: _toneBackgroundColor(_AccentTone.accent),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: _toneBorderColor(_AccentTone.accent)),
+              ),
+              child: Text(
+                config?.downloadProvider ?? '同步中',
+                style: TextStyle(
+                  color: _toneTextColor(_AccentTone.accent),
+                  fontWeight: FontWeight.w700,
+                  fontFamily: AppTextStyles.fontFamily,
+                ),
+              ),
+            ),
+            badges: [
+              '在架 ${_marketModels.length}',
+              '进行中 ${_marketModels.where((item) => item.download?.isDownloading == true).length}',
+              '来源 ${(config?.availableSources ?? const <String>[]).length}',
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildInfoCard(
+            title: '筛选与来源',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -751,10 +1118,16 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                   initialValue: config?.downloadProvider.isNotEmpty == true
                       ? config!.downloadProvider
                       : null,
-                  decoration: const InputDecoration(
-                    labelText: '下载源',
-                    border: OutlineInputBorder(),
-                    helperText: 'MNN 模型会统一使用模型名作为 modelId，切换下载源不会改变 modelId。',
+                  decoration: _fieldDecoration(
+                    label: '下载源',
+                    icon: Icons.public_rounded,
+                  ),
+                  dropdownColor: _cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  style: TextStyle(
+                    color: _primaryTextColor,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: AppTextStyles.fontFamily,
                   ),
                   items: (config?.availableSources ?? const <String>[])
                       .map(
@@ -773,26 +1146,32 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             ),
           ),
           const SizedBox(height: 16),
-          _buildSearchBar(
-            controller: _marketSearchController,
-            hint: '搜索模型市场',
-            onSubmitted: (_) => _refreshMarket(),
-            onRefresh: () => _refreshMarket(refresh: true),
-            compact: true,
+          _buildInfoCard(
+            title: '市场模型',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSearchBar(
+                  controller: _marketSearchController,
+                  onSubmitted: (_) => _refreshMarket(),
+                  onRefresh: () => _refreshMarket(refresh: true),
+                ),
+                const SizedBox(height: 12),
+                if (_loadingMarket && _marketModels.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 40),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_marketModels.isEmpty)
+                  _buildEmptyState(
+                    title: '模型市场暂时为空',
+                    subtitle: '请检查下载源，或者下拉刷新重试。',
+                  )
+                else
+                  ..._sortedMarketModels.map(_buildMarketCard),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          if (_loadingMarket && _marketModels.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 40),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_marketModels.isEmpty)
-            _buildEmptyState(
-              title: '模型市场暂时为空',
-              subtitle: '请检查下载源，或者下拉刷新重试。',
-            )
-          else
-            ..._marketModels.map(_buildMarketCard),
         ],
       ),
     );
@@ -800,101 +1179,184 @@ class _LocalModelsPageState extends State<LocalModelsPage>
 
   Widget _buildInstalledCard(MnnLocalModel model) {
     final modelSizeText = _resolvedModelSizeText(model);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: _cardColor,
-      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: _borderColor),
+    final isLoaded = _config?.loadedModelId == model.id;
+    final outlineTone = model.active
+        ? _AccentTone.accent
+        : (isLoaded ? _AccentTone.success : _AccentTone.neutral);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _blend(_cardColor, _toneBaseColor(outlineTone), 0.08),
+            _blend(_cardColor, _panelColor, 0.52),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _toneBorderColor(outlineTone)),
+        boxShadow: _cardShadow,
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    model.name,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: _primaryTextColor,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        model.name,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: _primaryTextColor,
+                          fontFamily: AppTextStyles.fontFamily,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _modelSubtitle(model),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _secondaryTextColor,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: AppTextStyles.fontFamily,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (model.active)
+                if (model.active || isLoaded)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+                      horizontal: 10,
+                      vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8F5E9),
+                      color: _toneBackgroundColor(
+                        model.active ? _AccentTone.accent : _AccentTone.success,
+                      ),
                       borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: _toneBorderColor(
+                          model.active
+                              ? _AccentTone.accent
+                              : _AccentTone.success,
+                        ),
+                      ),
                     ),
-                    child: const Text(
-                      '当前使用',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF2E7D32)),
+                    child: Text(
+                      model.active ? '当前默认' : '已加载',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _toneTextColor(
+                          model.active
+                              ? _AccentTone.accent
+                              : _AccentTone.success,
+                        ),
+                        fontWeight: FontWeight.w700,
+                        fontFamily: AppTextStyles.fontFamily,
+                      ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 _buildTag(model.category.toUpperCase()),
                 if (model.source.isNotEmpty) _buildTag(model.source),
+                if (model.vendor.isNotEmpty) _buildTag(model.vendor),
                 for (final tag in model.tags.take(4)) _buildTag(tag),
               ],
             ),
-            if (modelSizeText != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                '文件大小：$modelSizeText',
-                style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
-              ),
-            ],
-            if (model.path.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                model.path,
-                style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
+            if (modelSizeText != null || model.path.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _panelColor,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: _borderColor),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (modelSizeText != null)
+                      Text(
+                        '文件大小  $modelSizeText',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _secondaryTextColor,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: AppTextStyles.fontFamily,
+                        ),
+                      ),
+                    if (model.path.isNotEmpty) ...[
+                      if (modelSizeText != null) const SizedBox(height: 8),
+                      Text(
+                        model.path,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _tertiaryTextColor,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
             const SizedBox(height: 12),
-            Row(
+            Text(
+              model.readOnly ? '这是手动放置目录，App 内不提供删除。' : '该模型可由 OmniInfer 直接加载。',
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.5,
+                color: model.readOnly
+                    ? _toneTextColor(_AccentTone.warning)
+                    : _secondaryTextColor,
+                fontFamily: AppTextStyles.fontFamily,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Expanded(
-                  child: Text(
-                    model.readOnly
-                        ? '这是手动放置目录，App 内不提供删除。'
-                        : '该模型可由 OmniInfer 直接加载。',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: model.readOnly
-                          ? const Color(0xFFB26A00)
-                          : AppColors.text50,
+                if (!model.active)
+                  FilledButton.icon(
+                    onPressed: () => _setActiveModel(model.id),
+                    style: _softButtonStyle(tone: _AccentTone.accent),
+                    icon: const Icon(
+                      Icons.playlist_add_check_circle_rounded,
+                      size: 18,
                     ),
+                    label: const Text('设为当前'),
                   ),
-                ),
                 if (!model.readOnly)
-                  IconButton(
-                    tooltip: '删除模型',
+                  OutlinedButton.icon(
                     onPressed: () async {
                       await MnnLocalModelsService.deleteModel(model.id);
                       _refreshInstalled(silent: true);
                       _refreshMarket(silent: true);
                     },
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      color: Color(0xFFB42318),
-                    ),
+                    style: _outlinedButtonStyle(tone: _AccentTone.danger),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                    label: const Text('删除'),
                   ),
               ],
             ),
@@ -909,86 +1371,198 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     final isCompleted = download?.isCompleted == true;
     final isDownloading = download?.isDownloading == true;
     final isPaused = download?.isPaused == true;
+    final isFailed = download?.stateLabel == 'failed';
     final modelSizeText = _resolvedModelSizeText(model);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: _cardColor,
-      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: _borderColor),
+    final tone = isCompleted
+        ? _AccentTone.success
+        : isDownloading
+        ? _AccentTone.info
+        : isPaused
+        ? _AccentTone.warning
+        : isFailed
+        ? _AccentTone.danger
+        : _AccentTone.neutral;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _blend(_cardColor, _toneBaseColor(tone), 0.08),
+            _blend(_cardColor, _panelColor, 0.56),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _toneBorderColor(tone)),
+        boxShadow: _cardShadow,
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    model.name,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: _primaryTextColor,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        model.name,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: _primaryTextColor,
+                          fontFamily: AppTextStyles.fontFamily,
+                        ),
+                      ),
+                      if (model.description.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          model.description,
+                          style: TextStyle(
+                            color: _secondaryTextColor,
+                            height: 1.5,
+                            fontFamily: AppTextStyles.fontFamily,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (download != null)
-                  Text(
-                    _downloadStatusLabel(download),
-                    style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _toneBackgroundColor(tone),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: _toneBorderColor(tone)),
+                    ),
+                    child: Text(
+                      _downloadStatusLabel(download),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _toneTextColor(tone),
+                        fontWeight: FontWeight.w700,
+                        fontFamily: AppTextStyles.fontFamily,
+                      ),
+                    ),
                   ),
               ],
             ),
-            if (model.description.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                model.description,
-                style: TextStyle(color: _secondaryTextColor, height: 1.5),
-              ),
-            ],
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 _buildTag(model.category.toUpperCase()),
                 if (model.source.isNotEmpty) _buildTag(model.source),
+                if (model.vendor.isNotEmpty) _buildTag(model.vendor),
+                if (model.hasUpdate) _buildTag('有更新'),
                 for (final tag in model.tags.take(4)) _buildTag(tag),
               ],
             ),
             if (modelSizeText != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                '文件大小：$modelSizeText',
-                style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _panelColor,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: _borderColor),
+                ),
+                child: Text(
+                  '文件大小  $modelSizeText',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _secondaryTextColor,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: AppTextStyles.fontFamily,
+                  ),
+                ),
               ),
             ],
-            if (download != null && (isDownloading || isPaused))
+            if (download != null && (isDownloading || isPaused || isFailed))
               Padding(
                 padding: const EdgeInsets.only(top: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    LinearProgressIndicator(value: download.progress),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${(download.progress * 100).toStringAsFixed(1)}% ${download.speedInfo}',
-                      style: TextStyle(fontSize: 12, color: _tertiaryTextColor),
-                    ),
-                  ],
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: _panelColor,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: _toneBorderColor(tone)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: download.progress,
+                          minHeight: 8,
+                          backgroundColor: _alpha(_secondaryTextColor, 0.14),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _toneBaseColor(
+                              tone == _AccentTone.neutral
+                                  ? _AccentTone.info
+                                  : tone,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '${(download.progress * 100).toStringAsFixed(1)}%  ${download.speedInfo}'
+                            .trim(),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _secondaryTextColor,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: AppTextStyles.fontFamily,
+                        ),
+                      ),
+                      if (download.progressStage.trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          download.progressStage.trim(),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _secondaryTextColor,
+                            fontFamily: AppTextStyles.fontFamily,
+                          ),
+                        ),
+                      ],
+                      if (isFailed &&
+                          download.errorMessage.trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          download.errorMessage.trim(),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _toneTextColor(_AccentTone.danger),
+                            fontWeight: FontWeight.w700,
+                            fontFamily: AppTextStyles.fontFamily,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             const SizedBox(height: 12),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 10,
+              runSpacing: 10,
               children: [
                 if (!isCompleted && !isDownloading)
-                  FilledButton(
+                  FilledButton.icon(
                     onPressed: () async {
                       _updateMarketDownloadState(
                         model.id,
@@ -1006,10 +1580,23 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                         showToast('启动下载失败', type: ToastType.error);
                       }
                     },
-                    child: Text(isPaused ? '继续下载' : '下载'),
+                    style: _filledButtonStyle(tone: _AccentTone.accent),
+                    icon: Icon(
+                      isPaused
+                          ? Icons.play_arrow_rounded
+                          : Icons.download_rounded,
+                      size: 18,
+                    ),
+                    label: Text(
+                      isPaused
+                          ? '继续下载'
+                          : isFailed
+                          ? '重新下载'
+                          : '下载模型',
+                    ),
                   ),
                 if (isDownloading)
-                  OutlinedButton(
+                  OutlinedButton.icon(
                     onPressed: () async {
                       _updateMarketDownloadState(
                         model.id,
@@ -1027,16 +1614,24 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                         showToast('暂停下载失败', type: ToastType.error);
                       }
                     },
-                    child: const Text('暂停'),
+                    style: _outlinedButtonStyle(tone: _AccentTone.warning),
+                    icon: const Icon(Icons.pause_rounded, size: 18),
+                    label: const Text('暂停'),
                   ),
                 if (isCompleted)
-                  FilledButton.tonal(
+                  FilledButton.icon(
                     onPressed: () async {
                       await MnnLocalModelsService.deleteModel(model.id);
                       _refreshMarket(silent: true);
                       _refreshInstalled(silent: true);
                     },
-                    child: Text(model.hasUpdate ? '删除旧版本' : '删除'),
+                    style: _softButtonStyle(
+                      tone: model.hasUpdate
+                          ? _AccentTone.warning
+                          : _AccentTone.neutral,
+                    ),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                    label: Text(model.hasUpdate ? '删除旧版本' : '删除'),
                   ),
               ],
             ),
@@ -1046,43 +1641,225 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     );
   }
 
+  Widget _buildHeroCard({
+    required String title,
+    required String subtitle,
+    required Widget trailing,
+    required List<String> badges,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _blend(_highlightPanelColor, _palette.accentPrimary, 0.12),
+            _blend(_cardColor, _panelColor, 0.42),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: _strongBorderColor),
+        boxShadow: _cardShadow,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 28,
+                          height: 1.1,
+                          color: _primaryTextColor,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: AppTextStyles.fontFamily,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.6,
+                          color: _secondaryTextColor,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: AppTextStyles.fontFamily,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                trailing,
+              ],
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: badges.map(_buildTag).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSegmentButton({
+    required _LocalModelsTab tab,
+    required String title,
+  }) {
+    final selected = _tabController.index == tab.index;
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: () {
+        if (_tabController.index != tab.index) {
+          _tabController.animateTo(tab.index);
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? _blend(_highlightPanelColor, _palette.accentPrimary, 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? _blend(_strongBorderColor, _palette.accentPrimary, 0.2)
+                : Colors.transparent,
+          ),
+        ),
+        child: Text(
+          title,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 14,
+            color: selected ? _primaryTextColor : _secondaryTextColor,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+            fontFamily: AppTextStyles.fontFamily,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabSwitcher() {
+    return AnimatedBuilder(
+      animation: _tabController.animation!,
+      builder: (context, _) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: _alpha(_cardColor, 0.82),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: _blend(_borderColor, _strongBorderColor, 0.28),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildSegmentButton(
+                      tab: _LocalModelsTab.service,
+                      title: '服务',
+                    ),
+                    const SizedBox(width: 4),
+                    _buildSegmentButton(
+                      tab: _LocalModelsTab.market,
+                      title: '市场',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildSearchBar({
     required TextEditingController controller,
-    required String hint,
     required ValueChanged<String> onSubmitted,
     required VoidCallback onRefresh,
-    bool compact = false,
   }) {
-    return Padding(
-      padding: compact
-          ? EdgeInsets.zero
-          : const EdgeInsets.fromLTRB(16, 12, 16, 8),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _panelColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _borderColor),
+        boxShadow: _cardShadow,
+      ),
       child: Row(
         children: [
+          Icon(Icons.search_rounded, size: 18, color: _secondaryTextColor),
+          const SizedBox(width: 10),
           Expanded(
             child: TextField(
               controller: controller,
               textInputAction: TextInputAction.search,
+              onChanged: (_) => setState(() {}),
               onSubmitted: onSubmitted,
-              decoration: InputDecoration(
-                hintText: hint,
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: controller.text.isEmpty
-                    ? null
-                    : IconButton(
-                        onPressed: () {
-                          controller.clear();
-                          onSubmitted('');
-                        },
-                        icon: const Icon(Icons.close),
-                      ),
-                border: const OutlineInputBorder(),
+              style: TextStyle(
+                fontSize: 14,
+                color: _primaryTextColor,
+                fontWeight: FontWeight.w600,
+                fontFamily: AppTextStyles.fontFamily,
+              ),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
                 isDense: true,
+                contentPadding: EdgeInsets.zero,
               ),
             ),
           ),
+          if (controller.text.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () {
+                controller.clear();
+                setState(() {});
+                onSubmitted('');
+              },
+              child: Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: _secondaryTextColor,
+              ),
+            ),
+          ],
           const SizedBox(width: 8),
-          IconButton(onPressed: onRefresh, icon: const Icon(Icons.refresh)),
+          Container(width: 1, height: 18, color: _borderColor),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: '刷新',
+            onPressed: onRefresh,
+            style: IconButton.styleFrom(
+              minimumSize: const Size(34, 34),
+              padding: EdgeInsets.zero,
+              backgroundColor: Colors.transparent,
+              foregroundColor: _primaryTextColor,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+          ),
         ],
       ),
     );
@@ -1090,10 +1867,14 @@ class _LocalModelsPageState extends State<LocalModelsPage>
 
   Widget _buildInfoCard({required String title, required Widget child}) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_cardColor, _blend(_cardColor, _panelColor, 0.48)],
+        ),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: _borderColor),
         boxShadow: _cardShadow,
       ),
@@ -1103,28 +1884,35 @@ class _LocalModelsPageState extends State<LocalModelsPage>
           Text(
             title,
             style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
               color: _primaryTextColor,
+              fontFamily: AppTextStyles.fontFamily,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           child,
         ],
       ),
     );
   }
+
   Widget _buildTag(String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: _tagSurfaceColor,
         borderRadius: BorderRadius.circular(999),
-        border: _isDarkTheme ? Border.all(color: _borderColor) : null,
+        border: Border.all(color: _borderColor),
       ),
       child: Text(
         value,
-        style: TextStyle(fontSize: 12, color: _secondaryTextColor),
+        style: TextStyle(
+          fontSize: 12,
+          color: _secondaryTextColor,
+          fontWeight: FontWeight.w600,
+          fontFamily: AppTextStyles.fontFamily,
+        ),
       ),
     );
   }
@@ -1132,30 +1920,44 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   Widget _buildEmptyState({required String title, required String subtitle}) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 42),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.offline_bolt_outlined,
-              size: 44,
-              color: _tertiaryTextColor,
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: _panelColor,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: _borderColor),
+              ),
+              child: Icon(
+                Icons.offline_bolt_outlined,
+                size: 28,
+                color: _tertiaryTextColor,
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Text(
               title,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
                 color: _primaryTextColor,
+                fontFamily: AppTextStyles.fontFamily,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(height: 1.6, color: _tertiaryTextColor),
+              style: TextStyle(
+                height: 1.6,
+                color: _secondaryTextColor,
+                fontFamily: AppTextStyles.fontFamily,
+              ),
             ),
           ],
         ),
@@ -1169,8 +1971,22 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         return 'omniinfer-mnn';
       case _llamaCppBackend:
       default:
-        return 'llama.cpp';
+        return 'OmniInfer-llama';
     }
+  }
+
+  double _modelSizeSortValue(MnnLocalModel model) {
+    if (model.sizeB > 0) {
+      return model.sizeB;
+    }
+    if (model.fileSize > 0) {
+      return model.fileSize.toDouble();
+    }
+    final totalSize = model.download?.totalSize.toDouble() ?? 0;
+    if (totalSize > 0) {
+      return totalSize;
+    }
+    return double.infinity;
   }
 
   String? _resolvedModelSizeText(MnnLocalModel model) {
@@ -1198,30 +2014,33 @@ class _LocalModelsPageState extends State<LocalModelsPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FB),
-      appBar: const CommonAppBar(title: '本地模型', primary: true),
-      body: Column(
-        children: [
-          Material(
-            color: Colors.white,
-            child: TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(text: '服务'),
-                Tab(text: '模型市场'),
-              ],
+      backgroundColor: _palette.pageBackground,
+      appBar: CommonAppBar(
+        title: '本地模型',
+        height: 38,
+        primary: true,
+        backgroundColor: _palette.pageBackground,
+        titleStyle: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: _primaryTextColor,
+          fontFamily: AppTextStyles.fontFamily,
+        ),
+      ),
+      body: Container(
+        decoration: BoxDecoration(gradient: _pageGradient),
+        child: Column(
+          children: [
+            _buildTabSwitcher(),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                physics: const BouncingScrollPhysics(),
+                children: [_buildServiceTab(), _buildMarketTab()],
+              ),
             ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildServiceTab(),
-                _buildMarketTab(),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

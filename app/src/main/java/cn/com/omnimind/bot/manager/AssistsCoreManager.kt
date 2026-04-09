@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import cn.com.omnimind.accessibility.api.Constant
 import cn.com.omnimind.assists.AssistsCore
 import cn.com.omnimind.assists.api.bean.TaskParams
@@ -122,6 +124,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         @Volatile
         private var sharedInstance: AssistsCoreManager? = null
 
+        private val mainHandler = Handler(Looper.getMainLooper())
+
         fun bindMainEngineChannel(channel: MethodChannel) {
             mainEngineChannel = channel
             FlutterChatSyncBridge.bindMainChannel(channel)
@@ -149,7 +153,16 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 "path" to path
             )
             runCatching {
-                mainEngineChannel?.invokeMethod("onAgentAiConfigChanged", payload)
+                mainHandler.post {
+                    runCatching {
+                        mainEngineChannel?.invokeMethod("onAgentAiConfigChanged", payload)
+                    }.onFailure {
+                        OmniLog.w(
+                            "[AssistsCoreManager]",
+                            "dispatchAgentAiConfigChanged failed: ${it.message}"
+                        )
+                    }
+                }
             }.onFailure {
                 OmniLog.w("[AssistsCoreManager]", "dispatchAgentAiConfigChanged failed: ${it.message}")
             }

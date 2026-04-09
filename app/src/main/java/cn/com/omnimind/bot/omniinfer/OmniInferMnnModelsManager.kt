@@ -57,6 +57,12 @@ object OmniInferMnnModelsManager {
         override fun onDownloadFinished(modelId: String, path: String) {
             emitDownloadUpdate(modelId)
             emitEvent("downloads_changed", emptyMap())
+            appContext?.let {
+                OmniInferBuiltinProviderRefresher.refreshAsync(
+                    it,
+                    "mnn_download_finished:$modelId"
+                )
+            }
         }
 
         override fun onDownloadFailed(modelId: String, e: Exception) {
@@ -307,6 +313,7 @@ object OmniInferMnnModelsManager {
         }
         emitConfigChanged()
         emitEvent("downloads_changed", emptyMap())
+        OmniInferBuiltinProviderRefresher.refreshAsync(context, "mnn_delete:${target.id}")
         return listInstalledModels()
     }
 
