@@ -332,6 +332,9 @@ mixin _ChatInputAreaComposerMixin
           final innerRadius = math.max(0.0, shellRadius - borderInset);
           const contentPadding = EdgeInsets.fromLTRB(14, 8, 12, 8);
           final shouldGlowStrong = focused || hovered || isRecording;
+          final innerBorderColor =
+              (context.isDarkTheme ? palette.borderStrong : Colors.white)
+                  .withValues(alpha: context.isDarkTheme ? 0.42 : 0.1);
 
           return AnimatedContainer(
             duration: const Duration(milliseconds: 220),
@@ -377,20 +380,7 @@ mixin _ChatInputAreaComposerMixin
                         decoration: BoxDecoration(
                           color: shellSurfaceColor,
                           borderRadius: BorderRadius.circular(innerRadius),
-                          border: Border.all(
-                            color:
-                                (context.isDarkTheme
-                                        ? palette.borderStrong
-                                        : Colors.white)
-                                    .withValues(
-                                      alpha: focused
-                                          ? (context.isDarkTheme ? 0.74 : 0.32)
-                                          : hovered
-                                          ? (context.isDarkTheme ? 0.56 : 0.2)
-                                          : (context.isDarkTheme ? 0.42 : 0.1),
-                                    ),
-                            width: 1,
-                          ),
+                          border: Border.all(color: innerBorderColor, width: 1),
                         ),
                         child: AnimatedSize(
                           duration: const Duration(milliseconds: 220),
@@ -728,7 +718,14 @@ mixin _ChatInputAreaComposerMixin
               height: multiline ? 1.45 : 1.43,
               letterSpacing: 0.333,
             ),
+            filled: false,
+            fillColor: Colors.transparent,
             border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            focusedErrorBorder: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(vertical: multiline ? 2 : 12),
             isDense: true,
           ),
