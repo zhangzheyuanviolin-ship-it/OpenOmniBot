@@ -378,6 +378,26 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     return context.omniPalette.textSecondary;
   }
 
+  Gradient get _drawerQuickCardGradient {
+    if (!context.isDarkTheme) {
+      return const LinearGradient(
+        begin: Alignment(-0.17, -0.47),
+        end: Alignment(1.48, 1.69),
+        colors: [Color(0xFF0056FA), Color(0xB2609CF7)],
+      );
+    }
+
+    final palette = context.omniPalette;
+    return LinearGradient(
+      begin: const Alignment(-0.17, -0.47),
+      end: const Alignment(1.48, 1.69),
+      colors: [
+        Color.lerp(palette.surfaceSecondary, palette.accentPrimary, 0.08)!,
+        Color.lerp(palette.surfaceElevated, palette.accentPrimary, 0.16)!,
+      ],
+    );
+  }
+
   BoxDecoration _drawerPanelDecoration({
     required BorderRadius borderRadius,
     required Color darkColor,
@@ -435,11 +455,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             child: _buildQuickCard(
               title: '记忆中心',
               subtitle: '记忆 $_totalMemoryCount 碎片',
-              gradient: const LinearGradient(
-                begin: Alignment(-0.17, -0.47),
-                end: Alignment(1.48, 1.69),
-                colors: [Color(0xFF0056FA), Color(0xB2609CF7)],
-              ),
+              gradient: _drawerQuickCardGradient,
               onTap: () {
                 _navigateTo("/memory/memory_center_page");
               },
@@ -450,11 +466,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             child: _buildQuickCard(
               title: '技能仓库',
               subtitle: '启用 $_enabledSkillCount / $_installedSkillCount 技能',
-              gradient: const LinearGradient(
-                begin: Alignment(-0.17, -0.47),
-                end: Alignment(1.48, 1.69),
-                colors: [Color(0xFF0056FA), Color(0xB2609CF7)],
-              ),
+              gradient: _drawerQuickCardGradient,
               onTap: () {
                 _navigateTo('/home/skill_store');
               },
@@ -472,6 +484,11 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     required Gradient gradient,
     required VoidCallback onTap,
   }) {
+    final palette = context.omniPalette;
+    final titleColor = context.isDarkTheme ? palette.textPrimary : Colors.white;
+    final subtitleColor = context.isDarkTheme
+        ? palette.textSecondary
+        : Colors.white.withValues(alpha: 0.8);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -480,6 +497,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         decoration: BoxDecoration(
           gradient: gradient,
           borderRadius: BorderRadius.circular(8),
+          border: context.isDarkTheme
+              ? Border.all(color: palette.borderSubtle)
+              : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -487,10 +507,10 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Colors.white,
+                color: titleColor,
                 fontFamily: 'PingFang SC',
                 height: 1.3,
               ),
@@ -503,7 +523,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w400,
-                color: Colors.white.withValues(alpha: 0.8),
+                color: subtitleColor,
                 fontFamily: 'PingFang SC',
                 height: 1.2,
               ),
@@ -546,11 +566,8 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                       _drawerTextColor,
                       BlendMode.srcIn,
                     ),
-                    errorBuilder: (context, error, stackTrace) => Icon(
-                      Icons.settings,
-                      size: 16,
-                      color: _drawerTextColor,
-                    ),
+                    errorBuilder: (context, error, stackTrace) =>
+                        Icon(Icons.settings, size: 16, color: _drawerTextColor),
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -591,7 +608,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                     height: 0.5,
                     thickness: 0.5,
                     color: context.isDarkTheme
-                        ? context.omniPalette.borderSubtle.withValues(alpha: 0.45)
+                        ? context.omniPalette.borderSubtle.withValues(
+                            alpha: 0.45,
+                          )
                         : AppColors.borderStandard,
                   ),
                 ),

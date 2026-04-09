@@ -50,7 +50,7 @@ class _AboutPageState extends State<AboutPage> {
         _version = 'Version -';
       });
     } catch (e) {
-      print('加载版本号失败: $e');
+      debugPrint('加载版本号失败: $e');
       if (!mounted) return;
       setState(() {
         _version = 'Version -';
@@ -129,6 +129,24 @@ class _AboutPageState extends State<AboutPage> {
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
+    final darkAccent = HSLColor.fromColor(palette.accentPrimary);
+    final updateButtonGradient = context.isDarkTheme
+        ? <Color>[
+            darkAccent
+                .withSaturation((darkAccent.saturation * 0.72).clamp(0.0, 1.0))
+                .withLightness((darkAccent.lightness - 0.08).clamp(0.0, 1.0))
+                .toColor(),
+            darkAccent
+                .withSaturation((darkAccent.saturation * 0.66).clamp(0.0, 1.0))
+                .withLightness((darkAccent.lightness + 0.02).clamp(0.0, 1.0))
+                .toColor(),
+          ]
+        : const <Color>[Color(0xFF1930D9), Color(0xFF2DA5F0)];
+    final updateButtonTextColor =
+        ThemeData.estimateBrightnessForColor(updateButtonGradient.last) ==
+            Brightness.dark
+        ? Colors.white
+        : const Color(0xFF171916);
     return Scaffold(
       backgroundColor: context.isDarkTheme
           ? palette.pageBackground
@@ -230,6 +248,15 @@ class _AboutPageState extends State<AboutPage> {
                     : (_updateStatus?.hasUpdate == true ? '查看新版本' : '检查更新'),
                 width: 180,
                 height: 44,
+                gradientColors: updateButtonGradient,
+                textStyle: TextStyle(
+                  color: updateButtonTextColor,
+                  fontSize: 16,
+                  fontFamily: AppTextStyles.fontFamily,
+                  fontWeight: FontWeight.w500,
+                  height: 1.5,
+                  letterSpacing: 0.5,
+                ),
                 enabled: !_isCheckingUpdate,
                 onTap: () {
                   _handlePrimaryAction();

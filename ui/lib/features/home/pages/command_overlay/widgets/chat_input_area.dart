@@ -330,21 +330,9 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     widget.focusNode.addListener(_onFocusChanged);
 
     _micSvg = const SizedBox.shrink();
-    _sendSvg = SvgPicture.asset(
-      'assets/home/send_icon.svg',
-      width: 24,
-      height: 24,
-    );
-    _pauseSvg = SvgPicture.asset(
-      'assets/home/input_pause_icon.svg',
-      width: 20,
-      height: 20,
-    );
-    _addSvg = SvgPicture.asset(
-      'assets/home/input_add_icon.svg',
-      width: 20,
-      height: 20,
-    );
+    _sendSvg = const SizedBox.shrink();
+    _pauseSvg = const SizedBox.shrink();
+    _addSvg = const SizedBox.shrink();
     // 进入界面先预取 asr ws token（仅用于 WS 握手）
     _initSpeechRecognition();
     _composerFlowController = AnimationController(
@@ -357,10 +345,45 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final palette = context.omniPalette;
     _micSvg = SvgPicture.string(
       context.isDarkTheme ? _kLucideMicSvgDark : _kLucideMicSvg,
       width: 24,
       height: 24,
+    );
+    _sendSvg = _buildComposerIconAsset(
+      'assets/home/send_icon.svg',
+      width: 24,
+      height: 24,
+      darkColor: Color.lerp(palette.accentPrimary, palette.textPrimary, 0.18)!,
+    );
+    _pauseSvg = _buildComposerIconAsset(
+      'assets/home/input_pause_icon.svg',
+      width: 20,
+      height: 20,
+      darkColor: Color.lerp(palette.accentPrimary, palette.textPrimary, 0.18)!,
+    );
+    _addSvg = _buildComposerIconAsset(
+      'assets/home/input_add_icon.svg',
+      width: 20,
+      height: 20,
+      darkColor: palette.textSecondary,
+    );
+  }
+
+  Widget _buildComposerIconAsset(
+    String assetPath, {
+    required double width,
+    required double height,
+    required Color darkColor,
+  }) {
+    return SvgPicture.asset(
+      assetPath,
+      width: width,
+      height: height,
+      colorFilter: context.isDarkTheme
+          ? ColorFilter.mode(darkColor, BlendMode.srcIn)
+          : null,
     );
   }
 

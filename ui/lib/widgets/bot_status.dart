@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:ui/theme/theme_context.dart';
 
 class BotStatus extends StatelessWidget {
   final BotStatusType status;
@@ -7,11 +8,11 @@ class BotStatus extends StatelessWidget {
   final String? costTime;
 
   const BotStatus({
-    Key? key,
+    super.key,
     required this.status,
     this.hintText,
     this.costTime,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -41,14 +42,18 @@ class BotStatus extends StatelessWidget {
     }
   }
 
-  Widget _buildStatusRow(BuildContext context, {
+  Widget _buildStatusRow(
+    BuildContext context, {
     IconData? icon,
     String? svgPath,
     required String text,
     String? timeDesc,
     String? costTime,
   }) {
-    const lightGrey = Color(0xFF999999);
+    final palette = context.omniPalette;
+    final lightGrey = context.isDarkTheme
+        ? palette.textSecondary
+        : const Color(0xFF999999);
 
     Widget iconWidget;
     if (svgPath != null) {
@@ -56,25 +61,26 @@ class BotStatus extends StatelessWidget {
         svgPath,
         width: 12,
         height: 12,
+        colorFilter: context.isDarkTheme
+            ? ColorFilter.mode(lightGrey, BlendMode.srcIn)
+            : null,
       );
     } else if (icon != null) {
-      iconWidget = Icon(icon, size: 16);
+      iconWidget = Icon(icon, size: 16, color: lightGrey);
     } else {
       iconWidget = const SizedBox.shrink();
     }
 
     return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8.0),
-      ),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8.0)),
       child: Row(
         children: [
           iconWidget,
           const SizedBox(width: 8.0),
           Text(
             text,
-            style: const TextStyle(
-              color: Color(0xFF999999),
+            style: TextStyle(
+              color: lightGrey,
               fontSize: 12,
               fontFamily: 'PingFang SC',
               fontWeight: FontWeight.w400,
@@ -85,8 +91,8 @@ class BotStatus extends StatelessWidget {
           const SizedBox(width: 4.0),
           Text(
             timeDesc != null ? '$timeDesc ${costTime ?? ''}' : '',
-            style: const TextStyle(
-              color: Color(0xFF999999),
+            style: TextStyle(
+              color: lightGrey,
               fontSize: 12,
               fontFamily: 'PingFang SC',
               fontWeight: FontWeight.w400,
@@ -100,8 +106,4 @@ class BotStatus extends StatelessWidget {
   }
 }
 
-enum BotStatusType {
-  thinking,
-  completed,
-  hint,
-}
+enum BotStatusType { thinking, completed, hint }
