@@ -20,7 +20,7 @@ object OmniInferMnnModelsManager {
     private const val KEY_DOWNLOAD_PROVIDER = "omniinfer_mnn_download_provider"
     private const val MANUAL_MODELS_ROOT = "/data/local/tmp/mnn_models"
 
-    private data class InstalledModelRecord(
+    internal data class InstalledModelRecord(
         val id: String,
         val name: String,
         val path: String,
@@ -330,10 +330,65 @@ object OmniInferMnnModelsManager {
     }
 
     private fun installedRecords(): List<InstalledModelRecord> {
-        val records = LinkedHashMap<String, InstalledModelRecord>()
-        downloadedRecords().forEach { records.putIfAbsent(it.id, it) }
-        manualRecords().forEach { records.putIfAbsent(it.id, it) }
-        return records.values.toList()
+        val preferredIds = buildSet {
+            getActiveModelId().takeIf { it.isNotBlank() }?.let(::add)
+            OmniInferLocalRuntime.getLoadedModelId()
+                .takeIf { it.isNotBlank() }
+                ?.let(::add)
+        }
+        return dedupeInstalledRecords(rawInstalledRecords(), preferredIds)
+    }
+
+    private fun rawInstalledRecords(): List<InstalledModelRecord> {
+        return buildList {
+            addAll(downloadedRecords())
+            addAll(manualRecords())
+        }
+    }
+
+    internal fun dedupeInstalledRecords(
+        records: List<InstalledModelRecord>,
+        preferredIds: Set<String> = emptySet(),
+    ): List<InstalledModelRecord> {
+        val deduped = LinkedHashMap<String, InstalledModelRecord>()
+        records.forEach { record ->
+            val key = installedRecordDirectoryKey(record)
+            val existing = deduped[key]
+            if (existing == null || shouldReplaceInstalledRecord(existing, record, preferredIds)) {
+                deduped[key] = record
+            }
+        }
+        return deduped.values.toList()
+    }
+
+    private fun installedRecordDirectoryKey(record: InstalledModelRecord): String {
+        fun normalizePath(path: String): String {
+            return path.trim()
+                .replace('\\', '/')
+                .trimEnd('/')
+                .lowercase(Locale.getDefault())
+        }
+
+        return listOf(record.path, record.configPath, record.id)
+            .map(::normalizePath)
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+    }
+
+    private fun shouldReplaceInstalledRecord(
+        existing: InstalledModelRecord,
+        candidate: InstalledModelRecord,
+        preferredIds: Set<String>,
+    ): Boolean {
+        val existingPreferred = existing.id in preferredIds
+        val candidatePreferred = candidate.id in preferredIds
+        if (existingPreferred != candidatePreferred) {
+            return candidatePreferred
+        }
+        if (existing.readOnly != candidate.readOnly) {
+            return !candidate.readOnly
+        }
+        return false
     }
 
     private fun downloadedRecords(): List<InstalledModelRecord> {
@@ -401,7 +456,7 @@ object OmniInferMnnModelsManager {
         if (normalizedModelId.isEmpty()) {
             return null
         }
-        return installedRecords().firstOrNull { it.id == normalizedModelId }
+        return rawInstalledRecords().firstOrNull { it.id == normalizedModelId }
     }
 
     private fun installedRecordToMap(record: InstalledModelRecord): Map<String, Any?> {
