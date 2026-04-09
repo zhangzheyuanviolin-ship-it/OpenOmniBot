@@ -2,6 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+const Color kTerminalSurfaceBlack = Color(0xFF06080C);
+const Color kTerminalSurfaceBlackElevated = Color(0xFF0C1016);
+const Color kTerminalSurfaceShadow = Color(0x52000000);
+
 class TerminalOutputUtils {
   static const int maxChars = 64 * 1024;
   static const int maxLines = 600;
@@ -89,9 +93,7 @@ class TerminalOutputUtils {
     try {
       final decoded = jsonDecode(text);
       if (decoded is Map) {
-        return decoded.map(
-          (key, value) => MapEntry(key.toString(), value),
-        );
+        return decoded.map((key, value) => MapEntry(key.toString(), value));
       }
     } catch (_) {
       return const {};
@@ -121,12 +123,11 @@ class AnsiTextSpanBuilder {
   };
 
   static final RegExp _sgrPattern = RegExp(r'\x1B\[([0-9;]*)m');
-  static final RegExp _unsupportedAnsiPattern = RegExp(r'\x1B\[[0-9;?]*[A-Za-z]');
+  static final RegExp _unsupportedAnsiPattern = RegExp(
+    r'\x1B\[[0-9;?]*[A-Za-z]',
+  );
 
-  static TextSpan build(
-    String text,
-    TextStyle baseStyle,
-  ) {
+  static TextSpan build(String text, TextStyle baseStyle) {
     if (text.isEmpty) {
       return TextSpan(text: text, style: baseStyle);
     }
@@ -154,9 +155,9 @@ class AnsiTextSpanBuilder {
       final codes = codesText.isEmpty
           ? const <int>[0]
           : codesText
-              .split(';')
-              .map((code) => int.tryParse(code) ?? 0)
-              .toList();
+                .split(';')
+                .map((code) => int.tryParse(code) ?? 0)
+                .toList();
 
       for (final code in codes) {
         switch (code) {
@@ -198,10 +199,7 @@ class AnsiTextSpanBuilder {
     }
 
     if (spans.isEmpty) {
-      return TextSpan(
-        text: _stripUnsupportedAnsi(text),
-        style: baseStyle,
-      );
+      return TextSpan(text: _stripUnsupportedAnsi(text), style: baseStyle);
     }
 
     return TextSpan(style: baseStyle, children: spans);
