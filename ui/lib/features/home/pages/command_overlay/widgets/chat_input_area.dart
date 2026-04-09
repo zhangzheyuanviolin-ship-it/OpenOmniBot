@@ -146,7 +146,13 @@ class _ContextUsageRing extends StatelessWidget {
     final normalized = ratio.isFinite ? ratio : 0.0;
     final progress = normalized.clamp(0.0, 1.0).toDouble();
     final palette = context.omniPalette;
-    final color = normalized >= 1.0
+    final color = context.isDarkTheme
+        ? normalized >= 1.0
+              ? const Color(0xFFB97862)
+              : normalized >= 0.85
+              ? const Color(0xFFB39B6B)
+              : palette.accentPrimary
+        : normalized >= 1.0
         ? const Color(0xFFD65A3A)
         : normalized >= 0.85
         ? const Color(0xFFC69234)
@@ -370,39 +376,89 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
       width: 24,
       height: 24,
     );
-    _sendSvg = _buildComposerIconAsset(
-      'assets/home/send_icon.svg',
-      width: 24,
-      height: 24,
-      darkColor: palette.textPrimary,
-    );
-    _pauseSvg = _buildComposerIconAsset(
-      'assets/home/input_pause_icon.svg',
-      width: 20,
-      height: 20,
-      darkColor: palette.textPrimary,
-    );
-    _addSvg = _buildComposerIconAsset(
-      'assets/home/input_add_icon.svg',
-      width: 20,
-      height: 20,
-      darkColor: Color.lerp(palette.textSecondary, palette.textPrimary, 0.36)!,
-    );
+    _sendSvg = context.isDarkTheme
+        ? _buildDarkActionButtonIcon(
+            size: 24,
+            backgroundColor: Color.lerp(
+              palette.surfaceElevated,
+              palette.accentPrimary,
+              0.34,
+            )!,
+            foreground: Icon(
+              Icons.arrow_upward_rounded,
+              size: 15,
+              color: palette.pageBackground,
+            ),
+          )
+        : _buildComposerIconAsset(
+            'assets/home/send_icon.svg',
+            width: 24,
+            height: 24,
+          );
+    _pauseSvg = context.isDarkTheme
+        ? _buildDarkActionButtonIcon(
+            size: 20,
+            backgroundColor: Color.lerp(
+              palette.surfaceElevated,
+              palette.accentPrimary,
+              0.34,
+            )!,
+            foreground: Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: palette.pageBackground,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          )
+        : _buildComposerIconAsset(
+            'assets/home/input_pause_icon.svg',
+            width: 20,
+            height: 20,
+          );
+    _addSvg = context.isDarkTheme
+        ? _buildDarkActionButtonIcon(
+            size: 20,
+            backgroundColor: palette.surfaceSecondary,
+            borderColor: palette.borderSubtle,
+            foreground: Icon(
+              Icons.add_rounded,
+              size: 14,
+              color: palette.textPrimary,
+            ),
+          )
+        : _buildComposerIconAsset(
+            'assets/home/input_add_icon.svg',
+            width: 20,
+            height: 20,
+          );
   }
 
   Widget _buildComposerIconAsset(
     String assetPath, {
     required double width,
     required double height,
-    required Color darkColor,
   }) {
-    return SvgPicture.asset(
-      assetPath,
-      width: width,
-      height: height,
-      colorFilter: context.isDarkTheme
-          ? ColorFilter.mode(darkColor, BlendMode.srcIn)
-          : null,
+    return SvgPicture.asset(assetPath, width: width, height: height);
+  }
+
+  Widget _buildDarkActionButtonIcon({
+    required double size,
+    required Widget foreground,
+    required Color backgroundColor,
+    Color? borderColor,
+  }) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        shape: BoxShape.circle,
+        border: borderColor == null ? null : Border.all(color: borderColor),
+      ),
+      alignment: Alignment.center,
+      child: foreground,
     );
   }
 
