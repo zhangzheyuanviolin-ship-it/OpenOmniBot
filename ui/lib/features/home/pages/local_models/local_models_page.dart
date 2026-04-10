@@ -410,7 +410,18 @@ class _LocalModelsPageState extends State<LocalModelsPage>
       if (!mounted) return;
       setState(() => _config = nextConfig);
       _refreshInstalled(silent: true);
-      showToast(enable ? '本地服务已启动' : '本地服务已停止');
+      final apiRunning = nextConfig.apiRunning;
+      if (enable) {
+        showToast(
+          apiRunning ? '本地服务已启动' : '启动服务失败',
+          type: apiRunning ? ToastType.success : ToastType.error,
+        );
+      } else {
+        showToast(
+          apiRunning ? '停止服务失败' : '本地服务已停止',
+          type: apiRunning ? ToastType.error : ToastType.success,
+        );
+      }
     } catch (_) {
       if (mounted) {
         showToast(enable ? '启动服务失败' : '停止服务失败', type: ToastType.error);
