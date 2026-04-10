@@ -31,24 +31,60 @@
 |
 </p>
 
-## ✨ 项目简介
-OpenOmniBot 是一个基于 Android 原生与 Flutter 混合架构的智能机器人助手应用。
-与传统 AI App 不同，它关注的是：**从理解 → 决策 → 执行 → 反馈的完整闭环**, 是一个 Android 端真正可“执行”的 Agent。
+> 与传统手机AI聊天不同，OpenOmniBot在设备上运行，可以像人类一样控制您的安卓手机——包括应用、手势和系统设置。
 
-## 🧠 核心能力：
+OpenOmniBot 是一个基于 Android 原生 kotlin 与 Flutter 构建的 端侧 AI Agent。
+与传统 AI Chat 不同，它关注的是：**从理解 → 决策 → 执行 → 反馈的完整闭环**。
 
-- 🧩 **工具生态扩展**：Skills、Alpine 系统、浏览器、MCP、安卓系统工具...
+## 核心能力：
 
-- 📱 **手机任务自动化**：支持用视觉模型操作手机界面。
+-  **工具生态扩展**：Skills、Alpine 系统、浏览器、MCP、安卓系统级工具...
 
-- ⏰ **系统级能力**：支持定时任务、闹钟提醒、日历事件创建/查询/修改、音频播放控制。
+- **手机任务自动化**：支持用视觉模型操作手机界面。
 
-- 🧬 **记忆系统**：短期与长期记忆嵌入。
+- **系统级能力**：支持定时任务、闹钟提醒、日历事件创建/查询/修改、音频播放控制。
 
-- 🔨 **生产力工具**：支持读写文件、浏览工作区、调用浏览器、调用终端。
+- **记忆系统**：短期与长期记忆嵌入。
 
+- **生产力工具**：支持读写文件、浏览工作区、调用浏览器、调用终端。
 
-## 🚀 开发指南
+## 开始使用
+![example](docs/tutorial/example.jpg)
+### 配置
+在左侧栏的设置页面内打开设置：
+![ 设置 AI 能力](docs/tutorial/1.png)
+![ 配置 AI 提供商](docs/tutorial/2.png)
+前往场景模型配置内：
+![ 配置 AI 模型](docs/tutorial/3.png)
+说明：除了 `Memory embedding` 强制需要嵌入模型之外，其他场景为了最好的体验请使用多模态/视觉模型。
+![ alpine 环境](docs/tutorial/alpine.jpg)
+一般而言启动软件会自动初始化alpine环境，你还可以在这里配置您的环境。
+
+### 使用场景
+#### Skills
+你可以要求小万为你安装某个 skills，直接将链接丢给她就行！推荐：https://github.com/OpenMinis/MinisSkills
+在技能仓库选择是否开启某项技能：
+![ 技能仓库 ](docs/tutorial/skills_store.jpg)
+![ 技能示例 ](docs/tutorial/skills_example.jpg)
+
+#### VLM 任务
+![ VLM 任务 ](docs/tutorial/vlm.jpg)
+开始任务前，你需要点击聊天右上角完成所有权限授权。
+
+#### 本地模型推理
+![local](docs/tutorial/local_inference.jpg)
+支持 MNN 和 llama 后端
+#### 定时
+![ 定时 ](docs/tutorial/timed.jpg)
+![ 定时 ](docs/tutorial/timing.jpg)
+定时任务与闹钟的区别：定时任务是可执行的任务—vlm 和 subagent（你可以分配一个完整的任务给 subagent，他与 agent 完全一致）。闹钟是仅提醒的。
+
+#### 浏览器
+![ 浏览器 ](docs/tutorial/browser.jpg)
+
+#### workspace
+![ workspace ](docs/tutorial/workspace.jpg)
+## 开发指南
 
 ### 环境要求
 
@@ -71,48 +107,6 @@ flutter pub get
 cd .. # 回到根目录下
 ./gradlew :app:installDevelopDebug
 ```
-### 配置
-
-在APP的设置页中配置：
-
-- 模型提供商
-
-- 场景模型配置
-
-- MCP工具
-
-- Alpine 环境与自启动终端
-
-
-## 🧪 Demo
-<table width="100%">
-  <tr>
-    <td width="20%" align="center">
-      <div>
-        <p><strong>下载抖音视频Skill演示</strong></p>
-        <video src="https://github.com/user-attachments/assets/8dbe772a-b300-4d52-9428-c3030fbf97a8" controls="controls" style="max-width: 100%;"></video>
-      </div>
-    </td>
-    <td width="20%" align="center">
-      <div>
-        <p><strong>手机任务执行</strong></p>
-        <video src="https://github.com/user-attachments/assets/a9a22755-e6fb-43d9-8647-1bc62549a1da" controls="controls" style="max-width: 100%;"></video>
-      </div>
-    </td>
-    <td width="20%" align="center">
-      <div>
-        <p><strong>定时任务演示</strong></p>
-        <video src="https://github.com/user-attachments/assets/9bc78501-55ab-4c41-837d-5b8c6589e352" controls="controls" style="max-width: 100%;"></video>
-      </div>
-    </td>
-    <td width="20%" align="center">
-      <div>
-        <p><strong>原生OpenClaw演示</strong></p>
-        <video src="https://github.com/user-attachments/assets/45b235ae-17fb-4af6-89f0-03419a063441" controls="controls" style="max-width: 100%;"></video>
-      </div>
-    </td>
-  </tr>
-</table>
 
 ## 🏗️ 架构概览
 ```
@@ -129,7 +123,8 @@ OpenOmniBot/
 ## 其他
 感谢社区的开发者的支持；
 
-感谢优秀的开源项目：https://github.com/RohitKushvaha01/ReTerminal、https://github.com/OpenMinis
+感谢优秀的开源项目：https://github.com/RohitKushvaha01/ReTerminal
+https://github.com/OpenMinis
 
 <table align="center">
   <tr>
