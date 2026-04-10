@@ -142,6 +142,7 @@ cd OpenOmniBot
 
 git submodule update --init third_party/omniinfer
 git -C third_party/omniinfer submodule update --init framework/mnn
+git -C third_party/omniinfer submodule update --init framework/llama.cpp
 
 cd ui
 flutter pub get
