@@ -24,7 +24,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
+          submodules: false
+
+      - name: Initialize required OmniInfer submodules
+        run: |
+          git submodule update --init third_party/omniinfer
+          git -C third_party/omniinfer submodule update --init framework/mnn framework/llama.cpp
 
       - name: Secret scan (gitleaks)
         uses: gitleaks/gitleaks-action@v2
