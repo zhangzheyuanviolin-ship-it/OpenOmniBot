@@ -4,132 +4,166 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="README.md"><b>English</b></a> |
+  <a href="README.zh-CN.md"><b>简体中文</b></a>
+</p>
+
 <h3 align="center">
-你的端侧 AI 助手
+Your On-Device AI Assistant
 </h3>
 
 <div align="center">
   <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/omnimind-ai/OpenOmniBot">
   <a href="https://github.com/omnimind-ai/OpenOmniBot/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/omnimind-ai/OpenOmniBot"></a>
   <br>
-  <a href="https://omnimind.com.cn"><img src="https://img.shields.io/badge/About_us-万象智维-purple.svg?color=%234b0c77" alt="万象智维"></a>
-  <a href="https://linux.do"><img src="https://img.shields.io/badge/Linux_Do-社区-yellow.svg?color=%23ac3712" alt="LinuxDo社区"></a>
-  <a href="#其他">
-    <img src="https://img.shields.io/badge/WeChat-微信群-lightgreen" alt="微信群"/>
+  <a href="https://omnimind.com.cn"><img src="https://img.shields.io/badge/About_us-万象智维-purple.svg?color=%234b0c77" alt="OmniMind"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/Linux_Do-Community-yellow.svg?color=%23ac3712" alt="Linux Do Community"></a>
+  <a href="#community">
+    <img src="https://img.shields.io/badge/WeChat-Group-lightgreen" alt="WeChat Group"/>
   </a>
 </div>
 
 <p align="center">
-| 
-<a href="#-demo"><b>Demo</b></a> 
-| 
-<a href="#-快速开始"><b>Quick Start</b></a> 
-| 
-<a href="https://github.com/omnimind-ai/OpenOmniBot/releases"><b>Release</b></a> 
 |
-<a href="https://github.com/omnimind-ai/OmniInfer-LLM/issues"><b>Issues</b></a> 
+<a href="#use-cases"><b>Demo</b></a>
+|
+<a href="#quick-start"><b>Quick Start</b></a>
+|
+<a href="https://github.com/omnimind-ai/OpenOmniBot/releases"><b>Release</b></a>
+|
+<a href="https://github.com/omnimind-ai/OpenOmniBot/issues"><b>Issues</b></a>
 |
 </p>
 
-## ✨ 项目简介
-OpenOmniBot 是一个基于 Android 原生与 Flutter 混合架构的智能机器人助手应用。
-与传统 AI App 不同，它关注的是：**从理解 → 决策 → 执行 → 反馈的完整闭环**, 是一个 Android 端真正可“执行”的 Agent。
+> Unlike traditional mobile AI chat apps, OpenOmniBot runs directly on your device and can operate your Android phone like a human, including apps, gestures, and system settings.
 
-## 🧠 核心能力：
+OpenOmniBot is an on-device AI agent built with native Android Kotlin and Flutter. Instead of stopping at chat, it focuses on the full loop of **understand -> decide -> execute -> reflect**.
 
-- 🧩 **工具生态扩展**：Skills、Alpine 系统、浏览器、MCP、安卓系统工具...
+<h2 id="core-capabilities">Core Capabilities</h2>
 
-- 📱 **手机任务自动化**：支持用视觉模型操作手机界面。
+- **Extensible tool ecosystem**: Skills, Alpine environment, browser access, MCP, and Android system-level tools.
+- **Phone task automation**: Uses vision models to understand and operate mobile interfaces.
+- **System-level actions**: Supports scheduled tasks, alarms, calendar creation/query/update, and audio playback control.
+- **Memory system**: Short-term and long-term memory with embedding support.
+- **Productivity tools**: Read and write files, browse the workspace, use the browser, and access the terminal.
 
-- ⏰ **系统级能力**：支持定时任务、闹钟提醒、日历事件创建/查询/修改、音频播放控制。
+<h2 id="quick-start">Quick Start</h2>
 
-- 🧬 **记忆系统**：短期与长期记忆嵌入。
+![example](docs/tutorial/example.jpg)
 
-- 🔨 **生产力工具**：支持读写文件、浏览工作区、调用浏览器、调用终端。
+### Configure the app
 
+Open the settings page from the left sidebar:
 
-## 🚀 开发指南
+![Configure AI capabilities](docs/tutorial/1.png)
+![Configure AI providers](docs/tutorial/2.png)
 
-### 环境要求
+Then open the scenario model settings:
 
-- Flutter SDK (3.9.2+)
-- JDK 11+
+![Configure AI models](docs/tutorial/3.png)
 
-### 获取代码
+Note: `Memory embedding` requires an embedding model. For the best overall experience, the other scenarios should use multimodal or vision-capable models whenever possible.
+
+![Alpine environment](docs/tutorial/alpine.jpg)
+
+The app usually initializes the Alpine environment automatically on startup, and you can also manage that environment from the same settings area.
+
+<h2 id="use-cases">Use Cases</h2>
+
+### Skills
+
+You can ask OmniBot to install a skill by simply sending it the repository link. Recommended collection: https://github.com/OpenMinis/MinisSkills
+
+Enable or disable skills from the skill repository:
+
+![Skill store](docs/tutorial/skills_store.jpg)
+![Skill example](docs/tutorial/skills_example.jpg)
+
+### VLM tasks
+
+![VLM task](docs/tutorial/vlm.jpg)
+
+Before starting a task, open the chat page and grant all required permissions from the top-right corner.
+
+### Local model inference
+
+![Local inference](docs/tutorial/local_inference.jpg)
+
+Supports both MNN and llama backends.
+
+### Scheduled tasks
+
+![Scheduled task](docs/tutorial/timed.jpg)
+![Timing](docs/tutorial/timing.jpg)
+
+Scheduled tasks can execute work such as VLM tasks and subagent flows. Alarms are reminder-only. A subagent can be assigned a complete task and behaves like a full agent.
+
+### Browser
+
+![Browser](docs/tutorial/browser.jpg)
+
+### Workspace
+
+![Workspace](docs/tutorial/workspace.jpg)
+
+<h2 id="development-guide">Development Guide</h2>
+
+### Requirements
+
+- Flutter SDK `3.9.2+`
+- JDK `11+`
+
+### Get the code
 
 ```bash
 git clone https://github.com/omnimind-ai/OpenOmniBot.git
 cd OpenOmniBot
 
-#安装 Flutter 依赖
+git submodule update --init third_party/omniinfer
+git -C third_party/omniinfer submodule update --init framework/mnn
+
 cd ui
 flutter pub get
 ```
 
-### 构建并安装
+If Flutter reports `Could not read script '.../ui/.android/include_flutter.groovy'`, run:
+
 ```bash
-cd .. # 回到根目录下
+flutter clean
+flutter pub get
+```
+
+### Build and install
+
+```bash
+cd ..
 ./gradlew :app:installDevelopDebug
 ```
-### 配置
 
-在APP的设置页中配置：
+<h2 id="architecture">Architecture Overview</h2>
 
-- 模型提供商
-
-- 场景模型配置
-
-- MCP工具
-
-- Alpine 环境与自启动终端
-
-
-## 🧪 Demo
-<table width="100%">
-  <tr>
-    <td width="20%" align="center">
-      <div>
-        <p><strong>下载抖音视频Skill演示</strong></p>
-        <video src="https://github.com/user-attachments/assets/8dbe772a-b300-4d52-9428-c3030fbf97a8" controls="controls" style="max-width: 100%;"></video>
-      </div>
-    </td>
-    <td width="20%" align="center">
-      <div>
-        <p><strong>手机任务执行</strong></p>
-        <video src="https://github.com/user-attachments/assets/a9a22755-e6fb-43d9-8647-1bc62549a1da" controls="controls" style="max-width: 100%;"></video>
-      </div>
-    </td>
-    <td width="20%" align="center">
-      <div>
-        <p><strong>定时任务演示</strong></p>
-        <video src="https://github.com/user-attachments/assets/9bc78501-55ab-4c41-837d-5b8c6589e352" controls="controls" style="max-width: 100%;"></video>
-      </div>
-    </td>
-    <td width="20%" align="center">
-      <div>
-        <p><strong>原生OpenClaw演示</strong></p>
-        <video src="https://github.com/user-attachments/assets/45b235ae-17fb-4af6-89f0-03419a063441" controls="controls" style="max-width: 100%;"></video>
-      </div>
-    </td>
-  </tr>
-</table>
-
-## 🏗️ 架构概览
-```
+```text
 OpenOmniBot/
-├── app/                 # Android 主宿主模块：App 入口、Agent 编排、系统能力、MCP、前台服务
-├── ui/                  # Flutter UI 模块：聊天、设置、任务、记忆等界面（Riverpod + GoRouter）
-├── baselib/             # 基础核心库：数据库、网络、存储、模型配置、OCR、权限、设备信息
-├── assists/             # 自动化执行引擎：任务调度、状态机、视觉检测、操作控制
-├── accessibility/       # 无障碍与屏幕感知：Accessibility Service、截图、MediaProjection
-├── omniintelligence/    # 智能能力抽象层：模型协议、任务状态、Agent 请求/响应模型
-└── uikit/               # 原生浮窗/覆盖层 UI：Overlay、悬浮球、半屏面板
+├── app/                        # Android host app: entry point, agent orchestration, system abilities, MCP, services
+├── ui/                         # Flutter UI: chat, settings, tasks, memory, and web chat bundle
+├── baselib/                    # Shared core libraries: database, storage, networking, model config, OCR, permissions
+├── assists/                    # Automation engine: task scheduling, state machine, visual detection, execution control
+├── accessibility/              # Accessibility and screen perception: accessibility service, screenshots, projection
+├── omniintelligence/           # AI abstractions: model protocol, task status, request/response models
+├── uikit/                      # Native overlay UI: floating ball, overlay panels, half-screen surfaces
+├── third_party/omniinfer/      # Local inference runtime and Android integration modules
+└── ReTerminal/core/            # Embedded terminal experience modules
 ```
 
-## 其他
-感谢社区的开发者的支持；
+<h2 id="community">Community</h2>
 
-感谢优秀的开源项目：https://github.com/RohitKushvaha01/ReTerminal、https://github.com/OpenMinis
+Thanks to the community developers supporting OpenOmniBot.
+
+Special thanks to these open-source projects:
+
+- https://github.com/RohitKushvaha01/ReTerminal
+- https://github.com/OpenMinis
 
 <table align="center">
   <tr>
