@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/app_update_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_text_styles.dart';
@@ -142,11 +143,12 @@ class _AboutPageState extends State<AboutPage> {
                 .toColor(),
           ]
         : const <Color>[Color(0xFF1930D9), Color(0xFF2DA5F0)];
-    final updateButtonTextColor =
-        ThemeData.estimateBrightnessForColor(updateButtonGradient.last) ==
-            Brightness.dark
-        ? Colors.white
-        : const Color(0xFF171916);
+    final updateButtonTextColor = context.isDarkTheme
+        ? (ThemeData.estimateBrightnessForColor(updateButtonGradient.last) ==
+                  Brightness.dark
+              ? Colors.white
+              : const Color(0xFF171916))
+        : Colors.white;
     return Scaffold(
       backgroundColor: context.isDarkTheme
           ? palette.pageBackground
@@ -261,6 +263,34 @@ class _AboutPageState extends State<AboutPage> {
                 onTap: () {
                   _handlePrimaryAction();
                 },
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  GoRouterManager.push('/my/about/request-logs');
+                },
+                icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                label: const Text('请求日志'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(180, 44),
+                  foregroundColor: context.isDarkTheme
+                      ? palette.textPrimary
+                      : AppColors.text,
+                  side: BorderSide(
+                    color: context.isDarkTheme
+                        ? const Color(0xFF2B3444)
+                        : const Color(0xFFD6E0EE),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontFamily: AppTextStyles.fontFamily,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                ),
               ),
               const SizedBox(height: 154),
             ],

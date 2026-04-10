@@ -70,6 +70,9 @@ class AssistsCoreChannel {
                 "listModelProviderProfiles" -> {
                     assistsCoreManager!!.listModelProviderProfiles(call, result)
                 }
+                "listRecentAiRequestLogs" -> {
+                    assistsCoreManager!!.listRecentAiRequestLogs(call, result)
+                }
                 "saveModelProviderProfile" -> {
                     assistsCoreManager!!.saveModelProviderProfile(call, result)
                 }

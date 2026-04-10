@@ -939,7 +939,7 @@ class WorkspaceMemoryService(
         text: String
     ): List<Double> {
         check(config.configured) { "embedding config not ready" }
-        val apiBase = config.apiBase!!.trim().trimEnd('/')
+        val apiBase = ModelProviderConfigStore.stripDirectRequestUrlMarker(config.apiBase!!)
         val modelId = config.modelId!!.trim()
         val profile = config.providerProfileId?.let { ModelProviderConfigStore.getProfile(it) }
             ?: ModelProviderConfigStore.getEditingProfile()
