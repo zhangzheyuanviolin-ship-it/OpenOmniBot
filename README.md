@@ -50,22 +50,30 @@ OpenOmniBot is an on-device AI agent built with native Android Kotlin and Flutte
 
 <h2 id="quick-start">Quick Start</h2>
 
-![example](docs/tutorial/example.jpg)
+<p align="center">
+  <img src="docs/tutorial/example.jpg" alt="Example" width="260" />
+</p>
 
 ### Configure the app
 
 Open the settings page from the left sidebar:
 
-![Configure AI capabilities](docs/tutorial/1.png)
-![Configure AI providers](docs/tutorial/2.png)
+<p align="center">
+  <img src="docs/tutorial/1.png" alt="Configure AI capabilities" width="420" />
+  <img src="docs/tutorial/2.png" alt="Configure AI providers" width="260" />
+</p>
 
 Then open the scenario model settings:
 
-![Configure AI models](docs/tutorial/3.png)
+<p align="center">
+  <img src="docs/tutorial/3.png" alt="Configure AI models" width="260" />
+</p>
 
 Note: `Memory embedding` requires an embedding model. For the best overall experience, the other scenarios should use multimodal or vision-capable models whenever possible.
 
-![Alpine environment](docs/tutorial/alpine.jpg)
+<p align="center">
+  <img src="docs/tutorial/alpine.jpg" alt="Alpine environment" width="260" />
+</p>
 
 The app usually initializes the Alpine environment automatically on startup, and you can also manage that environment from the same settings area.
 
@@ -77,35 +85,47 @@ You can ask OmniBot to install a skill by simply sending it the repository link.
 
 Enable or disable skills from the skill repository:
 
-![Skill store](docs/tutorial/skills_store.jpg)
-![Skill example](docs/tutorial/skills_example.jpg)
+<p align="center">
+  <img src="docs/tutorial/skills_store.jpg" alt="Skill store" width="260" />
+  <img src="docs/tutorial/skills_example.jpg" alt="Skill example" width="260" />
+</p>
 
 ### VLM tasks
 
-![VLM task](docs/tutorial/vlm.jpg)
+<p align="center">
+  <img src="docs/tutorial/vlm.jpg" alt="VLM task" width="260" />
+</p>
 
 Before starting a task, open the chat page and grant all required permissions from the top-right corner.
 
 ### Local model inference
 
-![Local inference](docs/tutorial/local_inference.jpg)
+<p align="center">
+  <img src="docs/tutorial/local_inference.jpg" alt="Local inference" width="260" />
+</p>
 
 Supports both MNN and llama backends.
 
 ### Scheduled tasks
 
-![Scheduled task](docs/tutorial/timed.jpg)
-![Timing](docs/tutorial/timing.jpg)
+<p align="center">
+  <img src="docs/tutorial/timed.jpg" alt="Scheduled task" width="260" />
+  <img src="docs/tutorial/timing.jpg" alt="Timing" width="260" />
+</p>
 
 Scheduled tasks can execute work such as VLM tasks and subagent flows. Alarms are reminder-only. A subagent can be assigned a complete task and behaves like a full agent.
 
 ### Browser
 
-![Browser](docs/tutorial/browser.jpg)
+<p align="center">
+  <img src="docs/tutorial/browser.jpg" alt="Browser" width="260" />
+</p>
 
 ### Workspace
 
-![Workspace](docs/tutorial/workspace.jpg)
+<p align="center">
+  <img src="docs/tutorial/workspace.jpg" alt="Workspace" width="260" />
+</p>
 
 <h2 id="development-guide">Development Guide</h2>
 
