@@ -1,3 +1,5 @@
+import org.gradle.api.GradleException
+
 pluginManagement {
     repositories {
         google {
@@ -36,12 +38,34 @@ apply(from = File(filePath))
 include(":baselib")
 include(":accessibility")
 include(":omniintelligence")
-include(":omniinfer-server")
-project(":omniinfer-server").projectDir =
-    File(settingsDir, "third_party/omniinfer/android/omniinfer-server")
-include(":model_downloader")
-project(":model_downloader").projectDir =
+
+fun requireOmniInferModule(moduleName: String, moduleDir: File, markerFileName: String) {
+    if (File(moduleDir, markerFileName).exists()) {
+        return
+    }
+
+    throw GradleException(
+        """
+        Missing required OmniInfer sources for $moduleName at: ${moduleDir.relativeTo(settingsDir)}
+        
+        Initialize the required submodules with:
+          git submodule update --init third_party/omniinfer
+          git -C third_party/omniinfer submodule update --init framework/mnn
+        """.trimIndent()
+    )
+}
+
+val omniInferServerDir = File(settingsDir, "third_party/omniinfer/android/omniinfer-server")
+val modelDownloaderDir =
     File(settingsDir, "third_party/omniinfer/framework/mnn/apps/frameworks/model_downloader/android")
+
+requireOmniInferModule(":omniinfer-server", omniInferServerDir, "build.gradle.kts")
+requireOmniInferModule(":model_downloader", modelDownloaderDir, "build.gradle")
+
+include(":omniinfer-server")
+project(":omniinfer-server").projectDir = omniInferServerDir
+include(":model_downloader")
+project(":model_downloader").projectDir = modelDownloaderDir
 include(":uikit")
 include(":core:main")
 project(":core:main").projectDir = File(settingsDir, "ReTerminal/core/main")
@@ -53,6 +77,5 @@ include(":core:terminal-emulator")
 project(":core:terminal-emulator").projectDir = File(settingsDir, "ReTerminal/core/terminal-emulator")
 include(":core:terminal-view")
 project(":core:terminal-view").projectDir = File(settingsDir, "ReTerminal/core/terminal-view")
-
 
 

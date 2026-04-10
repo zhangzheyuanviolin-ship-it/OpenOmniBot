@@ -22,7 +22,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Initialize required OmniInfer submodules
+        run: |
+          git submodule update --init third_party/omniinfer
+          git -C third_party/omniinfer submodule update --init framework/mnn framework/llama.cpp
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

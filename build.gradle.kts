@@ -1,3 +1,7 @@
+import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.dsl.LibraryExtension
+import org.gradle.kotlin.dsl.configure
+
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
     alias(libs.plugins.android.application) apply false
@@ -7,6 +11,7 @@ plugins {
 }
 
 val forcedCoroutinesVersion = libs.versions.kotlinxCoroutines.get()
+val omniInferNdkVersion = providers.gradleProperty("OMNI_NDK_VERSION").getOrElse("28.2.13676358")
 
 subprojects {
     repositories {
@@ -23,5 +28,21 @@ subprojects {
             "org.jetbrains.kotlinx:kotlinx-coroutines-core:$forcedCoroutinesVersion",
             "org.jetbrains.kotlinx:kotlinx-coroutines-android:$forcedCoroutinesVersion",
         )
+    }
+
+    if (path == ":app") {
+        plugins.withId("com.android.application") {
+            extensions.configure<ApplicationExtension> {
+                ndkVersion = omniInferNdkVersion
+            }
+        }
+    }
+
+    if (path == ":omniinfer-server") {
+        plugins.withId("com.android.library") {
+            extensions.configure<LibraryExtension> {
+                ndkVersion = omniInferNdkVersion
+            }
+        }
     }
 }
