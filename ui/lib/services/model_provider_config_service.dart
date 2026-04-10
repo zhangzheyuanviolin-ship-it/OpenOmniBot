@@ -178,6 +178,15 @@ class ModelProviderConfigService {
       'manual_provider_model_ids_v1';
   static const String _kLegacyCachedFetchedModelsKey =
       'cached_provider_models_with_base_v1';
+  static const String _kDirectRequestUrlMarker = '#';
+  static const List<String> _kCanonicalEndpointSuffixes = <String>[
+    '/v1/chat/completions',
+    '/chat/completions',
+    '/v1/models',
+    '/models',
+    '/v1/messages',
+    '/messages',
+  ];
 
   static bool _isBuiltinLocalProfileId(String profileId) {
     final normalized = profileId.trim();
@@ -601,13 +610,38 @@ class ModelProviderConfigService {
     return normalizeApiBase(value) != null;
   }
 
+  static bool _hasDirectRequestUrlMarker(String value) {
+    return value.trim().endsWith(_kDirectRequestUrlMarker);
+  }
+
+  static String _stripDirectRequestUrlMarker(String value) {
+    var result = value.trim();
+    if (result.endsWith(_kDirectRequestUrlMarker)) {
+      result = result.substring(
+        0,
+        result.length - _kDirectRequestUrlMarker.length,
+      );
+    }
+    return result.replaceAll(RegExp(r'/+$'), '');
+  }
+
   static String? normalizeApiBase(String value) {
     final normalized = value.trim();
     if (normalized.isEmpty) {
       return null;
     }
 
-    final uri = Uri.tryParse(normalized);
+    final hasDirectRequestUrl = _hasDirectRequestUrlMarker(normalized);
+    final candidate = hasDirectRequestUrl
+        ? normalized
+              .substring(0, normalized.length - _kDirectRequestUrlMarker.length)
+              .trim()
+        : normalized;
+    if (candidate.isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.tryParse(candidate);
     if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
       return null;
     }
@@ -615,20 +649,20 @@ class ModelProviderConfigService {
       return null;
     }
 
-    var result = normalized.replaceAll(RegExp(r'/+$'), '');
-    const suffixes = [
-      '/v1/chat/completions',
-      '/chat/completions',
-      '/v1/models',
-      '/models',
-    ];
-    for (final suffix in suffixes) {
-      if (result.toLowerCase().endsWith(suffix)) {
-        result = result.substring(0, result.length - suffix.length);
-        break;
+    var result = candidate.replaceAll(RegExp(r'/+$'), '');
+    if (!hasDirectRequestUrl) {
+      for (final suffix in _kCanonicalEndpointSuffixes) {
+        if (result.toLowerCase().endsWith(suffix)) {
+          result = result.substring(0, result.length - suffix.length);
+          break;
+        }
       }
     }
-    return result.replaceAll(RegExp(r'/+$'), '');
+    result = result.replaceAll(RegExp(r'/+$'), '');
+    if (result.isEmpty) {
+      return null;
+    }
+    return hasDirectRequestUrl ? '$result$_kDirectRequestUrlMarker' : result;
   }
 
   static String? buildModelsRequestUrl(String value) {
@@ -643,7 +677,15 @@ class ModelProviderConfigService {
     return _buildRequestUrl(
       value,
       suffixAfterV1: '/chat/completions',
-      suffixWithVersion: '/chat/completions',
+      suffixWithVersion: '/v1/chat/completions',
+    );
+  }
+
+  static String? buildAnthropicMessagesRequestUrl(String value) {
+    return _buildRequestUrl(
+      value,
+      suffixAfterV1: '/messages',
+      suffixWithVersion: '/v1/messages',
     );
   }
 
@@ -656,7 +698,10 @@ class ModelProviderConfigService {
     if (normalizedBase == null) {
       return null;
     }
-    final base = normalizedBase.replaceAll(RegExp(r'/+$'), '');
+    final base = _stripDirectRequestUrlMarker(normalizedBase);
+    if (_hasDirectRequestUrlMarker(normalizedBase)) {
+      return base;
+    }
     if (base.toLowerCase().endsWith('/v1')) {
       return '$base$suffixAfterV1';
     }
@@ -668,6 +713,3 @@ class ModelProviderConfigService {
     return normalized.isNotEmpty && !normalized.startsWith('scene.');
   }
 }
-
-
-

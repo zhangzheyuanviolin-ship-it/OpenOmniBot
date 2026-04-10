@@ -76,7 +76,7 @@ class AgentOrchestrator(
                         maxCompletionTokens = 16384,
                         stream = true,
                         streamOptions = ChatCompletionStreamOptions(includeUsage = true),
-                        tools = toolRegistry.toolsForModel.take(2),
+                        tools = toolRegistry.toolsForModel,
                         toolChoice = toolChoiceForRound,
                         parallelToolCalls = false
                     ),

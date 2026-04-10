@@ -6,6 +6,8 @@ import cn.com.omnimind.assists.task.vlmserver.SceneChatCompletionStreamHandle
 import cn.com.omnimind.assists.api.bean.ResultBean
 import cn.com.omnimind.baselib.llm.AssistantToolCall
 import cn.com.omnimind.baselib.llm.AssistantToolCallFunction
+import cn.com.omnimind.baselib.llm.AiRequestLogEntry
+import cn.com.omnimind.baselib.llm.AiRequestLogStore
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionStreamOptions
@@ -21,6 +23,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.JsonArray as KxJsonArray
 import kotlinx.serialization.json.JsonObject as KxJsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -45,6 +49,8 @@ object HttpController {
     private const val TAG = "HttpController"
     private const val RESPONSE_LOG_CHUNK_SIZE = 3500
     private const val ROUTE_CUSTOM_OPENAI_COMPAT = "custom_openai_compat"
+    private const val ANTHROPIC_EPHEMERAL_CACHE_TYPE = "ephemeral"
+    private const val ANTHROPIC_MAX_CACHE_BREAKPOINTS = 4
 
     private data class ResolvedSceneRequest(
         val requestedModel: String,
@@ -63,6 +69,16 @@ object HttpController {
         val overrideApplied: Boolean,
         val overrideModel: String?,
         val protocolType: String = "openai_compatible"
+    )
+
+    private data class AiRequestLogSeed(
+        val label: String,
+        val model: String,
+        val protocolType: String,
+        val url: String,
+        val method: String = "POST",
+        val stream: Boolean,
+        val requestJson: String
     )
 
     data class ModelAvailabilityCheckResult(
@@ -88,11 +104,15 @@ object HttpController {
 
     private fun createLoggingEventListener(
         label: String,
-        delegate: EventSourceListener
+        delegate: EventSourceListener,
+        requestLogSeed: AiRequestLogSeed? = null
     ): EventSourceListener {
         val fullContent = StringBuilder()
+        val rawEvents = mutableListOf<String>()
+        var responseCode: Int? = null
         return object : EventSourceListener() {
             override fun onOpen(eventSource: EventSource, response: okhttp3.Response) {
+                responseCode = response.code
                 delegate.onOpen(eventSource, response)
             }
 
@@ -103,12 +123,23 @@ object HttpController {
                 data: String
             ) {
                 appendStreamLogChunk(fullContent, data)
+                data.trim()
+                    .takeIf { it.isNotEmpty() && it != "[DONE]" }
+                    ?.let(rawEvents::add)
                 delegate.onEvent(eventSource, id, type, data)
             }
 
             override fun onClosed(eventSource: EventSource) {
                 if (fullContent.isNotEmpty()) {
                     logResponseBody(label, fullContent.toString())
+                }
+                requestLogSeed?.let { seed ->
+                    persistAiRequestLog(
+                        seed = seed,
+                        success = true,
+                        statusCode = responseCode,
+                        responseJson = AiRequestLogStore.buildStreamResponseJson(rawEvents)
+                    )
                 }
                 delegate.onClosed(eventSource)
             }
@@ -120,6 +151,19 @@ object HttpController {
             ) {
                 if (fullContent.isNotEmpty()) {
                     logResponseBody("$label (partial)", fullContent.toString())
+                }
+                requestLogSeed?.let { seed ->
+                    val fallbackBody = runCatching {
+                        response?.peekBody(1024L * 1024L)?.string()
+                    }.getOrNull()
+                    persistAiRequestLog(
+                        seed = seed,
+                        success = false,
+                        statusCode = response?.code ?: responseCode,
+                        responseJson = AiRequestLogStore.buildStreamResponseJson(rawEvents)
+                            .ifBlank { AiRequestLogStore.prettyJsonOrRaw(fallbackBody) },
+                        errorMessage = t?.message
+                    )
                 }
                 delegate.onFailure(eventSource, t, response)
             }
@@ -190,6 +234,30 @@ object HttpController {
             val suffix = if (chunks.size == 1) "" else " (${index + 1}/${chunks.size})"
             OmniLog.i(TAG, "$label Response Body$suffix: $chunk")
         }
+    }
+
+    private fun persistAiRequestLog(
+        seed: AiRequestLogSeed,
+        success: Boolean,
+        statusCode: Int? = null,
+        responseJson: String = "",
+        errorMessage: String? = null
+    ) {
+        AiRequestLogStore.append(
+            AiRequestLogEntry(
+                label = seed.label,
+                model = seed.model,
+                protocolType = seed.protocolType,
+                url = seed.url,
+                method = seed.method,
+                stream = seed.stream,
+                statusCode = statusCode,
+                success = success,
+                requestJson = AiRequestLogStore.prettyJsonOrRaw(seed.requestJson),
+                responseJson = responseJson,
+                errorMessage = errorMessage?.trim()?.takeIf { it.isNotEmpty() }
+            )
+        )
     }
 
     private fun logSceneProfile(resolved: ResolvedSceneRequest) {
@@ -313,13 +381,39 @@ object HttpController {
     }
 
     private fun buildOpenAIChatCompletionsUrl(apiBase: String): String {
-        val base = apiBase.trim().trimEnd('/')
-        return "$base/chat/completions"
+        val base = ModelProviderConfigStore.stripDirectRequestUrlMarker(apiBase)
+        if (ModelProviderConfigStore.hasDirectRequestUrlMarker(apiBase)) {
+            return base
+        }
+        return if (base.endsWith("/v1", ignoreCase = true)) {
+            "$base/chat/completions"
+        } else {
+            "$base/v1/chat/completions"
+        }
     }
 
     private fun buildOpenAIModelsUrl(apiBase: String): String {
-        val base = apiBase.trim().trimEnd('/')
-        return "$base/models"
+        val base = ModelProviderConfigStore.stripDirectRequestUrlMarker(apiBase)
+        if (ModelProviderConfigStore.hasDirectRequestUrlMarker(apiBase)) {
+            return base
+        }
+        return if (base.endsWith("/v1", ignoreCase = true)) {
+            "$base/models"
+        } else {
+            "$base/v1/models"
+        }
+    }
+
+    private fun buildAnthropicModelsUrl(apiBase: String): String {
+        val base = ModelProviderConfigStore.stripDirectRequestUrlMarker(apiBase)
+        if (ModelProviderConfigStore.hasDirectRequestUrlMarker(apiBase)) {
+            return base
+        }
+        return if (base.endsWith("/v1", ignoreCase = true)) {
+            "$base/models"
+        } else {
+            "$base/v1/models"
+        }
     }
 
     private suspend fun prepareLocalProviderIfNeeded(resolved: ResolvedSceneRequest) {
@@ -353,7 +447,10 @@ object HttpController {
     // ---- Anthropic protocol helpers ----
 
     private fun buildAnthropicMessagesUrl(apiBase: String): String {
-        val base = apiBase.trim().trimEnd('/')
+        val base = ModelProviderConfigStore.stripDirectRequestUrlMarker(apiBase)
+        if (ModelProviderConfigStore.hasDirectRequestUrlMarker(apiBase)) {
+            return base
+        }
         return if (base.endsWith("/v1", ignoreCase = true)) {
             "$base/messages"
         } else {
@@ -367,7 +464,7 @@ object HttpController {
 
     private fun buildAnthropicRequestBuilder(
         url: String,
-        requestBody: okhttp3.RequestBody,
+        requestBody: okhttp3.RequestBody? = null,
         apiKey: String?,
         hasCacheControl: Boolean = false
     ): Request.Builder {
@@ -381,7 +478,9 @@ object HttpController {
         if (hasCacheControl) {
             builder.addHeader("anthropic-beta", "prompt-caching-2024-07-31")
         }
-        builder.post(requestBody)
+        if (requestBody != null) {
+            builder.post(requestBody)
+        }
         return builder
     }
 
@@ -393,7 +492,7 @@ object HttpController {
      * - assistant 的 tool_calls → content[].type = "tool_use"
      * - tool role → user 消息，content[].type = "tool_result"
      * - tools[].function.parameters → tools[].input_schema
-     * - cache_control 字段原样保留
+     * - cache_control 字段原样保留，并默认开启 Anthropic 自动缓存
      */
     fun convertToAnthropicRequestJson(request: ChatCompletionRequest): String {
         val obj = JSONObject()
@@ -530,12 +629,7 @@ object HttpController {
                 val toolObj = JSONObject()
                     .put("name", f.name)
                 if (!f.description.isNullOrBlank()) toolObj.put("description", f.description)
-                val params = f.parameters
-                if (params != null) {
-                    toolObj.put("input_schema", JSONObject(params.toString()))
-                } else {
-                    toolObj.put("input_schema", JSONObject().put("type", "object").put("properties", JSONObject()))
-                }
+                toolObj.put("input_schema", JSONObject(f.parameters.toString()))
                 tools.put(toolObj)
             }
             obj.put("tools", tools)
@@ -545,7 +639,86 @@ object HttpController {
             obj.put("stream", true)
         }
 
-        return obj.toString()
+        return applyAnthropicAutomaticCacheControl(obj.toString())
+    }
+
+    private fun applyAnthropicAutomaticCacheControl(requestJson: String): String {
+        val payload = runCatching {
+            completionJson.parseToJsonElement(requestJson) as? KxJsonObject
+        }.getOrNull() ?: return requestJson
+        if (payload.containsKey("cache_control")) {
+            return requestJson
+        }
+        if (countAnthropicExplicitCacheBreakpoints(payload) >= ANTHROPIC_MAX_CACHE_BREAKPOINTS) {
+            return requestJson
+        }
+        return KxJsonObject(
+            payload + ("cache_control" to buildJsonObject {
+                put("type", JsonPrimitive(ANTHROPIC_EPHEMERAL_CACHE_TYPE))
+            })
+        ).toString()
+    }
+
+    private fun countAnthropicExplicitCacheBreakpoints(requestJson: KxJsonObject): Int {
+        var count = 0
+
+        val tools = requestJson["tools"] as? KxJsonArray
+        if (tools != null) {
+            count += tools.count { item ->
+                (item as? KxJsonObject)?.containsKey("cache_control") == true
+            }
+        }
+
+        count += countAnthropicCacheControlBlocks(requestJson["system"])
+
+        val messages = requestJson["messages"] as? KxJsonArray
+        if (messages != null) {
+            for (message in messages) {
+                val messageObj = message as? KxJsonObject ?: continue
+                count += countAnthropicCacheControlBlocks(messageObj["content"])
+            }
+        }
+
+        return count
+    }
+
+    private fun countAnthropicCacheControlBlocks(raw: JsonElement?): Int {
+        return when (raw) {
+            is KxJsonObject -> if (raw.containsKey("cache_control")) 1 else 0
+            is KxJsonArray -> raw.sumOf(::countAnthropicCacheControlBlocks)
+            else -> 0
+        }
+    }
+
+    private fun parseProviderModelsResponse(responseBody: String?): List<ProviderModelOption> {
+        val payload = runCatching {
+            completionJson.parseToJsonElement(responseBody ?: "{}") as? KxJsonObject
+        }.getOrNull() ?: return emptyList()
+        val data = (payload["data"] as? KxJsonArray)
+            ?: (payload["models"] as? KxJsonArray)
+            ?: return emptyList()
+
+        return buildList {
+            for (item in data) {
+                val itemObj = item as? KxJsonObject ?: continue
+                val id = itemObj["id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                if (id.isEmpty()) continue
+                val displayName = itemObj["display_name"]?.jsonPrimitive?.contentOrNull?.trim()
+                    .orEmpty()
+                    .ifEmpty { itemObj["name"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty() }
+                    .ifEmpty { id }
+                val ownedBy = itemObj["owned_by"]?.jsonPrimitive?.contentOrNull?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: itemObj["type"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                add(
+                    ProviderModelOption(
+                        id = id,
+                        displayName = displayName,
+                        ownedBy = ownedBy
+                    )
+                )
+            }
+        }.sortedBy { it.id.lowercase() }
     }
 
     private fun convertContentToAnthropicFormat(content: JsonElement?): Any? {
@@ -819,9 +992,10 @@ object HttpController {
     ): EventSource = withContext(Dispatchers.IO) {
         val base = normalizeApiBase(resolved.apiBase ?: "")
             ?: throw IllegalArgumentException("Invalid apiBase for Anthropic")
+        val url = buildAnthropicMessagesUrl(base)
         val requestBody = requestJson.toRequestBody("application/json".toMediaType())
         val request = buildAnthropicRequestBuilder(
-            url = buildAnthropicMessagesUrl(base),
+            url = url,
             requestBody = requestBody,
             apiKey = resolved.apiKey,
             hasCacheControl = hasCacheControl(requestJson)
@@ -832,7 +1006,15 @@ object HttpController {
             request,
             createLoggingEventListener(
                 "[anthropic stream model=${resolved.resolvedModel}]",
-                wrapAnthropicListener(event)
+                wrapAnthropicListener(event),
+                requestLogSeed = AiRequestLogSeed(
+                    label = "anthropic/messages",
+                    model = resolved.resolvedModel,
+                    protocolType = "anthropic",
+                    url = url,
+                    stream = true,
+                    requestJson = requestJson
+                )
             )
         )
     }
@@ -1190,7 +1372,15 @@ object HttpController {
             request,
             createLoggingEventListener(
                 "[openai_compatible stream model=${chatRequest.model} route=${routeTag.orEmpty()}]",
-                event
+                event,
+                requestLogSeed = AiRequestLogSeed(
+                    label = "openai/chat.completions.stream",
+                    model = chatRequest.model,
+                    protocolType = protocolType,
+                    url = buildOpenAIChatCompletionsUrl(base),
+                    stream = true,
+                    requestJson = requestJson
+                )
             )
         )
     }
@@ -1231,7 +1421,20 @@ object HttpController {
             request,
             createLoggingEventListener(
                 "[openai_compatible chat-completions model=${resolved.resolvedModel}]",
-                event
+                event,
+                requestLogSeed = AiRequestLogSeed(
+                    label = "openai/chat.completions.stream",
+                    model = resolved.resolvedModel,
+                    protocolType = resolved.protocolType,
+                    url = buildOpenAIChatCompletionsUrl(base),
+                    stream = true,
+                    requestJson = buildRequestBodyWithResolvedModel(
+                        requestBodyJson = requestBodyJson,
+                        resolvedModel = resolved.resolvedModel,
+                        includeLegacyMirrors = false,
+                        mirrorLegacyTokenFields = false
+                    )
+                )
             )
         )
     }
@@ -1420,7 +1623,18 @@ object HttpController {
         return EventSources.createFactory(openClawStreamClient)
             .newEventSource(
                 request,
-                createLoggingEventListener("[openclaw/v1/chat/completions]", event)
+                createLoggingEventListener(
+                    "[openclaw/v1/chat/completions]",
+                    event,
+                    requestLogSeed = AiRequestLogSeed(
+                        label = "openclaw/chat.completions.stream",
+                        model = "openclaw",
+                        protocolType = "openai_compatible",
+                        url = url,
+                        stream = true,
+                        requestJson = jsonObject.toString()
+                    )
+                )
             )
     }
 
@@ -1589,14 +1803,15 @@ object HttpController {
             val anthropicJson = convertToAnthropicRequestJson(
                 request.copy(model = resolved.resolvedModel, stream = false)
             )
+            val anthropicUrl = buildAnthropicMessagesUrl(base)
             OmniLog.d(TAG, "=== Anthropic Request Debug ===")
-            OmniLog.d(TAG, "URL: ${buildAnthropicMessagesUrl(base)}")
+            OmniLog.d(TAG, "URL: $anthropicUrl")
             OmniLog.d(TAG, "Model: ${resolved.resolvedModel}, hasApiKey=${!resolved.apiKey.isNullOrBlank()}")
             OmniLog.d(TAG, "Request Body: ${anthropicJson.take(2000)}")
             OmniLog.d(TAG, "==============================")
             val requestBody = anthropicJson.toRequestBody("application/json".toMediaType())
             val requestCall = buildAnthropicRequestBuilder(
-                url = buildAnthropicMessagesUrl(base),
+                url = anthropicUrl,
                 requestBody = requestBody,
                 apiKey = resolved.apiKey,
                 hasCacheControl = hasCacheControl(anthropicJson)
@@ -1605,6 +1820,20 @@ object HttpController {
             val responseBody = response.body?.string()
             OmniLog.d(TAG, "Anthropic Response Status: ${response.code}")
             logResponseBody("[anthropic model=${resolved.resolvedModel}]", responseBody)
+            persistAiRequestLog(
+                seed = AiRequestLogSeed(
+                    label = "anthropic/messages",
+                    model = resolved.resolvedModel,
+                    protocolType = "anthropic",
+                    url = anthropicUrl,
+                    stream = false,
+                    requestJson = anthropicJson
+                ),
+                success = response.isSuccessful,
+                statusCode = response.code,
+                responseJson = AiRequestLogStore.prettyJsonOrRaw(responseBody),
+                errorMessage = if (response.isSuccessful) null else extractAvailabilityMessage(responseBody)
+            )
             if (!response.isSuccessful) {
                 return@withContext buildFailureSceneResponse(
                     code = response.code.toString(),
@@ -1655,6 +1884,20 @@ object HttpController {
             val responseBody = response.body?.string()
             OmniLog.d(TAG, "Response Status: ${response.code}")
             logResponseBody("[openai_compatible model=${variant.request.model}]", responseBody)
+            persistAiRequestLog(
+                seed = AiRequestLogSeed(
+                    label = "openai/chat.completions",
+                    model = variant.request.model,
+                    protocolType = resolved.protocolType,
+                    url = url,
+                    stream = false,
+                    requestJson = requestJson
+                ),
+                success = response.isSuccessful,
+                statusCode = response.code,
+                responseJson = AiRequestLogStore.prettyJsonOrRaw(responseBody),
+                errorMessage = if (response.isSuccessful) null else extractAvailabilityMessage(responseBody)
+            )
 
             if (!response.isSuccessful) {
                 val failure = buildFailureSceneResponse(
@@ -1785,17 +2028,20 @@ object HttpController {
         apiKey: String?,
         protocolType: String = "openai_compatible"
     ): List<ProviderModelOption> = withContext(Dispatchers.IO) {
-        if (protocolType == "anthropic") {
-            return@withContext emptyList()
-        }
         val normalizedApiBase = normalizeApiBase(apiBase)
             ?: return@withContext emptyList()
-        val response = OkHttpClient().newCall(
+        val request = if (protocolType == "anthropic") {
+            buildAnthropicRequestBuilder(
+                url = buildAnthropicModelsUrl(normalizedApiBase),
+                apiKey = apiKey
+            ).get().build()
+        } else {
             buildOpenAIRequestBuilder(
                 url = buildOpenAIModelsUrl(normalizedApiBase),
                 apiKey = apiKey
             ).get().build()
-        ).execute()
+        }
+        val response = OkHttpClient().newCall(request).execute()
         val responseBody = response.body?.string()
         if (!response.isSuccessful) {
             throw IllegalStateException(
@@ -1803,21 +2049,7 @@ object HttpController {
             )
         }
 
-        val data = JSONObject(responseBody ?: "{}").optJSONArray("data") ?: JSONArray()
-        buildList {
-            for (i in 0 until data.length()) {
-                val item = data.optJSONObject(i) ?: continue
-                val id = item.optString("id").trim()
-                if (id.isEmpty()) continue
-                add(
-                    ProviderModelOption(
-                        id = id,
-                        displayName = item.optString("display_name").trim().ifEmpty { id },
-                        ownedBy = item.optString("owned_by").trim().takeIf { it.isNotEmpty() }
-                    )
-                )
-            }
-        }.sortedBy { it.id.lowercase() }
+        parseProviderModelsResponse(responseBody)
     }
 
     private fun encodeChatCompletionRequest(request: ChatCompletionRequest): String {

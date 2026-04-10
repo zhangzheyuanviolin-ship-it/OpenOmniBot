@@ -25,6 +25,7 @@ import cn.com.omnimind.baselib.llm.ChatCompletionFunction
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionTool
+import cn.com.omnimind.baselib.llm.AiRequestLogStore
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderProfile
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
@@ -1915,6 +1916,23 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 OmniLog.e(TAG, "listModelProviderProfiles error: ${e.message}")
                 withContext(Dispatchers.Main) {
                     result.error("LIST_MODEL_PROVIDER_PROFILES_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun listRecentAiRequestLogs(call: MethodCall, result: MethodChannel.Result) {
+        val limit = call.argument<Int>("limit") ?: 10
+        workJob.launch {
+            try {
+                val logs = AiRequestLogStore.listRecent(limit)
+                withContext(Dispatchers.Main) {
+                    result.success(logs.map { it.toMap() })
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "listRecentAiRequestLogs error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("LIST_RECENT_AI_REQUEST_LOGS_ERROR", e.message, null)
                 }
             }
         }
@@ -4327,5 +4345,4 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 }
-
 

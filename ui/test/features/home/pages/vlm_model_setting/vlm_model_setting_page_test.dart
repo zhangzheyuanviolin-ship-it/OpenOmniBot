@@ -12,6 +12,28 @@ void main() {
   const assistCoreChannel = MethodChannel(
     'cn.com.omnimind.bot/AssistCoreEvent',
   );
+  Map<String, dynamic> profilePayload({
+    String baseUrl = 'https://api.openai.com/v1',
+    String protocolType = 'openai_compatible',
+  }) {
+    return <String, dynamic>{
+      'profiles': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'provider-1',
+          'name': 'DeepSeek',
+          'baseUrl': baseUrl,
+          'apiKey': 'sk-demo',
+          'sourceType': 'custom',
+          'readOnly': false,
+          'ready': true,
+          'statusText': '',
+          'configured': true,
+          'protocolType': protocolType,
+        },
+      ],
+      'editingProfileId': 'provider-1',
+    };
+  }
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -21,23 +43,7 @@ void main() {
     messenger.setMockMethodCallHandler(assistCoreChannel, (call) async {
       switch (call.method) {
         case 'listModelProviderProfiles':
-          return <String, dynamic>{
-            'profiles': <Map<String, dynamic>>[
-              <String, dynamic>{
-                'id': 'provider-1',
-                'name': 'DeepSeek',
-                'baseUrl': 'https://api.openai.com/v1',
-                'apiKey': 'sk-demo',
-                'sourceType': 'custom',
-                'readOnly': false,
-                'ready': true,
-                'statusText': '',
-                'configured': true,
-                'protocolType': 'openai_compatible',
-              },
-            ],
-            'editingProfileId': 'provider-1',
-          };
+          return profilePayload();
       }
       return null;
     });
@@ -89,4 +95,57 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('base url hint mentions trailing marker override', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        home: const VlmModelSettingPage(),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final baseUrlField = tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == 'Base URL',
+      ),
+    );
+    expect(baseUrlField.decoration?.hintText, contains('末尾加 #'));
+  });
+
+  testWidgets('anthropic profile shows full messages request url', (
+    tester,
+  ) async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(assistCoreChannel, (call) async {
+      switch (call.method) {
+        case 'listModelProviderProfiles':
+          return profilePayload(
+            baseUrl: 'https://api.anthropic.com',
+            protocolType: 'anthropic',
+          );
+      }
+      return null;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        home: const VlmModelSettingPage(),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('https://api.anthropic.com/v1/messages'), findsOneWidget);
+  });
 }

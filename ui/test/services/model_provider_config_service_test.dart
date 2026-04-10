@@ -19,6 +19,21 @@ void main() {
     );
   });
 
+  test('allows trailing marker to bypass automatic request suffixes', () {
+    expect(
+      ModelProviderConfigService.buildChatCompletionsRequestUrl(
+        'https://api.example.com/custom/chat#',
+      ),
+      'https://api.example.com/custom/chat',
+    );
+    expect(
+      ModelProviderConfigService.buildAnthropicMessagesRequestUrl(
+        'https://api.example.com/custom/messages#',
+      ),
+      'https://api.example.com/custom/messages',
+    );
+  });
+
   test('builds request urls without duplicating v1 suffix', () {
     expect(
       ModelProviderConfigService.buildModelsRequestUrl(
@@ -51,6 +66,27 @@ void main() {
       );
     },
   );
+
+  test('builds anthropic request urls from base url', () {
+    expect(
+      ModelProviderConfigService.buildAnthropicMessagesRequestUrl(
+        'https://api.anthropic.com',
+      ),
+      'https://api.anthropic.com/v1/messages',
+    );
+    expect(
+      ModelProviderConfigService.buildAnthropicMessagesRequestUrl(
+        'https://api.anthropic.com/v1',
+      ),
+      'https://api.anthropic.com/v1/messages',
+    );
+    expect(
+      ModelProviderConfigService.buildAnthropicMessagesRequestUrl(
+        'https://api.anthropic.com/v1/messages',
+      ),
+      'https://api.anthropic.com/v1/messages',
+    );
+  });
 
   test('returns null for invalid base url input', () {
     expect(

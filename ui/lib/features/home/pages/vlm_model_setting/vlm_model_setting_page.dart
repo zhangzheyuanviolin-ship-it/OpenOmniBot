@@ -412,6 +412,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       return null;
     }
 
+    if (_selectedProtocolType == 'anthropic') {
+      return ModelProviderConfigService.buildAnthropicMessagesRequestUrl(input);
+    }
     return ModelProviderConfigService.buildChatCompletionsRequestUrl(input);
   }
 
@@ -1279,7 +1282,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
                             label: 'Base URL',
-                            hint: '例如：https://api.openai.com 或 https://xxx/v1',
+                            hint: '末尾加 # 可禁用自动补全请求路径',
                           ),
                         ),
                         const SizedBox(height: 8),
