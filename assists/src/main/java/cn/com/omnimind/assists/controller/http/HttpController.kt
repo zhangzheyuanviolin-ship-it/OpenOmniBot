@@ -314,20 +314,12 @@ object HttpController {
 
     private fun buildOpenAIChatCompletionsUrl(apiBase: String): String {
         val base = apiBase.trim().trimEnd('/')
-        return if (base.endsWith("/v1", ignoreCase = true)) {
-            "$base/chat/completions"
-        } else {
-            "$base/v1/chat/completions"
-        }
+        return "$base/chat/completions"
     }
 
     private fun buildOpenAIModelsUrl(apiBase: String): String {
         val base = apiBase.trim().trimEnd('/')
-        return if (base.endsWith("/v1", ignoreCase = true)) {
-            "$base/models"
-        } else {
-            "$base/v1/models"
-        }
+        return "$base/models"
     }
 
     private suspend fun prepareLocalProviderIfNeeded(resolved: ResolvedSceneRequest) {
