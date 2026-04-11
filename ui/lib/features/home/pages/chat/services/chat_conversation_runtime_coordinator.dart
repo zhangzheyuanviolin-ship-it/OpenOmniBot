@@ -670,13 +670,42 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final runtime = _runtimeForTask(taskId);
     if (binding == null || runtime == null) return;
 
-    if (runtime.currentThinkingMessages.containsKey(taskId)) {
+    final thinkingCardId = _resolveThinkingCardId(runtime, taskId);
+    if (thinkingCardId != null) {
+      final hasThinkingText =
+          (runtime.currentThinkingMessages[taskId]?.trim().isNotEmpty ??
+              false) ||
+          runtime.messages.any((message) {
+            final cardData = message.cardData;
+            if (message.type != 2 || cardData?['type'] != 'deep_thinking') {
+              return false;
+            }
+            if ((cardData?['taskID'] ?? '').toString().trim() != taskId) {
+              return false;
+            }
+            return (cardData?['thinkingContent'] ?? '')
+                .toString()
+                .trim()
+                .isNotEmpty;
+          });
+
       runtime.currentThinkingStage = ThinkingStage.complete.value;
       runtime.isDeepThinking = false;
-      _finalizeThinkingCardsForTask(runtime, taskId);
+      if (hasThinkingText) {
+        _finalizeThinkingCardsForTask(runtime, taskId);
+      } else {
+        runtime.messages.removeWhere((message) {
+          final cardData = message.cardData;
+          return message.type == 2 &&
+              cardData?['type'] == 'deep_thinking' &&
+              (cardData?['taskID'] ?? '').toString().trim() == taskId;
+        });
+      }
       runtime.currentThinkingMessages.remove(taskId);
       runtime.deepThinkingContent = '';
       runtime.lastAgentTaskId = null;
+      runtime.activeThinkingCardId = null;
+      runtime.pendingThinkingRoundSplit = false;
       runtime.thinkingRound = 0;
     }
 

@@ -73,4 +73,28 @@ void main() {
       expect(message.text, '这是最终回答。');
     },
   );
+
+  test('ChatMessageModel preserves assistant replies that are raw JSON', () {
+    final message = ChatMessageModel.fromJson({
+      'id': 'assistant-json',
+      'type': 1,
+      'user': 2,
+      'content': {'text': '{"foo":1,"bar":{"baz":true}}'},
+      'createAt': '1774600557281',
+    });
+
+    expect(message.text, '{"foo":1,"bar":{"baz":true}}');
+  });
+
+  test('ChatMessageModel preserves inline JSON inside assistant replies', () {
+    final message = ChatMessageModel.fromJson({
+      'id': 'assistant-inline-json',
+      'type': 1,
+      'user': 2,
+      'content': {'text': '这里是示例 payload: {"foo":1,"bar":2}'},
+      'createAt': '1774600557281',
+    });
+
+    expect(message.text, '这里是示例 payload: {"foo":1,"bar":2}');
+  });
 }

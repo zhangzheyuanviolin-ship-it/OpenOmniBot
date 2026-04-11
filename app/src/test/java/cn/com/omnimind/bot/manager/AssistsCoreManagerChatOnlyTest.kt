@@ -111,4 +111,15 @@ class AssistsCoreManagerChatOnlyTest {
 
         assertEquals("", result)
     }
+
+    @Test
+    fun `extractChatTaskTextPayload ignores finish_reason control chunks`() {
+        val chunk = """
+            {"choices":[{"finish_reason":"stop"}]}
+        """.trimIndent()
+
+        val result = extractChatTaskTextPayload(chunk)
+
+        assertEquals("", result)
+    }
 }

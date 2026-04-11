@@ -189,6 +189,48 @@ void main() {
     expect(runtime.messages.first.cardData?['thinkingContent'], '');
   });
 
+  test(
+    'removes primed thinking card when no reasoning chunk arrives',
+    () async {
+      const conversationId = 2206;
+      const taskId = 'chat-task-thinking-empty';
+
+      coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      coordinator.primePureChatThinking(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":"没有思考流也要正常收尾。"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessageEnd', <String, dynamic>{
+        'taskID': taskId,
+      });
+
+      final runtime = coordinator.runtimeFor(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      )!;
+
+      expect(runtime.messages, hasLength(1));
+      expect(runtime.messages.single.id, taskId);
+      expect(runtime.messages.single.text, '没有思考流也要正常收尾。');
+    },
+  );
+
   test('renders pure-chat reasoning as a deep thinking card', () async {
     const conversationId = 2203;
     const taskId = 'chat-task-thinking';

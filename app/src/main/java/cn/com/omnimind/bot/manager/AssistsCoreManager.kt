@@ -176,13 +176,16 @@ internal fun extractChatTaskTextPayload(content: String): String {
                 when {
                     delta != null -> extractTextPayload(delta.opt("content"))
                     message != null -> extractTextPayload(message.opt("content"))
-                    else -> normalized
+                    firstChoice != null -> extractTextPayload(
+                        firstChoice.opt("text") ?: firstChoice.opt("content")
+                    )
+                    else -> ""
                 }
             }
             json.has("output") -> {
                 val output = json.optJSONArray("output")
                 if (output == null) {
-                    normalized
+                    ""
                 } else {
                     buildString {
                         for (index in 0 until output.length()) {

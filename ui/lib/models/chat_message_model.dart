@@ -236,7 +236,8 @@ class ChatMessageModel {
       return content;
     }
     final rawText = content['text']?.toString() ?? '';
-    if (rawText.trim().isEmpty || !rawText.contains('{')) {
+    final trimmed = rawText.trimLeft();
+    if (trimmed.isEmpty || !trimmed.startsWith('{')) {
       return content;
     }
     final sanitized = _sanitizePersistedAssistantText(rawText);
@@ -247,36 +248,62 @@ class ChatMessageModel {
   }
 
   static String _sanitizePersistedAssistantText(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty || !trimmed.contains('{')) {
+    final firstContentIndex = raw.indexOf(RegExp(r'\S'));
+    if (firstContentIndex < 0 || raw[firstContentIndex] != '{') {
       return raw;
     }
 
-    final buffer = StringBuffer();
-    var cursor = 0;
+    final extractedBuffer = StringBuffer();
+    var cursor = firstContentIndex;
+    var strippedTransportFrames = false;
+
     while (cursor < raw.length) {
-      if (raw[cursor] == '{') {
-        final jsonEnd = _findBalancedJsonObjectEnd(raw, cursor);
-        if (jsonEnd != null) {
-          final extracted = _extractStructuredAssistantText(
-            raw.substring(cursor, jsonEnd + 1),
-          );
-          if (extracted.isNotEmpty) {
-            buffer.write(extracted);
-          }
-          cursor = jsonEnd + 1;
-          continue;
-        }
+      final nextNonWhitespace = _skipWhitespace(raw, cursor);
+      if (nextNonWhitespace >= raw.length || raw[nextNonWhitespace] != '{') {
+        cursor = nextNonWhitespace;
+        break;
       }
-      buffer.write(raw[cursor]);
-      cursor += 1;
+
+      final jsonEnd = _findBalancedJsonObjectEnd(raw, nextNonWhitespace);
+      if (jsonEnd == null) {
+        cursor = nextNonWhitespace;
+        break;
+      }
+
+      final extracted = _tryExtractTransportAssistantText(
+        raw.substring(nextNonWhitespace, jsonEnd + 1),
+      );
+      if (extracted == null) {
+        cursor = nextNonWhitespace;
+        break;
+      }
+
+      strippedTransportFrames = true;
+      if (extracted.isNotEmpty) {
+        extractedBuffer.write(extracted);
+      }
+      cursor = jsonEnd + 1;
     }
 
-    final sanitized = buffer.toString().trim();
-    if (sanitized.isEmpty && trimmed.startsWith('{')) {
+    if (!strippedTransportFrames) {
+      return raw;
+    }
+
+    final sanitized =
+        '${raw.substring(0, firstContentIndex)}${extractedBuffer.toString()}${raw.substring(cursor)}'
+            .trim();
+    if (sanitized.isEmpty) {
       return '';
     }
-    return sanitized.isEmpty ? raw : sanitized;
+    return sanitized;
+  }
+
+  static int _skipWhitespace(String raw, int start) {
+    var index = start;
+    while (index < raw.length && raw[index].trim().isEmpty) {
+      index += 1;
+    }
+    return index;
   }
 
   static int? _findBalancedJsonObjectEnd(String raw, int start) {
@@ -312,62 +339,90 @@ class ChatMessageModel {
     return null;
   }
 
-  static String _extractStructuredAssistantText(String raw) {
+  static String? _tryExtractTransportAssistantText(String raw) {
     final normalized = raw.trim();
     if (normalized.isEmpty || !normalized.startsWith('{')) {
-      return '';
+      return null;
     }
 
     try {
       final decoded = jsonDecode(normalized);
       if (decoded is Map) {
-        if (decoded.containsKey('text')) {
-          return _extractTextPayload(decoded['text']).trim();
-        }
-        if (decoded.containsKey('output_text')) {
-          return _extractTextPayload(decoded['output_text']).trim();
-        }
-        if (decoded.containsKey('content')) {
-          return _extractTextPayload(decoded['content']).trim();
-        }
-        final message = decoded['message'];
-        if (message is String) {
-          return message.trim();
-        }
         final choices = decoded['choices'];
-        if (choices is List && choices.isNotEmpty) {
-          final firstChoice = choices.first;
-          if (firstChoice is Map) {
-            final delta = firstChoice['delta'];
-            if (delta is Map) {
-              return _extractTextPayload(delta['content']).trim();
-            }
-            final choiceMessage = firstChoice['message'];
-            if (choiceMessage is Map) {
-              return _extractTextPayload(choiceMessage['content']).trim();
-            }
-          }
+        final choiceText = _tryExtractChoicesTransportText(choices);
+        if (choiceText != null) {
+          return choiceText.trim();
         }
         final output = decoded['output'];
-        if (output is List) {
-          return output.map(_extractTextPayload).join().trim();
+        final outputText = _tryExtractOutputTransportText(output);
+        if (outputText != null) {
+          return outputText.trim();
         }
       }
     } catch (_) {}
 
-    final contentMatch = RegExp(
-      r'"(?:content|text)"\s*:\s*"((?:\\.|[^"\\])*)"',
-    ).firstMatch(normalized);
-    final encodedText = contentMatch?.group(1);
-    if (encodedText == null || encodedText.isEmpty) {
+    return null;
+  }
+
+  static String? _tryExtractChoicesTransportText(dynamic rawChoices) {
+    if (rawChoices is! List) {
+      return null;
+    }
+    if (rawChoices.isEmpty) {
       return '';
     }
-    try {
-      final decoded = jsonDecode('{"text":"$encodedText"}') as Map;
-      return (decoded['text'] ?? '').toString().trim();
-    } catch (_) {
-      return encodedText.trim();
+
+    final firstChoice = rawChoices.first;
+    if (firstChoice is! Map) {
+      return null;
     }
+
+    final delta = firstChoice['delta'];
+    if (delta is Map) {
+      return _extractTextPayload(delta['content']).trim();
+    }
+
+    final message = firstChoice['message'];
+    if (message is Map) {
+      return _extractTextPayload(message['content']).trim();
+    }
+
+    final choiceText = _extractTextPayload(
+      firstChoice['text'] ?? firstChoice['content'],
+    ).trim();
+    if (choiceText.isNotEmpty) {
+      return choiceText;
+    }
+
+    if (firstChoice.containsKey('finish_reason') ||
+        firstChoice.containsKey('delta') ||
+        firstChoice.containsKey('message')) {
+      return '';
+    }
+
+    return null;
+  }
+
+  static String? _tryExtractOutputTransportText(dynamic rawOutput) {
+    if (rawOutput is! List) {
+      return null;
+    }
+    final hasTransportShape = rawOutput.any((item) {
+      if (item is! Map) {
+        return false;
+      }
+      final type = item['type']?.toString().trim().toLowerCase();
+      return item.containsKey('content') ||
+          item.containsKey('text') ||
+          type == 'message' ||
+          type == 'output_text' ||
+          type == 'reasoning' ||
+          type == 'reasoning_text';
+    });
+    if (!hasTransportShape) {
+      return null;
+    }
+    return rawOutput.map(_extractTextPayload).join().trim();
   }
 
   static String _extractTextPayload(dynamic raw) {
