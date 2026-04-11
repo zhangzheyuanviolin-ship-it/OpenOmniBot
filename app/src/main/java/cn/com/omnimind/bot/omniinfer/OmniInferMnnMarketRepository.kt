@@ -14,7 +14,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 object OmniInferMnnMarketRepository {
-    private const val MARKET_URL = "https://meta.alicdn.com/data/mnn/apis/model_market.json"
+    private const val MARKET_URL = "https://omnimind-model.oss-cn-beijing.aliyuncs.com/mnn/model_market.json"
     private const val ASSET_NAME = "omniinfer_mnn_model_market.json"
     private const val CACHE_DIR = "omniinfer"
     private const val CACHE_FILE_NAME = "mnn_model_market_cache.json"
