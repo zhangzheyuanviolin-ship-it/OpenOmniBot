@@ -49,6 +49,7 @@ object SelfImprovingSkillFailureHook {
         return when (result) {
             is ToolExecutionResult.Error -> true
             is ToolExecutionResult.TerminalResult -> !result.success
+            is ToolExecutionResult.Interrupted -> false
             is ToolExecutionResult.ContextResult -> !result.success
             is ToolExecutionResult.MemoryResult -> !result.success
             is ToolExecutionResult.McpResult -> !result.success
@@ -145,6 +146,7 @@ object SelfImprovingSkillFailureHook {
         return when (result) {
             is ToolExecutionResult.Error -> result.message
             is ToolExecutionResult.TerminalResult -> result.summaryText
+            is ToolExecutionResult.Interrupted -> result.summaryText
             is ToolExecutionResult.ContextResult -> result.summaryText
             is ToolExecutionResult.MemoryResult -> result.summaryText
             is ToolExecutionResult.McpResult -> result.summaryText
@@ -157,6 +159,11 @@ object SelfImprovingSkillFailureHook {
         return when (result) {
             is ToolExecutionResult.Error -> result.message
             is ToolExecutionResult.TerminalResult -> {
+                result.rawResultJson.ifBlank {
+                    result.terminalOutput.ifBlank { result.summaryText }
+                }
+            }
+            is ToolExecutionResult.Interrupted -> {
                 result.rawResultJson.ifBlank {
                     result.terminalOutput.ifBlank { result.summaryText }
                 }

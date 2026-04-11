@@ -1158,6 +1158,16 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     );
   }
 
+  Future<bool> _handleToolActivityStopRequested(
+    String taskId,
+    String cardId,
+  ) async {
+    return AssistsMessageService.stopAgentToolCall(
+      taskId: taskId,
+      cardId: cardId,
+    );
+  }
+
   String _buildOpenClawSessionKey(int conversationId) {
     final normalizedUserId = _openClawUserId.trim();
     if (normalizedUserId.isNotEmpty) {

@@ -86,6 +86,7 @@ object TermuxCommandRunner {
     suspend fun execute(
         context: Context,
         spec: TermuxCommandSpec,
+        onProcessStarted: ((Process) -> Unit)? = null,
         onLiveUpdate: suspend (TermuxLiveUpdate) -> Unit = {}
     ): TermuxCommandResult {
         val normalizedSpec = normalizeSpec(spec)
@@ -95,6 +96,7 @@ object TermuxCommandRunner {
             workingDirectory = normalizedSpec.workingDirectory,
             timeoutSeconds = normalizedSpec.timeoutSeconds,
             environment = normalizedSpec.environment,
+            onProcessStarted = onProcessStarted,
             onLiveUpdate = onLiveUpdate
         )
 

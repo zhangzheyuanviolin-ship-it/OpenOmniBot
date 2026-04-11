@@ -641,6 +641,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 expanded: _isToolActivityExpanded,
                 onExpandedChanged: _setToolActivityExpanded,
                 suppressSurfaceShadow: suppressToolActivitySurfaceShadow,
+                onStopToolCall: _handleToolActivityStopRequested,
               ),
             ),
           ),

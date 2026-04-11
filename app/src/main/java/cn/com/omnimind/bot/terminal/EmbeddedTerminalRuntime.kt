@@ -509,6 +509,7 @@ object EmbeddedTerminalRuntime {
         workingDirectory: String?,
         timeoutSeconds: Int,
         environment: Map<String, String> = emptyMap(),
+        onProcessStarted: ((Process) -> Unit)? = null,
         onLiveUpdate: suspend (TermuxLiveUpdate) -> Unit = {}
     ): CommandResult {
         val status = ensureCommandEnvironmentReady(context) { progress ->
@@ -555,6 +556,7 @@ object EmbeddedTerminalRuntime {
             command = wrappedCommand,
             executorKey = buildExecutorKey(workingDirectory),
             timeoutMs = timeoutSeconds * 1000L,
+            onProcessStarted = onProcessStarted,
             onOutputChunk = { chunk ->
                 val cleanedChunk = sanitizeTerminalNoise(chunk)
                 if (cleanedChunk.isBlank()) {

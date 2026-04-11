@@ -14,6 +14,7 @@ interface AgentExecutionEnvironment {
     val workspaceMemoryService: WorkspaceMemoryService
     val conversationMode: String
     val terminalEnvironment: Map<String, String>
+    val runControl: AgentRunControl
 }
 
 data class DefaultAgentExecutionEnvironment(
@@ -27,7 +28,8 @@ data class DefaultAgentExecutionEnvironment(
     override val workspaceManager: AgentWorkspaceManager,
     override val workspaceMemoryService: WorkspaceMemoryService,
     override val conversationMode: String,
-    override val terminalEnvironment: Map<String, String> = emptyMap()
+    override val terminalEnvironment: Map<String, String> = emptyMap(),
+    override val runControl: AgentRunControl = NoOpAgentRunControl
 ) : AgentExecutionEnvironment
 
 interface AgentToolCatalog {
@@ -44,7 +46,8 @@ interface AgentToolExecutor {
         args: JsonObject,
         runtimeDescriptor: AgentToolRegistry.RuntimeToolDescriptor,
         env: AgentExecutionEnvironment,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult
 
     suspend fun dispose() = Unit

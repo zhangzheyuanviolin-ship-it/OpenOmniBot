@@ -229,6 +229,7 @@ class TerminalManager private constructor(
         command: String,
         executorKey: String,
         timeoutMs: Long,
+        onProcessStarted: ((Process) -> Unit)? = null,
         onOutputChunk: suspend (String) -> Unit = {}
     ): HiddenExecResult {
         if (!initializeEnvironment()) {
@@ -251,6 +252,7 @@ class TerminalManager private constructor(
                     error = error.message ?: "Failed to start Alpine shell."
                 )
             }
+            onProcessStarted?.invoke(process)
 
             kotlinx.coroutines.coroutineScope {
                 val outputChannel = Channel<String>(Channel.UNLIMITED)

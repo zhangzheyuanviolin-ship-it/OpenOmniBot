@@ -55,7 +55,8 @@ class OmniAgentExecutor(
         conversationMode: String,
         modelOverride: AgentModelOverride?,
         terminalEnvironment: Map<String, String>,
-        callback: AgentCallback
+        callback: AgentCallback,
+        runControl: AgentRunControl = NoOpAgentRunControl
     ): AgentResult {
         var toolRouter: AgentToolRouter? = null
         return try {
@@ -149,7 +150,8 @@ class OmniAgentExecutor(
                         workspaceManager = workspaceManager,
                         workspaceMemoryService = memoryService,
                         conversationMode = conversationMode,
-                        terminalEnvironment = terminalEnvironment
+                        terminalEnvironment = terminalEnvironment,
+                        runControl = runControl
                     )
                 )
             )

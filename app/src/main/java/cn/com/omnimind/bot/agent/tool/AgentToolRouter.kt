@@ -97,9 +97,13 @@ class AgentToolRouter(
         callback: AgentCallback,
         toolName: String,
         progress: String,
-        extras: Map<String, Any?> = emptyMap()
+        extras: Map<String, Any?> = emptyMap(),
+        toolHandle: AgentToolExecutionHandle? = null
     ) {
+        toolHandle?.throwIfStopRequested()
+        toolHandle?.recordProgress(progress, extras)
         callback.onToolCallProgress(toolName, progress, extras)
+        toolHandle?.throwIfStopRequested()
         ensureRunActive()
     }
 
@@ -163,7 +167,8 @@ class AgentToolRouter(
         args: JsonObject,
         runtimeDescriptor: AgentToolRegistry.RuntimeToolDescriptor,
         env: AgentExecutionEnvironment,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
         ensureRunActive()
         return when (toolCall.function.name) {
@@ -190,7 +195,8 @@ class AgentToolRouter(
                 args = args,
                 workspace = env.workspaceDescriptor,
                 terminalEnvironment = env.terminalEnvironment,
-                callback = callback
+                callback = callback,
+                toolHandle = toolHandle
             )
             "terminal_session_start" -> executeTerminalSessionStart(
                 args = args,
@@ -202,7 +208,8 @@ class AgentToolRouter(
                 args = args,
                 workspace = env.workspaceDescriptor,
                 terminalEnvironment = env.terminalEnvironment,
-                callback = callback
+                callback = callback,
+                toolHandle = toolHandle
             )
             "terminal_session_read" -> executeTerminalSessionRead(
                 args = args,
@@ -217,7 +224,8 @@ class AgentToolRouter(
             "browser_use" -> executeBrowserUse(
                 args = args,
                 env = env,
-                callback = callback
+                callback = callback,
+                toolHandle = toolHandle
             )
             "file_read" -> executeFileRead(args, env.workspaceDescriptor, callback)
             "file_write" -> executeFileWrite(args, env.workspaceDescriptor, callback)
@@ -342,23 +350,28 @@ class AgentToolRouter(
     private suspend fun executeBrowserUse(
         args: JsonObject,
         env: AgentExecutionEnvironment,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
         val toolName = "browser_use"
         return try {
             requireWorkspaceStorageAccess(callback)?.let { return it }
             val request = BrowserUseRequest.fromJson(args)
-            reportToolProgress(
-                callback,
-                toolName,
-                request.toolTitle,
-                mapOf("summary" to request.toolTitle)
-            )
             val engine = LiveAgentBrowserSessionManager.acquireEngine(
                 context = context,
                 workspaceManager = workspaceManager,
                 agentRunId = env.agentRunId,
                 workspace = env.workspaceDescriptor
+            )
+            toolHandle.bindStopAction {
+                engine.requestInterruptCurrentAction()
+            }
+            reportToolProgress(
+                callback,
+                toolName,
+                request.toolTitle,
+                mapOf("summary" to request.toolTitle),
+                toolHandle = toolHandle
             )
             val outcome = engine.execute(request)
             val payload = linkedMapOf<String, Any?>(
@@ -543,10 +556,15 @@ class AgentToolRouter(
         args: JsonObject,
         workspace: AgentWorkspaceDescriptor,
         terminalEnvironment: Map<String, String>,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
         val toolName = "terminal_execute"
         return try {
+            var runningProcess: Process? = null
+            toolHandle.bindStopAction {
+                runCatching { runningProcess?.destroyForcibly() }
+            }
             reportToolProgress(
                 callback,
                 toolName,
@@ -554,7 +572,8 @@ class AgentToolRouter(
                 mapOf(
                     "summary" to "正在调用内嵌 Alpine 终端执行命令",
                     "terminalStreamState" to "starting"
-                )
+                ),
+                toolHandle = toolHandle
             )
             val rawArgs = parseTerminalExecuteArgs(args)
             val parsedArgs = rawArgs.copy(
@@ -572,6 +591,12 @@ class AgentToolRouter(
                     timeoutSeconds = parsedArgs.timeoutSeconds,
                     environment = terminalEnvironment
                 ),
+                onProcessStarted = { process ->
+                    runningProcess = process
+                    if (toolHandle.isManualStopRequested()) {
+                        runCatching { process.destroyForcibly() }
+                    }
+                },
                 onLiveUpdate = { update ->
                     reportToolProgress(
                         callback,
@@ -590,7 +615,8 @@ class AgentToolRouter(
                             "terminalSessionId" to update.sessionId,
                             "terminalOutputDelta" to update.outputDelta,
                             "terminalStreamState" to update.streamState
-                        )
+                        ),
+                        toolHandle = toolHandle
                     )
                 }
             )
@@ -698,7 +724,8 @@ class AgentToolRouter(
         args: JsonObject,
         workspace: AgentWorkspaceDescriptor,
         terminalEnvironment: Map<String, String>,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
         val toolName = "terminal_session_exec"
         return try {
@@ -721,8 +748,12 @@ class AgentToolRouter(
                     "summary" to "正在向终端会话发送命令",
                     "terminalSessionId" to sessionId,
                     "terminalStreamState" to "starting"
-                )
+                ),
+                toolHandle = toolHandle
             )
+            toolHandle.bindStopAction {
+                EmbeddedTerminalRuntime.stopSession(context, sessionId)
+            }
             val result = EmbeddedTerminalRuntime.executeSessionCommand(
                 context = context,
                 sessionId = sessionId,
@@ -741,7 +772,8 @@ class AgentToolRouter(
                             "terminalSessionId" to update.sessionId,
                             "terminalOutputDelta" to update.outputDelta,
                             "terminalStreamState" to update.streamState
-                        )
+                        ),
+                        toolHandle = toolHandle
                     )
                 }
             )

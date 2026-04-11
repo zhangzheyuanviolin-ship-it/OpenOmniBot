@@ -292,6 +292,7 @@ internal object AgentConversationHistorySupport {
 
         return linkedMapOf<String, Any?>(
             "taskId" to chooseAny("taskId"),
+            "cardId" to chooseText("cardId"),
             "toolName" to chooseText("toolName"),
             "displayName" to chooseText("displayName"),
             "toolTitle" to chooseText("toolTitle"),
@@ -308,6 +309,8 @@ internal object AgentConversationHistorySupport {
             "terminalOutputDelta" to terminalOutputDelta,
             "terminalSessionId" to chooseAny("terminalSessionId"),
             "terminalStreamState" to chooseText("terminalStreamState"),
+            "interruptedBy" to chooseText("interruptedBy"),
+            "interruptionReason" to chooseText("interruptionReason"),
             "timedOut" to (incoming["timedOut"] ?: existing["timedOut"] ?: false),
             "workspaceId" to chooseAny("workspaceId"),
             "artifacts" to toListOfStringAnyMap(incoming["artifacts"]).ifEmpty {
@@ -426,6 +429,12 @@ internal object AgentConversationHistorySupport {
                 MAX_TOOL_SUMMARY_CHARS
             )
         )
+        payload["interruptedBy"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["interruptedBy"] = it
+        }
+        payload["interruptionReason"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["interruptionReason"] = it
+        }
         payload["serverName"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
             content["serverName"] = it
         }

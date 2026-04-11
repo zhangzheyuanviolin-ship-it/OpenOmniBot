@@ -813,7 +813,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     _finalizePendingAgentTextIfNeeded(runtime, taskId);
     runtime.currentThinkingStage = ThinkingStage.toolCall.value;
     runtime.toolCardSequence += 1;
-    runtime.activeToolCardId = '$taskId-tool-${runtime.toolCardSequence}';
+    runtime.activeToolCardId = _resolveToolCardId(runtime, taskId, event);
     _upsertToolCard(
       runtime: runtime,
       taskId: taskId,
@@ -851,7 +851,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     _updateToolLayerState(runtime, event);
 
-    final cardId = runtime.activeToolCardId;
+    final cardId = _resolveExistingToolCardId(runtime, event);
     if (cardId == null) return;
     _upsertToolCard(
       runtime: runtime,
@@ -876,7 +876,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final runtime = _runtimeForTask(event.taskId);
     if (binding == null || runtime == null) return;
     final taskId = runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
-    final cardId = runtime.activeToolCardId;
+    final cardId = _resolveExistingToolCardId(runtime, event);
     if (taskId == null || taskId != event.taskId || cardId == null) return;
 
     _updateToolLayerState(runtime, event);
@@ -892,7 +892,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       resultPreviewJson: event.resultPreviewJson,
       rawResultJson: event.rawResultJson,
     );
-    runtime.activeToolCardId = null;
+    if (runtime.activeToolCardId == cardId) {
+      runtime.activeToolCardId = null;
+    }
     _updateBrowserSessionSnapshot(runtime, event);
     notifyListeners();
     schedulePersistRuntimeConversation(
@@ -1862,6 +1864,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       'toolTitle': event.toolTitle.isNotEmpty
           ? event.toolTitle
           : (existingCardData['toolTitle'] ?? '').toString(),
+      'cardId': event.cardId.isNotEmpty
+          ? event.cardId
+          : (existingCardData['cardId'] ?? cardId).toString(),
       'toolType': event.toolType,
       'serverName': event.serverName,
       'status': status,
@@ -1888,6 +1893,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           ? event.terminalStreamState
           : (existingCardData['terminalStreamState'] ?? '').toString(),
       'workspaceId': event.workspaceId ?? existingCardData['workspaceId'],
+      'interruptedBy': event.interruptedBy ?? existingCardData['interruptedBy'],
+      'interruptionReason':
+          event.interruptionReason ?? existingCardData['interruptionReason'],
       'artifacts': event.artifacts.isNotEmpty
           ? event.artifacts
           : (existingCardData['artifacts'] ?? const []),
@@ -1912,6 +1920,29 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         content: {'cardData': cardData, 'id': cardId},
       );
     }
+  }
+
+  String _resolveToolCardId(
+    ChatConversationRuntimeState runtime,
+    String taskId,
+    AgentToolEventData event,
+  ) {
+    final explicit = event.cardId.trim();
+    if (explicit.isNotEmpty) {
+      return explicit;
+    }
+    return '$taskId-tool-${runtime.toolCardSequence}';
+  }
+
+  String? _resolveExistingToolCardId(
+    ChatConversationRuntimeState runtime,
+    AgentToolEventData event,
+  ) {
+    final explicit = event.cardId.trim();
+    if (explicit.isNotEmpty) {
+      return explicit;
+    }
+    return runtime.activeToolCardId;
   }
 
   String _resolveTerminalOutput({

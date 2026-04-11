@@ -32,4 +32,17 @@ class ToolExecutionStatusResolverTest {
             )
         )
     }
+
+    @Test
+    fun `manual interruption resolves to interrupted status`() {
+        assertEquals(
+            AgentConversationHistoryRepository.STATUS_INTERRUPTED,
+            resolveToolExecutionStatus(
+                ToolExecutionResult.Interrupted(
+                    toolName = "terminal_execute",
+                    summaryText = "工具调用已被用户手动停止"
+                )
+            )
+        )
+    }
 }
