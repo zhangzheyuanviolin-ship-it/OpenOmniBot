@@ -29,6 +29,7 @@ class ChatConversationRuntimeState {
   ConversationModel? conversation;
   final List<ChatMessageModel> messages = <ChatMessageModel>[];
   final Map<String, String> currentAiMessages = <String, String>{};
+  final Map<String, String> currentThinkingMessages = <String, String>{};
   bool isAiResponding = false;
   bool isContextCompressing = false;
   bool isCheckingExecutableTask = false;
@@ -114,8 +115,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     _initialized = true;
 
     AssistsMessageService.initialize();
-    AssistsMessageService.setOnChatTaskMessageCallBack(_handleChatTaskMessage);
-    AssistsMessageService.setOnChatTaskMessageEndCallBack(
+    AssistsMessageService.addOnChatTaskMessageCallBack(_handleChatTaskMessage);
+    AssistsMessageService.addOnChatTaskMessageEndCallBack(
       _handleChatTaskMessageEnd,
     );
     AssistsMessageService.setOnAgentThinkingStartCallback(
@@ -204,6 +205,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     bool isSubmittingVlmReply = false,
     String? vlmInfoQuestion,
     Map<String, String>? currentAiMessages,
+    Map<String, String>? currentThinkingMessages,
     String deepThinkingContent = '',
     bool isDeepThinking = false,
     String? currentDispatchTaskId,
@@ -238,6 +240,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.currentAiMessages
       ..clear()
       ..addAll(currentAiMessages ?? const <String, String>{});
+    runtime.currentThinkingMessages
+      ..clear()
+      ..addAll(currentThinkingMessages ?? const <String, String>{});
     runtime.deepThinkingContent = deepThinkingContent;
     runtime.isDeepThinking = isDeepThinking;
     runtime.currentDispatchTaskId = currentDispatchTaskId;
@@ -270,8 +275,91 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     );
   }
 
+  void primePureChatThinking({
+    required String taskId,
+    required int conversationId,
+    required String mode,
+  }) {
+    ensureInitialized();
+    final runtime = ensureRuntime(conversationId: conversationId, mode: mode);
+    _taskBindings[taskId] = _TaskBinding(
+      conversationId: conversationId,
+      mode: mode,
+    );
+
+    runtime.lastAgentTaskId = taskId;
+    runtime.currentThinkingStage = ThinkingStage.thinking.value;
+    runtime.isDeepThinking = true;
+
+    if (runtime.thinkingRound == 0) {
+      runtime.thinkingRound = 1;
+      runtime.activeThinkingCardId = _baseThinkingCardId(taskId);
+      final exists = runtime.messages.any(
+        (msg) => msg.id == runtime.activeThinkingCardId,
+      );
+      if (exists) {
+        _updateThinkingCard(
+          runtime,
+          taskId,
+          cardId: runtime.activeThinkingCardId,
+          isLoading: true,
+          stage: ThinkingStage.thinking.value,
+          lockCompleted: false,
+        );
+      } else {
+        _createThinkingCard(
+          runtime,
+          taskId,
+          cardId: runtime.activeThinkingCardId,
+          isLoading: true,
+          stage: ThinkingStage.thinking.value,
+        );
+      }
+      notifyListeners();
+      schedulePersistRuntimeConversation(
+        conversationId: conversationId,
+        mode: mode,
+      );
+      return;
+    }
+
+    runtime.pendingThinkingRoundSplit = true;
+    notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: conversationId,
+      mode: mode,
+    );
+  }
+
   void unregisterTask(String taskId) {
     _taskBindings.remove(taskId);
+  }
+
+  void clearPureChatThinking({
+    required String taskId,
+    required int conversationId,
+    required String mode,
+    bool removeCard = true,
+  }) {
+    final runtime = runtimeFor(conversationId: conversationId, mode: mode);
+    if (runtime == null) return;
+
+    runtime.currentThinkingMessages.remove(taskId);
+    runtime.deepThinkingContent = '';
+    runtime.isDeepThinking = false;
+    runtime.lastAgentTaskId = null;
+    runtime.activeThinkingCardId = null;
+    runtime.pendingThinkingRoundSplit = false;
+    runtime.thinkingRound = 0;
+    if (removeCard) {
+      runtime.messages.removeWhere((message) {
+        final cardData = message.cardData;
+        return message.type == 2 &&
+            cardData?['type'] == 'deep_thinking' &&
+            (cardData?['taskID'] ?? '').toString() == taskId;
+      });
+    }
+    notifyListeners();
   }
 
   @visibleForTesting
@@ -294,6 +382,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.isContextCompressing = false;
     runtime.deepThinkingContent = '';
     runtime.isDeepThinking = false;
+    runtime.currentThinkingMessages.clear();
     runtime.currentThinkingStage = ThinkingStage.thinking.value;
     runtime.lastAgentTaskId = null;
     runtime.pendingAgentTextTaskId = null;
@@ -366,7 +455,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     final snapshotMessages = List<ChatMessageModel>.from(runtime.messages);
     final snapshotConversation = runtime.conversation;
-    final conversationMode = _conversationModeFromRuntimeMode(mode);
+    final conversationMode = _conversationModeFromRuntimeMode(
+      mode,
+      conversation: snapshotConversation,
+    );
     final now = DateTime.now().millisecondsSinceEpoch;
     final lastMessage = snapshotMessages.isNotEmpty
         ? (snapshotMessages[0].text ?? '')
@@ -501,6 +593,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     String messageText;
     bool isError;
     bool isSummarizing;
+    bool shouldUpdateAiMessage = true;
 
     final isFirstChunk = !runtime.currentAiMessages.containsKey(taskId);
     if (isFirstChunk) {
@@ -531,24 +624,39 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       isSummarizing = false;
       runtime.isContextCompressing = false;
     } else {
-      final text = (payload['text'] ?? '').toString();
-      runtime.currentAiMessages[taskId] =
-          (runtime.currentAiMessages[taskId] ?? '') + text;
+      final thinking = extractChatTaskThinking(
+        content,
+        fallbackToRawText: false,
+      );
+      if (thinking.isNotEmpty) {
+        _upsertPureChatThinking(runtime, taskId, thinking);
+      }
+      final text = extractChatTaskText(content, fallbackToRawText: false);
+      if (text.isNotEmpty) {
+        runtime.currentAiMessages[taskId] = _mergeStreamingText(
+          runtime.currentAiMessages[taskId] ?? '',
+          text,
+        );
+      }
       messageText = runtime.currentAiMessages[taskId] ?? '';
       isError = false;
       isSummarizing = false;
       runtime.isContextCompressing = false;
+      shouldUpdateAiMessage =
+          messageText.isNotEmpty || payloadAttachments.isNotEmpty;
     }
 
     _removeOpenClawWaitingCard(runtime, taskId);
-    _updateOrAddAiMessage(
-      runtime,
-      taskId,
-      messageText,
-      isError,
-      isSummarizing: isSummarizing,
-      attachments: payloadAttachments,
-    );
+    if (shouldUpdateAiMessage) {
+      _updateOrAddAiMessage(
+        runtime,
+        taskId,
+        messageText,
+        isError,
+        isSummarizing: isSummarizing,
+        attachments: payloadAttachments,
+      );
+    }
     runtime.isAiResponding = true;
     notifyListeners();
     schedulePersistRuntimeConversation(
@@ -561,6 +669,16 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final binding = _taskBindings[taskId];
     final runtime = _runtimeForTask(taskId);
     if (binding == null || runtime == null) return;
+
+    if (runtime.currentThinkingMessages.containsKey(taskId)) {
+      runtime.currentThinkingStage = ThinkingStage.complete.value;
+      runtime.isDeepThinking = false;
+      _finalizeThinkingCardsForTask(runtime, taskId);
+      runtime.currentThinkingMessages.remove(taskId);
+      runtime.deepThinkingContent = '';
+      runtime.lastAgentTaskId = null;
+      runtime.thinkingRound = 0;
+    }
 
     runtime.isAiResponding = false;
     runtime.isContextCompressing = false;
@@ -651,62 +769,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     )) {
       return;
     }
-
-    if (runtime.pendingThinkingRoundSplit) {
-      if (thinking.trim().isEmpty) {
-        return;
-      }
-
-      final previousThinkingCardId = _resolveThinkingCardId(runtime, taskId);
-      if (previousThinkingCardId != null) {
-        _updateThinkingCard(
-          runtime,
-          taskId,
-          cardId: previousThinkingCardId,
-          isLoading: false,
-          stage: ThinkingStage.complete.value,
-          lockCompleted: false,
-        );
-      }
-
-      runtime.thinkingRound += 1;
-      runtime.activeThinkingCardId =
-          '$taskId-thinking-${runtime.thinkingRound}';
-      _createThinkingCard(
-        runtime,
-        taskId,
-        cardId: runtime.activeThinkingCardId,
-        thinkingContent: thinking,
-        isLoading: true,
-        stage: ThinkingStage.thinking.value,
-      );
-      runtime.deepThinkingContent = thinking;
-      runtime.pendingThinkingRoundSplit = false;
-      notifyListeners();
-      schedulePersistRuntimeConversation(
-        conversationId: binding.conversationId,
-        mode: binding.mode,
-      );
-      return;
-    }
-
-    runtime.deepThinkingContent = thinking;
-    final thinkingCardId = _resolveThinkingCardId(runtime, taskId);
-    if (thinkingCardId == null) return;
-
-    _updateThinkingCard(
-      runtime,
-      taskId,
-      cardId: thinkingCardId,
-      thinkingContent: thinking,
-      isLoading: true,
-      stage: runtime.currentThinkingStage,
-    );
-    notifyListeners();
-    schedulePersistRuntimeConversation(
-      conversationId: binding.conversationId,
-      mode: binding.mode,
-    );
+    _applyThinkingUpdate(runtime, binding, taskId, thinking);
   }
 
   void _handleAgentToolCallStart(AgentToolEventData event) {
@@ -890,6 +953,141 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       return false;
     }
     return incoming.length < current.length && current.startsWith(incoming);
+  }
+
+  void _upsertPureChatThinking(
+    ChatConversationRuntimeState runtime,
+    String taskId,
+    String thinking,
+  ) {
+    final binding = _taskBindings[taskId];
+    if (binding == null) {
+      return;
+    }
+    final previous = runtime.currentThinkingMessages[taskId] ?? '';
+    final merged = _mergeStreamingText(previous, thinking);
+    if (merged.isEmpty || merged == previous) {
+      return;
+    }
+
+    runtime.currentThinkingMessages[taskId] = merged;
+    if (runtime.thinkingRound == 0) {
+      primePureChatThinking(
+        taskId: taskId,
+        conversationId: binding.conversationId,
+        mode: binding.mode,
+      );
+    }
+    _applyThinkingUpdate(runtime, binding, taskId, merged);
+  }
+
+  void _applyThinkingUpdate(
+    ChatConversationRuntimeState runtime,
+    _TaskBinding binding,
+    String taskId,
+    String thinking,
+  ) {
+    if (runtime.pendingThinkingRoundSplit) {
+      if (thinking.trim().isEmpty) {
+        return;
+      }
+
+      final previousThinkingCardId = _resolveThinkingCardId(runtime, taskId);
+      if (previousThinkingCardId != null) {
+        _updateThinkingCard(
+          runtime,
+          taskId,
+          cardId: previousThinkingCardId,
+          isLoading: false,
+          stage: ThinkingStage.complete.value,
+          lockCompleted: false,
+        );
+      }
+
+      runtime.thinkingRound += 1;
+      runtime.activeThinkingCardId =
+          '$taskId-thinking-${runtime.thinkingRound}';
+      _createThinkingCard(
+        runtime,
+        taskId,
+        cardId: runtime.activeThinkingCardId,
+        thinkingContent: thinking,
+        isLoading: true,
+        stage: ThinkingStage.thinking.value,
+      );
+      runtime.deepThinkingContent = thinking;
+      runtime.pendingThinkingRoundSplit = false;
+      notifyListeners();
+      schedulePersistRuntimeConversation(
+        conversationId: binding.conversationId,
+        mode: binding.mode,
+      );
+      return;
+    }
+
+    runtime.deepThinkingContent = thinking;
+    runtime.lastAgentTaskId = taskId;
+    runtime.currentThinkingStage = ThinkingStage.thinking.value;
+    runtime.isDeepThinking = true;
+    final thinkingCardId = _resolveThinkingCardId(runtime, taskId);
+    if (thinkingCardId == null) {
+      runtime.activeThinkingCardId = _baseThinkingCardId(taskId);
+      _createThinkingCard(
+        runtime,
+        taskId,
+        cardId: runtime.activeThinkingCardId,
+        thinkingContent: thinking,
+        isLoading: true,
+        stage: runtime.currentThinkingStage,
+      );
+    } else {
+      _updateThinkingCard(
+        runtime,
+        taskId,
+        cardId: thinkingCardId,
+        thinkingContent: thinking,
+        isLoading: true,
+        stage: runtime.currentThinkingStage,
+        lockCompleted: false,
+      );
+    }
+    notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: binding.conversationId,
+      mode: binding.mode,
+    );
+  }
+
+  String _mergeStreamingText(String current, String incoming) {
+    if (incoming.isEmpty) {
+      return current;
+    }
+    if (current.isEmpty) {
+      return incoming;
+    }
+    if (incoming.startsWith(current)) {
+      return incoming;
+    }
+    if (current.startsWith(incoming) || current.contains(incoming)) {
+      return current;
+    }
+    final overlap = _streamingTextOverlap(current, incoming);
+    if (overlap > 0) {
+      return current + incoming.substring(overlap);
+    }
+    return current + incoming;
+  }
+
+  int _streamingTextOverlap(String current, String incoming) {
+    final maxOverlap = current.length < incoming.length
+        ? current.length
+        : incoming.length;
+    for (var size = maxOverlap; size > 0; size--) {
+      if (current.endsWith(incoming.substring(0, size))) {
+        return size;
+      }
+    }
+    return 0;
   }
 
   void _handleAgentContextCompactionStateChanged(
@@ -1466,7 +1664,13 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         entryId: message.id,
         cardData: Map<String, dynamic>.from(cardData!),
         createdAtMillis: message.createAt.millisecondsSinceEpoch,
-        mode: _conversationModeFromRuntimeMode(mode),
+        mode: _conversationModeFromRuntimeMode(
+          mode,
+          conversation: runtimeFor(
+            conversationId: conversationId,
+            mode: mode,
+          )?.conversation,
+        ),
       ),
     );
   }
@@ -1804,10 +2008,17 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     return buffer.toString().trim();
   }
 
-  ConversationMode _conversationModeFromRuntimeMode(String mode) {
+  ConversationMode _conversationModeFromRuntimeMode(
+    String mode, {
+    ConversationModel? conversation,
+  }) {
     return mode == kChatRuntimeModeOpenClaw
         ? ConversationMode.openclaw
-        : ConversationMode.normal;
+        : switch (conversation?.mode) {
+            ConversationMode.chatOnly => ConversationMode.chatOnly,
+            ConversationMode.subagent => ConversationMode.subagent,
+            _ => ConversationMode.normal,
+          };
   }
 
   void _cancelPendingPersistence({

@@ -81,6 +81,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -105,6 +106,133 @@ import java.util.ArrayDeque
 import kotlin.collections.mapOf
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+
+internal const val CHAT_ONLY_MODE = "chat_only"
+
+internal fun prepareChatTaskContent(
+    content: List<Map<String, Any>>,
+    conversationMode: String,
+    chatPromptContent: String?
+): List<Map<String, Any>> {
+    val prompt = chatPromptContent?.takeIf { it.trim().isNotEmpty() } ?: return content
+    if (!conversationMode.equals(CHAT_ONLY_MODE, ignoreCase = true)) {
+        return content
+    }
+    return buildList {
+        add(
+            linkedMapOf<String, Any>(
+                "role" to "system",
+                "content" to prompt
+            )
+        )
+        addAll(content)
+    }
+}
+
+internal fun resolveChatTaskModelOverride(
+    raw: Map<String, Any?>?,
+    profileLookup: (String) -> ModelProviderProfile?
+): TaskParams.ChatModelOverride? {
+    if (raw.isNullOrEmpty()) {
+        return null
+    }
+    val providerProfileId = raw["providerProfileId"]?.toString()?.trim().orEmpty()
+    val modelId = raw["modelId"]?.toString()?.trim().orEmpty()
+    if (providerProfileId.isEmpty() || modelId.isEmpty()) {
+        return null
+    }
+    val providerProfile = profileLookup(providerProfileId)
+    if (providerProfile == null || !providerProfile.isConfigured()) {
+        return null
+    }
+    return TaskParams.ChatModelOverride(
+        providerProfileId = providerProfile.id,
+        modelId = modelId,
+        apiBase = providerProfile.baseUrl,
+        apiKey = providerProfile.apiKey,
+        protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" }
+    )
+}
+
+internal fun extractChatTaskTextPayload(content: String): String {
+    val normalized = content.trim()
+    if (normalized.isEmpty() || normalized == "[DONE]") {
+        return ""
+    }
+    if (!normalized.startsWith("{")) {
+        return normalized
+    }
+    val parsed = runCatching {
+        val json = JSONObject(normalized)
+        when {
+            json.has("text") -> extractTextPayload(json.opt("text"))
+            json.has("output_text") -> extractTextPayload(json.opt("output_text"))
+            json.has("content") -> extractTextPayload(json.opt("content"))
+            json.has("message") && json.opt("message") is String -> json.optString("message").trim()
+            json.has("choices") -> {
+                val firstChoice = json.optJSONArray("choices")?.optJSONObject(0)
+                val delta = firstChoice?.optJSONObject("delta")
+                val message = firstChoice?.optJSONObject("message")
+                when {
+                    delta != null -> extractTextPayload(delta.opt("content"))
+                    message != null -> extractTextPayload(message.opt("content"))
+                    else -> normalized
+                }
+            }
+            json.has("output") -> {
+                val output = json.optJSONArray("output")
+                if (output == null) {
+                    normalized
+                } else {
+                    buildString {
+                        for (index in 0 until output.length()) {
+                            append(extractTextPayload(output.opt(index)))
+                        }
+                    }.trim()
+                }
+            }
+            else -> ""
+        }
+    }.getOrElse { "" }.trim()
+    if (parsed.isNotEmpty()) {
+        return parsed
+    }
+
+    val contentMatch = Regex(""""(?:content|text)"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        .find(normalized)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.let { raw ->
+            runCatching {
+                JSONObject("""{"text":"$raw"}""").optString("text").trim()
+            }.getOrDefault(raw)
+        }
+        ?.trim()
+        .orEmpty()
+    return if (contentMatch.isNotEmpty()) contentMatch else normalized
+}
+
+private fun extractTextPayload(raw: Any?): String {
+    return when (raw) {
+        null -> ""
+        is String -> raw.trim()
+        is JSONArray -> buildString {
+            for (index in 0 until raw.length()) {
+                append(extractTextPayload(raw.opt(index)))
+            }
+        }.trim()
+        is JSONObject -> when {
+            raw.optString("type").equals("text", ignoreCase = true) ||
+                raw.optString("type").equals("output_text", ignoreCase = true) -> {
+                extractTextPayload(raw.opt("text"))
+            }
+            raw.has("text") -> extractTextPayload(raw.opt("text"))
+            raw.has("content") -> extractTextPayload(raw.opt("content"))
+            else -> ""
+        }
+        else -> ""
+    }
+}
 
 class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private val TAG = "[AssistsCoreManager]"
@@ -711,16 +839,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         )
     }
 
-    private fun extractChatTaskText(content: String): String {
-        val normalized = content.trim()
-        if (normalized.isEmpty()) return ""
-        if (!normalized.startsWith("{")) {
-            return normalized
-        }
-        return runCatching {
-            JSONObject(normalized).optString("text").trim()
-        }.getOrElse { normalized }
-    }
+    private fun extractChatTaskText(content: String): String = extractChatTaskTextPayload(content)
 
 
     /**
@@ -934,6 +1053,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val conversationMode = normalizeConversationMode(call.argument<String>("conversationMode"))
         val userMessage = call.argument<String>("userMessage")?.trim().orEmpty()
         val userAttachments = call.argument<List<Map<String, Any?>>>("userAttachments") ?: emptyList()
+        val modelOverride = resolveChatTaskModelOverride(
+            call.argument<Map<String, Any?>>("modelOverride"),
+            ModelProviderConfigStore::getProfile
+        )
         val openClawConfigMap = call.argument<Map<String, Any>>("openClawConfig")
         val openClawConfig = openClawConfigMap?.let { map ->
             val baseUrl = map["baseUrl"] as? String ?: ""
@@ -951,6 +1074,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
         mainJob.launch {
             try {
+                val workspaceMemoryService = WorkspaceMemoryService(context)
+                val preparedContent = prepareChatTaskContent(
+                    content = content,
+                    conversationMode = conversationMode,
+                    chatPromptContent = workspaceMemoryService.readChatPrompt()
+                )
                 val normalizedConversationId = conversationId?.takeIf { it > 0L }
                 if (normalizedConversationId != null) {
                     val repository = conversationHistoryRepository()
@@ -974,7 +1103,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     )
                 }
                 AssistsUtil.Core.createChatTask(
-                    taskID, content, this@AssistsCoreManager, provider, openClawConfig
+                    taskID,
+                    preparedContent,
+                    this@AssistsCoreManager,
+                    provider,
+                    openClawConfig,
+                    modelOverride
                 )
                 withContext(Dispatchers.Main) {
                     result.success("SUCCESS")
@@ -2329,6 +2463,26 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
+    fun getWorkspaceChatPrompt(call: MethodCall, result: MethodChannel.Result) {
+        workJob.launch {
+            try {
+                val service = WorkspaceMemoryService(context)
+                val content = service.readChatPrompt()
+                withContext(Dispatchers.Main) {
+                    result.success(
+                        mapOf(
+                            "content" to content
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("GET_WORKSPACE_CHAT_PROMPT_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
     fun saveWorkspaceSoul(call: MethodCall, result: MethodChannel.Result) {
         val content = call.argument<String>("content") ?: ""
         workJob.launch {
@@ -2345,6 +2499,27 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     result.error("SAVE_WORKSPACE_SOUL_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun saveWorkspaceChatPrompt(call: MethodCall, result: MethodChannel.Result) {
+        val content = call.argument<String>("content") ?: ""
+        workJob.launch {
+            try {
+                val service = WorkspaceMemoryService(context)
+                service.writeChatPrompt(content)
+                withContext(Dispatchers.Main) {
+                    result.success(
+                        mapOf(
+                            "content" to service.readChatPrompt()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("SAVE_WORKSPACE_CHAT_PROMPT_ERROR", e.message, null)
                 }
             }
         }
@@ -4345,4 +4520,3 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 }
-

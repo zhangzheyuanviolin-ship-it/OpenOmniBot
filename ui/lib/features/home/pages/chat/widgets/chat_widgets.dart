@@ -39,6 +39,7 @@ const List<ChatSurfaceMode> kVisibleChatSurfaceModes = <ChatSurfaceMode>[
 /// 聊天页面 AppBar
 class ChatAppBar extends StatelessWidget {
   final VoidCallback onMenuTap;
+  final VoidCallback? onPureChatToggleTap;
   final VoidCallback onCompanionTap;
   final ChatSurfaceMode activeMode;
   final ValueChanged<ChatSurfaceMode> onModeChanged;
@@ -62,10 +63,14 @@ class ChatAppBar extends StatelessWidget {
   final AppBackgroundVisualProfile visualProfile;
   final bool showMenuButton;
   final bool showSurfaceSwitcher;
+  final bool showPureChatToggle;
+  final bool isPureChatSelected;
+  final bool isPureChatToggleLocked;
 
   const ChatAppBar({
     super.key,
     required this.onMenuTap,
+    this.onPureChatToggleTap,
     required this.onCompanionTap,
     required this.activeMode,
     required this.onModeChanged,
@@ -89,6 +94,9 @@ class ChatAppBar extends StatelessWidget {
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.showMenuButton = true,
     this.showSurfaceSwitcher = true,
+    this.showPureChatToggle = false,
+    this.isPureChatSelected = false,
+    this.isPureChatToggleLocked = true,
   });
 
   @override
@@ -109,28 +117,53 @@ class ChatAppBar extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              if (showMenuButton)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: GestureDetector(
-                    onTap: onMenuTap,
-                    child: Container(
-                      color: Colors.transparent,
-                      padding: const EdgeInsets.all(15),
-                      child: SvgPicture.asset(
-                        'assets/home/drawer_icon.svg',
-                        width: 20,
-                        height: 20,
-                        colorFilter: ColorFilter.mode(
-                          iconTint,
-                          BlendMode.srcIn,
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (showMenuButton)
+                      GestureDetector(
+                        key: const ValueKey('chat-app-bar-menu-button'),
+                        onTap: onMenuTap,
+                        child: Container(
+                          color: Colors.transparent,
+                          padding: const EdgeInsets.all(15),
+                          child: SvgPicture.asset(
+                            'assets/home/drawer_icon.svg',
+                            width: 20,
+                            height: 20,
+                            colorFilter: ColorFilter.mode(
+                              iconTint,
+                              BlendMode.srcIn,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    if (showPureChatToggle)
+                      _ChatAppBarAccessoryButton(
+                        key: const ValueKey('chat-app-bar-pure-chat-button'),
+                        icon: Icons.chat_bubble_outline_rounded,
+                        tooltip: isPureChatToggleLocked
+                            ? (isPureChatSelected
+                                  ? '当前线程已锁定为纯聊天'
+                                  : '当前线程模式已锁定')
+                            : (isPureChatSelected ? '关闭纯聊天' : '开启纯聊天'),
+                        selected: isPureChatSelected,
+                        disabled: isPureChatToggleLocked,
+                        onTap: isPureChatToggleLocked
+                            ? null
+                            : onPureChatToggleTap,
+                        iconTint: iconTint,
+                        translucent: translucent,
+                        visualProfile: visualProfile,
+                      ),
+                  ],
                 ),
+              ),
               Center(
                 child: ConstrainedBox(
+                  key: const ValueKey('chat-app-bar-island'),
                   constraints: const BoxConstraints(maxWidth: 176),
                   child: _ChatModeModelSwitcher(
                     activeMode: activeMode,
@@ -218,6 +251,69 @@ class ChatAppBar extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatAppBarAccessoryButton extends StatelessWidget {
+  const _ChatAppBarAccessoryButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.selected,
+    required this.disabled,
+    required this.onTap,
+    required this.iconTint,
+    required this.translucent,
+    required this.visualProfile,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final bool selected;
+  final bool disabled;
+  final VoidCallback? onTap;
+  final Color iconTint;
+  final bool translucent;
+  final AppBackgroundVisualProfile visualProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final selectedColor = context.isDarkTheme
+        ? palette.accentPrimary
+        : const Color(0xFF1E5BFF);
+    final effectiveIconColor = selected
+        ? selectedColor
+        : disabled
+        ? iconTint.withValues(alpha: 0.42)
+        : iconTint;
+    final backgroundColor = selected
+        ? (context.isDarkTheme
+              ? selectedColor.withValues(alpha: 0.16)
+              : selectedColor.withValues(alpha: 0.12))
+        : Colors.transparent;
+    final borderColor = selected
+        ? selectedColor.withValues(alpha: 0.24)
+        : (translucent
+              ? visualProfile.appBarIconColor.withValues(alpha: 0.08)
+              : palette.borderSubtle.withValues(alpha: 0.3));
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          margin: const EdgeInsets.only(left: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: borderColor),
+          ),
+          child: Icon(icon, size: 18, color: effectiveIconColor),
         ),
       ),
     );

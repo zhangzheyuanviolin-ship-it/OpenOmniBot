@@ -129,11 +129,7 @@ class ConversationHistoryService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_lastVisibleThreadTargetKey);
     if (raw == null || raw.trim().isEmpty) {
-      for (final mode in const <ConversationMode>[
-        ConversationMode.normal,
-        ConversationMode.openclaw,
-        ConversationMode.subagent,
-      ]) {
+      for (final mode in ConversationMode.values) {
         final target = await getCurrentConversationTarget(mode: mode);
         if (target == null) {
           continue;
@@ -200,9 +196,9 @@ class ConversationHistoryService {
       return null;
     }
     final suffix = key.substring(conversationMessagesKeyPrefix.length);
-    final parts = suffix.split('_');
-    if (parts.length == 1) {
-      final conversationId = int.tryParse(parts.first);
+    final lastUnderscoreIndex = suffix.lastIndexOf('_');
+    if (lastUnderscoreIndex < 0) {
+      final conversationId = int.tryParse(suffix);
       if (conversationId == null) {
         return null;
       }
@@ -211,17 +207,17 @@ class ConversationHistoryService {
         mode: ConversationMode.normal,
       );
     }
-    if (parts.length < 2) {
-      return null;
-    }
-    final mode = ConversationMode.fromStorageValue(parts.first);
-    final conversationId = int.tryParse(parts.sublist(1).join('_'));
-    if (conversationId == null) {
+
+    final modeStorageValue = suffix.substring(0, lastUnderscoreIndex);
+    final conversationId = int.tryParse(
+      suffix.substring(lastUnderscoreIndex + 1),
+    );
+    if (modeStorageValue.isEmpty || conversationId == null) {
       return null;
     }
     return ConversationMessageStorageKey(
       conversationId: conversationId,
-      mode: mode,
+      mode: ConversationMode.fromStorageValue(modeStorageValue),
     );
   }
 

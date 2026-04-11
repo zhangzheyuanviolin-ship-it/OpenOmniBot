@@ -91,6 +91,61 @@ class _ChatAppBarHarnessState extends State<_ChatAppBarHarness> {
   }
 }
 
+class _PureChatToggleHarness extends StatefulWidget {
+  const _PureChatToggleHarness({this.selected = false, this.locked = false});
+
+  final bool selected;
+  final bool locked;
+
+  @override
+  State<_PureChatToggleHarness> createState() => _PureChatToggleHarnessState();
+}
+
+class _PureChatToggleHarnessState extends State<_PureChatToggleHarness> {
+  late bool _selected = widget.selected;
+  late bool _locked = widget.locked;
+  int _toggleCount = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: DefaultAssetBundle(
+        bundle: _SvgTestAssetBundle(),
+        child: Scaffold(
+          body: Column(
+            children: [
+              ChatAppBar(
+                onMenuTap: () {},
+                onPureChatToggleTap: () {
+                  setState(() {
+                    _selected = !_selected;
+                    _toggleCount += 1;
+                  });
+                },
+                onCompanionTap: () {},
+                activeMode: ChatSurfaceMode.normal,
+                onModeChanged: (_) {},
+                activeModelId: 'gpt-5.4',
+                displayLayer: ChatIslandDisplayLayer.model,
+                onDisplayLayerChanged: (_) {},
+                onTerminalEnvironmentTap: (_) {},
+                onTerminalTap: () {},
+                onBrowserTap: () {},
+                showPureChatToggle: true,
+                isPureChatSelected: _selected,
+                isPureChatToggleLocked: _locked,
+              ),
+              Text('selected:$_selected'),
+              Text('locked:$_locked'),
+              Text('toggles:$_toggleCount'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SurfaceTransitionHarness extends StatefulWidget {
   const _SurfaceTransitionHarness({
     this.applyDelayByMode = const <ChatSurfaceMode, Duration>{},
@@ -579,6 +634,56 @@ void main() {
 
     expect(find.text('layer:model'), findsOneWidget);
     expect(find.text('gpt-5.4'), findsOneWidget);
+  });
+
+  testWidgets('places pure chat toggle between menu button and island', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const _PureChatToggleHarness());
+
+    final menuCenter = tester.getCenter(
+      find.byKey(const ValueKey('chat-app-bar-menu-button')),
+    );
+    final pureChatCenter = tester.getCenter(
+      find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
+    );
+    final islandCenter = tester.getCenter(
+      find.byKey(const ValueKey('chat-app-bar-island')),
+    );
+
+    expect(menuCenter.dx, lessThan(pureChatCenter.dx));
+    expect(pureChatCenter.dx, lessThan(islandCenter.dx));
+  });
+
+  testWidgets('highlights pure chat toggle when selected', (tester) async {
+    await tester.pumpWidget(const _PureChatToggleHarness(selected: true));
+
+    final pureChatButton = find.byKey(
+      const ValueKey('chat-app-bar-pure-chat-button'),
+    );
+    final pureChatIcon = tester.widget<Icon>(
+      find.descendant(
+        of: pureChatButton,
+        matching: find.byIcon(Icons.chat_bubble_outline_rounded),
+      ),
+    );
+
+    expect(pureChatIcon.color, const Color(0xFF1E5BFF));
+  });
+
+  testWidgets('locks pure chat toggle after thread starts', (tester) async {
+    await tester.pumpWidget(const _PureChatToggleHarness(locked: true));
+
+    expect(find.text('selected:false'), findsOneWidget);
+    expect(find.text('toggles:0'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('selected:false'), findsOneWidget);
+    expect(find.text('toggles:0'), findsOneWidget);
   });
 
   testWidgets('uses chat-left workspace-right surface order', (tester) async {

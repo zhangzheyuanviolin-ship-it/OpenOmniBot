@@ -118,8 +118,14 @@ class AssistsCoreChannel {
                 "getWorkspaceSoul" -> {
                     assistsCoreManager!!.getWorkspaceSoul(call, result)
                 }
+                "getWorkspaceChatPrompt" -> {
+                    assistsCoreManager!!.getWorkspaceChatPrompt(call, result)
+                }
                 "saveWorkspaceSoul" -> {
                     assistsCoreManager!!.saveWorkspaceSoul(call, result)
+                }
+                "saveWorkspaceChatPrompt" -> {
+                    assistsCoreManager!!.saveWorkspaceChatPrompt(call, result)
                 }
                 "getWorkspaceLongMemory" -> {
                     assistsCoreManager!!.getWorkspaceLongMemory(call, result)

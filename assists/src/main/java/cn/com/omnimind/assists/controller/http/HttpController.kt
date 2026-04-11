@@ -1511,9 +1511,19 @@ object HttpController {
         model: String,
         messages: List<Map<String, Any>>,
         event: EventSourceListener,
-        enableThinking: Boolean? = null
+        enableThinking: Boolean? = null,
+        explicitApiBase: String? = null,
+        explicitApiKey: String? = null,
+        explicitModel: String? = null,
+        explicitProtocolType: String? = null
     ): EventSource {
-        val resolved = resolveSceneRequest(model)
+        val resolved = resolveSceneRequest(
+            modelOrScene = model,
+            explicitApiBase = explicitApiBase,
+            explicitApiKey = explicitApiKey,
+            explicitModel = explicitModel,
+            explicitProtocolType = explicitProtocolType
+        )
         logSceneProfile(resolved)
         prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(

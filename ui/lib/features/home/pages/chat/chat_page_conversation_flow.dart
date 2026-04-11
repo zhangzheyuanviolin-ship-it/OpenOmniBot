@@ -57,6 +57,9 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       currentAiMessages: Map<String, String>.from(
         runtime?.currentAiMessages ?? _currentAiMessagesByMode[mode]!,
       ),
+      currentThinkingMessages: Map<String, String>.from(
+        runtime?.currentThinkingMessages ?? const <String, String>{},
+      ),
       deepThinkingContent:
           runtime?.deepThinkingContent ??
           (_deepThinkingContentByMode[mode] ?? ''),
@@ -395,6 +398,11 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       return;
     }
 
+    if (activeConversationModeValue == ConversationMode.chatOnly) {
+      await _sendPureChatMessage(messageIds.aiMessageId);
+      return;
+    }
+
     final handled = await _handleExecutableTaskFlow(
       messageIds.aiMessageId,
       messageIds.userMessageId,
@@ -439,6 +447,11 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     _showOpenClawWaitingCard(aiMessageId);
     _syncRuntimeSnapshotForMode(_activeMode);
     _registerActiveTaskBinding(aiMessageId);
+    _runtimeCoordinator.primePureChatThinking(
+      taskId: aiMessageId,
+      conversationId: conversationId,
+      mode: _modeKey(_activeMode),
+    );
     final success = await AssistsMessageService.createChatTask(
       aiMessageId,
       history,
@@ -473,6 +486,74 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         );
       });
     }
+  }
+
+  @override
+  Future<void> _sendPureChatMessage(String aiMessageId) async {
+    try {
+      await _ensureActiveConversationReadyForStreaming();
+    } catch (_) {
+      if (mounted) {
+        handleAgentError('Conversation setup failed. Please retry.');
+      }
+      return;
+    }
+    final conversationId = _currentConversationId;
+    if (conversationId == null) {
+      if (mounted) {
+        handleAgentError('Conversation setup failed. Please retry.');
+      }
+      return;
+    }
+
+    final history = buildConversationHistory();
+    final userMessage = latestUserUtterance();
+    final userAttachments = await _latestUserAttachments();
+
+    _syncRuntimeSnapshotForMode(_activeMode);
+    _registerActiveTaskBinding(aiMessageId);
+    _runtimeCoordinator.primePureChatThinking(
+      taskId: aiMessageId,
+      conversationId: conversationId,
+      mode: _modeKey(_activeMode),
+    );
+    final success = await AssistsMessageService.createChatTask(
+      aiMessageId,
+      history,
+      conversationId: conversationId,
+      conversationMode: activeConversationModeValue.storageValue,
+      userMessage: userMessage,
+      userAttachments: userAttachments,
+      modelOverride: _buildChatModelOverridePayload(),
+    );
+    if (success) {
+      return;
+    }
+    _runtimeCoordinator.clearPureChatThinking(
+      taskId: aiMessageId,
+      conversationId: conversationId,
+      mode: _modeKey(_activeMode),
+    );
+    _runtimeCoordinator.unregisterTask(aiMessageId);
+
+    if (!mounted) {
+      return;
+    }
+    final errorId = DateTime.now().millisecondsSinceEpoch.toString();
+    setState(() {
+      _isAiResponding = false;
+      _isContextCompressing = false;
+      removeLatestLoadingIfExists();
+      _messages.insert(
+        0,
+        ChatMessageModel(
+          id: errorId,
+          type: 1,
+          user: 2,
+          content: {'text': '抱歉，发送消息失败，请稍后重试。', 'id': errorId},
+        ),
+      );
+    });
   }
 
   @override

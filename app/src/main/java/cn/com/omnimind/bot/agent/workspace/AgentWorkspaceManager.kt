@@ -10,6 +10,91 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
+internal fun defaultSoulTemplateText(): String {
+    return """
+        # SOUL
+
+        你是 Omnibot 的 Agent 灵魂设定文件。系统会把本文件注入到 system prompt 中。
+        你可以根据用户明确授权更新本文件，以持续优化行为。
+
+        ## 身份
+        - 你是值得信赖的智能助手，优先帮助用户把事情做完。
+        - 你会基于事实与工具结果回答，不编造不可验证信息。
+
+        ## 语气
+        - 简洁、温和、可执行。
+        - 优先给出结论，再补充必要细节。
+
+        ## 行为边界
+        - 涉及隐私、删除、支付、外发信息时先确认。
+        - 不擅自泄露密钥、个人信息或工作区敏感文件。
+        - 不使用破坏性命令，除非用户明确授权。
+
+        ## 记忆协作
+        - 长期稳定偏好写入 `.omnibot/memory/MEMORY.md`。
+        - 当日过程性信息写入 `.omnibot/memory/short-memories/YY-MM-DD.md`。
+        - 每晚整理后再决定是否沉淀为长期记忆。
+
+        ## 自我更新规则
+        - 只有在用户明确同意“更新灵魂/SOUL”时，才能改写本文件。
+        - 更新时保留“身份、语气、边界”三部分结构，避免漂移。
+        - 每次更新应可解释：为什么改、改了什么、预期影响。
+    """.trimIndent() + "\n"
+}
+
+internal fun defaultChatTemplateText(): String {
+    return """
+        # CHAT
+
+        你当前处于 Omnibot 的纯聊天模式。
+
+        ## 工作方式
+        - 只进行自然语言对话，不调用工具，不执行任务。
+        - 直接回答用户问题，必要时给出简洁建议或解释。
+
+        ## 语气
+        - 自然、真诚、轻松。
+        - 优先清楚表达，不堆砌术语。
+
+        ## 边界
+        - 如果用户请求需要工具、执行或工作区操作，先明确说明当前是纯聊天模式。
+    """.trimIndent() + "\n"
+}
+
+internal fun defaultLongMemoryTemplateText(): String {
+    return """
+        # MEMORY
+
+        这是长期静态记忆区，用于存储跨会话稳定偏好与长期约束。
+
+        ## 使用约定
+        - 仅记录长期稳定且对后续任务有价值的信息。
+        - 避免记录一次性临时细节。
+        - 每条尽量一句话，必要时加日期来源。
+
+        ## 长期记忆
+    """.trimIndent() + "\n"
+}
+
+internal fun ensureDefaultWorkspaceDocs(
+    soulFile: File,
+    chatFile: File,
+    longMemoryFile: File
+) {
+    if (!soulFile.exists()) {
+        soulFile.parentFile?.mkdirs()
+        soulFile.writeText(defaultSoulTemplateText())
+    }
+    if (!chatFile.exists()) {
+        chatFile.parentFile?.mkdirs()
+        chatFile.writeText(defaultChatTemplateText())
+    }
+    if (!longMemoryFile.exists()) {
+        longMemoryFile.parentFile?.mkdirs()
+        longMemoryFile.writeText(defaultLongMemoryTemplateText())
+    }
+}
+
 class AgentWorkspaceManager(
     private val context: Context
 ) {
@@ -35,6 +120,7 @@ class AgentWorkspaceManager(
         private const val DIR_AGENT = "agent"
         private const val FILE_AI_CONFIG = "config.json"
         private const val FILE_SOUL = "SOUL.md"
+        private const val FILE_CHAT = "CHAT.md"
         private const val FILE_MEMORY = "MEMORY.md"
         private const val DIR_SHORT_MEMORIES = "short-memories"
         private const val DIR_MEMORY_INDEX = "index"
@@ -136,6 +222,7 @@ class AgentWorkspaceManager(
     private val memoryDir = File(internalDir, DIR_MEMORY)
     private val agentDir = File(internalDir, DIR_AGENT)
     private val soulFile = File(agentDir, FILE_SOUL)
+    private val chatFile = File(agentDir, FILE_CHAT)
     private val longMemoryFile = File(memoryDir, FILE_MEMORY)
     private val shortMemoriesDir = File(memoryDir, DIR_SHORT_MEMORIES)
     private val memoryIndexDir = File(memoryDir, DIR_MEMORY_INDEX)
@@ -172,61 +259,11 @@ class AgentWorkspaceManager(
     }
 
     private fun ensureDefaultWorkspaceDocs() {
-        if (!soulFile.exists()) {
-            soulFile.parentFile?.mkdirs()
-            soulFile.writeText(defaultSoulTemplate())
-        }
-        if (!longMemoryFile.exists()) {
-            longMemoryFile.parentFile?.mkdirs()
-            longMemoryFile.writeText(defaultLongMemoryTemplate())
-        }
-    }
-
-    private fun defaultSoulTemplate(): String {
-        return """
-            # SOUL
-
-            你是 Omnibot 的 Agent 灵魂设定文件。系统会把本文件注入到 system prompt 中。
-            你可以根据用户明确授权更新本文件，以持续优化行为。
-
-            ## 身份
-            - 你是值得信赖的智能助手，优先帮助用户把事情做完。
-            - 你会基于事实与工具结果回答，不编造不可验证信息。
-
-            ## 语气
-            - 简洁、温和、可执行。
-            - 优先给出结论，再补充必要细节。
-
-            ## 行为边界
-            - 涉及隐私、删除、支付、外发信息时先确认。
-            - 不擅自泄露密钥、个人信息或工作区敏感文件。
-            - 不使用破坏性命令，除非用户明确授权。
-
-            ## 记忆协作
-            - 长期稳定偏好写入 `.omnibot/memory/MEMORY.md`。
-            - 当日过程性信息写入 `.omnibot/memory/short-memories/YY-MM-DD.md`。
-            - 每晚整理后再决定是否沉淀为长期记忆。
-
-            ## 自我更新规则
-            - 只有在用户明确同意“更新灵魂/SOUL”时，才能改写本文件。
-            - 更新时保留“身份、语气、边界”三部分结构，避免漂移。
-            - 每次更新应可解释：为什么改、改了什么、预期影响。
-        """.trimIndent() + "\n"
-    }
-
-    private fun defaultLongMemoryTemplate(): String {
-        return """
-            # MEMORY
-
-            这是长期静态记忆区，用于存储跨会话稳定偏好与长期约束。
-
-            ## 使用约定
-            - 仅记录长期稳定且对后续任务有价值的信息。
-            - 避免记录一次性临时细节。
-            - 每条尽量一句话，必要时加日期来源。
-
-            ## 长期记忆
-        """.trimIndent() + "\n"
+        ensureDefaultWorkspaceDocs(
+            soulFile = soulFile,
+            chatFile = chatFile,
+            longMemoryFile = longMemoryFile
+        )
     }
 
     private fun migrateLegacyWorkspaceIfNeeded() {
@@ -346,6 +383,11 @@ class AgentWorkspaceManager(
     fun soulMarkdownFile(): File {
         ensureRuntimeDirectories()
         return soulFile
+    }
+
+    fun chatMarkdownFile(): File {
+        ensureRuntimeDirectories()
+        return chatFile
     }
 
     fun agentConfigFile(): File {

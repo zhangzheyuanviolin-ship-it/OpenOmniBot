@@ -87,6 +87,31 @@ void main() {
     expect(conversations.single.title, 'openclaw hello');
   });
 
+  test('loads chat_only conversations without collapsing mode', () async {
+    nativeConversations = <Map<String, dynamic>>[
+      {
+        'id': 8,
+        'title': '纯聊线程',
+        'mode': ConversationMode.chatOnly.storageValue,
+        'summary': null,
+        'status': 0,
+        'lastMessage': '你好',
+        'messageCount': 1,
+        'createdAt': 1,
+        'updatedAt': 3,
+      },
+    ];
+
+    final conversations = await ConversationService.getAllConversations();
+
+    expect(conversations, hasLength(1));
+    expect(conversations.single.mode, ConversationMode.chatOnly);
+    expect(
+      await ConversationService.getLatestConversation(mode: ConversationMode.chatOnly),
+      isNotNull,
+    );
+  });
+
   test('parses context compaction metadata from native source', () async {
     nativeConversations = <Map<String, dynamic>>[
       {
@@ -192,4 +217,17 @@ void main() {
       expect(remaining.single.mode, ConversationMode.normal);
     },
   );
+
+  test('creates conversations with chat_only mode', () async {
+    final conversationId = await ConversationService.createConversation(
+      title: '纯聊新线程',
+      mode: ConversationMode.chatOnly,
+    );
+
+    expect(conversationId, isNotNull);
+    final created = nativeConversations.singleWhere(
+      (item) => item['id'] == conversationId,
+    );
+    expect(created['mode'], ConversationMode.chatOnly.storageValue);
+  });
 }
