@@ -178,7 +178,7 @@ OpenOmniBot/
 
 <h2 id="community">其他</h2>
 
-感谢社区开发者对 OpenOmniBot 的支持。
+感谢 [LINUX.DO](linux.do) 等社区开发者对 OpenOmniBot 的支持。
 
 特别感谢这些优秀的开源项目：
 
