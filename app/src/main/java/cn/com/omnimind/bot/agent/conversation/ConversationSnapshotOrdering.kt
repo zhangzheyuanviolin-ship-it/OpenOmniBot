@@ -30,9 +30,10 @@ internal object ConversationSnapshotOrdering {
             )
         }.sortedWith(
             compareBy<PreparedMessage> { it.taskAnchor }
+                .thenBy { resolveTurnRank(it.payload) }
+                .thenBy { it.createdAt }
                 .thenBy { it.phaseRank }
                 .thenBy { it.sequenceRank }
-                .thenBy { it.createdAt }
                 .thenByDescending { it.originalIndex }
         )
     }
@@ -115,6 +116,12 @@ internal object ConversationSnapshotOrdering {
             type == 2 -> 4
             else -> 5
         }
+    }
+
+    private fun resolveTurnRank(message: Map<String, Any?>): Int {
+        val type = (message["type"] as? Number)?.toInt()
+        val user = (message["user"] as? Number)?.toInt()
+        return if (type == 1 && user == 1) 0 else 1
     }
 
     private fun resolveSequenceRank(message: Map<String, Any?>): Int {
