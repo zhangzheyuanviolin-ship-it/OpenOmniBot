@@ -489,6 +489,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           children: [
             ChatAppBar(
               onMenuTap: onMenuTap,
+              onPureChatToggleTap: () {
+                unawaited(_togglePureChatConversationMode());
+              },
               onCompanionTap: () {
                 unawaited(_toggleCompanionMode());
               },
@@ -530,6 +533,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               visualProfile: visualProfile,
               showMenuButton: showMenuButton,
               showSurfaceSwitcher: showSurfaceSwitcher,
+              showPureChatToggle: _activeMode == ChatPageMode.normal,
+              isPureChatSelected: _isPureChatSelected,
+              isPureChatToggleLocked: _isPureChatToggleLocked,
             ),
             if (_isCompanionModeEnabled && _showCompanionCountdown)
               Padding(

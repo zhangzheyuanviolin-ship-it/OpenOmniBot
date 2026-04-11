@@ -108,9 +108,24 @@ class WorkspaceMemoryService {
     return (result?['content'] ?? '').toString();
   }
 
+  static Future<String> getChatPrompt() async {
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'getWorkspaceChatPrompt',
+    );
+    return (result?['content'] ?? '').toString();
+  }
+
   static Future<String> saveSoul(String content) async {
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'saveWorkspaceSoul',
+      {'content': content},
+    );
+    return (result?['content'] ?? '').toString();
+  }
+
+  static Future<String> saveChatPrompt(String content) async {
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'saveWorkspaceChatPrompt',
       {'content': content},
     );
     return (result?['content'] ?? '').toString();

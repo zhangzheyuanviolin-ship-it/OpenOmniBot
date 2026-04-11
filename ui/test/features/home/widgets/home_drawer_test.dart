@@ -80,15 +80,17 @@ void main() {
         home: DefaultAssetBundle(
           bundle: _SvgTestAssetBundle(),
           child: ProviderScope(
-            child: SizedBox(
-              width: 360,
-              height: 720,
-              child: HomeDrawer(
-                embedded: true,
-                closeOnNavigate: false,
-                onThreadTargetSelected: (target) {
-                  selectedMode = target.mode;
-                },
+            child: Scaffold(
+              body: SizedBox(
+                width: 360,
+                height: 720,
+                child: HomeDrawer(
+                  embedded: true,
+                  closeOnNavigate: false,
+                  onThreadTargetSelected: (target) {
+                    selectedMode = target.mode;
+                  },
+                ),
               ),
             ),
           ),
@@ -104,6 +106,43 @@ void main() {
 
     expect(selectedMode, ConversationMode.normal);
   });
+
+  testWidgets(
+    'embedded mode creates new chat_only conversation when requested',
+    (tester) async {
+      ConversationMode? selectedMode;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DefaultAssetBundle(
+            bundle: _SvgTestAssetBundle(),
+            child: ProviderScope(
+              child: Scaffold(
+                body: SizedBox(
+                  width: 360,
+                  height: 720,
+                  child: HomeDrawer(
+                    embedded: true,
+                    closeOnNavigate: false,
+                    newConversationMode: ConversationMode.chatOnly,
+                    onThreadTargetSelected: (target) {
+                      selectedMode = target.mode;
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('开始对话'));
+      await tester.pumpAndSettle();
+
+      expect(selectedMode, ConversationMode.chatOnly);
+    },
+  );
 
   testWidgets('embedded mode routes existing conversation through callback', (
     tester,
@@ -128,15 +167,17 @@ void main() {
         home: DefaultAssetBundle(
           bundle: _SvgTestAssetBundle(),
           child: ProviderScope(
-            child: SizedBox(
-              width: 360,
-              height: 720,
-              child: HomeDrawer(
-                embedded: true,
-                closeOnNavigate: false,
-                onThreadTargetSelected: (target) {
-                  selectedTarget = target;
-                },
+            child: Scaffold(
+              body: SizedBox(
+                width: 360,
+                height: 720,
+                child: HomeDrawer(
+                  embedded: true,
+                  closeOnNavigate: false,
+                  onThreadTargetSelected: (target) {
+                    selectedTarget = target;
+                  },
+                ),
               ),
             ),
           ),

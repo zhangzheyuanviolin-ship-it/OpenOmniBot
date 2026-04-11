@@ -254,6 +254,9 @@ class AssistsMessageService {
       StreamController<Map<String, dynamic>>.broadcast();
 
   // 改为回调列表，支持多个监听器
+  static final List<ChatTaskMessageCallBack> _onChatTaskMessageCallBacks = [];
+  static final List<ChatTaskMessageEndCallBack> _onChatTaskMessageEndCallBacks =
+      [];
   static final List<VLMTaskFinishEndCallBack> _onVLMTaskFinishCallBacks = [];
   static final List<CommonTaskFinishEndCallBack> _onCommonTaskFinishCallBacks =
       [];
@@ -269,6 +272,10 @@ class AssistsMessageService {
 
   static void initialize() {
     assistCore.setMethodCallHandler(_handleMethod);
+  }
+
+  static void dispatchAgentAiConfigChanged(AgentAiConfigChangedEvent event) {
+    _agentAiConfigChangedController.add(event);
   }
 
   static Future<dynamic> _handleMethod(MethodCall call) async {
@@ -289,8 +296,14 @@ class AssistsMessageService {
           final data = Map<String, dynamic>.from(
             (call.arguments as Map?) ?? const <String, dynamic>{},
           );
-          _agentAiConfigChangedController.add(
-            AgentAiConfigChangedEvent.fromMap(data),
+          // Defer broadcast to the next event-loop turn so listeners can
+          // safely invoke the same platform channel without re-entrancy.
+          unawaited(
+            Future<void>(() {
+              dispatchAgentAiConfigChanged(
+                AgentAiConfigChangedEvent.fromMap(data),
+              );
+            }),
           );
           break;
         case 'onConversationListChanged':
@@ -326,12 +339,18 @@ class AssistsMessageService {
             data['content'],
             data['type'],
           );
+          for (final callback in _onChatTaskMessageCallBacks) {
+            callback(data['taskID'], data['content'], data['type']);
+          }
           break;
         case 'onChatMessageEnd':
           final Map<String, dynamic> data = Map<String, dynamic>.from(
             call.arguments,
           );
           _onChatTaskMessageEndCallBack?.call(data['taskID']);
+          for (final callback in _onChatTaskMessageEndCallBacks) {
+            callback(data['taskID']);
+          }
           break;
         case 'onVLMRequestUserInput':
           final Map<String, dynamic> data = Map<String, dynamic>.from(
@@ -426,10 +445,12 @@ class AssistsMessageService {
               : (isFinalRaw is bool
                     ? isFinalRaw
                     : isFinalRaw.toString().toLowerCase() == 'true');
-          final double? prefillTokensPerSecond =
-              _asNullableDouble(data['prefillTokensPerSecond']);
-          final double? decodeTokensPerSecond =
-              _asNullableDouble(data['decodeTokensPerSecond']);
+          final double? prefillTokensPerSecond = _asNullableDouble(
+            data['prefillTokensPerSecond'],
+          );
+          final double? decodeTokensPerSecond = _asNullableDouble(
+            data['decodeTokensPerSecond'],
+          );
           _onAgentChatMessageCallback?.call(
             (data['taskId'] ?? '').toString(),
             (data['message'] ?? '').toString(),
@@ -563,10 +584,37 @@ class AssistsMessageService {
     _onChatTaskMessageCallBack = callback;
   }
 
+  static void addOnChatTaskMessageCallBack(ChatTaskMessageCallBack? callback) {
+    if (callback != null && !_onChatTaskMessageCallBacks.contains(callback)) {
+      _onChatTaskMessageCallBacks.add(callback);
+    }
+  }
+
+  static void removeOnChatTaskMessageCallBack(
+    ChatTaskMessageCallBack? callback,
+  ) {
+    _onChatTaskMessageCallBacks.remove(callback);
+  }
+
   static void setOnChatTaskMessageEndCallBack(
     ChatTaskMessageEndCallBack callback,
   ) {
     _onChatTaskMessageEndCallBack = callback;
+  }
+
+  static void addOnChatTaskMessageEndCallBack(
+    ChatTaskMessageEndCallBack? callback,
+  ) {
+    if (callback != null &&
+        !_onChatTaskMessageEndCallBacks.contains(callback)) {
+      _onChatTaskMessageEndCallBacks.add(callback);
+    }
+  }
+
+  static void removeOnChatTaskMessageEndCallBack(
+    ChatTaskMessageEndCallBack? callback,
+  ) {
+    _onChatTaskMessageEndCallBacks.remove(callback);
   }
 
   static void setOnVLMRequestUserInputCallBack(
@@ -818,6 +866,7 @@ class AssistsMessageService {
     List<Map<String, dynamic>> content, {
     String? provider,
     Map<String, dynamic>? openClawConfig,
+    Map<String, dynamic>? modelOverride,
     int? conversationId,
     String? conversationMode,
     String? userMessage,
@@ -831,6 +880,9 @@ class AssistsMessageService {
       }
       if (openClawConfig != null) {
         args['openClawConfig'] = openClawConfig;
+      }
+      if (modelOverride != null) {
+        args['modelOverride'] = modelOverride;
       }
       if (conversationId != null) {
         args['conversationId'] = conversationId;

@@ -22,10 +22,12 @@ class WorkspaceMemorySettingPage extends StatefulWidget {
 class _WorkspaceMemorySettingPageState
     extends State<WorkspaceMemorySettingPage> {
   final TextEditingController _soulController = TextEditingController();
+  final TextEditingController _chatController = TextEditingController();
   final TextEditingController _memoryController = TextEditingController();
 
   bool _loading = true;
   bool _savingSoul = false;
+  bool _savingChat = false;
   bool _savingMemory = false;
   bool _embeddingEnabled = true;
   bool _rollupEnabled = true;
@@ -47,6 +49,10 @@ class _WorkspaceMemorySettingPageState
             unawaited(_refreshSoulDocument());
             return;
           }
+          if (event.path.endsWith('/CHAT.md')) {
+            unawaited(_refreshChatDocument());
+            return;
+          }
           unawaited(_refreshCapabilityState());
         });
   }
@@ -55,6 +61,7 @@ class _WorkspaceMemorySettingPageState
   void dispose() {
     _configChangedSubscription?.cancel();
     _soulController.dispose();
+    _chatController.dispose();
     _memoryController.dispose();
     super.dispose();
   }
@@ -64,17 +71,20 @@ class _WorkspaceMemorySettingPageState
     try {
       final results = await Future.wait([
         WorkspaceMemoryService.getSoul(),
+        WorkspaceMemoryService.getChatPrompt(),
         WorkspaceMemoryService.getLongMemory(),
         WorkspaceMemoryService.getEmbeddingConfig(),
         WorkspaceMemoryService.getRollupStatus(),
       ]);
       if (!mounted) return;
       final soul = results[0] as String;
-      final memory = results[1] as String;
-      final embedding = results[2] as WorkspaceMemoryEmbeddingConfig;
-      final rollup = results[3] as WorkspaceMemoryRollupStatus;
+      final chatPrompt = results[1] as String;
+      final memory = results[2] as String;
+      final embedding = results[3] as WorkspaceMemoryEmbeddingConfig;
+      final rollup = results[4] as WorkspaceMemoryRollupStatus;
       setState(() {
         _soulController.text = soul;
+        _chatController.text = chatPrompt;
         _memoryController.text = memory;
         _embeddingConfig = embedding;
         _rollupStatus = rollup;
@@ -120,6 +130,16 @@ class _WorkspaceMemorySettingPageState
     }
   }
 
+  Future<void> _refreshChatDocument() async {
+    try {
+      final chatPrompt = await WorkspaceMemoryService.getChatPrompt();
+      if (!mounted) return;
+      _chatController.text = chatPrompt;
+    } catch (_) {
+      // Keep current UI state when passive refresh fails.
+    }
+  }
+
   Future<void> _saveSoul() async {
     setState(() => _savingSoul = true);
     try {
@@ -132,6 +152,24 @@ class _WorkspaceMemorySettingPageState
     } finally {
       if (mounted) {
         setState(() => _savingSoul = false);
+      }
+    }
+  }
+
+  Future<void> _saveChatPrompt() async {
+    setState(() => _savingChat = true);
+    try {
+      final saved = await WorkspaceMemoryService.saveChatPrompt(
+        _chatController.text,
+      );
+      if (!mounted) return;
+      _chatController.text = saved;
+      showToast('CHAT.md 已保存', type: ToastType.success);
+    } catch (e) {
+      showToast('CHAT.md 保存失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() => _savingChat = false);
       }
     }
   }
@@ -256,6 +294,13 @@ class _WorkspaceMemorySettingPageState
                   controller: _soulController,
                   saving: _savingSoul,
                   onSave: _saveSoul,
+                ),
+                const Divider(height: 24),
+                _buildEditorCard(
+                  title: 'CHAT.md（纯聊天系统提示词）',
+                  controller: _chatController,
+                  saving: _savingChat,
+                  onSave: _saveChatPrompt,
                 ),
                 const Divider(height: 24),
                 _buildEditorCard(

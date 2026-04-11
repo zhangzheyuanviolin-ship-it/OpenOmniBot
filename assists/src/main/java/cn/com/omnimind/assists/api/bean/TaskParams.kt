@@ -11,6 +11,13 @@ sealed class TaskParams {
         val userId: String? = null,
         val sessionKey: String? = null
     )
+    data class ChatModelOverride(
+        val providerProfileId: String,
+        val modelId: String,
+        val apiBase: String,
+        val apiKey: String,
+        val protocolType: String = "openai_compatible"
+    )
     //陪伴任务参数
     data class CompanionTaskParams(
         val companionFinishListener:()->Unit
@@ -21,7 +28,8 @@ sealed class TaskParams {
         val content: List<Map<String, Any>>,
         val onMessagePush: OnMessagePushListener,
         val provider: String? = null,
-        val openClawConfig: OpenClawConfig? = null
+        val openClawConfig: OpenClawConfig? = null,
+        val modelOverride: ChatModelOverride? = null
     ) : TaskParams();
     //VLM任务参数
     data class VLMOperationTaskParams(

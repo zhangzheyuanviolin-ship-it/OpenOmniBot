@@ -1,5 +1,6 @@
 enum ConversationMode {
   normal('normal'),
+  chatOnly('chat_only'),
   openclaw('openclaw'),
   subagent('subagent');
 
@@ -19,6 +20,7 @@ enum ConversationMode {
 
   String get displayLabel => switch (this) {
     ConversationMode.normal => '普通',
+    ConversationMode.chatOnly => '纯聊',
     ConversationMode.openclaw => 'OpenClaw',
     ConversationMode.subagent => 'SubAgent',
   };

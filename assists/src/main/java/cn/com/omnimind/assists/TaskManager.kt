@@ -149,7 +149,8 @@ class TaskManager(
             params.content,
             params.onMessagePush,
             params.provider,
-            params.openClawConfig
+            params.openClawConfig,
+            params.modelOverride
         )
     }
 

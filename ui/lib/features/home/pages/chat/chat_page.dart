@@ -293,13 +293,19 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     if (mode == ChatPageMode.openclaw) {
       return ConversationMode.openclaw;
     }
-    final runtimeConversation = _currentConversationByMode[mode];
-    if (runtimeConversation?.mode == ConversationMode.subagent) {
-      return ConversationMode.subagent;
+    final runtimeConversation =
+        _runtimeForMode(mode)?.conversation ?? _currentConversationByMode[mode];
+    final persistedMode = runtimeConversation?.mode;
+    if (persistedMode == ConversationMode.subagent ||
+        persistedMode == ConversationMode.chatOnly) {
+      return persistedMode!;
     }
-    if (mode == _activeConversationMode &&
-        _resolvedThreadTarget?.mode == ConversationMode.subagent) {
-      return ConversationMode.subagent;
+    if (mode == _activeConversationMode) {
+      final targetMode = _resolvedThreadTarget?.mode;
+      if (targetMode == ConversationMode.subagent ||
+          targetMode == ConversationMode.chatOnly) {
+        return targetMode!;
+      }
     }
     return ConversationMode.normal;
   }
@@ -407,6 +413,12 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     final conversationMode = _conversationModeForPageMode(_activeMode);
     final conversationId = _currentConversationIdByMode[_activeMode];
     if (conversationId == null) {
+      final resolvedTarget = _resolvedThreadTarget;
+      if (resolvedTarget != null &&
+          resolvedTarget.isNewConversation &&
+          _pageModeForConversationMode(resolvedTarget.mode) == _activeMode) {
+        return resolvedTarget.copyWith(mode: conversationMode);
+      }
       return ConversationThreadTarget.newConversation(mode: conversationMode);
     }
     return ConversationThreadTarget.existing(
@@ -417,6 +429,69 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   ConversationThreadTarget? get _visibleThreadTarget =>
       _isWorkspaceSurface ? null : _threadTargetForMode;
+  bool get _hasStartedNormalThread {
+    final runtime = _runtimeForMode(ChatPageMode.normal);
+    if ((runtime?.messages.isNotEmpty ?? false)) {
+      return true;
+    }
+    if (_messagesByMode[ChatPageMode.normal]!.isNotEmpty) {
+      return true;
+    }
+    return (_currentConversationByMode[ChatPageMode.normal]?.messageCount ?? 0) >
+        0;
+  }
+
+  bool get _canTogglePureChatMode {
+    if (_activeMode != ChatPageMode.normal) {
+      return false;
+    }
+    final target = _resolvedThreadTarget;
+    if (target != null &&
+        _pageModeForConversationMode(target.mode) != ChatPageMode.normal) {
+      return false;
+    }
+    return (target?.isNewConversation ?? true) &&
+        _currentConversationIdByMode[ChatPageMode.normal] == null &&
+        !_hasStartedNormalThread;
+  }
+
+  bool get _isPureChatSelected =>
+      _conversationModeForPageMode(ChatPageMode.normal) ==
+      ConversationMode.chatOnly;
+
+  bool get _isPureChatToggleLocked => !_canTogglePureChatMode;
+
+  Future<void> _togglePureChatConversationMode() async {
+    if (!_canTogglePureChatMode) {
+      return;
+    }
+    final nextMode = _isPureChatSelected
+        ? ConversationMode.normal
+        : ConversationMode.chatOnly;
+    final baseTarget =
+        _resolvedThreadTarget ??
+        ConversationThreadTarget.newConversation(
+          mode: activeConversationModeValue,
+        );
+    final nextTarget = baseTarget.copyWith(
+      conversationId: null,
+      mode: nextMode,
+      isNewConversation: true,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _resolvedThreadTarget = nextTarget;
+    });
+    await ConversationHistoryService.saveLastVisibleThreadTarget(nextTarget);
+    await ConversationHistoryService.saveCurrentConversationTarget(
+      nextTarget,
+      mode: nextMode,
+    );
+    await ConversationService.setCurrentConversationTarget(nextTarget);
+  }
+
   String get _expectedBrowserWorkspaceId => chatConversationWorkspaceId(
     _currentConversationIdByMode[ChatPageMode.normal],
   );
@@ -1341,6 +1416,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Map<String, dynamic>? _buildAgentModelOverridePayload();
 
+  Map<String, dynamic>? _buildChatModelOverridePayload();
+
   _ActiveModelMentionToken? _parseActiveModelMentionToken(
     TextEditingValue value,
   );
@@ -1479,6 +1556,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   });
 
   Future<void> _sendChatMessage(String aiMessageId);
+
+  Future<void> _sendPureChatMessage(String aiMessageId);
 
   Future<bool> _handleExecutableTaskFlow(
     String aiMessageId,

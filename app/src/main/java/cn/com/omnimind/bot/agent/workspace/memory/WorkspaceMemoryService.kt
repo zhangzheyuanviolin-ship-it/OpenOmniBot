@@ -124,9 +124,19 @@ class WorkspaceMemoryService(
         return workspaceManager.soulMarkdownFile().readText()
     }
 
+    fun readChatPrompt(): String {
+        ensureInitialized()
+        return workspaceManager.chatMarkdownFile().readText()
+    }
+
     fun writeSoul(content: String) {
         ensureInitialized()
         workspaceManager.soulMarkdownFile().writeText(content.trimEnd() + "\n")
+    }
+
+    fun writeChatPrompt(content: String) {
+        ensureInitialized()
+        workspaceManager.chatMarkdownFile().writeText(content.trimEnd() + "\n")
     }
 
     fun readLongTermMemory(): String {

@@ -125,6 +125,41 @@ class ConversationSnapshotOrderingTest {
         )
     }
 
+    @Test
+    fun `prepareForStorage keeps logical phase order when persisted timestamps drift inside one task`() {
+        val messages = listOf(
+            assistantMessage(
+                id = "1711872000100-ai-assistant",
+                createAt = "2026-03-31T18:00:00.300",
+                text = "助手回答"
+            ),
+            userMessage(
+                id = "1711872000100-ai-user",
+                createAt = "2026-03-31T18:00:00.200",
+                text = "用户提问"
+            ),
+            deepThinkingMessage(
+                id = "1711872000100-ai-thinking",
+                createAt = "2026-03-31T18:00:00.100",
+                taskId = "1711872000100-ai",
+                startTime = localMillis("2026-03-31T18:00:00.100"),
+                thinking = "思考过程"
+            )
+        )
+
+        val orderedIds = ConversationSnapshotOrdering.prepareForStorage(messages)
+            .map { it.payload["id"] }
+
+        assertEquals(
+            listOf(
+                "1711872000100-ai-user",
+                "1711872000100-ai-thinking",
+                "1711872000100-ai-assistant"
+            ),
+            orderedIds
+        )
+    }
+
     private fun userMessage(
         id: String,
         createAt: String,

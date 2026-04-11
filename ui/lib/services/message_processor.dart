@@ -51,7 +51,11 @@ class MessageProcessor {
     });
 
     // 监听onMessagePush事件（流式数据）
-    AssistsMessageService.setOnChatTaskMessageCallBack((messageId, chunkData, type) {
+    AssistsMessageService.addOnChatTaskMessageCallBack((
+      messageId,
+      chunkData,
+      type,
+    ) {
       // try {
       //   final chunkResponse = AIChunkResponse.fromJson(chunkData, messageId);
       //   _chunkResponseController.add(chunkResponse);

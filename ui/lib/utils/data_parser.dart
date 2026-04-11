@@ -57,7 +57,7 @@ dynamic safeJsonDecodeV2(
   } on FormatException catch (e) {
     // 初次解析失败，尝试修复换行符
     onError?.call(e);
-    
+
     try {
       // 方法：在字符串值内部（双引号之间）的真实换行符需要转义
       // 使用状态机方式处理，逐字符扫描
@@ -107,7 +107,7 @@ dynamic safeJsonDecodeV2(
       }
 
       final fixedJson = buffer.toString();
-      
+
       // 尝试解析修复后的 JSON
       try {
         return jsonDecode(fixedJson);
@@ -135,6 +135,292 @@ Map<String, dynamic> safeDecodeMap(
 }) {
   final v = safeJsonDecode(input, fallback: fallback, onError: onError);
   return v is Map<String, dynamic> ? v : fallback;
+}
+
+String extractChatTaskText(String? input, {bool fallbackToRawText = true}) {
+  final normalized = input?.trim() ?? '';
+  if (normalized.isEmpty || normalized == '[DONE]') {
+    return '';
+  }
+
+  final decoded = safeJsonDecode(normalized, fallback: normalized);
+  return _extractChatTaskTextPayload(
+    decoded,
+    fallbackRawText: fallbackToRawText ? normalized : '',
+  ).trim();
+}
+
+String extractChatTaskThinking(
+  String? input, {
+  bool fallbackToRawText = false,
+}) {
+  final normalized = input?.trim() ?? '';
+  if (normalized.isEmpty || normalized == '[DONE]') {
+    return '';
+  }
+
+  final decoded = safeJsonDecode(normalized, fallback: normalized);
+  return _extractChatTaskThinkingPayload(
+    decoded,
+    fallbackRawText: fallbackToRawText ? normalized : '',
+  ).trim();
+}
+
+String _extractChatTaskTextPayload(dynamic raw, {String fallbackRawText = ''}) {
+  if (raw == null) {
+    return '';
+  }
+  if (raw is String) {
+    return raw.trim();
+  }
+  if (raw is List) {
+    return raw
+        .map((item) => _extractChatTaskTextPayload(item, fallbackRawText: ''))
+        .where((item) => item.isNotEmpty)
+        .join()
+        .trim();
+  }
+  if (raw is! Map) {
+    return fallbackRawText;
+  }
+
+  final payload = raw.map((key, value) => MapEntry(key.toString(), value));
+
+  final directText = _extractTextPayload(payload['text']);
+  if (directText.isNotEmpty) {
+    return directText;
+  }
+
+  final outputText = _extractTextPayload(payload['output_text']);
+  if (outputText.isNotEmpty) {
+    return outputText;
+  }
+
+  final contentText = _extractTextPayload(payload['content']);
+  if (contentText.isNotEmpty) {
+    return contentText;
+  }
+
+  final messageText = _extractChatTaskTextPayload(
+    payload['message'],
+    fallbackRawText: '',
+  );
+  if (messageText.isNotEmpty) {
+    return messageText;
+  }
+
+  final choices = payload['choices'];
+  if (choices is List && choices.isNotEmpty) {
+    final firstChoice = choices.first;
+    if (firstChoice is Map) {
+      final choicePayload = firstChoice.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
+      final deltaText = _extractChatTaskTextPayload(
+        choicePayload['delta'],
+        fallbackRawText: '',
+      );
+      if (deltaText.isNotEmpty) {
+        return deltaText;
+      }
+      final choiceMessageText = _extractChatTaskTextPayload(
+        choicePayload['message'],
+        fallbackRawText: '',
+      );
+      if (choiceMessageText.isNotEmpty) {
+        return choiceMessageText;
+      }
+      final choiceText = _extractTextPayload(
+        choicePayload['text'] ?? choicePayload['content'],
+      );
+      if (choiceText.isNotEmpty) {
+        return choiceText;
+      }
+    }
+  }
+
+  final output = payload['output'];
+  if (output is List && output.isNotEmpty) {
+    final outputTextFromList = output
+        .map((item) => _extractChatTaskTextPayload(item, fallbackRawText: ''))
+        .where((item) => item.isNotEmpty)
+        .join();
+    if (outputTextFromList.isNotEmpty) {
+      return outputTextFromList;
+    }
+  }
+
+  return fallbackRawText;
+}
+
+String _extractChatTaskThinkingPayload(
+  dynamic raw, {
+  String fallbackRawText = '',
+}) {
+  if (raw == null) {
+    return '';
+  }
+  if (raw is String) {
+    return '';
+  }
+  if (raw is List) {
+    return raw
+        .map(
+          (item) => _extractChatTaskThinkingPayload(item, fallbackRawText: ''),
+        )
+        .where((item) => item.isNotEmpty)
+        .join()
+        .trim();
+  }
+  if (raw is! Map) {
+    return fallbackRawText;
+  }
+
+  final payload = raw.map((key, value) => MapEntry(key.toString(), value));
+
+  final directReasoning = _extractReasoningPayload(
+    payload['reasoning_content'] ?? payload['reasoning'] ?? payload['thinking'],
+  );
+  if (directReasoning.isNotEmpty) {
+    return directReasoning;
+  }
+
+  final messageReasoning = _extractChatTaskThinkingPayload(
+    payload['message'],
+    fallbackRawText: '',
+  );
+  if (messageReasoning.isNotEmpty) {
+    return messageReasoning;
+  }
+
+  final choices = payload['choices'];
+  if (choices is List && choices.isNotEmpty) {
+    final firstChoice = choices.first;
+    if (firstChoice is Map) {
+      final choicePayload = firstChoice.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
+      final deltaReasoning = _extractChatTaskThinkingPayload(
+        choicePayload['delta'],
+        fallbackRawText: '',
+      );
+      if (deltaReasoning.isNotEmpty) {
+        return deltaReasoning;
+      }
+      final choiceMessageReasoning = _extractChatTaskThinkingPayload(
+        choicePayload['message'],
+        fallbackRawText: '',
+      );
+      if (choiceMessageReasoning.isNotEmpty) {
+        return choiceMessageReasoning;
+      }
+    }
+  }
+
+  final output = payload['output'];
+  if (output is List && output.isNotEmpty) {
+    final outputReasoning = output
+        .map(
+          (item) => _extractChatTaskThinkingPayload(item, fallbackRawText: ''),
+        )
+        .where((item) => item.isNotEmpty)
+        .join();
+    if (outputReasoning.isNotEmpty) {
+      return outputReasoning;
+    }
+  }
+
+  return fallbackRawText;
+}
+
+String _extractTextPayload(dynamic raw) {
+  if (raw == null) {
+    return '';
+  }
+  if (raw is String) {
+    return raw.trim();
+  }
+  if (raw is List) {
+    return raw
+        .map(_extractTextPayload)
+        .where((item) => item.isNotEmpty)
+        .join()
+        .trim();
+  }
+  if (raw is! Map) {
+    return '';
+  }
+
+  final payload = raw.map((key, value) => MapEntry(key.toString(), value));
+  final type = payload['type']?.toString().trim().toLowerCase();
+  if (type == 'text' || type == 'output_text') {
+    final text = _extractTextPayload(payload['text']);
+    if (text.isNotEmpty) {
+      return text;
+    }
+  }
+
+  final directText = payload['text'];
+  if (directText != null && directText is! Map && directText is! List) {
+    final text = directText.toString().trim();
+    if (text.isNotEmpty) {
+      return text;
+    }
+  }
+
+  final nestedText = _extractTextPayload(payload['text']);
+  if (nestedText.isNotEmpty) {
+    return nestedText;
+  }
+
+  final content = _extractTextPayload(payload['content']);
+  if (content.isNotEmpty) {
+    return content;
+  }
+
+  return '';
+}
+
+String _extractReasoningPayload(dynamic raw) {
+  if (raw == null) {
+    return '';
+  }
+  if (raw is String) {
+    return raw.trim();
+  }
+  if (raw is List) {
+    return raw
+        .map(_extractReasoningPayload)
+        .where((item) => item.isNotEmpty)
+        .join()
+        .trim();
+  }
+  if (raw is! Map) {
+    return '';
+  }
+
+  final payload = raw.map((key, value) => MapEntry(key.toString(), value));
+  final type = payload['type']?.toString().trim().toLowerCase();
+  if (type == 'reasoning' || type == 'reasoning_text' || type == 'thinking') {
+    final text = _extractTextPayload(
+      payload['text'] ??
+          payload['content'] ??
+          payload['reasoning_content'] ??
+          payload['reasoning'] ??
+          payload['thinking'],
+    );
+    if (text.isNotEmpty) {
+      return text;
+    }
+  }
+
+  return _extractTextPayload(
+    payload['text'] ??
+        payload['content'] ??
+        payload['reasoning_content'] ??
+        payload['reasoning'] ??
+        payload['thinking'],
+  );
 }
 
 /// 如果你明确期望是数组（List），给一个 List 兜底
@@ -196,11 +482,7 @@ bool _looksLikeJson(String s) {
 /// - obj: 可以是 Map 或 List
 /// - path: 点分字符串路径，比如 "a.b.0.c"
 /// - fallback: 兜底值（默认 null）
-dynamic deepGet(
-  dynamic obj,
-  String path, {
-  dynamic fallback,
-}) {
+dynamic deepGet(dynamic obj, String path, {dynamic fallback}) {
   if (obj == null || path.isEmpty) return fallback;
 
   final keys = path.split('.');

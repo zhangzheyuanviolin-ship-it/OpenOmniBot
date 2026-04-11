@@ -272,19 +272,33 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
 
   @override
   Map<String, dynamic>? _buildAgentModelOverridePayload() {
-    if (_activeConversationMode != ChatPageMode.normal) {
-      return null;
-    }
-    if (!_showConversationModelMentionChip) {
+    return _buildChatModelOverridePayload();
+  }
+
+  @override
+  Map<String, dynamic>? _buildChatModelOverridePayload() {
+    if (_activeConversationMode != ChatPageMode.normal ||
+        !_showConversationModelMentionChip) {
       return null;
     }
     final override = _activeConversationModelOverrideSelection;
     if (override == null) {
       return null;
     }
+    ModelProviderProfileSummary? profile;
+    for (final item in _modelProviderProfiles) {
+      if (item.id == override.providerProfileId) {
+        profile = item;
+        break;
+      }
+    }
     return {
       'providerProfileId': override.providerProfileId,
       'modelId': override.modelId,
+      if (profile != null && profile.baseUrl.trim().isNotEmpty)
+        'apiBase': profile.baseUrl.trim(),
+      if (profile != null && profile.protocolType.trim().isNotEmpty)
+        'protocolType': profile.protocolType.trim(),
     };
   }
 
