@@ -722,6 +722,103 @@ void main() {
     expect(snapshot?.userAgentProfile, 'desktop_safari');
   });
 
+  test('uses cardId from tool events when completing interrupted tools', () async {
+    const conversationId = 6501;
+    const taskId = 'agent-interrupted-tool-task';
+    const cardId = 'agent-interrupted-tool-task-tool-9';
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = taskId;
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onAgentToolCallStart', <String, dynamic>{
+      'taskId': taskId,
+      'cardId': cardId,
+      'toolName': 'terminal_execute',
+      'displayName': 'terminal_execute',
+      'toolType': 'terminal',
+      'summary': '执行长命令',
+      'argsJson': jsonEncode(<String, dynamic>{'command': 'sleep 30'}),
+    });
+
+    await emitPlatformEvent('onAgentToolCallComplete', <String, dynamic>{
+      'taskId': taskId,
+      'cardId': cardId,
+      'toolName': 'terminal_execute',
+      'displayName': 'terminal_execute',
+      'toolType': 'terminal',
+      'status': 'interrupted',
+      'summary': '工具调用已被用户手动停止',
+      'success': false,
+      'interruptedBy': 'user',
+      'interruptionReason': 'manual_stop',
+    });
+
+    final toolMessage = runtime.messages.firstWhere((message) => message.id == cardId);
+
+    expect(toolMessage.cardData?['status'], 'interrupted');
+    expect(toolMessage.cardData?['interruptedBy'], 'user');
+    expect(toolMessage.cardData?['interruptionReason'], 'manual_stop');
+    expect(runtime.activeToolCardId, isNull);
+  });
+
+  test('continues assistant output after interrupted tool completes', () async {
+    const conversationId = 6502;
+    const taskId = 'agent-interrupted-continue-task';
+    const cardId = 'agent-interrupted-continue-task-tool-2';
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = taskId;
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onAgentToolCallStart', <String, dynamic>{
+      'taskId': taskId,
+      'cardId': cardId,
+      'toolName': 'browser_use',
+      'displayName': 'browser_use',
+      'toolType': 'browser',
+      'summary': '打开页面',
+    });
+
+    await emitPlatformEvent('onAgentToolCallComplete', <String, dynamic>{
+      'taskId': taskId,
+      'cardId': cardId,
+      'toolName': 'browser_use',
+      'displayName': 'browser_use',
+      'toolType': 'browser',
+      'status': 'interrupted',
+      'summary': '工具调用已被用户手动停止',
+      'success': false,
+      'interruptedBy': 'user',
+      'interruptionReason': 'manual_stop',
+    });
+
+    await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+      'taskId': taskId,
+      'message': '浏览器工具已停止，我先直接告诉你页面当前不可达。',
+      'isFinal': false,
+    });
+
+    final textMessage = runtime.messages.firstWhere(
+      (message) => message.id == '$taskId-text',
+    );
+    expect(textMessage.text, contains('浏览器工具已停止'));
+  });
+
   test('applies initial island layer when a runtime is created late', () {
     const conversationId = 7001;
 

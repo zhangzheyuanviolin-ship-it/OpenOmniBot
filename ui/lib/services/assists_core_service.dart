@@ -118,6 +118,7 @@ class ModelAvailabilityCheckResult {
 
 class AgentToolEventData {
   final String taskId;
+  final String cardId;
   final String toolName;
   final String displayName;
   final String toolTitle;
@@ -134,12 +135,15 @@ class AgentToolEventData {
   final String? terminalSessionId;
   final String terminalStreamState;
   final String? workspaceId;
+  final String? interruptedBy;
+  final String? interruptionReason;
   final List<Map<String, dynamic>> artifacts;
   final List<Map<String, dynamic>> actions;
   final bool success;
 
   const AgentToolEventData({
     required this.taskId,
+    this.cardId = '',
     required this.toolName,
     required this.displayName,
     this.toolTitle = '',
@@ -156,6 +160,8 @@ class AgentToolEventData {
     this.terminalSessionId,
     this.terminalStreamState = '',
     this.workspaceId,
+    this.interruptedBy,
+    this.interruptionReason,
     this.artifacts = const [],
     this.actions = const [],
     this.success = true,
@@ -165,6 +171,7 @@ class AgentToolEventData {
     final raw = map ?? const {};
     return AgentToolEventData(
       taskId: (raw['taskId'] ?? '').toString(),
+      cardId: (raw['cardId'] ?? '').toString(),
       toolName: (raw['toolName'] ?? '').toString(),
       displayName: (raw['displayName'] ?? raw['toolName'] ?? '').toString(),
       toolTitle: (raw['toolTitle'] ?? '').toString(),
@@ -181,6 +188,8 @@ class AgentToolEventData {
       terminalSessionId: raw['terminalSessionId']?.toString(),
       terminalStreamState: (raw['terminalStreamState'] ?? '').toString(),
       workspaceId: raw['workspaceId']?.toString(),
+      interruptedBy: raw['interruptedBy']?.toString(),
+      interruptionReason: raw['interruptionReason']?.toString(),
       artifacts: ((raw['artifacts'] as List?) ?? const [])
           .whereType<Map>()
           .map((item) => item.map((k, v) => MapEntry(k.toString(), v)))
@@ -802,6 +811,23 @@ class AssistsMessageService {
       return result == "SUCCESS";
     } on PlatformException catch (e) {
       print('取消运行中任务失败: ${e.message}');
+      return false;
+    }
+  }
+
+  /// 停止当前 Agent 正在执行的工具调用，但不终止整轮 Agent 响应
+  static Future<bool> stopAgentToolCall({
+    required String taskId,
+    required String cardId,
+  }) async {
+    try {
+      final result = await assistCore.invokeMethod(
+        'stopAgentToolCall',
+        <String, String>{'taskId': taskId, 'cardId': cardId},
+      );
+      return result == "SUCCESS";
+    } on PlatformException catch (e) {
+      print('停止工具调用失败: ${e.message}');
       return false;
     }
   }

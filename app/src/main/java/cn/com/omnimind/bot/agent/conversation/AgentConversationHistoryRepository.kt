@@ -444,7 +444,7 @@ class AgentConversationHistoryRepository(
         val cardData = linkedMapOf<String, Any?>(
             "type" to "agent_tool_summary",
             "taskId" to payload["taskId"],
-            "cardId" to messageId,
+            "cardId" to payload["cardId"]?.toString().orEmpty().ifEmpty { messageId },
             "toolName" to payload["toolName"]?.toString().orEmpty(),
             "displayName" to payload["displayName"]?.toString().orEmpty(),
             "toolTitle" to payload["toolTitle"]?.toString().orEmpty(),
@@ -460,6 +460,8 @@ class AgentConversationHistoryRepository(
             "terminalOutputDelta" to payload["terminalOutputDelta"]?.toString().orEmpty(),
             "terminalSessionId" to payload["terminalSessionId"],
             "terminalStreamState" to payload["terminalStreamState"]?.toString().orEmpty(),
+            "interruptedBy" to payload["interruptedBy"]?.toString(),
+            "interruptionReason" to payload["interruptionReason"]?.toString(),
             "timedOut" to (payload["timedOut"] == true),
             "workspaceId" to payload["workspaceId"],
             "artifacts" to toListOfStringAnyMap(payload["artifacts"]),

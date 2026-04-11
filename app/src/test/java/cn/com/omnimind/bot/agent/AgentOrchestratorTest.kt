@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.agent
 
 import cn.com.omnimind.baselib.llm.ChatCompletionUsage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -184,6 +185,80 @@ class AgentOrchestratorTest {
 
         assertEquals(listOf("terminal_execute"), toolExecutor.executeCalls)
         assertEquals(2, llmClient.requests.size)
+    }
+
+    @Test
+    fun interruptedToolResultFeedsNextRoundAndKeepsAgentAlive() = runBlocking {
+        val llmClient = FakeLlmClient(
+            turns = listOf(
+                assistantTurn(
+                    toolCalls = listOf(
+                        toolCall(
+                            name = "terminal_execute",
+                            arguments = """{"command":"sleep 30"}"""
+                        )
+                    )
+                ),
+                assistantTurn(content = "工具已被用户手动停止，我改为直接说明当前状态。")
+            )
+        )
+        val toolExecutor = FakeToolExecutor(
+            results = mapOf(
+                "terminal_execute" to listOf(
+                    ToolExecutionResult.Interrupted(
+                        toolName = "terminal_execute",
+                        summaryText = "工具调用已被用户手动停止",
+                        previewJson = """{"status":"interrupted"}""",
+                        rawResultJson = """{"status":"interrupted","interruptedBy":"user"}""",
+                    )
+                )
+            )
+        )
+        val callback = RecordingCallback()
+
+        createOrchestrator(llmClient, toolExecutor).run(
+            AgentOrchestrator.Input(
+                callback = callback,
+                initialMessages = initialMessages("执行 sleep 30"),
+                executionEnv = FakeExecutionEnvironment("执行 sleep 30")
+            )
+        )
+
+        assertEquals(2, llmClient.requests.size)
+        assertEquals("tool", llmClient.requests[1].messages.last().role)
+        assertTrue(callback.finalChatMessages().last().contains("用户手动停止"))
+    }
+
+    @Test
+    fun toolHandleIsCreatedBeforeToolStartCallbackBindsCardId() = runBlocking {
+        val llmClient = FakeLlmClient(
+            turns = listOf(
+                assistantTurn(
+                    toolCalls = listOf(
+                        toolCall(
+                            name = "browser_use",
+                            arguments = """{"action":"navigate","url":"https://example.com"}"""
+                        )
+                    )
+                ),
+                assistantTurn(content = "已收到浏览器工具结果。")
+            )
+        )
+        val runControl = TrackingRunControl()
+        val callback = CardBindingCallback(runControl, "task-tool-1")
+
+        createOrchestrator(llmClient, FakeToolExecutor()).run(
+            AgentOrchestrator.Input(
+                callback = callback,
+                initialMessages = initialMessages("打开页面"),
+                executionEnv = FakeExecutionEnvironment(
+                    "打开页面",
+                    runControl = runControl
+                )
+            )
+        )
+
+        assertEquals("task-tool-1", runControl.lastHandle?.currentCardId())
     }
 
     @Test
@@ -436,7 +511,8 @@ class AgentOrchestratorTest {
             args: JsonObject,
             runtimeDescriptor: AgentToolRegistry.RuntimeToolDescriptor,
             env: AgentExecutionEnvironment,
-            callback: AgentCallback
+            callback: AgentCallback,
+            toolHandle: AgentToolExecutionHandle
         ): ToolExecutionResult {
             executeCalls += toolCall.function.name
             val queue = queuedResults[toolCall.function.name]
@@ -448,7 +524,7 @@ class AgentOrchestratorTest {
         }
     }
 
-    private class RecordingCallback : AgentCallback {
+    private open class RecordingCallback : AgentCallback {
         val chatMessages = mutableListOf<Pair<String, Boolean>>()
         val promptTokenUpdates = mutableListOf<Int>()
         val errors = mutableListOf<String>()
@@ -460,7 +536,7 @@ class AgentOrchestratorTest {
 
         override suspend fun onThinkingUpdate(thinking: String) = Unit
 
-        override suspend fun onToolCallStart(toolName: String, arguments: JsonObject) = Unit
+        open override suspend fun onToolCallStart(toolName: String, arguments: JsonObject) = Unit
 
         override suspend fun onToolCallProgress(
             toolName: String,
@@ -519,9 +595,19 @@ class AgentOrchestratorTest {
         }
     }
 
+    private class CardBindingCallback(
+        private val runControl: TrackingRunControl,
+        private val cardId: String
+    ) : RecordingCallback() {
+        override suspend fun onToolCallStart(toolName: String, arguments: JsonObject) {
+            runControl.bindCurrentCardId(cardId)
+        }
+    }
+
     private class FakeExecutionEnvironment(
         override val userMessage: String,
-        override val conversationMode: String = "normal"
+        override val conversationMode: String = "normal",
+        override val runControl: AgentRunControl = NoOpAgentRunControl
     ) : AgentExecutionEnvironment {
         override val agentRunId: String = "test-run"
         override val currentPackageName: String? = null
@@ -538,5 +624,54 @@ class AgentOrchestratorTest {
         override val workspaceMemoryService: WorkspaceMemoryService
             get() = throw UnsupportedOperationException("unused in test")
         override val terminalEnvironment: Map<String, String> = emptyMap()
+    }
+
+    private class TrackingRunControl : AgentRunControl {
+        var lastHandle: TrackingHandle? = null
+
+        override fun beginToolExecution(
+            toolName: String,
+            toolCallId: String
+        ): AgentToolExecutionHandle {
+            return TrackingHandle(
+                toolName = toolName,
+                toolCallId = toolCallId
+            ).also { handle ->
+                lastHandle = handle
+            }
+        }
+
+        fun bindCurrentCardId(cardId: String) {
+            lastHandle?.bindCardId(cardId)
+        }
+    }
+
+    private class TrackingHandle(
+        override val toolName: String,
+        override val toolCallId: String
+    ) : AgentToolExecutionHandle {
+        override val generation: Long = 1L
+        private var cardId: String? = null
+
+        override fun bindCardId(cardId: String) {
+            this.cardId = cardId
+        }
+
+        override fun currentCardId(): String? = cardId
+
+        override fun bindExecutionJob(job: Job) = Unit
+
+        override fun bindStopAction(action: (suspend () -> Unit)?) = Unit
+
+        override fun recordProgress(summary: String, extras: Map<String, Any?>) = Unit
+
+        override fun latestProgressSnapshot(): AgentToolProgressSnapshot =
+            AgentToolProgressSnapshot()
+
+        override fun isManualStopRequested(): Boolean = false
+
+        override fun throwIfStopRequested() = Unit
+
+        override fun complete() = Unit
     }
 }

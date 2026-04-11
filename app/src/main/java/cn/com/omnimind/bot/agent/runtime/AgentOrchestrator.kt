@@ -6,7 +6,9 @@ import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionStreamOptions
 import cn.com.omnimind.baselib.llm.contentText
 import cn.com.omnimind.baselib.util.OmniLog
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -213,14 +215,38 @@ class AgentOrchestrator(
                         break
                     }
 
-                    callback.onToolCallStart(toolCall.function.name, parsedArgs)
-                    val result = toolRouter.execute(
-                        toolCall = toolCall,
-                        args = parsedArgs,
-                        runtimeDescriptor = descriptor,
-                        env = input.executionEnv,
-                        callback = callback
+                    val toolHandle = input.executionEnv.runControl.beginToolExecution(
+                        toolName = toolCall.function.name,
+                        toolCallId = toolCall.id
                     )
+                    callback.onToolCallStart(toolCall.function.name, parsedArgs)
+                    val result = try {
+                        coroutineScope {
+                            val deferred = async {
+                                toolRouter.execute(
+                                    toolCall = toolCall,
+                                    args = parsedArgs,
+                                    runtimeDescriptor = descriptor,
+                                    env = input.executionEnv,
+                                    callback = callback,
+                                    toolHandle = toolHandle
+                                )
+                            }
+                            toolHandle.bindExecutionJob(deferred)
+                            deferred.await()
+                        }
+                    } catch (error: CancellationException) {
+                        if (toolHandle.isManualStopRequested()) {
+                            buildInterruptedToolResult(
+                                toolName = toolCall.function.name,
+                                toolHandle = toolHandle
+                            )
+                        } else {
+                            throw error
+                        }
+                    } finally {
+                        toolHandle.complete()
+                    }
 
                     executedTools.add(result)
                     val failureLearning = buildFailureLearningPayload(
@@ -342,6 +368,57 @@ class AgentOrchestrator(
                 content = content
             )
         )
+    }
+
+    private fun buildInterruptedToolResult(
+        toolName: String,
+        toolHandle: AgentToolExecutionHandle
+    ): ToolExecutionResult.Interrupted {
+        val snapshot = toolHandle.latestProgressSnapshot()
+        val rawPayload = linkedMapOf<String, Any?>(
+            "toolName" to toolName,
+            "status" to "interrupted",
+            "summary" to "工具调用已被用户手动停止",
+            "interruptedBy" to "user",
+            "interruptionReason" to "manual_stop"
+        ).apply {
+            if (snapshot.summary.isNotBlank()) {
+                put("lastProgress", snapshot.summary)
+            }
+            snapshot.extras.forEach { (key, value) ->
+                put(key, value)
+            }
+        }
+        val encodedPayload = json.encodeToString(mapToJsonElement(rawPayload))
+        return ToolExecutionResult.Interrupted(
+            toolName = toolName,
+            summaryText = "工具调用已被用户手动停止",
+            previewJson = encodedPayload,
+            rawResultJson = encodedPayload,
+            terminalOutput = snapshot.extras["terminalOutput"]?.toString().orEmpty().ifBlank {
+                snapshot.extras["terminalOutputDelta"]?.toString().orEmpty()
+            },
+            terminalSessionId = snapshot.extras["terminalSessionId"]?.toString(),
+            terminalStreamState = snapshot.extras["terminalStreamState"]?.toString()
+                ?.takeIf { it.isNotBlank() }
+                ?: "interrupted"
+        )
+    }
+
+    private fun mapToJsonElement(value: Any?): JsonElement {
+        return when (value) {
+            null -> kotlinx.serialization.json.JsonNull
+            is JsonElement -> value
+            is Map<*, *> -> JsonObject(
+                value.entries.associate { (key, item) ->
+                    key.toString() to mapToJsonElement(item)
+                }
+            )
+            is List<*> -> JsonArray(value.map { mapToJsonElement(it) })
+            is Boolean -> JsonPrimitive(value)
+            is Number -> JsonPrimitive(value)
+            else -> JsonPrimitive(value.toString())
+        }
     }
 
     private fun buildFailureLearningPayload(

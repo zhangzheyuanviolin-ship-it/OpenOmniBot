@@ -55,8 +55,12 @@ import cn.com.omnimind.bot.agent.AgentResult
 import cn.com.omnimind.bot.agent.AgentConversationHistoryRepository
 import cn.com.omnimind.bot.agent.AgentRuntimeContextRepository
 import cn.com.omnimind.bot.agent.AgentScheduleToolBridge
+import cn.com.omnimind.bot.agent.AgentRunControl
+import cn.com.omnimind.bot.agent.AgentToolExecutionHandle
+import cn.com.omnimind.bot.agent.AgentToolProgressSnapshot
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.agent.LiveAgentBrowserSessionManager
+import cn.com.omnimind.bot.agent.ManualToolStopCancellationException
 import cn.com.omnimind.bot.agent.OmniAgentExecutor
 import cn.com.omnimind.bot.agent.SkillIndexEntry
 import cn.com.omnimind.bot.agent.SkillIndexService
@@ -326,13 +330,163 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         var isError: Boolean = false
     )
 
+    private class ActiveAgentRunContext(
+        private val taskId: String,
+        val job: Job
+    ) : AgentRunControl {
+        private val lock = Any()
+        private var generationCounter = 0L
+        private var activeTool: ManagedToolExecutionHandle? = null
+
+        override fun beginToolExecution(
+            toolName: String,
+            toolCallId: String
+        ): AgentToolExecutionHandle {
+            return synchronized(lock) {
+                ManagedToolExecutionHandle(
+                    owner = this,
+                    generation = ++generationCounter,
+                    toolName = toolName,
+                    toolCallId = toolCallId
+                ).also { handle ->
+                    activeTool = handle
+                }
+            }
+        }
+
+        fun bindActiveToolCardId(cardId: String) {
+            synchronized(lock) {
+                activeTool?.bindCardId(cardId)
+            }
+        }
+
+        suspend fun requestManualToolStop(cardId: String): Boolean {
+            val handle = synchronized(lock) {
+                activeTool?.takeIf { it.matchesCardId(cardId) }
+            } ?: return false
+            return handle.requestManualStop()
+        }
+
+        fun clearTool(handle: ManagedToolExecutionHandle) {
+            synchronized(lock) {
+                if (activeTool === handle) {
+                    activeTool = null
+                }
+            }
+        }
+    }
+
+    private class ManagedToolExecutionHandle(
+        private val owner: ActiveAgentRunContext,
+        override val generation: Long,
+        override val toolName: String,
+        override val toolCallId: String
+    ) : AgentToolExecutionHandle {
+        private val lock = Any()
+        private var cardId: String? = null
+        private var job: Job? = null
+        private var stopAction: (suspend () -> Unit)? = null
+        private var latestSnapshot = AgentToolProgressSnapshot()
+        private var completed = false
+        private var manualStopRequested = false
+
+        override fun bindCardId(cardId: String) {
+            synchronized(lock) {
+                this.cardId = cardId.trim().ifEmpty { null }
+            }
+        }
+
+        fun matchesCardId(expectedCardId: String): Boolean {
+            val normalized = expectedCardId.trim()
+            if (normalized.isEmpty()) {
+                return false
+            }
+            return synchronized(lock) {
+                cardId == normalized && !completed
+            }
+        }
+
+        override fun currentCardId(): String? {
+            return synchronized(lock) { cardId }
+        }
+
+        override fun bindExecutionJob(job: Job) {
+            synchronized(lock) {
+                this.job = job
+            }
+        }
+
+        override fun bindStopAction(action: (suspend () -> Unit)?) {
+            synchronized(lock) {
+                stopAction = action
+            }
+        }
+
+        override fun recordProgress(summary: String, extras: Map<String, Any?>) {
+            synchronized(lock) {
+                if (!manualStopRequested) {
+                    latestSnapshot = AgentToolProgressSnapshot(
+                        summary = summary,
+                        extras = LinkedHashMap(extras)
+                    )
+                }
+            }
+        }
+
+        override fun latestProgressSnapshot(): AgentToolProgressSnapshot {
+            return synchronized(lock) { latestSnapshot }
+        }
+
+        override fun isManualStopRequested(): Boolean {
+            return synchronized(lock) { manualStopRequested }
+        }
+
+        override fun throwIfStopRequested() {
+            if (isManualStopRequested()) {
+                throw ManualToolStopCancellationException()
+            }
+        }
+
+        suspend fun requestManualStop(): Boolean {
+            val currentStopAction: (suspend () -> Unit)?
+            val currentJob: Job?
+            synchronized(lock) {
+                if (completed) {
+                    return false
+                }
+                if (manualStopRequested) {
+                    return true
+                }
+                manualStopRequested = true
+                currentStopAction = stopAction
+                currentJob = job
+            }
+            runCatching {
+                currentStopAction?.invoke()
+            }.onFailure {
+                OmniLog.w("[AssistsCoreManager]", "manual tool stop action failed: ${it.message}")
+            }
+            currentJob?.cancel(ManualToolStopCancellationException())
+            return true
+        }
+
+        override fun complete() {
+            synchronized(lock) {
+                completed = true
+                stopAction = null
+                job = null
+            }
+            owner.clearTool(this)
+        }
+    }
+
     // 用于存储需要等待用户操作的回调结果
     private lateinit var channel: MethodChannel
     private var mainJob: CoroutineScope = CoroutineScope(Dispatchers.Main)
     private var workJob: CoroutineScope = CoroutineScope(Dispatchers.Default)
     private val activeAgentLock = Any()
 
-    private val activeAgentJobs: MutableMap<String, Job> = mutableMapOf()
+    private val activeAgentRuns: MutableMap<String, ActiveAgentRunContext> = mutableMapOf()
     private val chatTaskPersistenceStates: MutableMap<String, ChatTaskPersistenceState> =
         mutableMapOf()
     private val conversationDomainService by lazy { ConversationDomainService(context) }
@@ -341,9 +495,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private var currentConversationId: Long? = null
     private var currentConversationMode: String = "normal"
 
-    private fun registerActiveAgentJob(taskId: String, job: Job) {
+    private fun registerActiveAgentRun(taskId: String, context: ActiveAgentRunContext) {
         synchronized(activeAgentLock) {
-            activeAgentJobs[taskId] = job
+            activeAgentRuns[taskId] = context
         }
     }
 
@@ -367,8 +521,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
     private fun clearActiveAgentJob(taskId: String, job: Job) {
         synchronized(activeAgentLock) {
-            if (activeAgentJobs[taskId] == job) {
-                activeAgentJobs.remove(taskId)
+            if (activeAgentRuns[taskId]?.job == job) {
+                activeAgentRuns.remove(taskId)
             }
         }
     }
@@ -391,11 +545,11 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private fun cancelActiveAgentRun(taskId: String?, reason: String) {
         val jobsToCancel = synchronized(activeAgentLock) {
             if (taskId.isNullOrBlank()) {
-                val snapshot = activeAgentJobs.values.toList()
-                activeAgentJobs.clear()
+                val snapshot = activeAgentRuns.values.map { it.job }
+                activeAgentRuns.clear()
                 snapshot
             } else {
-                val current = activeAgentJobs.remove(taskId)
+                val current = activeAgentRuns.remove(taskId)?.job
                 if (current == null) emptyList() else listOf(current)
             }
         }
@@ -512,13 +666,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
     fun hasActiveAgentRuns(): Boolean {
         return synchronized(activeAgentLock) {
-            activeAgentJobs.isNotEmpty()
+            activeAgentRuns.isNotEmpty()
         }
     }
 
     fun activeAgentTaskIds(): List<String> {
         return synchronized(activeAgentLock) {
-            activeAgentJobs.keys.toList()
+            activeAgentRuns.keys.toList()
         }
     }
 
@@ -702,6 +856,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val rawResultJson: String
         val success: Boolean
         val status: String
+        var interruptedBy: String? = null
+        var interruptionReason: String? = null
         when (result) {
             is ToolExecutionResult.ChatMessage -> {
                 summary = result.message
@@ -766,6 +922,15 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 success = result.success
                 status = resolveToolExecutionStatus(result)
             }
+            is ToolExecutionResult.Interrupted -> {
+                summary = result.summaryText
+                previewJson = result.previewJson
+                rawResultJson = result.rawResultJson
+                success = false
+                status = "interrupted"
+                interruptedBy = result.interruptedBy
+                interruptionReason = result.interruptionReason
+            }
             is ToolExecutionResult.ContextResult -> {
                 summary = result.summaryText
                 previewJson = result.previewJson
@@ -800,6 +965,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         extractToolTitle(argsJson)?.let { payload["toolTitle"] = it }
         if (result is ToolExecutionResult.TerminalResult) {
             payload["timedOut"] = result.timedOut
+            payload["terminalOutput"] = result.terminalOutput
+            payload["terminalSessionId"] = result.terminalSessionId
+            payload["terminalStreamState"] = result.terminalStreamState
+        }
+        if (result is ToolExecutionResult.Interrupted) {
+            payload["interruptedBy"] = interruptedBy
+            payload["interruptionReason"] = interruptionReason
             payload["terminalOutput"] = result.terminalOutput
             payload["terminalSessionId"] = result.terminalSessionId
             payload["terminalStreamState"] = result.terminalStreamState
@@ -911,6 +1083,48 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 OmniLog.e(TAG, "cancelRunningTask error: ${e.message}")
                 withContext(Dispatchers.Main) {
                     result.error("CANCEL_RUNNING_TASK_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun stopAgentToolCall(
+        call: MethodCall,
+        result: MethodChannel.Result
+    ) {
+        mainJob.launch {
+            try {
+                val taskId = call.argument<String>("taskId")?.trim().orEmpty()
+                val cardId = call.argument<String>("cardId")?.trim().orEmpty()
+                if (taskId.isBlank() || cardId.isBlank()) {
+                    withContext(Dispatchers.Main) {
+                        result.error(
+                            "INVALID_ARGUMENTS",
+                            "taskId and cardId are required",
+                            null
+                        )
+                    }
+                    return@launch
+                }
+                val runContext = synchronized(activeAgentLock) {
+                    activeAgentRuns[taskId]
+                }
+                val stopped = runContext?.requestManualToolStop(cardId) == true
+                withContext(Dispatchers.Main) {
+                    if (stopped) {
+                        result.success("SUCCESS")
+                    } else {
+                        result.error(
+                            "NO_MATCHING_ACTIVE_TOOL",
+                            "No running tool matches cardId=$cardId",
+                            null
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "stopAgentToolCall error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("STOP_AGENT_TOOL_CALL_ERROR", e.message, null)
                 }
             }
         }
@@ -3098,7 +3312,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
         val agentRunJob = SupervisorJob()
         val agentRunScope = CoroutineScope(agentRunJob + Dispatchers.Default)
-        registerActiveAgentJob(taskId, agentRunJob)
+        val agentRunContext = ActiveAgentRunContext(taskId = taskId, job = agentRunJob)
+        registerActiveAgentRun(taskId, agentRunContext)
 
         agentRunScope.launch {
             var historyRepository: AgentConversationHistoryRepository? = null
@@ -3435,7 +3650,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         pushToolValue(activeToolArgs, toolName, argsJson)
                         val entryId = "$taskId-tool-${++toolSequence}"
                         pushToolValue(activeToolEntryIds, toolName, entryId)
-                        val payload = buildToolStartPayload(toolName, argsJson)
+                        agentRunContext.bindActiveToolCardId(entryId)
+                        val payload = buildToolStartPayload(toolName, argsJson).toMutableMap().apply {
+                            put("cardId", entryId)
+                        }
                         upsertToolEvent(
                             entryId = entryId,
                             payload = payload,
@@ -3461,7 +3679,11 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             progress,
                             peekToolValue(activeToolArgs, toolName),
                             extras
-                        )
+                        ).toMutableMap().apply {
+                            if (entryId.isNotBlank()) {
+                                put("cardId", entryId)
+                            }
+                        }
                         upsertToolEvent(
                             entryId = entryId,
                             payload = payload,
@@ -3481,10 +3703,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         result: ToolExecutionResult
                     ) {
                         val argsJson = popToolValue(activeToolArgs, toolName)
-                        val payload = buildToolCompletePayload(toolName, result, argsJson)
                         val entryId = popToolValue(activeToolEntryIds, toolName).ifBlank {
                             "$taskId-tool-${++toolSequence}"
                         }
+                        val payload = buildToolCompletePayload(toolName, result, argsJson)
+                            .toMutableMap().apply {
+                                put("cardId", entryId)
+                            }
                         val success = payload["success"] != false
                         upsertToolEvent(
                             entryId = entryId,
@@ -3753,7 +3978,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     resolvedConversationMode,
                     modelOverride,
                     terminalEnvironment,
-                    callback
+                    callback,
+                    runControl = agentRunContext
                 )
             } catch (e: CancellationException) {
                 OmniLog.i(TAG, "createAgentTask cancelled: ${e.message}")

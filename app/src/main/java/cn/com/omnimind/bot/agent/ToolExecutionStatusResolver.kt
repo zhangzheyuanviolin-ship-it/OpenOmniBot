@@ -14,6 +14,8 @@ internal fun resolveToolExecutionStatus(result: ToolExecutionResult): String {
             else -> AgentConversationHistoryRepository.STATUS_ERROR
         }
 
+        is ToolExecutionResult.Interrupted -> AgentConversationHistoryRepository.STATUS_INTERRUPTED
+
         is ToolExecutionResult.ScheduleResult -> if (result.success) {
             AgentConversationHistoryRepository.STATUS_SUCCESS
         } else {
