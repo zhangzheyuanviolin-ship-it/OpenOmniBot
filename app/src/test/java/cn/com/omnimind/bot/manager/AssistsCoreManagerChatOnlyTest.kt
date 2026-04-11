@@ -100,4 +100,15 @@ class AssistsCoreManagerChatOnlyTest {
 
         assertEquals("hello from pure chat", result)
     }
+
+    @Test
+    fun `extractChatTaskTextPayload ignores reasoning-only json chunks`() {
+        val chunk = """
+            {"choices":[{"delta":{"reasoning_content":"先分析一下问题。"}}]}
+        """.trimIndent()
+
+        val result = extractChatTaskTextPayload(chunk)
+
+        assertEquals("", result)
+    }
 }

@@ -29,10 +29,10 @@ internal object ConversationSnapshotOrdering {
                 originalIndex = index
             )
         }.sortedWith(
-            compareBy<PreparedMessage> { it.createdAt }
-                .thenBy { it.taskAnchor }
+            compareBy<PreparedMessage> { it.taskAnchor }
                 .thenBy { it.phaseRank }
                 .thenBy { it.sequenceRank }
+                .thenBy { it.createdAt }
                 .thenByDescending { it.originalIndex }
         )
     }

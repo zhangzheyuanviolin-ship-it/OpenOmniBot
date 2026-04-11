@@ -259,6 +259,7 @@ class ConversationHistoryService {
               Map<String, dynamic>.from(json.cast<String, dynamic>()),
             ),
           )
+          .where(_shouldRetainRestoredMessage)
           .toList();
     } on PlatformException catch (e) {
       print('获取对话历史失败: ${e.message}');
@@ -267,6 +268,21 @@ class ConversationHistoryService {
       print('解析对话历史失败: $e');
       return [];
     }
+  }
+
+  static bool _shouldRetainRestoredMessage(ChatMessageModel message) {
+    if (message.type != 1 || message.user != 2) {
+      return true;
+    }
+    final text = message.text?.trim() ?? '';
+    if (text.isNotEmpty ||
+        message.isError ||
+        message.isLoading ||
+        message.isSummarizing) {
+      return true;
+    }
+    final attachments = message.content?['attachments'];
+    return attachments is List && attachments.isNotEmpty;
   }
 
   static Future<void> upsertConversationUiCard(

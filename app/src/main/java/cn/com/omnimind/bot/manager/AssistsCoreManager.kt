@@ -209,7 +209,7 @@ internal fun extractChatTaskTextPayload(content: String): String {
         }
         ?.trim()
         .orEmpty()
-    return if (contentMatch.isNotEmpty()) contentMatch else normalized
+    return contentMatch
 }
 
 private fun extractTextPayload(raw: Any?): String {

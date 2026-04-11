@@ -44,20 +44,7 @@ internal fun defaultSoulTemplateText(): String {
 
 internal fun defaultChatTemplateText(): String {
     return """
-        # CHAT
-
-        你当前处于 Omnibot 的纯聊天模式。
-
-        ## 工作方式
-        - 只进行自然语言对话，不调用工具，不执行任务。
-        - 直接回答用户问题，必要时给出简洁建议或解释。
-
-        ## 语气
-        - 自然、真诚、轻松。
-        - 优先清楚表达，不堆砌术语。
-
-        ## 边界
-        - 如果用户请求需要工具、执行或工作区操作，先明确说明当前是纯聊天模式。
+        你是一个 AI 助手。
     """.trimIndent() + "\n"
 }
 

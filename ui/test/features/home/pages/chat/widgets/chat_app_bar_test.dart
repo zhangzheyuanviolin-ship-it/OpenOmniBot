@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 import 'package:ui/features/home/pages/chat/widgets/chat_widgets.dart';
 
@@ -626,6 +627,11 @@ Future<void> _pumpSurfaceSwitch(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 260));
 }
 
+void _setTestViewport(WidgetTester tester, Size size) {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+}
+
 void main() {
   testWidgets('keeps model layer visible by default in normal chat', (
     tester,
@@ -641,18 +647,42 @@ void main() {
   ) async {
     await tester.pumpWidget(const _PureChatToggleHarness());
 
-    final menuCenter = tester.getCenter(
+    final menuRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-menu-button')),
     );
-    final pureChatCenter = tester.getCenter(
+    final pureChatRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
     );
-    final islandCenter = tester.getCenter(
+    final islandRect = tester.getRect(
+      find.byKey(const ValueKey('chat-app-bar-island')),
+    );
+    final pureChatCenter = pureChatRect.center;
+    final expectedGapMidpoint = (menuRect.right + islandRect.left) / 2;
+
+    expect(menuRect.right, lessThan(pureChatRect.left));
+    expect(pureChatRect.right, lessThan(islandRect.left));
+    expect(pureChatCenter.dx, closeTo(expectedGapMidpoint, 1));
+  });
+
+  testWidgets('keeps pure chat toggle clear of island on narrow screens', (
+    tester,
+  ) async {
+    _setTestViewport(tester, const Size(390, 844));
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(const _PureChatToggleHarness());
+
+    final pureChatRect = tester.getRect(
+      find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
+    );
+    final islandRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-island')),
     );
 
-    expect(menuCenter.dx, lessThan(pureChatCenter.dx));
-    expect(pureChatCenter.dx, lessThan(islandCenter.dx));
+    expect(pureChatRect.right, lessThanOrEqualTo(islandRect.left));
   });
 
   testWidgets('highlights pure chat toggle when selected', (tester) async {
@@ -661,14 +691,14 @@ void main() {
     final pureChatButton = find.byKey(
       const ValueKey('chat-app-bar-pure-chat-button'),
     );
-    final pureChatIcon = tester.widget<Icon>(
-      find.descendant(
-        of: pureChatButton,
-        matching: find.byIcon(Icons.chat_bubble_outline_rounded),
-      ),
+    final pureChatIcon = tester.widget<SvgPicture>(
+      find.descendant(of: pureChatButton, matching: find.byType(SvgPicture)),
     );
 
-    expect(pureChatIcon.color, const Color(0xFF1E5BFF));
+    expect(
+      pureChatIcon.colorFilter,
+      const ColorFilter.mode(Color(0xFF2C7FEB), BlendMode.srcIn),
+    );
   });
 
   testWidgets('locks pure chat toggle after thread starts', (tester) async {
