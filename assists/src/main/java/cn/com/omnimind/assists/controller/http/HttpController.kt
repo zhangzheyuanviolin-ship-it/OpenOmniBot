@@ -781,13 +781,22 @@ object HttpController {
                 }
             }
             val stopReason = json.optString("stop_reason", "").takeIf { it.isNotEmpty() }
+            val contentText = textBuilder.toString()
+
+            OmniLog.i(
+                TAG,
+                "[non-stream anthropic parse] content_len=${contentText.length}, " +
+                    "tool_calls=${toolCalls.size}, stop_reason=$stopReason, " +
+                    "content_preview=${contentText.take(200)}"
+            )
+
             SceneChatCompletionResponse(
                 success = true,
                 code = "200",
                 message = "success",
                 parser = parser,
                 route = routeTag,
-                content = textBuilder.toString(),
+                content = contentText,
                 finishReason = stopReason,
                 toolCalls = toolCalls,
                 rawResponseBody = body
@@ -2159,6 +2168,13 @@ object HttpController {
                 .orEmpty()
             val finishReason = firstChoice.optString("finish_reason").trim().takeIf { it.isNotEmpty() }
             val toolCalls = parseToolCalls(firstChoice, message)
+
+            OmniLog.i(
+                TAG,
+                "[non-stream openai parse] content_len=${content.length}, " +
+                    "reasoning_len=${reasoning.length}, tool_calls=${toolCalls.size}, " +
+                    "finish=$finishReason, content_preview=${content.take(200)}"
+            )
 
             SceneChatCompletionResponse(
                 success = true,

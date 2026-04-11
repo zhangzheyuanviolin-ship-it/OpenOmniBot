@@ -3,12 +3,14 @@ package cn.com.omnimind.bot.omniinfer
 import android.app.Application
 import android.content.Context
 import cn.com.omnimind.baselib.llm.MnnLocalProviderStateStore
+import cn.com.omnimind.baselib.util.OmniLog
 import com.alibaba.mls.api.ApplicationProvider
 import com.alibaba.mls.api.download.ModelDownloadManager
 import com.omniinfer.server.OmniInferServer
 import com.tencent.mmkv.MMKV
 
 object OmniInferLocalRuntime {
+    private const val TAG = "OmniInferLocalRuntime"
     const val BACKEND_LLAMA_CPP = "llama.cpp"
     const val BACKEND_OMNIINFER_MNN = "omniinfer-mnn"
 
@@ -109,6 +111,7 @@ object OmniInferLocalRuntime {
     ): Boolean {
         val normalizedModelId = modelId.trim()
         if (normalizedModelId.isEmpty() || modelPath.isBlank()) {
+            OmniLog.w(TAG, "[loadModel] invalid params: modelId='$modelId', modelPath='$modelPath'")
             return false
         }
         val normalizedBackend = normalizeBackend(backend)
@@ -117,12 +120,20 @@ object OmniInferLocalRuntime {
             else -> BACKEND_LLAMA_CPP
         }
         val nThreads = Runtime.getRuntime().availableProcessors()
+        val port = getPort()
+        OmniLog.i(
+            TAG,
+            "[loadModel] >> OmniInferServer.loadModel(" +
+                "modelId=$normalizedModelId, modelPath=$modelPath, " +
+                "backend=$serverBackend, port=$port, nThreads=$nThreads)"
+        )
         val success = OmniInferServer.loadModel(
             modelPath = modelPath,
             backend = serverBackend,
-            port = getPort(),
+            port = port,
             nThreads = nThreads,
         )
+        OmniLog.i(TAG, "[loadModel] << OmniInferServer.loadModel result=$success")
         if (success) {
             mmkv.encode(KEY_LOADED_BACKEND, normalizedBackend)
             mmkv.encode(KEY_LOADED_MODEL_ID, normalizedModelId)

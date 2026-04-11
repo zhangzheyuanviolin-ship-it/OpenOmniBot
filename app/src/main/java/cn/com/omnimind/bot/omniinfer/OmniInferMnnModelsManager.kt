@@ -1,6 +1,7 @@
 ﻿package cn.com.omnimind.bot.omniinfer
 
 import android.content.Context
+import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import com.alibaba.mls.api.download.DownloadInfo
 import com.alibaba.mls.api.download.DownloadListener
 import com.alibaba.mls.api.download.DownloadState
@@ -9,10 +10,13 @@ import com.alibaba.mls.api.source.ModelSources
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import cn.com.omnimind.baselib.util.OmniLog
 import java.io.File
+import java.nio.file.Files
 import java.util.Locale
 
 object OmniInferMnnModelsManager {
+    private const val TAG = "OmniInferMnnModelsManager"
     private const val BACKEND_NAME = OmniInferLocalRuntime.BACKEND_OMNIINFER_MNN
     private const val MMKV_ID = "omniinfer_config"
     private const val KEY_ACTIVE_MODEL_ID = "omniinfer_mnn_active_model_id"
@@ -92,6 +96,7 @@ object OmniInferMnnModelsManager {
     fun setContext(context: Context) {
         val applicationContext = context.applicationContext
         appContext = applicationContext
+        ensureMnnModelSymlink(applicationContext)
         OmniInferLocalRuntime.setContext(applicationContext)
         OmniInferMnnMarketRepository.setContext(applicationContext)
         ensureDownloadListenerRegistered(applicationContext)
@@ -243,9 +248,21 @@ object OmniInferMnnModelsManager {
     fun startApiService(modelId: String? = null): Map<String, Any?> {
         val targetModelId = modelId?.trim().orEmpty().ifBlank { getActiveModelId() }
         if (targetModelId.isBlank()) {
+            OmniLog.w(TAG, "[startApiService] no modelId specified and no active model")
             return getConfig()
         }
-        val resolved = findInstalledRecord(targetModelId) ?: return getConfig()
+        val resolved = findInstalledRecord(targetModelId)
+        if (resolved == null) {
+            OmniLog.w(TAG, "[startApiService] model not found: $targetModelId")
+            return getConfig()
+        }
+        OmniLog.i(
+            TAG,
+            "[startApiService] modelId=${resolved.id}, name=${resolved.name}, " +
+                "configPath=${resolved.configPath}, path=${resolved.path}, " +
+                "source=${resolved.source}, backend=$BACKEND_NAME, " +
+                "fileSize=${resolved.fileSize}, vendor=${resolved.vendor}"
+        )
         mmkv.encode(KEY_ACTIVE_MODEL_ID, resolved.id)
         OmniInferLocalRuntime.loadModel(
             modelId = resolved.id,
@@ -315,6 +332,41 @@ object OmniInferMnnModelsManager {
         emitEvent("downloads_changed", emptyMap())
         OmniInferBuiltinProviderRefresher.refreshAsync(context, "mnn_delete:${target.id}")
         return listInstalledModels()
+    }
+
+    private fun ensureMnnModelSymlink(context: Context) {
+        val workspaceDir = AgentWorkspaceManager.modelsMnnDirectory(context)
+        val legacyDir = File(context.filesDir, ".mnnmodels")
+        val legacyPath = legacyDir.toPath()
+        val workspacePath = workspaceDir.toPath()
+
+        if (Files.isSymbolicLink(legacyPath)) {
+            return
+        }
+        workspaceDir.mkdirs()
+        if (legacyDir.exists() && legacyDir.isDirectory) {
+            var allMoved = true
+            legacyDir.listFiles()?.forEach { child ->
+                val target = File(workspaceDir, child.name)
+                if (!target.exists()) {
+                    if (!child.renameTo(target)) {
+                        allMoved = false
+                    }
+                }
+            }
+            if (!allMoved) return
+            legacyDir.deleteRecursively()
+        }
+        runCatching { Files.createSymbolicLink(legacyPath, workspacePath) }
+    }
+
+    private fun resolveDisplayPath(file: File): String {
+        val context = appContext ?: return file.absolutePath
+        val legacyPrefix = File(context.filesDir, ".mnnmodels").absolutePath
+        val path = file.absolutePath
+        if (!path.startsWith(legacyPrefix)) return path
+        return AgentWorkspaceManager.modelsMnnDirectory(context).absolutePath +
+            path.removePrefix(legacyPrefix)
     }
 
     private fun ensureContext(): Context {
@@ -421,8 +473,8 @@ object OmniInferMnnModelsManager {
             InstalledModelRecord(
                 id = resolved.modelId,
                 name = resolved.item.modelName.ifBlank { resolved.modelId },
-                path = downloadPath.absolutePath,
-                configPath = configFile.absolutePath,
+                path = resolveDisplayPath(downloadPath),
+                configPath = resolveDisplayPath(configFile),
                 downloadModelId = resolved.downloadId,
                 source = resolved.source,
                 description = buildDescription(resolved.item),
@@ -519,7 +571,7 @@ object OmniInferMnnModelsManager {
             "category" to "llm",
             "source" to model.source,
             "description" to buildDescription(model.item),
-            "path" to downloadedFile?.absolutePath.orEmpty(),
+            "path" to (downloadedFile?.let(::resolveDisplayPath)).orEmpty(),
             "vendor" to model.item.vendor.orEmpty(),
             "tags" to (model.item.tags + listOf("MNN")).distinct(),
             "extraTags" to model.item.extraTags,
