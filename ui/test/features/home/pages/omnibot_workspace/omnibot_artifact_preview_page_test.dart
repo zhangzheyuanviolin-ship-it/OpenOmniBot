@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/omnibot_workspace/omnibot_artifact_preview_page.dart';
 import 'package:ui/theme/app_theme.dart';
 import 'package:ui/theme/omni_theme_palette.dart';
+import 'package:ui/widgets/image_preview_overlay.dart';
 
 class _SvgTestAssetBundle extends CachingAssetBundle {
   static final Uint8List _svgBytes = Uint8List.fromList(
@@ -33,6 +34,7 @@ void main() {
 
   late Directory tempDir;
   late File file;
+  late File imageFile;
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp(
@@ -40,6 +42,12 @@ void main() {
     );
     file = File('${tempDir.path}/note.txt');
     await file.writeAsString('hello workspace');
+    imageFile = File('${tempDir.path}/preview.png');
+    await imageFile.writeAsBytes(
+      base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2CS1cAAAAASUVORK5CYII=',
+      ),
+    );
   });
 
   tearDown(() async {
@@ -135,5 +143,27 @@ void main() {
     final editor = tester.widget<TextField>(editorFinder);
     expect(editor.decoration?.fillColor, OmniThemePalette.dark.surfacePrimary);
     expect(editor.style?.color, OmniThemePalette.dark.textPrimary);
+  });
+
+  testWidgets('image artifact preview uses shared interactive image surface', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OmnibotArtifactPreviewPage(
+          path: imageFile.path,
+          title: 'preview.png',
+          previewKind: 'image',
+          mimeType: 'image/png',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OmnibotInteractiveImageView), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('artifact-preview-image-bounds')),
+      findsOneWidget,
+    );
   });
 }

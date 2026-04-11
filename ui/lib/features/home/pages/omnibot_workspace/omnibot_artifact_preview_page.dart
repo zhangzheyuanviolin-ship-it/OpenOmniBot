@@ -7,6 +7,7 @@ import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/image_preview_overlay.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
 import 'package:ui/widgets/omnibot_resource_widgets.dart';
 
@@ -387,8 +388,11 @@ class _OmnibotArtifactPreviewPageState
 
     switch (widget.previewKind) {
       case 'image':
-        return InteractiveViewer(
-          child: Center(child: Image.file(File(widget.path))),
+        return OmnibotInteractiveImageView(
+          key: const ValueKey('artifact-preview-image-view'),
+          source: FileImageSource(widget.path),
+          enableFileShareOnLongPress: true,
+          previewBoundsKey: const ValueKey('artifact-preview-image-bounds'),
         );
       case 'audio':
       case 'video':

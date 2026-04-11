@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/utils/ui.dart';
 
 /// Represents the source of an image to preview.
 sealed class ImagePreviewSource {}
@@ -20,6 +22,8 @@ class MemoryImageSource extends ImagePreviewSource {
   final Uint8List bytes;
   MemoryImageSource(this.bytes);
 }
+
+const double _kDefaultPreviewViewportFraction = 0.8;
 
 /// Lightweight full-screen image preview overlay with pinch-to-zoom and swipe.
 ///
@@ -164,12 +168,13 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage>
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
     _snapBackAnimation = const AlwaysStoppedAnimation(Offset.zero);
-    _snapBackController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    )..addListener(() {
-        setState(() => _dismissOffset = _snapBackAnimation.value);
-      });
+    _snapBackController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 200),
+        )..addListener(() {
+          setState(() => _dismissOffset = _snapBackAnimation.value);
+        });
   }
 
   @override
@@ -250,13 +255,10 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage>
   }
 
   void _animateSnapBack() {
-    _snapBackAnimation = Tween<Offset>(
-      begin: _dismissOffset,
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _snapBackController,
-      curve: Curves.easeOut,
-    ));
+    _snapBackAnimation = Tween<Offset>(begin: _dismissOffset, end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _snapBackController, curve: Curves.easeOut),
+        );
     _snapBackController.forward(from: 0);
   }
 
@@ -296,15 +298,12 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage>
                 physics: _isZoomed
                     ? const NeverScrollableScrollPhysics()
                     : const BouncingScrollPhysics(),
-                onPageChanged: (index) =>
-                    setState(() => _currentIndex = index),
+                onPageChanged: (index) => setState(() => _currentIndex = index),
                 itemBuilder: (context, index) {
                   // Only the currently visible page gets a Hero tag to
                   // avoid duplicate-tag conflicts from PageView caching.
-                  final tag = index == _currentIndex
-                      ? _heroTagAt(index)
-                      : null;
-                  return _InteractiveImagePage(
+                  final tag = index == _currentIndex ? _heroTagAt(index) : null;
+                  return OmnibotInteractiveImageView(
                     source: widget.sources[index],
                     onTap: _dismiss,
                     onScaleChanged: (zoomed) {
@@ -313,6 +312,8 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage>
                       }
                     },
                     heroTag: tag,
+                    enableFileShareOnLongPress:
+                        widget.sources[index] is FileImageSource,
                   );
                 },
               ),
@@ -355,32 +356,86 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage>
   }
 }
 
-/// A single interactive image page with zoom and tap-to-dismiss.
-class _InteractiveImagePage extends StatefulWidget {
+class OmnibotInteractiveImageView extends StatefulWidget {
   final ImagePreviewSource source;
-  final VoidCallback onTap;
-  final ValueChanged<bool> onScaleChanged;
+  final VoidCallback? onTap;
+  final ValueChanged<bool>? onScaleChanged;
   final String? heroTag;
+  final bool enableFileShareOnLongPress;
+  final double viewportFraction;
+  final Key? previewBoundsKey;
 
-  const _InteractiveImagePage({
+  const OmnibotInteractiveImageView({
+    super.key,
     required this.source,
-    required this.onTap,
-    required this.onScaleChanged,
+    this.onTap,
+    this.onScaleChanged,
     this.heroTag,
+    this.enableFileShareOnLongPress = false,
+    this.viewportFraction = _kDefaultPreviewViewportFraction,
+    this.previewBoundsKey,
   });
 
   @override
-  State<_InteractiveImagePage> createState() => _InteractiveImagePageState();
+  State<OmnibotInteractiveImageView> createState() =>
+      _OmnibotInteractiveImageViewState();
 }
 
-class _InteractiveImagePageState extends State<_InteractiveImagePage> {
+class _OmnibotInteractiveImageViewState
+    extends State<OmnibotInteractiveImageView> {
   final TransformationController _transformController =
       TransformationController();
+  ImageStream? _imageStream;
+  ImageStreamListener? _imageStreamListener;
+  Size? _intrinsicImageSize;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolveIntrinsicImageSize();
+  }
+
+  @override
+  void didUpdateWidget(covariant OmnibotInteractiveImageView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_isSameSource(oldWidget.source, widget.source)) {
+      return;
+    }
+    _removeImageStreamListener();
+    _intrinsicImageSize = null;
+    _transformController.value = Matrix4.identity();
+    widget.onScaleChanged?.call(false);
+    _resolveIntrinsicImageSize();
+  }
 
   @override
   void dispose() {
+    _removeImageStreamListener();
     _transformController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLongPress() async {
+    if (!widget.enableFileShareOnLongPress) {
+      return;
+    }
+    final source = widget.source;
+    if (source is! FileImageSource) {
+      return;
+    }
+    final metadata = OmnibotResourceService.describePath(source.path);
+    try {
+      final shared = await OmnibotResourceService.shareFile(
+        sourcePath: source.path,
+        fileName: metadata.title,
+        mimeType: metadata.mimeType,
+      );
+      if (!shared) {
+        showToast('分享失败，请稍后重试', type: ToastType.error);
+      }
+    } catch (error) {
+      showToast('分享失败：$error', type: ToastType.error);
+    }
   }
 
   @override
@@ -411,20 +466,99 @@ class _InteractiveImagePageState extends State<_InteractiveImagePage> {
       );
     }
 
-    return GestureDetector(
-      onTap: widget.onTap,
-      // Double-tap to toggle zoom
-      onDoubleTapDown: (details) => _handleDoubleTap(details),
-      child: InteractiveViewer(
-        transformationController: _transformController,
-        minScale: 1.0,
-        maxScale: 5.0,
-        onInteractionEnd: (_) {
-          final scale = _transformController.value.getMaxScaleOnAxis();
-          widget.onScaleChanged(scale > 1.05);
-        },
-        child: Center(child: image),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boundsSize = _resolvePreviewBounds(constraints.biggest);
+        final imageBounds = SizedBox(
+          key: widget.previewBoundsKey,
+          width: boundsSize.width,
+          height: boundsSize.height,
+          child: FittedBox(fit: BoxFit.scaleDown, child: image),
+        );
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          onLongPress: widget.enableFileShareOnLongPress
+              ? _handleLongPress
+              : null,
+          onDoubleTapDown: (details) => _handleDoubleTap(details),
+          child: InteractiveViewer(
+            transformationController: _transformController,
+            minScale: 1.0,
+            maxScale: 5.0,
+            onInteractionEnd: (_) {
+              final scale = _transformController.value.getMaxScaleOnAxis();
+              widget.onScaleChanged?.call(scale > 1.05);
+            },
+            child: Center(child: imageBounds),
+          ),
+        );
+      },
+    );
+  }
+
+  void _resolveIntrinsicImageSize() {
+    final provider = _imageProvider(widget.source);
+    final stream = provider.resolve(createLocalImageConfiguration(context));
+    if (_imageStream?.key == stream.key) {
+      return;
+    }
+    _removeImageStreamListener();
+    _imageStream = stream;
+    _imageStreamListener = ImageStreamListener((imageInfo, _) {
+      if (!mounted) {
+        return;
+      }
+      final scale = imageInfo.scale <= 0 ? 1.0 : imageInfo.scale;
+      final nextSize = Size(
+        imageInfo.image.width / scale,
+        imageInfo.image.height / scale,
+      );
+      if (_intrinsicImageSize == nextSize) {
+        return;
+      }
+      setState(() => _intrinsicImageSize = nextSize);
+    });
+    stream.addListener(_imageStreamListener!);
+  }
+
+  void _removeImageStreamListener() {
+    final stream = _imageStream;
+    final listener = _imageStreamListener;
+    if (stream != null && listener != null) {
+      stream.removeListener(listener);
+    }
+    _imageStream = null;
+    _imageStreamListener = null;
+  }
+
+  Size _resolvePreviewBounds(Size availableSize) {
+    final maxWidth = availableSize.width.isFinite ? availableSize.width : 0.0;
+    final maxHeight = availableSize.height.isFinite
+        ? availableSize.height
+        : 0.0;
+    if (maxWidth <= 0 || maxHeight <= 0) {
+      return Size.zero;
+    }
+    final intrinsicSize = _intrinsicImageSize;
+    if (intrinsicSize == null ||
+        intrinsicSize.width <= 0 ||
+        intrinsicSize.height <= 0) {
+      return Size(maxWidth, maxHeight);
+    }
+
+    final fittedSize = applyBoxFit(
+      BoxFit.contain,
+      intrinsicSize,
+      Size(maxWidth, maxHeight),
+    ).destination;
+    final fillsViewportHeight = fittedSize.height >= maxHeight - 0.5;
+    if (!fillsViewportHeight) {
+      return fittedSize;
+    }
+    return Size(
+      fittedSize.width * widget.viewportFraction,
+      fittedSize.height * widget.viewportFraction,
     );
   }
 
@@ -433,7 +567,7 @@ class _InteractiveImagePageState extends State<_InteractiveImagePage> {
     if (currentScale > 1.05) {
       // Reset to original
       _transformController.value = Matrix4.identity();
-      widget.onScaleChanged(false);
+      widget.onScaleChanged?.call(false);
     } else {
       // Zoom to 2.5x at tap position
       final position = details.localPosition;
@@ -445,27 +579,50 @@ class _InteractiveImagePageState extends State<_InteractiveImagePage> {
         )
         ..scale(targetScale);
       _transformController.value = zoomed;
-      widget.onScaleChanged(true);
+      widget.onScaleChanged?.call(true);
     }
   }
 
   static Widget _buildImage(ImagePreviewSource source) {
     return switch (source) {
       FileImageSource(path: final p) => Image.file(
-          File(p),
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _buildError(),
-        ),
+        File(p),
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _buildError(),
+      ),
       NetworkImageSource(url: final u) => Image.network(
-          u,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _buildError(),
-        ),
+        u,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _buildError(),
+      ),
       MemoryImageSource(bytes: final b) => Image.memory(
-          b,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _buildError(),
-        ),
+        b,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _buildError(),
+      ),
+    };
+  }
+
+  static ImageProvider<Object> _imageProvider(ImagePreviewSource source) {
+    return switch (source) {
+      FileImageSource(path: final p) => FileImage(File(p)),
+      NetworkImageSource(url: final u) => NetworkImage(u),
+      MemoryImageSource(bytes: final b) => MemoryImage(b),
+    };
+  }
+
+  static bool _isSameSource(ImagePreviewSource a, ImagePreviewSource b) {
+    return switch ((a, b)) {
+      (FileImageSource(path: final ap), FileImageSource(path: final bp)) =>
+        ap == bp,
+      (NetworkImageSource(url: final au), NetworkImageSource(url: final bu)) =>
+        au == bu,
+      (
+        MemoryImageSource(bytes: final ab),
+        MemoryImageSource(bytes: final bb),
+      ) =>
+        identical(ab, bb),
+      _ => false,
     };
   }
 
@@ -475,10 +632,7 @@ class _InteractiveImagePageState extends State<_InteractiveImagePage> {
       children: [
         Icon(Icons.broken_image_outlined, size: 48, color: Colors.white54),
         SizedBox(height: 8),
-        Text(
-          '无法加载图片',
-          style: TextStyle(color: Colors.white54, fontSize: 14),
-        ),
+        Text('无法加载图片', style: TextStyle(color: Colors.white54, fontSize: 14)),
       ],
     );
   }
