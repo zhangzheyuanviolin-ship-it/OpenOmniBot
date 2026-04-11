@@ -437,7 +437,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     if (_messagesByMode[ChatPageMode.normal]!.isNotEmpty) {
       return true;
     }
-    return (_currentConversationByMode[ChatPageMode.normal]?.messageCount ?? 0) >
+    return (_currentConversationByMode[ChatPageMode.normal]?.messageCount ??
+            0) >
         0;
   }
 
@@ -490,6 +491,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       mode: nextMode,
     );
     await ConversationService.setCurrentConversationTarget(nextTarget);
+    showToast(nextMode == ConversationMode.chatOnly ? '已进入仅聊天模式' : '已退出仅聊天模式');
   }
 
   String get _expectedBrowserWorkspaceId => chatConversationWorkspaceId(
