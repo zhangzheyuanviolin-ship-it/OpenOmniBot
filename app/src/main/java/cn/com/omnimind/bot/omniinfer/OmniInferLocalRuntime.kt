@@ -116,10 +116,12 @@ object OmniInferLocalRuntime {
             BACKEND_OMNIINFER_MNN -> "mnn"
             else -> BACKEND_LLAMA_CPP
         }
+        val nThreads = Runtime.getRuntime().availableProcessors()
         val success = OmniInferServer.loadModel(
             modelPath = modelPath,
             backend = serverBackend,
             port = getPort(),
+            nThreads = nThreads,
         )
         if (success) {
             mmkv.encode(KEY_LOADED_BACKEND, normalizedBackend)
