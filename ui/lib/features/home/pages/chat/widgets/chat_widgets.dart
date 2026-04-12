@@ -52,6 +52,14 @@ const String _chatAppBarPureChatIconSvg =
     '<path d="M8 3h2"/>'
     '</svg>';
 
+const String _chatAppBarPureChatSelectedIconSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202'
+    'A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/>'
+    '</svg>';
+
 const List<Color> _kDarkChatAccentGradient = <Color>[
   Color(0xFFAA9774),
   Color(0xFF8FA38A),
@@ -234,7 +242,9 @@ class ChatAppBar extends StatelessWidget {
                       child: Center(
                         child: _ChatAppBarAccessoryButton(
                           key: const ValueKey('chat-app-bar-pure-chat-button'),
-                          iconSvg: _chatAppBarPureChatIconSvg,
+                          iconSvg: isPureChatSelected
+                              ? _chatAppBarPureChatSelectedIconSvg
+                              : _chatAppBarPureChatIconSvg,
                           tooltip: isPureChatToggleLocked
                               ? (isPureChatSelected
                                     ? '当前线程已锁定为纯聊天'
