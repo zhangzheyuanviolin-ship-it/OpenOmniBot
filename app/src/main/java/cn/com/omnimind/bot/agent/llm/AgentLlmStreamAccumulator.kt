@@ -190,9 +190,9 @@ class AgentLlmStreamAccumulator(
         return runCatching { json.parseToJsonElement(raw) as? JsonObject }.getOrNull()
     }
 
-    fun currentReasoning(): String = reasoningBuffer.toString()
+    fun currentReasoning(): String = sanitizeUtf16ForInterop(reasoningBuffer.toString())
 
-    fun currentContent(): String = contentBuffer.toString()
+    fun currentContent(): String = sanitizeUtf16ForInterop(contentBuffer.toString())
 
     fun buildTurn(): ChatCompletionTurn {
         if (!seenChunk) {
@@ -214,7 +214,8 @@ class AgentLlmStreamAccumulator(
             )
         }
 
-        val content = contentBuffer.toString()
+        val content = sanitizeUtf16ForInterop(contentBuffer.toString())
+        val reasoning = sanitizeUtf16ForInterop(reasoningBuffer.toString())
         if (finishReasonIndicatesToolCall(finishReason) && toolCalls.isEmpty()) {
             throw IllegalStateException(
                 "finish_reason indicates tool call but no tool_calls parsed; finish_reason=${finishReason.orEmpty()}, last_chunk=$lastChunkPreview"
@@ -232,7 +233,7 @@ class AgentLlmStreamAccumulator(
                 content = content.ifBlank { null }?.let(::JsonPrimitive),
                 toolCalls = toolCalls.ifEmpty { null }
             ),
-            reasoning = reasoningBuffer.toString(),
+            reasoning = reasoning,
             finishReason = finishReason,
             usage = usageWithDecodedTiming()
         )
@@ -599,5 +600,65 @@ class AgentLlmStreamAccumulator(
         return normalized == "tool_calls" ||
             normalized == "function_call" ||
             normalized == "tool_use"
+    }
+
+    private fun sanitizeUtf16ForInterop(text: String): String {
+        if (text.isEmpty()) {
+            return text
+        }
+
+        var index = 0
+        var needsSanitization = false
+        while (index < text.length) {
+            val current = text[index]
+            when {
+                Character.isHighSurrogate(current) -> {
+                    if (index + 1 < text.length && Character.isLowSurrogate(text[index + 1])) {
+                        index += 2
+                    } else {
+                        needsSanitization = true
+                        index = text.length
+                    }
+                }
+
+                Character.isLowSurrogate(current) -> {
+                    needsSanitization = true
+                    index = text.length
+                }
+
+                else -> index += 1
+            }
+        }
+
+        if (!needsSanitization) {
+            return text
+        }
+
+        val sanitized = StringBuilder(text.length)
+        index = 0
+        while (index < text.length) {
+            val current = text[index]
+            when {
+                Character.isHighSurrogate(current) -> {
+                    if (index + 1 < text.length && Character.isLowSurrogate(text[index + 1])) {
+                        sanitized.append(current)
+                        sanitized.append(text[index + 1])
+                        index += 2
+                    } else {
+                        index += 1
+                    }
+                }
+
+                Character.isLowSurrogate(current) -> {
+                    index += 1
+                }
+
+                else -> {
+                    sanitized.append(current)
+                    index += 1
+                }
+            }
+        }
+        return sanitized.toString()
     }
 }

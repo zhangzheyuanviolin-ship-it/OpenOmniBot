@@ -52,6 +52,7 @@ import cn.com.omnimind.baselib.util.SchemeUtil
 import cn.com.omnimind.bot.agent.AgentCallback
 import cn.com.omnimind.bot.agent.AgentAlarmToolService
 import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
+import cn.com.omnimind.bot.agent.AgentConversationContextCompactor
 import cn.com.omnimind.bot.agent.AgentModelOverride
 import cn.com.omnimind.bot.agent.AgentResult
 import cn.com.omnimind.bot.agent.AgentConversationHistoryRepository
@@ -160,6 +161,14 @@ internal fun resolveChatTaskModelOverride(
     )
 }
 
+internal fun normalizeReasoningEffort(raw: String?): String? {
+    val normalized = raw?.trim()?.lowercase().orEmpty()
+    return when (normalized) {
+        "low", "high" -> normalized
+        else -> null
+    }
+}
+
 internal fun extractChatTaskTextPayload(content: String): String {
     val normalized = content.trim()
     if (normalized.isEmpty() || normalized == "[DONE]") {
@@ -219,6 +228,37 @@ internal fun extractChatTaskTextPayload(content: String): String {
         ?.trim()
         .orEmpty()
     return contentMatch
+}
+
+internal fun extractChatTaskPromptTokens(content: String): Int? {
+    val normalized = content.trim()
+    if (normalized.isEmpty() || normalized == "[DONE]") {
+        return null
+    }
+    return Regex("\"prompt_tokens\"\\s*:\\s*(\\d+)")
+        .find(normalized)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+}
+
+internal fun chatModelOverrideToAgentModelOverride(
+    modelOverride: TaskParams.ChatModelOverride?
+): AgentModelOverride? {
+    if (modelOverride == null) {
+        return null
+    }
+    val providerProfileName = runCatching {
+        ModelProviderConfigStore.getProfile(modelOverride.providerProfileId)?.name
+    }.getOrNull()
+    return AgentModelOverride(
+        providerProfileId = modelOverride.providerProfileId,
+        providerProfileName = providerProfileName,
+        modelId = modelOverride.modelId,
+        apiBase = modelOverride.apiBase,
+        apiKey = modelOverride.apiKey,
+        protocolType = modelOverride.protocolType.ifEmpty { "openai_compatible" }
+    )
 }
 
 private fun extractTextPayload(raw: Any?): String {
@@ -351,8 +391,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val conversationMode: String,
         val userEntryId: String,
         val assistantEntryId: String,
+        val modelOverride: TaskParams.ChatModelOverride? = null,
+        val reasoningEffort: String? = null,
         val assistantBuffer: StringBuilder = StringBuilder(),
-        var isError: Boolean = false
+        var isError: Boolean = false,
+        var latestPromptTokens: Int? = null,
+        var promptTokenThreshold: Int? = null
     )
 
     private class ActiveAgentRunContext(
@@ -1303,6 +1347,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             call.argument<Map<String, Any?>>("modelOverride"),
             ModelProviderConfigStore::getProfile
         )
+        val reasoningEffort = normalizeReasoningEffort(
+            call.argument<String>("reasoningEffort")
+        )
         val openClawConfigMap = call.argument<Map<String, Any>>("openClawConfig")
         val openClawConfig = openClawConfigMap?.let { map ->
             val baseUrl = map["baseUrl"] as? String ?: ""
@@ -1344,7 +1391,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             conversationId = normalizedConversationId,
                             conversationMode = conversationMode,
                             userEntryId = "$taskID-user",
-                            assistantEntryId = "$taskID-assistant"
+                            assistantEntryId = "$taskID-assistant",
+                            modelOverride = modelOverride,
+                            reasoningEffort = reasoningEffort,
+                            promptTokenThreshold = repository
+                                .getConversation(normalizedConversationId)
+                                ?.promptTokenThreshold
+                                ?.coerceAtLeast(1)
                         )
                     )
                 }
@@ -1354,7 +1407,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     this@AssistsCoreManager,
                     provider,
                     openClawConfig,
-                    modelOverride
+                    modelOverride,
+                    reasoningEffort
                 )
                 withContext(Dispatchers.Main) {
                     result.success("SUCCESS")
@@ -1379,6 +1433,36 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         getChatTaskPersistenceState(taskID)?.let { state ->
             val repository = conversationHistoryRepository()
             val normalizedType = type?.trim()?.lowercase().orEmpty()
+            if (
+                state.conversationMode.equals(CHAT_ONLY_MODE, ignoreCase = true) &&
+                normalizedType != "error" &&
+                normalizedType != "rate_limited"
+            ) {
+                extractChatTaskPromptTokens(content)?.let { promptTokens ->
+                    val promptTokenThreshold =
+                        state.promptTokenThreshold?.coerceAtLeast(1)
+                            ?: AgentConversationContextCompactor.DEFAULT_PROMPT_TOKEN_THRESHOLD
+                    state.latestPromptTokens = promptTokens
+                    state.promptTokenThreshold = promptTokenThreshold
+                    repository.updatePromptTokenUsage(
+                        conversationId = state.conversationId,
+                        promptTokens = promptTokens,
+                        threshold = promptTokenThreshold
+                    )
+                    withContext(Dispatchers.Main) {
+                        invokeFlutterEventSafely(
+                            "onAgentPromptTokenUsageChanged",
+                            mapOf(
+                                "taskId" to taskID,
+                                "conversationId" to state.conversationId,
+                                "conversationMode" to state.conversationMode,
+                                "latestPromptTokens" to promptTokens,
+                                "promptTokenThreshold" to promptTokenThreshold
+                            )
+                        )
+                    }
+                }
+            }
             when (normalizedType) {
                 "summary_start",
                 "openclaw_attachment" -> Unit
@@ -1444,7 +1528,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     }
 
     override suspend fun onChatMessageEnd(taskID: String) {
-        removeChatTaskPersistenceState(taskID)?.let { state ->
+        val persistenceState = removeChatTaskPersistenceState(taskID)
+        persistenceState?.let { state ->
             val snapshot = state.assistantBuffer.toString().trim()
             if (snapshot.isNotEmpty()) {
                 conversationHistoryRepository().upsertAssistantMessage(
@@ -1456,6 +1541,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 )
             }
         }
+        val compactedConversationPayload = maybeAutoCompactChatOnlyConversation(
+            taskID,
+            persistenceState
+        )
         withContext(Dispatchers.Main) {
             try {
                 val isSummary = isSummaryTask(taskID)
@@ -1481,6 +1570,83 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             }
 
         }
+        compactedConversationPayload?.let { payload ->
+            FlutterChatSyncBridge.dispatchConversationListChanged(
+                reason = "conversation_updated",
+                conversation = payload
+            )
+        }
+    }
+
+    private suspend fun maybeAutoCompactChatOnlyConversation(
+        taskId: String,
+        state: ChatTaskPersistenceState?
+    ): Map<String, Any?>? {
+        if (state == null || state.isError) {
+            return null
+        }
+        if (!state.conversationMode.equals(CHAT_ONLY_MODE, ignoreCase = true)) {
+            return null
+        }
+        val latestPromptTokens = state.latestPromptTokens ?: return null
+        val promptTokenThreshold =
+            state.promptTokenThreshold?.coerceAtLeast(1)
+                ?: AgentConversationContextCompactor.DEFAULT_PROMPT_TOKEN_THRESHOLD
+        if (latestPromptTokens <= promptTokenThreshold) {
+            return null
+        }
+
+        val repository = conversationHistoryRepository()
+        val candidate = repository.getContextCompactionCandidate(
+            conversationId = state.conversationId,
+            conversationMode = state.conversationMode
+        ) ?: return null
+        if (candidate.entriesToCompact.isEmpty()) {
+            return null
+        }
+
+        withContext(Dispatchers.Main) {
+            invokeFlutterEventSafely(
+                "onAgentContextCompactionStateChanged",
+                mapOf(
+                    "taskId" to taskId,
+                    "conversationId" to state.conversationId,
+                    "conversationMode" to state.conversationMode,
+                    "isCompacting" to true,
+                    "latestPromptTokens" to latestPromptTokens,
+                    "promptTokenThreshold" to promptTokenThreshold
+                )
+            )
+        }
+
+        var conversationPayload: Map<String, Any?>? = null
+        try {
+            val payload = ConversationDomainService(context).compactConversationContext(
+                conversationId = state.conversationId,
+                conversationMode = state.conversationMode,
+                modelOverride = chatModelOverrideToAgentModelOverride(state.modelOverride),
+                reasoningEffort = state.reasoningEffort
+            )
+            @Suppress("UNCHECKED_CAST")
+            conversationPayload = payload["conversation"] as? Map<String, Any?>
+        } catch (e: Exception) {
+            OmniLog.w(TAG, "纯聊天自动压缩失败: ${e.message}")
+        } finally {
+            withContext(Dispatchers.Main) {
+                invokeFlutterEventSafely(
+                    "onAgentContextCompactionStateChanged",
+                    mapOf(
+                        "taskId" to taskId,
+                        "conversationId" to state.conversationId,
+                        "conversationMode" to state.conversationMode,
+                        "isCompacting" to false,
+                        "latestPromptTokens" to latestPromptTokens,
+                        "promptTokenThreshold" to promptTokenThreshold
+                    )
+                )
+            }
+        }
+        return conversationPayload
     }
 
 
@@ -3331,6 +3497,31 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         return normalized
     }
 
+    private fun resolveAgentModelOverride(raw: Map<String, Any?>?): AgentModelOverride? {
+        if (raw.isNullOrEmpty()) {
+            return null
+        }
+        val providerProfileId = raw["providerProfileId"]?.toString()?.trim().orEmpty()
+        val modelId = raw["modelId"]?.toString()?.trim().orEmpty()
+        val providerProfile = ModelProviderConfigStore.getProfile(providerProfileId)
+        if (
+            providerProfileId.isEmpty() ||
+            modelId.isEmpty() ||
+            providerProfile == null ||
+            !providerProfile.isConfigured()
+        ) {
+            return null
+        }
+        return AgentModelOverride(
+            providerProfileId = providerProfile.id,
+            providerProfileName = providerProfile.name,
+            modelId = modelId,
+            apiBase = providerProfile.baseUrl,
+            apiKey = providerProfile.apiKey,
+            protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" }
+        )
+    }
+
     fun createAgentTask(call: MethodCall, result: MethodChannel.Result) {
         val taskId = (call.argument<String>("taskId") ?: "").trim()
         val userMessage = (call.argument<String>("userMessage") ?: "").toString()
@@ -3349,29 +3540,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             conversationId = conversationId,
             call = call
         )
-        val modelOverrideMap = call.argument<Map<String, Any?>>("modelOverride")
-        val modelOverride = modelOverrideMap?.let { raw ->
-            val providerProfileId = raw["providerProfileId"]?.toString()?.trim().orEmpty()
-            val modelId = raw["modelId"]?.toString()?.trim().orEmpty()
-            val providerProfile = ModelProviderConfigStore.getProfile(providerProfileId)
-            if (
-                providerProfileId.isEmpty() ||
-                modelId.isEmpty() ||
-                providerProfile == null ||
-                !providerProfile.isConfigured()
-            ) {
-                null
-            } else {
-                AgentModelOverride(
-                    providerProfileId = providerProfile.id,
-                    providerProfileName = providerProfile.name,
-                    modelId = modelId,
-                    apiBase = providerProfile.baseUrl,
-                    apiKey = providerProfile.apiKey,
-                    protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" }
-                )
-            }
-        }
+        val modelOverride = resolveAgentModelOverride(
+            call.argument<Map<String, Any?>>("modelOverride")
+        )
+        val reasoningEffort = normalizeReasoningEffort(
+            call.argument<String>("reasoningEffort")
+        )
         val terminalEnvironment = parseTerminalEnvironmentMap(
             call.argument<Map<String, Any?>>("terminalEnvironment")
         )
@@ -4066,6 +4240,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     conversationId,
                     resolvedConversationMode,
                     modelOverride,
+                    reasoningEffort,
                     terminalEnvironment,
                     callback,
                     runControl = agentRunContext
@@ -4497,6 +4672,41 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 OmniLog.e(TAG, "保存 UI 卡片失败: ${e.message}")
                 withContext(Dispatchers.Main) {
                     result.error("UPSERT_CONVERSATION_UI_CARD_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun compactConversationContext(call: MethodCall, result: MethodChannel.Result) {
+        val conversationId = call.argument<Number>("conversationId")?.toLong() ?: 0L
+        val mode = normalizeConversationMode(
+            call.argument<String>("mode") ?: call.argument<String>("conversationMode")
+        )
+        if (conversationId <= 0L) {
+            result.error("INVALID_ARGUMENTS", "conversationId is invalid", null)
+            return
+        }
+        val modelOverride = resolveAgentModelOverride(
+            call.argument<Map<String, Any?>>("modelOverride")
+        )
+        val reasoningEffort = normalizeReasoningEffort(
+            call.argument<String>("reasoningEffort")
+        )
+        workJob.launch {
+            try {
+                val payload = conversationDomainService.compactConversationContext(
+                    conversationId = conversationId,
+                    conversationMode = mode,
+                    modelOverride = modelOverride,
+                    reasoningEffort = reasoningEffort
+                )
+                withContext(Dispatchers.Main) {
+                    result.success(payload)
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "手动压缩上下文失败: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("COMPACT_CONVERSATION_CONTEXT_ERROR", e.message, null)
                 }
             }
         }

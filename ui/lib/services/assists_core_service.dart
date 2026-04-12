@@ -893,6 +893,7 @@ class AssistsMessageService {
     String? provider,
     Map<String, dynamic>? openClawConfig,
     Map<String, dynamic>? modelOverride,
+    String? reasoningEffort,
     int? conversationId,
     String? conversationMode,
     String? userMessage,
@@ -909,6 +910,9 @@ class AssistsMessageService {
       }
       if (modelOverride != null) {
         args['modelOverride'] = modelOverride;
+      }
+      if (reasoningEffort != null && reasoningEffort.trim().isNotEmpty) {
+        args['reasoningEffort'] = reasoningEffort.trim();
       }
       if (conversationId != null) {
         args['conversationId'] = conversationId;
@@ -1289,6 +1293,7 @@ class AssistsMessageService {
     String? scheduledTaskTitle,
     bool? scheduleNotificationEnabled,
     Map<String, dynamic>? modelOverride,
+    String? reasoningEffort,
     Map<String, String>? terminalEnvironment,
   }) async {
     try {
@@ -1324,6 +1329,9 @@ class AssistsMessageService {
       if (modelOverride != null) {
         args['modelOverride'] = modelOverride;
       }
+      if (reasoningEffort != null && reasoningEffort.trim().isNotEmpty) {
+        args['reasoningEffort'] = reasoningEffort.trim();
+      }
       if (terminalEnvironment != null && terminalEnvironment.isNotEmpty) {
         args['terminalEnvironment'] = terminalEnvironment;
       }
@@ -1334,6 +1342,32 @@ class AssistsMessageService {
     } on PlatformException catch (e) {
       print('创建 Agent 任务失败: ${e.message}');
       return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>> compactConversationContext({
+    required int conversationId,
+    required String conversationMode,
+    Map<String, dynamic>? modelOverride,
+    String? reasoningEffort,
+  }) async {
+    try {
+      final result = await assistCore
+          .invokeMethod<Map<dynamic, dynamic>>('compactConversationContext', {
+            'conversationId': conversationId,
+            'conversationMode': conversationMode,
+            if (modelOverride != null) 'modelOverride': modelOverride,
+            if (reasoningEffort != null && reasoningEffort.trim().isNotEmpty)
+              'reasoningEffort': reasoningEffort.trim(),
+          });
+      return Map<String, dynamic>.from(result ?? const {});
+    } on PlatformException catch (e) {
+      print('手动压缩上下文失败: ${e.message}');
+      return {
+        'compacted': false,
+        'reason': 'failed',
+        'message': e.message ?? '手动压缩上下文失败',
+      };
     }
   }
 

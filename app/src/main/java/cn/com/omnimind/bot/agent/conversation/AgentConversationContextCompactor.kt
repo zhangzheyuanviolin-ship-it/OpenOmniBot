@@ -1,7 +1,6 @@
 package cn.com.omnimind.bot.agent
 
 import cn.com.omnimind.assists.controller.http.HttpController
-import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.llm.AssistantToolCall
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.util.OmniLog
@@ -22,6 +21,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 open class AgentConversationContextCompactor(
     private val historyRepository: AgentConversationHistoryRepository,
+    private val modelScene: String = DEFAULT_AGENT_MODEL_SCENE,
+    private val modelOverride: AgentModelOverride? = null,
+    private val reasoningEffort: String? = null,
     private val json: Json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -29,84 +31,41 @@ open class AgentConversationContextCompactor(
         explicitNulls = false
     }
 ) {
+    data class CompactionOutcome(
+        val compacted: Boolean,
+        val summary: String? = null,
+        val cutoffEntryDbId: Long? = null,
+        val reason: String? = null
+    )
+
     companion object {
         const val DEFAULT_PROMPT_TOKEN_THRESHOLD = 128_000
-        private const val CHAT_COMPACTOR_SCENE = "scene.compactor.context.chat"
+        const val DEFAULT_AGENT_MODEL_SCENE = "scene.dispatch.model"
         private const val TAG = "AgentConversationContextCompactor"
         private val EPHEMERAL_CACHE_CONTROL = mapOf("type" to "ephemeral")
+        private const val COMPACTION_REQUEST_PROMPT = """
+You are a context compaction engine. Your summary will REPLACE the original messages in the conversation context window — the agent will rely on it to continue working. Write the summary in the same language the user used in the conversation.
 
-        private fun compactionRequestPrompt(): String {
-            return when (AppLocaleManager.currentPromptLocale()) {
-                cn.com.omnimind.baselib.i18n.PromptLocale.ZH_CN -> """
-                    /no_think
-                    你是一个用户与Agent对话上下文压缩器。你的职责是把一段多轮聊天历史压缩为一份可持续累积的上下文总结，供后续对话继续参考。
+MUST PRESERVE (never omit or shorten):
+- All file paths, directory names, URLs, UUIDs, and identifiers — copy verbatim
+- Commands executed and their outcomes (success/failure/output)
+- Active tasks: what was requested, what's done, what's still pending
+- Key decisions made and their rationale
+- Errors encountered and how they were resolved
+- Important constraints, rules, or user preferences mentioned
+- Any tool calls and their results that affect current state
 
-                    # 要求：
-                    1. 只输出纯文本，不要 JSON，不要 Markdown 代码块。
-                    2. 使用固定结构，保留明确的小节标题。
-                    3. 保留长期目标、用户偏好、约束条件、关键文件路径、参数、工具结果、未完成任务、待确认点。
-                    4. 去掉冗余寒暄、重复措辞、无关中间推理，但不能丢失会影响后续执行的重要事实。
-                    5. 如果系统消息里已经给出旧的累计总结，要将其与新历史整合为一份新的累计总结，而不是简单拼接。
-                    6. 不要编造不存在的事实；不确定时明确写“待确认”。
+STRUCTURE:
+1. Start with a one-line summary of the overall goal
+2. Then a concise narrative of what happened, preserving technical details
+3. End with a "Current state" section: what's done, what's pending, any blockers
 
-                    # 输出格式：
-                    ## 用户目标与约束
-                    - ...
+PRIORITIZE recent context over older history — the agent needs to know what it was doing most recently, not just what was discussed early on.
 
-                    ## 已确认事实与已完成结果
-                    - ...
-
-                    ## 关键上下文与参数
-                    - ...
-
-                    ## 未完成事项与下一步
-                    - ...
-                """.trimIndent()
-                cn.com.omnimind.baselib.i18n.PromptLocale.EN_US -> """
-                    /no_think
-                    You are a conversation context compactor for a user-agent dialogue. Your job is to compress a multi-turn chat history into an accumulated context summary that can be carried forward into later turns.
-
-                    # Requirements:
-                    1. Output plain text only. Do not output JSON or Markdown code fences.
-                    2. Use a fixed structure and keep clear section headings.
-                    3. Preserve long-term goals, user preferences, constraints, important file paths, parameters, tool results, unfinished work, and items still awaiting confirmation.
-                    4. Remove redundant pleasantries, repeated phrasing, and irrelevant intermediate reasoning, but do not drop facts that matter for future execution.
-                    5. If the system message already contains an accumulated summary, merge it with the new raw history into one updated accumulated summary instead of concatenating blindly.
-                    6. Do not invent facts. When something is uncertain, mark it as pending confirmation.
-
-                    # Output format:
-                    ## User Goals And Constraints
-                    - ...
-
-                    ## Confirmed Facts And Completed Results
-                    - ...
-
-                    ## Key Context And Parameters
-                    - ...
-
-                    ## Open Items And Next Steps
-                    - ...
-                """.trimIndent()
-            }
-        }
-
-        private fun existingSummaryPromptPrefix(): String {
-            return when (AppLocaleManager.currentPromptLocale()) {
-                cn.com.omnimind.baselib.i18n.PromptLocale.ZH_CN ->
-                    "以下是之前已经累计好的历史总结，请将它与后续原始历史合并为新的累计总结："
-                cn.com.omnimind.baselib.i18n.PromptLocale.EN_US ->
-                    "Below is the previously accumulated summary. Merge it with the following raw history into a new accumulated summary:"
-            }
-        }
-
-        private fun finalUserPrompt(): String {
-            return when (AppLocaleManager.currentPromptLocale()) {
-                cn.com.omnimind.baselib.i18n.PromptLocale.ZH_CN ->
-                    "请把以上历史压缩为新的累计总结。"
-                cn.com.omnimind.baselib.i18n.PromptLocale.EN_US ->
-                    "Compress the history above into a new accumulated summary."
-            }
-        }
+Do NOT translate or alter code snippets, file paths, identifiers, or error messages. Be concise but never lose information the agent needs to continue.
+"""
+        private const val FINAL_USER_PROMPT =
+            "Generate the replacement context summary now."
 
         internal fun buildCompactionRequestMessages(
             existingSummary: String?,
@@ -116,20 +75,19 @@ open class AgentConversationContextCompactor(
             requestMessages += mapOf(
                 "role" to "system",
                 "content" to buildTextContentBlocks(
-                    text = compactionRequestPrompt().trim(),
+                    text = COMPACTION_REQUEST_PROMPT.trim(),
                     cacheControl = EPHEMERAL_CACHE_CONTROL
                 )
             )
             existingSummary?.trim()?.takeIf { it.isNotEmpty() }?.let { summary ->
-                requestMessages += mapOf(
-                    "role" to "system",
-                    "content" to (existingSummaryPromptPrefix().trim() + "\n\n" + summary)
+                requestMessages += toTransportMessage(
+                    AgentConversationHistorySupport.buildContextSummaryUserMessage(summary)
                 )
             }
             requestMessages += messagesToCompact.map(::toTransportMessage)
             requestMessages += mapOf(
                 "role" to "user",
-                "content" to finalUserPrompt()
+                "content" to FINAL_USER_PROMPT
             )
             return requestMessages
         }
@@ -240,21 +198,18 @@ open class AgentConversationContextCompactor(
         )
         try {
             return runCatching {
-                val requestMessages = buildCompactionRequestMessages(
+                val outcome = compactAndPersist(
+                    conversationId = conversationId,
                     existingSummary = runtimeWindow.existingSummary
                         ?: candidate.conversation.contextSummary,
-                    messagesToCompact = runtimeWindow.messagesToCompact
+                    messagesToCompact = runtimeWindow.messagesToCompact,
+                    cutoffEntryDbId = candidate.cutoffEntryDbId
                 )
-                val summary = requestCompactedSummary(requestMessages)
-                if (summary.isBlank()) {
+                val summary = outcome.summary.orEmpty()
+                if (!outcome.compacted || summary.isBlank()) {
                     OmniLog.w(TAG, "conversation=$conversationId compaction returned blank summary")
                     messages
                 } else {
-                    historyRepository.updateContextSummary(
-                        conversationId = conversationId,
-                        summary = summary,
-                        cutoffEntryDbId = candidate.cutoffEntryDbId
-                    )
                     AgentConversationHistorySupport.rebuildMessagesWithCompactedSummary(
                         messages = messages,
                         summary = summary
@@ -274,6 +229,69 @@ open class AgentConversationContextCompactor(
                 promptTokenThreshold = promptTokenThreshold
             )
         }
+    }
+
+    open suspend fun compactConversationContext(
+        conversationId: Long,
+        conversationMode: String
+    ): CompactionOutcome {
+        val candidate = historyRepository.getContextCompactionCandidate(
+            conversationId = conversationId,
+            conversationMode = conversationMode
+        ) ?: return CompactionOutcome(
+            compacted = false,
+            reason = "no_candidate"
+        )
+        val messagesToCompact = AgentConversationHistorySupport.buildPromptRelevantMessages(
+            candidate.entriesToCompact
+        )
+        if (messagesToCompact.isEmpty()) {
+            return CompactionOutcome(
+                compacted = false,
+                reason = "no_prompt_messages"
+            )
+        }
+        return compactAndPersist(
+            conversationId = conversationId,
+            existingSummary = candidate.conversation.contextSummary,
+            messagesToCompact = messagesToCompact,
+            cutoffEntryDbId = candidate.cutoffEntryDbId
+        )
+    }
+
+    private suspend fun compactAndPersist(
+        conversationId: Long,
+        existingSummary: String?,
+        messagesToCompact: List<ChatCompletionMessage>,
+        cutoffEntryDbId: Long
+    ): CompactionOutcome {
+        if (messagesToCompact.isEmpty()) {
+            return CompactionOutcome(
+                compacted = false,
+                reason = "no_prompt_messages"
+            )
+        }
+        val requestMessages = buildCompactionRequestMessages(
+            existingSummary = existingSummary,
+            messagesToCompact = messagesToCompact
+        )
+        val summary = requestCompactedSummary(requestMessages)
+        if (summary.isBlank()) {
+            return CompactionOutcome(
+                compacted = false,
+                reason = "blank_summary"
+            )
+        }
+        historyRepository.updateContextSummary(
+            conversationId = conversationId,
+            summary = summary,
+            cutoffEntryDbId = cutoffEntryDbId
+        )
+        return CompactionOutcome(
+            compacted = true,
+            summary = summary,
+            cutoffEntryDbId = cutoffEntryDbId
+        )
     }
 
     private suspend fun requestCompactedSummary(
@@ -338,10 +356,15 @@ open class AgentConversationContextCompactor(
 
         try {
             eventSource = HttpController.postLLMStreamRequestWithContextAsFlow(
-                model = CHAT_COMPACTOR_SCENE,
+                model = modelScene,
                 messages = messages,
                 event = listener,
-                enableThinking = false
+                enableThinking = false,
+                explicitApiBase = modelOverride?.apiBase,
+                explicitApiKey = modelOverride?.apiKey,
+                explicitModel = modelOverride?.modelId,
+                explicitProtocolType = modelOverride?.protocolType,
+                reasoningEffort = reasoningEffort
             )
             result.await()
         } finally {

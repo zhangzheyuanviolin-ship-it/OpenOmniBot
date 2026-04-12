@@ -289,6 +289,9 @@ class AssistsCoreChannel {
                 "upsertConversationUiCard" -> {
                     assistsCoreManager!!.upsertConversationUiCard(call, result)
                 }
+                "compactConversationContext" -> {
+                    assistsCoreManager!!.compactConversationContext(call, result)
+                }
                 "clearConversationMessages" -> {
                     assistsCoreManager!!.clearConversationMessages(call, result)
                 }

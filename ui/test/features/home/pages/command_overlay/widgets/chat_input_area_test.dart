@@ -79,16 +79,36 @@ void main() {
             widget.painter.runtimeType.toString() == '_ContextUsageRingPainter',
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(longPressed, isTrue);
   });
 
+  testWidgets('tapping slash trigger button invokes callback', (tester) async {
+    var tapped = false;
+    await tester.pumpWidget(
+      _buildTestApp(
+        contextUsageRatio: null,
+        onTriggerSlashCommand: () {
+          tapped = true;
+        },
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const ValueKey('chat-input-trigger-slash-button')),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(tapped, isTrue);
+  });
 }
 
 Widget _buildTestApp({
   required double? contextUsageRatio,
   VoidCallback? onLongPressContextUsageRing,
+  VoidCallback? onTriggerSlashCommand,
 }) {
   return DefaultAssetBundle(
     bundle: _TestAssetBundle(),
@@ -102,6 +122,7 @@ Widget _buildTestApp({
           onCancelTask: () {},
           contextUsageRatio: contextUsageRatio,
           onLongPressContextUsageRing: onLongPressContextUsageRing,
+          onTriggerSlashCommand: onTriggerSlashCommand,
         ),
       ),
     ),

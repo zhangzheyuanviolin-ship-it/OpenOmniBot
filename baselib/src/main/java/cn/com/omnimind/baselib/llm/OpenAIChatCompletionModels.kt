@@ -31,6 +31,8 @@ data class ChatCompletionRequest(
     val functions: List<ChatCompletionFunction>? = null,
     @SerialName("function_call")
     val functionCall: JsonElement? = null,
+    @SerialName("reasoning_effort")
+    val reasoningEffort: String? = null,
     @SerialName("enable_thinking")
     val enableThinking: Boolean? = null
 )

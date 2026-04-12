@@ -171,7 +171,8 @@ class AssistsUtil {
             onMessagePush: OnMessagePushListener,
             provider: String? = null,
             openClawConfig: TaskParams.OpenClawConfig? = null,
-            modelOverride: TaskParams.ChatModelOverride? = null
+            modelOverride: TaskParams.ChatModelOverride? = null,
+            reasoningEffort: String? = null
         ) {
             AssistsCore.startTask(
                 TaskParams.ChatTaskParams(
@@ -180,7 +181,8 @@ class AssistsUtil {
                     onMessagePush,
                     provider,
                     openClawConfig,
-                    modelOverride
+                    modelOverride,
+                    reasoningEffort
                 )
             )
         }

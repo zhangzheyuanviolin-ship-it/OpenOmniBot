@@ -70,6 +70,8 @@ part 'chat_page_ui.dart';
 
 enum ChatPageMode { normal, openclaw }
 
+enum _SlashCommandPanelRoute { root, effort }
+
 class ChatPage extends StatefulWidget {
   final ConversationThreadTarget? threadTarget;
 
@@ -104,6 +106,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey<HomeDrawerState> _drawerKey = GlobalKey<HomeDrawerState>();
   final GlobalKey _browserOverlayKey = GlobalKey();
+  final GlobalKey _slashCommandStripKey = GlobalKey();
 
   // ===================== State =====================
   bool _isPopupVisible = false;
@@ -129,6 +132,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   List<SceneCatalogItem> _sceneCatalog = const [];
   ConversationModelOverride? _conversationModelOverride;
   _ChatModelOverrideSelection? _pendingConversationModelOverride;
+  String? _conversationReasoningEffort;
+  String? _pendingConversationReasoningEffort;
   bool _showConversationModelMentionChip = false;
   List<ChatTerminalEnvironmentVariable> _terminalEnvironmentVariables =
       const [];
@@ -181,6 +186,14 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final Map<ChatPageMode, double> _toolActivityOccupiedHeightByMode = {
     ChatPageMode.normal: 0,
     ChatPageMode.openclaw: 0,
+  };
+  final Map<ChatPageMode, double> _slashCommandPanelOccupiedHeightByMode = {
+    ChatPageMode.normal: 0,
+    ChatPageMode.openclaw: 0,
+  };
+  final Map<ChatPageMode, bool> _slashCommandExpandedByMode = {
+    ChatPageMode.normal: false,
+    ChatPageMode.openclaw: false,
   };
   final Map<ChatPageMode, bool> _toolActivityExpandedByMode = {
     ChatPageMode.normal: false,
@@ -502,6 +515,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       _activeRuntime?.messages ?? _messagesByMode[_activeMode]!;
   double get _toolActivityOccupiedHeight =>
       _toolActivityOccupiedHeightByMode[_activeMode] ?? 0;
+  double get _slashCommandPanelOccupiedHeight =>
+      _slashCommandPanelOccupiedHeightByMode[_activeMode] ?? 0;
+  bool get _isSlashCommandExpanded =>
+      _slashCommandExpandedByMode[_activeMode] ?? false;
   bool get _isToolActivityExpanded =>
       _toolActivityExpandedByMode[_activeMode] ?? false;
   double get _inputAreaHeight => _inputAreaHeightByMode[_activeMode] ?? 0;
@@ -651,6 +668,11 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       runtime.conversation = value;
     }
   }
+
+  String? get _activeConversationReasoningEffort =>
+      _activeMode != ChatPageMode.normal
+      ? null
+      : _pendingConversationReasoningEffort ?? _conversationReasoningEffort;
 
   ChatIslandDisplayLayer get _chatIslandDisplayLayer =>
       _chatIslandDisplayLayerForMode(_activeMode);
@@ -821,6 +843,50 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       return;
     }
     _browserSessionSnapshotByMode[_activeMode] = value;
+  }
+
+  bool get _supportsReasoningEffortCommand =>
+      _activeMode == ChatPageMode.normal && !_isOpenClawSurface;
+
+  _SlashCommandPanelRoute _resolveSlashCommandPanelRoute(String text) {
+    final trimmed = text.trimLeft();
+    if (!trimmed.startsWith('/')) {
+      return _SlashCommandPanelRoute.root;
+    }
+    final normalized = trimmed.toLowerCase();
+    if (normalized == '/effort' || normalized.startsWith('/effort ')) {
+      return _SlashCommandPanelRoute.effort;
+    }
+    return _SlashCommandPanelRoute.root;
+  }
+
+  String _slashCommandRouteQuery(
+    _SlashCommandPanelRoute route, {
+    String? text,
+  }) {
+    final source = (text ?? _messageController.text).trimLeft();
+    return switch (route) {
+      _SlashCommandPanelRoute.effort =>
+        source.length <= 7 ? '' : source.substring(7).trimLeft(),
+      _SlashCommandPanelRoute.root => '',
+    };
+  }
+
+  String? _normalizeReasoningEffort(String? raw) {
+    return ConversationReasoningEffortService.normalizeEffort(raw);
+  }
+
+  void _setSlashCommandExpanded(bool expanded) {
+    if (_isSlashCommandExpanded == expanded) {
+      return;
+    }
+    if (!mounted) {
+      _slashCommandExpandedByMode[_activeMode] = expanded;
+      return;
+    }
+    setState(() {
+      _slashCommandExpandedByMode[_activeMode] = expanded;
+    });
   }
 
   ChatBrowserSessionSnapshot? get _resolvedBrowserSessionSnapshot {
@@ -1424,6 +1490,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     bool displayAsMentionChip = false,
   });
 
+  Future<void> _applyConversationReasoningEffort(String reasoningEffort);
+
   Future<void> _clearConversationModelOverride();
 
   Map<String, dynamic>? _buildAgentModelOverridePayload();
@@ -1494,6 +1562,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   void _handleSlashCommandInput();
 
+  bool get _supportsManualContextCompaction;
+
+  void _triggerSlashCommandPanel();
+
   void _showOpenClawCommandPanel({bool expand = false});
 
   void _hideSlashCommandPanel();
@@ -1511,15 +1583,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Future<bool> _tryHandleSlashCommand(String messageText);
 
-  Future<void> _checkOpenClawConnection();
+  Future<void> _executeManualContextCompactionCommand();
 
-  Widget _buildOpenClawCommandRow({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  });
+  Future<void> _checkOpenClawConnection();
 
   void _syncRuntimeSnapshotForMode(
     ChatPageMode mode, {

@@ -11,7 +11,7 @@ import org.junit.Test
 
 class AgentConversationContextCompactorTest {
     @Test
-    fun `buildCompactionRequestMessages adds ephemeral cache control to system prompt block`() {
+    fun `buildCompactionRequestMessages uses summary user message and replacement prompt`() {
         val requestMessages = AgentConversationContextCompactor.buildCompactionRequestMessages(
             existingSummary = "旧总结",
             messagesToCompact = listOf(
@@ -26,16 +26,28 @@ class AgentConversationContextCompactorTest {
         assertEquals("system", firstMessage["role"])
         val systemPromptContent = firstMessage["content"].toString()
         assertTrue(systemPromptContent.contains("type=text"))
-        assertTrue(systemPromptContent.contains("上下文压缩器"))
+        assertTrue(systemPromptContent.contains("context compaction engine"))
         assertTrue(systemPromptContent.contains("cache_control={type=ephemeral}"))
 
         val summaryMessage = requestMessages[1]
-        assertEquals("system", summaryMessage["role"])
+        assertEquals("user", summaryMessage["role"])
+        assertTrue(
+            (summaryMessage["content"] as? String).orEmpty().startsWith(
+                "<context-summary> The following is a summary of the earlier conversation that was compacted to save context space."
+            )
+        )
         assertTrue((summaryMessage["content"] as? String).orEmpty().contains("旧总结"))
 
         val compactedUserMessage = requestMessages[2]
         assertEquals("user", compactedUserMessage["role"])
         assertEquals("新问题", compactedUserMessage["content"])
+
+        val finalPrompt = requestMessages[3]
+        assertEquals("user", finalPrompt["role"])
+        assertEquals(
+            "Generate the replacement context summary now.",
+            finalPrompt["content"]
+        )
     }
 
     @Test

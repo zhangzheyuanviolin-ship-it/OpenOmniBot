@@ -83,6 +83,7 @@ class AgentOrchestrator(
                         maxCompletionTokens = 16384,
                         stream = true,
                         streamOptions = ChatCompletionStreamOptions(includeUsage = true),
+                        reasoningEffort = input.executionEnv.reasoningEffort,
                         tools = toolRegistry.toolsForModel,
                         toolChoice = toolChoiceForRound,
                         parallelToolCalls = false
