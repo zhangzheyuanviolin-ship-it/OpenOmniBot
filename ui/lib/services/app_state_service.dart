@@ -56,4 +56,14 @@ class AppStateService {
       return false;
     }
   }
+
+  static Future<bool> applyLanguagePreference() async {
+    try {
+      final result = await _channel.invokeMethod<dynamic>('applyLanguagePreference');
+      return result == true;
+    } catch (e) {
+      debugPrint('⚠️ Failed to apply language preference on native side: $e');
+      return false;
+    }
+  }
 }

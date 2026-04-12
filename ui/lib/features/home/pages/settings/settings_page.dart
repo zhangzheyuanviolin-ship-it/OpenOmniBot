@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:flutter_switch/flutter_switch.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/hide_from_recents_service.dart';
 import 'package:ui/services/mcp_server_service.dart';
@@ -234,16 +235,18 @@ class _SettingsPageState extends State<SettingsPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '本机服务',
+              Text(
+                context.l10n.settingsMcpLocalService,
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
-              const Text('地址'),
+              Text(context.l10n.settingsMcpAddress),
               SelectableText(info.endpoint),
               const SizedBox(height: 8),
-              const Text('Token'),
-              SelectableText(info.token.isEmpty ? '未生成' : info.token),
+              Text(context.l10n.settingsMcpToken),
+              SelectableText(
+                info.token.isEmpty ? context.l10n.settingsNotGenerated : info.token,
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -253,7 +256,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       Navigator.of(context).pop();
                       showToast('已复制访问地址');
                     },
-                    child: const Text('复制地址'),
+                    child: Text(context.l10n.settingsCopyAddress),
                   ),
                   TextButton(
                     onPressed: () {
@@ -261,7 +264,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       Navigator.of(context).pop();
                       showToast('已复制 Token');
                     },
-                    child: const Text('复制 Token'),
+                    child: Text(context.l10n.settingsCopyToken),
                   ),
                   TextButton(
                     onPressed: () async {
@@ -277,13 +280,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         showToast('刷新 Token 失败', type: ToastType.error);
                       }
                     },
-                    child: const Text('刷新 Token'),
+                    child: Text(context.l10n.settingsRefreshToken),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
-                '请在同一局域网内使用 Authorization: Bearer <Token> 调用 /mcp/v1/task/vlm，避免将地址或 Token 暴露到公网。',
+              Text(
+                context.l10n.settingsMcpSecurityNotice,
                 style: TextStyle(fontSize: 12, color: Colors.black54),
               ),
               const SizedBox(height: 8),
@@ -299,15 +302,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final palette = context.omniPalette;
     final workspaceMemoryConfigured = _embeddingConfig?.configured == true;
     final workspaceMemorySubtitle = !_workspaceMemoryLoaded
-        ? '加载中...'
+        ? context.l10n.settingsWorkspaceMemoryLoading
         : workspaceMemoryConfigured
-        ? '已启用 workspace 记忆（嵌入检索可用）'
-        : '使用 workspace 记忆（当前为词法检索）';
+        ? context.l10n.settingsWorkspaceMemoryEnabled
+        : context.l10n.settingsWorkspaceMemoryLexical;
     final sections = _buildSections(workspaceMemorySubtitle);
 
     return Scaffold(
       backgroundColor: palette.pageBackground,
-      appBar: const CommonAppBar(title: '设置', primary: true),
+      appBar: CommonAppBar(title: context.l10n.settingsTitle, primary: true),
       body: SafeArea(
         child: ListView.separated(
           padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
@@ -324,13 +327,13 @@ class _SettingsPageState extends State<SettingsPage> {
   List<_SettingSection> _buildSections(String workspaceMemorySubtitle) {
     return [
       _SettingSection(
-        label: '模型与记忆',
+        label: context.l10n.settingsSectionModelMemory,
         items: [
           _SettingItem(
             icon: Icons.smart_toy_outlined,
             iconSvg: 'assets/home/vlm_model_setting_icon.svg',
-            title: '模型提供商',
-            subtitle: '配置模型地址、密钥与模型列表',
+            title: context.l10n.settingsModelProviderTitle,
+            subtitle: context.l10n.settingsModelProviderSubtitle,
             onTap: () {
               GoRouterManager.push('/home/vlm_model_setting');
             },
@@ -338,8 +341,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.tune_outlined,
             iconSvg: 'assets/home/scene_model_setting_icon.svg',
-            title: '场景模型配置',
-            subtitle: '按场景绑定模型，未绑定场景使用默认模型',
+            title: context.l10n.settingsSceneModelTitle,
+            subtitle: context.l10n.settingsSceneModelSubtitle,
             onTap: () {
               GoRouterManager.push('/home/scene_model_setting');
             },
@@ -347,8 +350,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.memory_outlined,
             iconSvg: 'assets/home/local_model_cpu_icon.svg',
-            title: '本地模型服务',
-            subtitle: '管理本地模型、推理、API 服务与语音模型',
+            title: context.l10n.settingsLocalModelsTitle,
+            subtitle: context.l10n.settingsLocalModelsSubtitle,
             onTap: () {
               GoRouterManager.push('/home/local_models?tab=service');
             },
@@ -356,7 +359,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.cloud_sync_outlined,
             iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',
-            title: 'Workspace 记忆配置',
+            title: context.l10n.settingsWorkspaceMemoryTitle,
             subtitle: workspaceMemorySubtitle,
             onTap: () async {
               await GoRouterManager.pushForResult(
@@ -368,13 +371,13 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
       _SettingSection(
-        label: '服务与环境',
+        label: context.l10n.settingsSectionServiceEnvironment,
         items: [
           _SettingItem(
             icon: Icons.extension_outlined,
             iconSvg: 'assets/home/mcp_tools_setting_icon.svg',
-            title: 'MCP 工具',
-            subtitle: '添加、启停和管理远端 MCP 服务',
+            title: context.l10n.settingsMcpToolsTitle,
+            subtitle: context.l10n.settingsMcpToolsSubtitle,
             onTap: () {
               GoRouterManager.push('/home/mcp_tools');
             },
@@ -382,8 +385,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.cloud_outlined,
             iconSvg: 'assets/home/local_mcp_service_setting_icon.svg',
-            title: '本机服务',
-            subtitle: '在局域网内访问小万 MCP 和 webchat服务',
+            title: context.l10n.settingsLocalServiceTitle,
+            subtitle: context.l10n.settingsLocalServiceSubtitle,
             trailing: _buildSwitchTrailing(
               value: _mcpEnabled,
               enabled: _mcpLoaded && !_mcpBusy,
@@ -398,8 +401,8 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.code,
             iconSvg: 'assets/home/termux.svg',
             iconColor: AppColors.buttonPrimary,
-            title: 'Alpine 环境',
-            subtitle: '查看与打开应用内 Alpine 终端环境',
+            title: context.l10n.settingsAlpineTitle,
+            subtitle: context.l10n.settingsAlpineSubtitle,
             onTap: () {
               GoRouterManager.push('/home/termux_setting');
             },
@@ -407,8 +410,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.visibility_off_outlined,
             iconSvg: 'assets/home/hide_recents_setting_icon.svg',
-            title: '后台隐藏',
-            subtitle: '开启后应用将从最近任务列表中隐藏',
+            title: context.l10n.settingsHideRecentsTitle,
+            subtitle: context.l10n.settingsHideRecentsSubtitle,
             trailing: _buildSwitchTrailing(
               value: hideFromRecentsEnabled,
               onToggle: _onHideFromRecentsChanged,
@@ -417,20 +420,20 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
       _SettingSection(
-        label: '体验与外观',
+        label: context.l10n.settingsSectionExperienceAppearance,
         items: [
           _SettingItem(
             icon: Icons.alarm_outlined,
-            title: '闹钟设置',
-            subtitle: '配置默认铃声、本地 mp3 或 mp3 直链',
+            title: context.l10n.settingsAlarmTitle,
+            subtitle: context.l10n.settingsAlarmSubtitle,
             onTap: () {
               GoRouterManager.push('/home/alarm_setting');
             },
           ),
           _SettingItem(
             icon: Icons.wallpaper_outlined,
-            title: '外观设置',
-            subtitle: '配置主题模式、共享背景图、聊天字号和文本颜色',
+            title: context.l10n.settingsAppearanceTitle,
+            subtitle: context.l10n.settingsAppearanceSubtitle,
             onTap: () {
               GoRouterManager.push('/home/background_setting');
             },
@@ -438,8 +441,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.vibration,
             iconSvg: 'assets/home/vibration_icon.svg',
-            title: '振动反馈',
-            subtitle: '执行任务时，通过振动进行操作提醒',
+            title: context.l10n.settingsVibrationTitle,
+            subtitle: context.l10n.settingsVibrationSubtitle,
             trailing: _buildSwitchTrailing(
               value: vibrationEnabled,
               onToggle: (val) async {
@@ -453,8 +456,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.chat_outlined,
             iconSvg: 'assets/home/auto_back_chat_setting_icon.svg',
-            title: '任务完成后自动回聊天',
-            subtitle: '关闭后，任务结束将停留在当前完成页面',
+            title: context.l10n.settingsAutoBackTitle,
+            subtitle: context.l10n.settingsAutoBackSubtitle,
             trailing: _buildSwitchTrailing(
               value: _autoBackToChatAfterTaskEnabled,
               onToggle: _onAutoBackToChatAfterTaskChanged,
@@ -463,13 +466,13 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
       _SettingSection(
-        label: '权限与信息',
+        label: context.l10n.settingsSectionPermissionInfo,
         items: [
           _SettingItem(
             icon: Icons.security,
             iconSvg: 'assets/home/companion_permission_setting_icon.svg',
-            title: '陪伴权限授权',
-            subtitle: '仅访问您授权的 App，隐私安全更有保障',
+            title: context.l10n.settingsCompanionPermissionTitle,
+            subtitle: context.l10n.settingsCompanionPermissionSubtitle,
             onTap: () async {
               try {
                 final granted = await ensureInstalledAppsPermission();
@@ -485,7 +488,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingItem(
             icon: Icons.info_outline,
             iconSvg: 'assets/home/about_icon.svg',
-            title: '关于小万',
+            title: context.l10n.settingsAboutTitle,
             onTap: () {
               GoRouterManager.push('/my/about');
             },
@@ -505,7 +508,7 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Row(
             children: [
               Text(
-                section.label,
+                context.trLegacy(section.label),
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -572,7 +575,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.title,
+                      context.trLegacy(item.title),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
@@ -584,7 +587,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     if (item.subtitle != null) ...[
                       const SizedBox(height: 2),
                       Text(
-                        item.subtitle!,
+                        context.trLegacy(item.subtitle!),
                         style: TextStyle(
                           color: palette.textSecondary,
                           fontSize: 11,

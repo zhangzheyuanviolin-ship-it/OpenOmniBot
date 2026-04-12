@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/theme/theme_context.dart';
 
 class HomeDrawerSearchField extends StatelessWidget {
@@ -78,7 +79,7 @@ class HomeDrawerSearchField extends StatelessWidget {
         ),
         cursorColor: palette.accentPrimary,
         decoration: InputDecoration(
-          hintText: '搜索全部对话',
+          hintText: context.l10n.homeDrawerSearchHint,
           hintStyle: TextStyle(
             fontSize: 13,
             color: palette.textTertiary,
@@ -119,7 +120,7 @@ class HomeDrawerSearchField extends StatelessWidget {
                 )
               : _hasQuery
               ? IconButton(
-                  tooltip: '清空搜索',
+                  tooltip: context.l10n.homeDrawerClearSearch,
                   splashRadius: 16,
                   onPressed: controller.clear,
                   icon: Icon(

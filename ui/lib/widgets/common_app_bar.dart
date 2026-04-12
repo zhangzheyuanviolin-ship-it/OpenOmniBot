@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/widgets/ai_generated_badge.dart';
 
@@ -131,7 +132,7 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      title!,
+                      context.trLegacy(title!),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style:

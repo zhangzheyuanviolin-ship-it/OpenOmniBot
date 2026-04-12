@@ -9,6 +9,7 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.dpToPx
 
 class ScheduledTaskReminderView @JvmOverloads constructor(
@@ -24,6 +25,10 @@ class ScheduledTaskReminderView @JvmOverloads constructor(
 
     private val taskNameText: TextView
     private val countdownText: TextView
+
+    private fun t(zh: String, en: String): String {
+        return if (AppLocaleManager.isEnglish(context)) en else zh
+    }
 
     init {
         visibility = View.GONE
@@ -46,7 +51,7 @@ class ScheduledTaskReminderView @JvmOverloads constructor(
         }
 
         val titleText = TextView(context).apply {
-            text = "定时任务即将执行"
+            text = t("定时任务即将执行", "Scheduled task starting soon")
             textSize = 12f
             setTextColor(0xFF6B6B6B.toInt())
         }
@@ -98,7 +103,7 @@ class ScheduledTaskReminderView @JvmOverloads constructor(
         }
 
         val cancelButton = TextView(context).apply {
-            text = "取消"
+            text = t("取消", "Cancel")
             textSize = 12f
             setTextColor(0xFF6B6B6B.toInt())
             setPadding(12.dpToPx(), 6.dpToPx(), 12.dpToPx(), 6.dpToPx())
@@ -110,7 +115,7 @@ class ScheduledTaskReminderView @JvmOverloads constructor(
         }
 
         val executeNowButton = TextView(context).apply {
-            text = "立即执行"
+            text = t("立即执行", "Run Now")
             textSize = 12f
             setTextColor(0xFFFFFFFF.toInt())
             setPadding(12.dpToPx(), 6.dpToPx(), 12.dpToPx(), 6.dpToPx())

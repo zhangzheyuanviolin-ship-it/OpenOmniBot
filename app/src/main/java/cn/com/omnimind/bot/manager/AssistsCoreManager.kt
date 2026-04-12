@@ -20,6 +20,8 @@ import cn.com.omnimind.assists.task.scheduled.worker.toScheduledVLMOperationTask
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.database.Conversation
 import cn.com.omnimind.baselib.http.Http429Exception
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
+import cn.com.omnimind.baselib.i18n.PromptLocale
 import cn.com.omnimind.baselib.llm.AssistantToolCall
 import cn.com.omnimind.baselib.llm.ChatCompletionFunction
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
@@ -312,6 +314,29 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
     init {
         registerSharedInstance(this)
+    }
+
+    private fun currentLocale(): PromptLocale = AppLocaleManager.resolvePromptLocale(context)
+
+    private fun t(zh: String, en: String): String {
+        return when (currentLocale()) {
+            PromptLocale.ZH_CN -> zh
+            PromptLocale.EN_US -> en
+        }
+    }
+
+    private fun defaultMemoryGreeting(): String =
+        t("愿你今天也有温暖收获", "Hope today brings you something warm and worthwhile.")
+
+    private fun localizedPermissionName(name: String): String {
+        val trimmed = name.trim()
+        return when (trimmed) {
+            "无障碍权限", "Accessibility", "Accessibility Permission" -> "Accessibility"
+            "悬浮窗权限", "Overlay", "Overlay Permission" -> "Overlay"
+            "应用列表读取权限", "Installed Apps Access", "Installed Apps Permission" -> "Installed Apps Access"
+            "公共文件访问", "Public Storage Access" -> "Public Storage Access"
+            else -> trimmed
+        }
     }
 
     private data class ScheduledSubagentRunMeta(
@@ -748,39 +773,39 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
     private fun resolveAgentToolMeta(toolName: String): AgentToolMeta {
         return when (toolName) {
-            "context_apps_query" -> AgentToolMeta("builtin", "查询已安装应用")
-            "context_time_now" -> AgentToolMeta("builtin", "查询当前时间")
-            "vlm_task" -> AgentToolMeta("builtin", "视觉执行")
-            "browser_use" -> AgentToolMeta("browser", "浏览器操作")
-            "terminal_execute" -> AgentToolMeta("terminal", "终端执行")
-            "terminal_session_start" -> AgentToolMeta("terminal", "启动终端会话")
-            "terminal_session_exec" -> AgentToolMeta("terminal", "执行会话命令")
-            "terminal_session_read" -> AgentToolMeta("terminal", "读取会话输出")
-            "terminal_session_stop" -> AgentToolMeta("terminal", "结束终端会话")
-            "file_read" -> AgentToolMeta("workspace", "读取文件")
-            "file_write" -> AgentToolMeta("workspace", "写入文件")
-            "file_edit" -> AgentToolMeta("workspace", "编辑文件")
-            "file_list" -> AgentToolMeta("workspace", "列出文件")
-            "file_search" -> AgentToolMeta("workspace", "搜索文件")
-            "file_stat" -> AgentToolMeta("workspace", "查看文件信息")
-            "file_move" -> AgentToolMeta("workspace", "移动文件")
-            "schedule_task_create" -> AgentToolMeta("schedule", "创建定时任务")
-            "schedule_task_list" -> AgentToolMeta("schedule", "查看定时任务")
-            "schedule_task_update" -> AgentToolMeta("schedule", "修改定时任务")
-            "schedule_task_delete" -> AgentToolMeta("schedule", "删除定时任务")
-            "alarm_reminder_create" -> AgentToolMeta("alarm", "创建提醒闹钟")
-            "alarm_reminder_list" -> AgentToolMeta("alarm", "查看提醒闹钟")
-            "alarm_reminder_delete" -> AgentToolMeta("alarm", "删除提醒闹钟")
-            "calendar_list" -> AgentToolMeta("calendar", "查看日历列表")
-            "calendar_event_create" -> AgentToolMeta("calendar", "创建日程")
-            "calendar_event_list" -> AgentToolMeta("calendar", "查询日程")
-            "calendar_event_update" -> AgentToolMeta("calendar", "修改日程")
-            "calendar_event_delete" -> AgentToolMeta("calendar", "删除日程")
-            "memory_search" -> AgentToolMeta("memory", "检索记忆")
-            "memory_write_daily" -> AgentToolMeta("memory", "写入当日记忆")
-            "memory_upsert_longterm" -> AgentToolMeta("memory", "沉淀长期记忆")
-            "memory_rollup_day" -> AgentToolMeta("memory", "整理当日记忆")
-            "subagent_dispatch" -> AgentToolMeta("subagent", "分派子任务")
+            "context_apps_query" -> AgentToolMeta("builtin", t("查询已安装应用", "Query Installed Apps"))
+            "context_time_now" -> AgentToolMeta("builtin", t("查询当前时间", "Query Current Time"))
+            "vlm_task" -> AgentToolMeta("builtin", t("视觉执行", "Vision Task"))
+            "browser_use" -> AgentToolMeta("browser", t("浏览器操作", "Browser Action"))
+            "terminal_execute" -> AgentToolMeta("terminal", t("终端执行", "Run Terminal Command"))
+            "terminal_session_start" -> AgentToolMeta("terminal", t("启动终端会话", "Start Terminal Session"))
+            "terminal_session_exec" -> AgentToolMeta("terminal", t("执行会话命令", "Run Session Command"))
+            "terminal_session_read" -> AgentToolMeta("terminal", t("读取会话输出", "Read Session Output"))
+            "terminal_session_stop" -> AgentToolMeta("terminal", t("结束终端会话", "Stop Terminal Session"))
+            "file_read" -> AgentToolMeta("workspace", t("读取文件", "Read File"))
+            "file_write" -> AgentToolMeta("workspace", t("写入文件", "Write File"))
+            "file_edit" -> AgentToolMeta("workspace", t("编辑文件", "Edit File"))
+            "file_list" -> AgentToolMeta("workspace", t("列出文件", "List Files"))
+            "file_search" -> AgentToolMeta("workspace", t("搜索文件", "Search Files"))
+            "file_stat" -> AgentToolMeta("workspace", t("查看文件信息", "Inspect File"))
+            "file_move" -> AgentToolMeta("workspace", t("移动文件", "Move File"))
+            "schedule_task_create" -> AgentToolMeta("schedule", t("创建定时任务", "Create Scheduled Task"))
+            "schedule_task_list" -> AgentToolMeta("schedule", t("查看定时任务", "List Scheduled Tasks"))
+            "schedule_task_update" -> AgentToolMeta("schedule", t("修改定时任务", "Update Scheduled Task"))
+            "schedule_task_delete" -> AgentToolMeta("schedule", t("删除定时任务", "Delete Scheduled Task"))
+            "alarm_reminder_create" -> AgentToolMeta("alarm", t("创建提醒闹钟", "Create Reminder Alarm"))
+            "alarm_reminder_list" -> AgentToolMeta("alarm", t("查看提醒闹钟", "List Reminder Alarms"))
+            "alarm_reminder_delete" -> AgentToolMeta("alarm", t("删除提醒闹钟", "Delete Reminder Alarm"))
+            "calendar_list" -> AgentToolMeta("calendar", t("查看日历列表", "List Calendars"))
+            "calendar_event_create" -> AgentToolMeta("calendar", t("创建日程", "Create Calendar Event"))
+            "calendar_event_list" -> AgentToolMeta("calendar", t("查询日程", "List Calendar Events"))
+            "calendar_event_update" -> AgentToolMeta("calendar", t("修改日程", "Update Calendar Event"))
+            "calendar_event_delete" -> AgentToolMeta("calendar", t("删除日程", "Delete Calendar Event"))
+            "memory_search" -> AgentToolMeta("memory", t("检索记忆", "Search Memory"))
+            "memory_write_daily" -> AgentToolMeta("memory", t("写入当日记忆", "Write Daily Memory"))
+            "memory_upsert_longterm" -> AgentToolMeta("memory", t("沉淀长期记忆", "Upsert Long-Term Memory"))
+            "memory_rollup_day" -> AgentToolMeta("memory", t("整理当日记忆", "Roll Up Daily Memory"))
+            "subagent_dispatch" -> AgentToolMeta("subagent", t("分派子任务", "Dispatch Subtasks"))
             else -> {
                 val match = Regex("^mcp__(.+?)__(.+)$").find(toolName)
                 if (match != null) {
@@ -879,7 +904,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 status = "success"
             }
             is ToolExecutionResult.VlmTaskStarted -> {
-                summary = "已启动视觉执行任务"
+                summary = t("已启动视觉执行任务", "Started the vision task.")
                 previewJson = JSONObject(
                     mapOf("taskId" to result.taskId, "goal" to result.goal)
                 ).toString()
@@ -888,8 +913,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 status = "success"
             }
             is ToolExecutionResult.PermissionRequired -> {
-                summary = "缺少权限：${result.missing.joinToString("、")}"
-                previewJson = JSONObject(mapOf("missing" to result.missing)).toString()
+                val names = result.missing.map(::localizedPermissionName)
+                summary = t(
+                    "缺少权限：${names.joinToString("、")}",
+                    "Missing permissions: ${names.joinToString(", ")}"
+                )
+                previewJson = JSONObject(mapOf("missing" to names)).toString()
                 rawResultJson = previewJson
                 success = false
                 status = "interrupted"
@@ -2071,18 +2100,21 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             OmniLog.w(TAG, "memory greeting legacy request failed: ${it.message}")
         }.getOrNull().orEmpty()
 
-        return sanitizeMemoryGreeting(legacyResponse).ifEmpty { DEFAULT_MEMORY_GREETING }
+        return sanitizeMemoryGreeting(legacyResponse).ifEmpty { defaultMemoryGreeting() }
     }
 
     private fun buildMemoryGreetingRecordsBlock(records: List<Map<String, Any?>>): String {
         if (records.isEmpty()) {
-            return "（暂无可用记忆）"
+            return t("（暂无可用记忆）", "(No memory available yet)")
         }
         return records.joinToString(separator = "\n") { record ->
-            val title = record["title"]?.toString()?.trim().orEmpty().ifEmpty { "无标题" }
-            val description = record["description"]?.toString()?.trim().orEmpty().ifEmpty { "无描述" }
-            val appName = record["appName"]?.toString()?.trim().orEmpty().ifEmpty { "未知来源" }
-            "标题: $title, 描述: $description, 来源应用: $appName"
+            val title = record["title"]?.toString()?.trim().orEmpty().ifEmpty { t("无标题", "Untitled") }
+            val description = record["description"]?.toString()?.trim().orEmpty().ifEmpty { t("无描述", "No description") }
+            val appName = record["appName"]?.toString()?.trim().orEmpty().ifEmpty { t("未知来源", "Unknown source") }
+            t(
+                "标题: $title, 描述: $description, 来源应用: $appName",
+                "Title: $title, Description: $description, Source App: $appName"
+            )
         }
     }
 
@@ -2099,7 +2131,15 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         "greeting",
                         buildJsonObject {
                             put("type", JsonPrimitive("string"))
-                            put("description", JsonPrimitive("给用户的一句简短温暖问候语，不超过30字。"))
+                            put(
+                                "description",
+                                JsonPrimitive(
+                                    t(
+                                        "给用户的一句简短温暖问候语，不超过30字。",
+                                        "A short, warm greeting for the user, within 30 words."
+                                    )
+                                )
+                            )
                         }
                     )
                 }
@@ -2117,24 +2157,41 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 ChatCompletionMessage(
                     role = "system",
                     content = JsonPrimitive(
-                        """
-                        你是小万，一个温暖的AI助手。
-                        请根据用户记忆生成一句简短、温馨、个性化的问候语。
-                        要求：
-                        1. 问候语不超过30个字。
-                        2. 语气温暖友好。
-                        3. 禁止使用“你好呀”开头。
-                        4. 必须通过工具 $MEMORY_GREETING_TOOL 返回结果，不要输出普通文本。
-                        """.trimIndent()
+                        when (currentLocale()) {
+                            PromptLocale.ZH_CN -> """
+                                你是小万，一个温暖的AI助手。
+                                请根据用户记忆生成一句简短、温馨、个性化的问候语。
+                                要求：
+                                1. 问候语不超过30个字。
+                                2. 语气温暖友好。
+                                3. 禁止使用“你好呀”开头。
+                                4. 必须通过工具 $MEMORY_GREETING_TOOL 返回结果，不要输出普通文本。
+                            """.trimIndent()
+                            PromptLocale.EN_US -> """
+                                You are Omnibot, a warm AI assistant.
+                                Generate one short, warm, personalized greeting based on the user's memory.
+                                Requirements:
+                                1. Keep the greeting within 30 words.
+                                2. Use a warm and friendly tone.
+                                3. Do not begin with "Hi there".
+                                4. You must return the result through the $MEMORY_GREETING_TOOL tool instead of plain text.
+                            """.trimIndent()
+                        }
                     )
                 ),
                 ChatCompletionMessage(
                     role = "user",
                     content = JsonPrimitive(
-                        """
-                        用户的记忆内容：
-                        $recordBlock
-                        """.trimIndent()
+                        t(
+                            """
+                            用户的记忆内容：
+                            $recordBlock
+                            """.trimIndent(),
+                            """
+                            User memory:
+                            $recordBlock
+                            """.trimIndent()
+                        )
                     )
                 )
             ),
@@ -2144,7 +2201,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 ChatCompletionTool(
                     function = ChatCompletionFunction(
                         name = MEMORY_GREETING_TOOL,
-                        description = "提交记忆中心问候语。",
+                        description = t("提交记忆中心问候语。", "Submit the memory-center greeting."),
                         parameters = parameters
                     )
                 )
@@ -2154,19 +2211,34 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     }
 
     private fun buildMemoryGreetingLegacyPrompt(recordBlock: String): String {
-        return """
-            你是小万，一个温暖的AI助手。根据用户的记忆内容（包含本地记忆和长期记忆），生成一句简短、温馨的问候语。
+        return when (currentLocale()) {
+            PromptLocale.ZH_CN -> """
+                你是小万，一个温暖的AI助手。根据用户的记忆内容（包含本地记忆和长期记忆），生成一句简短、温馨的问候语。
 
-            要求：
-            1. 问候语要简短（不超过30个字）
-            2. 结合用户记忆内容特点，体现个性化
-            3. 语气温暖友好
-            4. 不要使用"你好呀"开头
-            5. 只输出问候语本身，不要加引号或其他说明
+                要求：
+                1. 问候语要简短（不超过30个字）
+                2. 结合用户记忆内容特点，体现个性化
+                3. 语气温暖友好
+                4. 不要使用"你好呀"开头
+                5. 只输出问候语本身，不要加引号或其他说明
 
-            用户的记忆内容：
-            $recordBlock
-        """.trimIndent()
+                用户的记忆内容：
+                $recordBlock
+            """.trimIndent()
+            PromptLocale.EN_US -> """
+                You are Omnibot, a warm AI assistant. Based on the user's memory content, including local memory and long-term memory, generate one short and warm greeting.
+
+                Requirements:
+                1. Keep the greeting short, within 30 words.
+                2. Personalize it based on the user's memory.
+                3. Keep the tone warm and friendly.
+                4. Do not begin with "Hi there".
+                5. Output only the greeting itself, without quotes or extra explanation.
+
+                User memory:
+                $recordBlock
+            """.trimIndent()
+        }
     }
 
     private fun parseMemoryGreetingFromToolCalls(toolCalls: List<AssistantToolCall>): String? {
@@ -2198,6 +2270,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             .trim(' ', '"', '\'', '“', '”', '‘', '’')
         if (value.startsWith("你好呀")) {
             value = value.removePrefix("你好呀").trimStart('，', ',', '。', '！', '!', '～', '~', ' ')
+        }
+        if (value.startsWith("Hi there", ignoreCase = true)) {
+            value = value.removePrefix("Hi there").trimStart(',', '.', '!', '~', ' ')
         }
         if (value.length > 30) {
             value = value.take(30)
@@ -3142,7 +3217,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val notificationEnabled = call.argument<Boolean>("scheduleNotificationEnabled") != false
         return ScheduledSubagentRunMeta(
             scheduleTaskId = scheduleTaskId,
-            scheduleTaskTitle = title.ifBlank { "SubAgent 定时任务" },
+            scheduleTaskTitle = title.ifBlank { t("SubAgent 定时任务", "SubAgent Scheduled Task") },
             notificationEnabled = notificationEnabled,
             conversationId = normalizedConversationId
         )
@@ -3151,7 +3226,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private fun normalizeNotificationBody(text: String): String {
         val normalized = text.replace(Regex("\\s+"), " ").trim()
         if (normalized.isEmpty()) {
-            return "任务已完成，点击查看详情。"
+            return t("任务已完成，点击查看详情。", "Task completed. Tap to view details.")
         }
         return if (normalized.length <= 120) {
             normalized
@@ -3185,10 +3260,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             manager.createNotificationChannel(
                 NotificationChannel(
                     SCHEDULED_SUBAGENT_NOTIFICATION_CHANNEL,
-                    "SubAgent 定时任务",
+                    t("SubAgent 定时任务", "SubAgent Scheduled Task"),
                     NotificationManager.IMPORTANCE_DEFAULT
                 ).apply {
-                    description = "SubAgent 定时任务执行完成通知"
+                    description = t("SubAgent 定时任务执行完成通知", "Notifications for completed scheduled SubAgent runs")
                 }
             )
         }
@@ -3214,7 +3289,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             SCHEDULED_SUBAGENT_NOTIFICATION_CHANNEL
         )
             .setSmallIcon(iconRes)
-            .setContentTitle(meta.scheduleTaskTitle.ifBlank { "SubAgent 定时任务" })
+            .setContentTitle(meta.scheduleTaskTitle.ifBlank { t("SubAgent 定时任务", "SubAgent Scheduled Task") })
             .setContentText(normalizeNotificationBody(message))
             .setStyle(
                 NotificationCompat.BigTextStyle()
@@ -3511,11 +3586,17 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                 suspend fun upsertPermissionState(missing: List<String>) {
                     val normalizedConversationId = conversationId ?: return
-                    val names = missing.map { it.trim() }.filter { it.isNotEmpty() }
+                    val names = missing.map(::localizedPermissionName).filter { it.isNotEmpty() }
                     val message = if (names.isEmpty()) {
-                        "执行任务前需要先开启权限"
+                        t(
+                            "执行任务前需要先开启权限",
+                            "Enable the required permissions before running the task."
+                        )
                     } else {
-                        "执行任务前，请先开启：${names.joinToString("、")}"
+                        t(
+                            "执行任务前，请先开启：${names.joinToString("、")}",
+                            "Enable these permissions before running the task: ${names.joinToString(", ")}"
+                        )
                     }
                     repository.upsertAssistantMessage(
                         conversationId = normalizedConversationId,
@@ -3659,8 +3740,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             payload = payload,
                             fallbackStatus = AgentConversationHistoryRepository.STATUS_RUNNING,
                             fallbackSummary = payload["summary"]?.toString()?.ifBlank {
-                                "正在调用工具"
-                            } ?: "正在调用工具"
+                                t("正在调用工具", "Calling tool")
+                            } ?: t("正在调用工具", "Calling tool")
                         )
                         sendEvent(
                             "onAgentToolCallStart",
@@ -3689,8 +3770,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             payload = payload,
                             fallbackStatus = AgentConversationHistoryRepository.STATUS_RUNNING,
                             fallbackSummary = payload["summary"]?.toString()?.ifBlank {
-                                "正在调用工具"
-                            } ?: "正在调用工具"
+                                t("正在调用工具", "Calling tool")
+                            } ?: t("正在调用工具", "Calling tool")
                         )
                         sendEvent(
                             "onAgentToolCallProgress",
@@ -3816,7 +3897,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             fallback = fallback
                         ).ifEmpty {
                             if (isSuccess && outputKind == "none" && !hasUserVisibleOutput) {
-                                "暂时无法生成回复，请重试。"
+                                t(
+                                    "暂时无法生成回复，请重试。",
+                                    "I can't generate a reply right now. Please try again."
+                                )
                             } else {
                                 ""
                             }
@@ -3828,9 +3912,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         scheduledSubagentMeta?.let { meta ->
                             val notificationText = finalText.ifEmpty {
                                 if (isSuccess) {
-                                    "任务已完成，点击查看详情。"
+                                    t("任务已完成，点击查看详情。", "Task completed. Tap to view details.")
                                 } else {
-                                    "任务已结束，请点击查看详情。"
+                                    t("任务已结束，请点击查看详情。", "Task ended. Tap to view details.")
                                 }
                             }
                             notifyScheduledSubagentCompletion(meta, notificationText)
@@ -3850,7 +3934,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     override suspend fun onError(error: String) {
                         val streamed = scheduledAssistantBuffer.toString().trim()
                         val finalText = streamed.ifEmpty {
-                            error.trim().ifEmpty { "暂时无法生成回复，请重试。" }
+                            error.trim().ifEmpty {
+                                t(
+                                    "暂时无法生成回复，请重试。",
+                                    "I can't generate a reply right now. Please try again."
+                                )
+                            }
                         }
                         finalizeThinkingCardIfNeeded(publish = finalText.isBlank())
                         if (finalText.isNotBlank()) {

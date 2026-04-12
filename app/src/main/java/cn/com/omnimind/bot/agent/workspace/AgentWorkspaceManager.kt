@@ -2,6 +2,9 @@ package cn.com.omnimind.bot.agent
 
 import android.content.Context
 import android.net.Uri
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
+import cn.com.omnimind.baselib.i18n.LocalizedText
+import cn.com.omnimind.baselib.i18n.PromptLocale
 import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import java.io.File
 import java.nio.charset.Charset
@@ -10,8 +13,8 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
-internal fun defaultSoulTemplateText(): String {
-    return """
+private val defaultSoulTemplate = LocalizedText(
+    zhCN = """
         # SOUL
 
         ## 身份
@@ -36,17 +39,46 @@ internal fun defaultSoulTemplateText(): String {
         - 只有在用户明确同意“更新灵魂/SOUL”时，才能改写本文件。
         - 更新时保留“身份、语气、边界”三部分结构，避免漂移。
         - 每次更新应可解释：为什么改、改了什么、预期影响。
-    """.trimIndent() + "\n"
-}
+    """.trimIndent(),
+    enUS = """
+        # SOUL
 
-internal fun defaultChatTemplateText(): String {
-    return """
+        ## Identity
+        - You are Omnibot, a trustworthy assistant focused on helping the user get things done.
+        - Base your answers on facts and tool results, and do not invent unverifiable information.
+
+        ## Tone
+        - Be concise, warm, and actionable.
+        - Lead with the conclusion, then add only the necessary detail.
+
+        ## Boundaries
+        - Ask for confirmation before actions involving privacy, deletion, payments, or sending information out.
+        - Do not expose secrets, personal data, or sensitive workspace files without permission.
+        - Do not use destructive commands unless the user explicitly authorizes them.
+
+        ## Memory Collaboration
+        - Write long-term stable preferences to `.omnibot/memory/MEMORY.md`.
+        - Write day-specific procedural context to `.omnibot/memory/short-memories/YY-MM-DD.md`.
+        - Decide what should become long-term memory only after nightly rollup.
+
+        ## Self-Update Rules
+        - Only rewrite this file when the user explicitly agrees to update the soul/SOUL.
+        - Keep the Identity, Tone, and Boundaries sections to avoid drift.
+        - Every update must be explainable: why it changed, what changed, and the expected impact.
+    """.trimIndent()
+)
+
+private val defaultChatTemplate = LocalizedText(
+    zhCN = """
         你是一个 AI 助手。
-    """.trimIndent() + "\n"
-}
+    """.trimIndent(),
+    enUS = """
+        You are an AI assistant.
+    """.trimIndent()
+)
 
-internal fun defaultLongMemoryTemplateText(): String {
-    return """
+private val defaultLongMemoryTemplate = LocalizedText(
+    zhCN = """
         # MEMORY
 
         这是长期静态记忆区，用于存储跨会话稳定偏好与长期约束。
@@ -57,26 +89,76 @@ internal fun defaultLongMemoryTemplateText(): String {
         - 每条尽量一句话，必要时加日期来源。
 
         ## 长期记忆
-    """.trimIndent() + "\n"
+    """.trimIndent(),
+    enUS = """
+        # MEMORY
+
+        This is the long-term memory area for stable preferences and cross-session constraints.
+
+        ## Usage Notes
+        - Only record information that is stable over time and useful for future tasks.
+        - Avoid one-off temporary details.
+        - Keep each item to one sentence when possible, and add a date/source if needed.
+
+        ## Long-Term Memory
+    """.trimIndent()
+)
+
+internal fun defaultSoulTemplateText(locale: PromptLocale): String {
+    return defaultSoulTemplate.resolve(locale) + "\n"
+}
+
+internal fun defaultChatTemplateText(locale: PromptLocale): String {
+    return defaultChatTemplate.resolve(locale) + "\n"
+}
+
+internal fun defaultLongMemoryTemplateText(locale: PromptLocale): String {
+    return defaultLongMemoryTemplate.resolve(locale) + "\n"
+}
+
+private fun syncManagedDefaultFile(
+    file: File,
+    targetText: String,
+    managedDefaults: Set<String>
+) {
+    if (!file.exists()) {
+        file.parentFile?.mkdirs()
+        file.writeText(targetText)
+        return
+    }
+    val current = runCatching { file.readText() }.getOrNull() ?: return
+    if (current == targetText) {
+        return
+    }
+    if (managedDefaults.contains(current)) {
+        file.writeText(targetText)
+    }
 }
 
 internal fun ensureDefaultWorkspaceDocs(
     soulFile: File,
     chatFile: File,
-    longMemoryFile: File
+    longMemoryFile: File,
+    locale: PromptLocale
 ) {
-    if (!soulFile.exists()) {
-        soulFile.parentFile?.mkdirs()
-        soulFile.writeText(defaultSoulTemplateText())
-    }
-    if (!chatFile.exists()) {
-        chatFile.parentFile?.mkdirs()
-        chatFile.writeText(defaultChatTemplateText())
-    }
-    if (!longMemoryFile.exists()) {
-        longMemoryFile.parentFile?.mkdirs()
-        longMemoryFile.writeText(defaultLongMemoryTemplateText())
-    }
+    val soulTarget = defaultSoulTemplateText(locale)
+    val chatTarget = defaultChatTemplateText(locale)
+    val memoryTarget = defaultLongMemoryTemplateText(locale)
+    syncManagedDefaultFile(
+        soulFile,
+        soulTarget,
+        PromptLocale.entries.map(::defaultSoulTemplateText).toSet()
+    )
+    syncManagedDefaultFile(
+        chatFile,
+        chatTarget,
+        PromptLocale.entries.map(::defaultChatTemplateText).toSet()
+    )
+    syncManagedDefaultFile(
+        longMemoryFile,
+        memoryTarget,
+        PromptLocale.entries.map(::defaultLongMemoryTemplateText).toSet()
+    )
 }
 
 class AgentWorkspaceManager(
@@ -246,7 +328,8 @@ class AgentWorkspaceManager(
         ensureDefaultWorkspaceDocs(
             soulFile = soulFile,
             chatFile = chatFile,
-            longMemoryFile = longMemoryFile
+            longMemoryFile = longMemoryFile,
+            locale = AppLocaleManager.resolvePromptLocale(context)
         )
     }
 

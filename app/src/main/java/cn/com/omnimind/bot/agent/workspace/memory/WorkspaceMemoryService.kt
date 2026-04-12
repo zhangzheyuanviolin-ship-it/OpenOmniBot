@@ -2,6 +2,8 @@ package cn.com.omnimind.bot.agent
 
 import android.content.Context
 import cn.com.omnimind.assists.controller.http.HttpController
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
+import cn.com.omnimind.baselib.i18n.PromptLocale
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.llm.ModelSceneRegistry
 import cn.com.omnimind.baselib.llm.SceneModelBindingStore
@@ -114,6 +116,27 @@ class WorkspaceMemoryService(
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    private fun currentLocale(): PromptLocale = AppLocaleManager.resolvePromptLocale(context)
+
+    private fun t(zh: String, en: String): String {
+        return when (currentLocale()) {
+            PromptLocale.ZH_CN -> zh
+            PromptLocale.EN_US -> en
+        }
+    }
+
+    private fun noDailyMemorySummary(): String =
+        t("无当日短期记忆，跳过整理。", "No daily short-term memory found. Rollup skipped.")
+
+    private fun emptyDailyMemorySummary(): String =
+        t("当日短期记忆为空，跳过整理。", "The daily short-term memory file is empty. Rollup skipped.")
+
+    private fun emptyTodayShortMemoryText(): String =
+        t("（今日短期记忆为空）", "(Today's short-term memory is empty)")
+
+    private fun emptyLongTermMemoryText(): String =
+        t("（暂无长期记忆）", "(No long-term memory yet)")
 
     fun ensureInitialized() {
         workspaceManager.ensureRuntimeDirectories()
@@ -271,11 +294,12 @@ class WorkspaceMemoryService(
         ensureInitialized()
         val dailyFile = workspaceManager.dailyShortMemoryFile(date)
         if (!dailyFile.exists()) {
-            saveRollupStatus("无当日短期记忆，跳过整理。")
+            val summary = noDailyMemorySummary()
+            saveRollupStatus(summary)
             return mapOf(
                 "success" to true,
                 "date" to date.toString(),
-                "summary" to "无当日短期记忆，跳过整理。",
+                "summary" to summary,
                 "longTermWrites" to 0
             )
         }
@@ -283,11 +307,12 @@ class WorkspaceMemoryService(
         val lines = extractDailyLinesForRollup(content)
 
         if (lines.isEmpty()) {
-            saveRollupStatus("当日短期记忆为空，跳过整理。")
+            val summary = emptyDailyMemorySummary()
+            saveRollupStatus(summary)
             return mapOf(
                 "success" to true,
                 "date" to date.toString(),
-                "summary" to "当日短期记忆为空，跳过整理。",
+                "summary" to summary,
                 "longTermWrites" to 0
             )
         }
@@ -316,9 +341,15 @@ class WorkspaceMemoryService(
         val rollupAt = Instant.now().toString()
         val aiSummary = rollupInference?.summary?.trim()?.takeIf { it.isNotEmpty() }
         val rollupSummary = if (aiSummary != null) {
-            "$aiSummary（沉淀 $writes 条长期记忆）"
+            t(
+                "$aiSummary（沉淀 $writes 条长期记忆）",
+                "$aiSummary ($writes long-term memories written)"
+            )
         } else {
-            "已整理 ${lines.size} 条短期记忆，沉淀 $writes 条长期记忆。"
+            t(
+                "已整理 ${lines.size} 条短期记忆，沉淀 $writes 条长期记忆。",
+                "Rolled up ${lines.size} short-term memory entries and wrote $writes long-term memories."
+            )
         }
         val rollupSource = if (rollupInference != null) "scene.memory.rollup" else "heuristic"
         dailyFile.appendText(
@@ -393,14 +424,14 @@ class WorkspaceMemoryService(
     private fun summarizeTodayShortMemory(maxItems: Int = 30): String {
         val today = readDailyMemory(LocalDate.now())
         if (today.isBlank()) {
-            return "（今日短期记忆为空）"
+            return emptyTodayShortMemoryText()
         }
         val lines = today.lineSequence()
             .map { it.trim() }
             .filter { it.startsWith("- ") }
             .take(maxItems)
             .toList()
-        return if (lines.isEmpty()) "（今日短期记忆为空）" else lines.joinToString("\n")
+        return if (lines.isEmpty()) emptyTodayShortMemoryText() else lines.joinToString("\n")
     }
 
     private fun extractDailyLinesForRollup(content: String): List<String> {
@@ -426,8 +457,10 @@ class WorkspaceMemoryService(
         val lower = item.lowercase(Locale.getDefault())
         return lower.startsWith("source:") ||
             lower.startsWith("inputlines:") ||
+            lower.startsWith("rolled up ") ||
             (item.startsWith("已整理") && item.contains("条短期记忆")) ||
-            (item.contains("沉淀") && item.contains("长期记忆"))
+            (item.contains("沉淀") && item.contains("长期记忆")) ||
+            (lower.contains("long-term memories") && lower.contains("written"))
     }
 
     private fun normalizeRollupLine(raw: String): String {
@@ -524,14 +557,30 @@ class WorkspaceMemoryService(
                         "dailySummary",
                         buildJsonObject {
                             put("type", JsonPrimitive("string"))
-                            put("description", JsonPrimitive("当日短期记忆的一句话总结，不超过80字。"))
+                            put(
+                                "description",
+                                JsonPrimitive(
+                                    t(
+                                        "当日短期记忆的一句话总结，不超过80字。",
+                                        "A one-sentence summary of the day's short-term memory, within 80 words."
+                                    )
+                                )
+                            )
                         }
                     )
                     put(
                         "longTermCandidates",
                         buildJsonObject {
                             put("type", JsonPrimitive("array"))
-                            put("description", JsonPrimitive("可沉淀为长期记忆的稳定信息列表。"))
+                            put(
+                                "description",
+                                JsonPrimitive(
+                                    t(
+                                        "可沉淀为长期记忆的稳定信息列表。",
+                                        "Stable facts that should be promoted into long-term memory."
+                                    )
+                                )
+                            )
                             put(
                                 "items",
                                 buildJsonObject {
@@ -575,7 +624,10 @@ class WorkspaceMemoryService(
                 ChatCompletionTool(
                     function = ChatCompletionFunction(
                         name = ROLLUP_SUBMIT_TOOL,
-                        description = "提交 Workspace 当日记忆整理结果。",
+                        description = t(
+                            "提交 Workspace 当日记忆整理结果。",
+                            "Submit the workspace daily-memory rollup result."
+                        ),
                         parameters = parameters
                     )
                 )
@@ -585,17 +637,30 @@ class WorkspaceMemoryService(
     }
 
     private fun buildRollupToolSystemPrompt(): String {
-        return """
-            你是 Workspace 记忆整理助手。
-            目标：基于当日短期记忆，输出当日总结，并筛选可沉淀为长期记忆的信息。
+        return when (currentLocale()) {
+            PromptLocale.ZH_CN -> """
+                你是 Workspace 记忆整理助手。
+                目标：基于当日短期记忆，输出当日总结，并筛选可沉淀为长期记忆的信息。
 
-            规则：
-            1. 只保留长期稳定且对未来任务有帮助的信息（偏好、长期约束、稳定事实）。
-            2. 忽略一次性临时细节、随机聊天内容、瞬时状态。
-            3. 候选长期记忆每条一句话，中文为主，最多 ${MAX_ROLLUP_LONG_TERM_CANDIDATES} 条，避免重复。
-            4. 如果没有可沉淀内容，longTermCandidates 返回空数组。
-            5. 必须通过工具 $ROLLUP_SUBMIT_TOOL 提交结果，不要输出普通文本。
-        """.trimIndent()
+                规则：
+                1. 只保留长期稳定且对未来任务有帮助的信息（偏好、长期约束、稳定事实）。
+                2. 忽略一次性临时细节、随机聊天内容、瞬时状态。
+                3. 候选长期记忆每条一句话，中文为主，最多 ${MAX_ROLLUP_LONG_TERM_CANDIDATES} 条，避免重复。
+                4. 如果没有可沉淀内容，longTermCandidates 返回空数组。
+                5. 必须通过工具 $ROLLUP_SUBMIT_TOOL 提交结果，不要输出普通文本。
+            """.trimIndent()
+            PromptLocale.EN_US -> """
+                You are the Workspace memory rollup assistant.
+                Goal: summarize the day's short-term memory and identify information that should be promoted into long-term memory.
+
+                Rules:
+                1. Keep only stable information that will still help future tasks, such as preferences, long-term constraints, and durable facts.
+                2. Ignore one-off temporary details, random chat content, and transient states.
+                3. Each long-term candidate must be a single sentence, up to ${MAX_ROLLUP_LONG_TERM_CANDIDATES} items total, with no duplicates.
+                4. If nothing should be promoted, return an empty longTermCandidates array.
+                5. You must submit the result through the $ROLLUP_SUBMIT_TOOL tool and must not output normal text.
+            """.trimIndent()
+        }
     }
 
     private fun buildRollupToolUserPrompt(
@@ -607,16 +672,27 @@ class WorkspaceMemoryService(
             dailyLines.joinToString("\n") { "- $it" },
             12_000
         )
-        val longTermBlock = longTermMemory.ifBlank { "（暂无长期记忆）" }
-        return """
-            日期：$date
+        val longTermBlock = longTermMemory.ifBlank { emptyLongTermMemoryText() }
+        return when (currentLocale()) {
+            PromptLocale.ZH_CN -> """
+                日期：$date
 
-            当日短期记忆原文：
-            $dailyBlock
+                当日短期记忆原文：
+                $dailyBlock
 
-            现有长期记忆（用于避免重复）：
-            ${truncateText(longTermBlock, 2600)}
-        """.trimIndent()
+                现有长期记忆（用于避免重复）：
+                ${truncateText(longTermBlock, 2600)}
+            """.trimIndent()
+            PromptLocale.EN_US -> """
+                Date: $date
+
+                Daily short-term memory:
+                $dailyBlock
+
+                Existing long-term memory (to avoid duplicates):
+                ${truncateText(longTermBlock, 2600)}
+            """.trimIndent()
+        }
     }
 
     private fun buildRollupLegacyPrompt(
@@ -628,31 +704,57 @@ class WorkspaceMemoryService(
             dailyLines.joinToString("\n") { "- $it" },
             12_000
         )
-        val longTermBlock = longTermMemory.ifBlank { "（暂无长期记忆）" }
-        return """
-            你是 Workspace 记忆整理助手。请基于当日短期记忆，为用户生成当日总结，并筛选可沉淀为长期记忆的信息。
+        val longTermBlock = longTermMemory.ifBlank { emptyLongTermMemoryText() }
+        return when (currentLocale()) {
+            PromptLocale.ZH_CN -> """
+                你是 Workspace 记忆整理助手。请基于当日短期记忆，为用户生成当日总结，并筛选可沉淀为长期记忆的信息。
 
-            规则：
-            1. 只保留长期稳定且对未来任务有帮助的信息（偏好、长期约束、稳定事实）。
-            2. 忽略一次性临时细节、随机聊天内容、瞬时状态。
-            3. 候选长期记忆每条一句话，中文为主，最多 ${MAX_ROLLUP_LONG_TERM_CANDIDATES} 条，避免重复。
-            4. 如果没有可沉淀内容，longTermCandidates 返回空数组。
-            5. 只能输出 JSON，不要输出 Markdown 代码块或解释。
+                规则：
+                1. 只保留长期稳定且对未来任务有帮助的信息（偏好、长期约束、稳定事实）。
+                2. 忽略一次性临时细节、随机聊天内容、瞬时状态。
+                3. 候选长期记忆每条一句话，中文为主，最多 ${MAX_ROLLUP_LONG_TERM_CANDIDATES} 条，避免重复。
+                4. 如果没有可沉淀内容，longTermCandidates 返回空数组。
+                5. 只能输出 JSON，不要输出 Markdown 代码块或解释。
 
-            输出格式：
-            {
-              "dailySummary": "一句话总结（不超过80字）",
-              "longTermCandidates": ["候选1", "候选2"]
-            }
+                输出格式：
+                {
+                  "dailySummary": "一句话总结（不超过80字）",
+                  "longTermCandidates": ["候选1", "候选2"]
+                }
 
-            日期：$date
+                日期：$date
 
-            当日短期记忆原文：
-            $dailyBlock
+                当日短期记忆原文：
+                $dailyBlock
 
-            现有长期记忆（用于避免重复）：
-            ${truncateText(longTermBlock, 2600)}
-        """.trimIndent()
+                现有长期记忆（用于避免重复）：
+                ${truncateText(longTermBlock, 2600)}
+            """.trimIndent()
+            PromptLocale.EN_US -> """
+                You are the Workspace memory rollup assistant. Based on the day's short-term memory, generate a daily summary and identify information that should become long-term memory.
+
+                Rules:
+                1. Keep only stable information that will help future tasks, such as preferences, long-term constraints, and durable facts.
+                2. Ignore one-off temporary details, random chat content, and transient states.
+                3. Each long-term candidate must be a single sentence, with at most ${MAX_ROLLUP_LONG_TERM_CANDIDATES} items and no duplicates.
+                4. If nothing should be promoted, return an empty longTermCandidates array.
+                5. Output JSON only. Do not output Markdown code fences or explanations.
+
+                Output format:
+                {
+                  "dailySummary": "one-sentence summary",
+                  "longTermCandidates": ["candidate 1", "candidate 2"]
+                }
+
+                Date: $date
+
+                Daily short-term memory:
+                $dailyBlock
+
+                Existing long-term memory (to avoid duplicates):
+                ${truncateText(longTermBlock, 2600)}
+            """.trimIndent()
+        }
     }
 
     private fun parseRollupInferenceFromToolCalls(toolCalls: List<AssistantToolCall>): RollupInference? {

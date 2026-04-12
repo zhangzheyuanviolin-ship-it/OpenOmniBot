@@ -1,5 +1,6 @@
 package cn.com.omnimind.bot.agent
 
+import cn.com.omnimind.baselib.i18n.PromptLocale
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -20,6 +21,26 @@ class AgentToolDefinitionsMusicTest {
             }
 
         assertTrue(toolNames.contains("music_playback_control"))
+    }
+
+    @Test
+    fun `english browser tool metadata is localized`() {
+        val browserTool = AgentToolDefinitions.staticTools(PromptLocale.EN_US)
+            .first { ((it["function"] as JsonObject)["name"]?.jsonPrimitive?.contentOrNull) == "browser_use" }
+        val function = browserTool["function"] as JsonObject
+        val parameters = function["parameters"] as JsonObject
+        val properties = parameters["properties"] as JsonObject
+        val toolTitle = properties["tool_title"] as JsonObject
+
+        assertEquals("Browser Action", function["displayName"]?.jsonPrimitive?.contentOrNull)
+        assertTrue(
+            function["description"]?.jsonPrimitive?.contentOrNull
+                ?.contains("off-screen browser with up to 3 tabs") == true
+        )
+        assertEquals(
+            "A concise title describing what this tool call is doing. It is shown to the user, should stay short, and should use the same language as the user.",
+            toolTitle["description"]?.jsonPrimitive?.contentOrNull
+        )
     }
 
     @Test
