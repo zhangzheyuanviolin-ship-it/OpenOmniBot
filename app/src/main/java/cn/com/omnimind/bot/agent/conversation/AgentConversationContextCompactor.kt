@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.agent
 
 import cn.com.omnimind.assists.controller.http.HttpController
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.llm.AssistantToolCall
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.util.OmniLog
@@ -33,24 +34,79 @@ open class AgentConversationContextCompactor(
         private const val CHAT_COMPACTOR_SCENE = "scene.compactor.context.chat"
         private const val TAG = "AgentConversationContextCompactor"
         private val EPHEMERAL_CACHE_CONTROL = mapOf("type" to "ephemeral")
-        private const val COMPACTION_REQUEST_PROMPT = """
-/no_think
-你是一个用户与Agent对话上下文压缩器。你的职责是把一段多轮聊天历史压缩为一份可持续累积的上下文总结，供后续对话继续参考。\n\n
-# 要求：\n
-1. 只输出纯文本，不要 JSON，不要 Markdown 代码块。\n
-3. 保留长期目标、用户偏好、约束条件、关键文件路径、参数、工具结果、未完成任务、待确认点。\n
-4. 去掉冗余寒暄、重复措辞、无关中间推理，但不能丢失会影响后续执行的重要事实。\n
-5. 如果系统消息里已经给出旧的累计总结，要将其与新历史整合为一份新的累计总结，而不是简单拼接。\n
-6. 不要编造不存在的事实；不确定时明确写“待确认”。\n
-# 输出格式：\n
-## 用户目标与约束 \n- ...\n\n## 已确认事实与已完成结果\n- ...\n\n## 关键上下文与参数\n- ...\n\n## 未完成事项与下一步\n- ...\n
 
-"""
-        private const val EXISTING_SUMMARY_PROMPT_PREFIX = """
-以下是之前已经累计好的历史总结，请将它与后续原始历史合并为新的累计总结：
+        private fun compactionRequestPrompt(): String {
+            return when (AppLocaleManager.currentPromptLocale()) {
+                cn.com.omnimind.baselib.i18n.PromptLocale.ZH_CN -> """
+                    /no_think
+                    你是一个用户与Agent对话上下文压缩器。你的职责是把一段多轮聊天历史压缩为一份可持续累积的上下文总结，供后续对话继续参考。
 
-"""
-        private const val FINAL_USER_PROMPT = "请把以上历史压缩为新的累计总结。"
+                    # 要求：
+                    1. 只输出纯文本，不要 JSON，不要 Markdown 代码块。
+                    2. 使用固定结构，保留明确的小节标题。
+                    3. 保留长期目标、用户偏好、约束条件、关键文件路径、参数、工具结果、未完成任务、待确认点。
+                    4. 去掉冗余寒暄、重复措辞、无关中间推理，但不能丢失会影响后续执行的重要事实。
+                    5. 如果系统消息里已经给出旧的累计总结，要将其与新历史整合为一份新的累计总结，而不是简单拼接。
+                    6. 不要编造不存在的事实；不确定时明确写“待确认”。
+
+                    # 输出格式：
+                    ## 用户目标与约束
+                    - ...
+
+                    ## 已确认事实与已完成结果
+                    - ...
+
+                    ## 关键上下文与参数
+                    - ...
+
+                    ## 未完成事项与下一步
+                    - ...
+                """.trimIndent()
+                cn.com.omnimind.baselib.i18n.PromptLocale.EN_US -> """
+                    /no_think
+                    You are a conversation context compactor for a user-agent dialogue. Your job is to compress a multi-turn chat history into an accumulated context summary that can be carried forward into later turns.
+
+                    # Requirements:
+                    1. Output plain text only. Do not output JSON or Markdown code fences.
+                    2. Use a fixed structure and keep clear section headings.
+                    3. Preserve long-term goals, user preferences, constraints, important file paths, parameters, tool results, unfinished work, and items still awaiting confirmation.
+                    4. Remove redundant pleasantries, repeated phrasing, and irrelevant intermediate reasoning, but do not drop facts that matter for future execution.
+                    5. If the system message already contains an accumulated summary, merge it with the new raw history into one updated accumulated summary instead of concatenating blindly.
+                    6. Do not invent facts. When something is uncertain, mark it as pending confirmation.
+
+                    # Output format:
+                    ## User Goals And Constraints
+                    - ...
+
+                    ## Confirmed Facts And Completed Results
+                    - ...
+
+                    ## Key Context And Parameters
+                    - ...
+
+                    ## Open Items And Next Steps
+                    - ...
+                """.trimIndent()
+            }
+        }
+
+        private fun existingSummaryPromptPrefix(): String {
+            return when (AppLocaleManager.currentPromptLocale()) {
+                cn.com.omnimind.baselib.i18n.PromptLocale.ZH_CN ->
+                    "以下是之前已经累计好的历史总结，请将它与后续原始历史合并为新的累计总结："
+                cn.com.omnimind.baselib.i18n.PromptLocale.EN_US ->
+                    "Below is the previously accumulated summary. Merge it with the following raw history into a new accumulated summary:"
+            }
+        }
+
+        private fun finalUserPrompt(): String {
+            return when (AppLocaleManager.currentPromptLocale()) {
+                cn.com.omnimind.baselib.i18n.PromptLocale.ZH_CN ->
+                    "请把以上历史压缩为新的累计总结。"
+                cn.com.omnimind.baselib.i18n.PromptLocale.EN_US ->
+                    "Compress the history above into a new accumulated summary."
+            }
+        }
 
         internal fun buildCompactionRequestMessages(
             existingSummary: String?,
@@ -60,20 +116,20 @@ open class AgentConversationContextCompactor(
             requestMessages += mapOf(
                 "role" to "system",
                 "content" to buildTextContentBlocks(
-                    text = COMPACTION_REQUEST_PROMPT.trim(),
+                    text = compactionRequestPrompt().trim(),
                     cacheControl = EPHEMERAL_CACHE_CONTROL
                 )
             )
             existingSummary?.trim()?.takeIf { it.isNotEmpty() }?.let { summary ->
                 requestMessages += mapOf(
                     "role" to "system",
-                    "content" to (EXISTING_SUMMARY_PROMPT_PREFIX.trim() + "\n\n" + summary)
+                    "content" to (existingSummaryPromptPrefix().trim() + "\n\n" + summary)
                 )
             }
             requestMessages += messagesToCompact.map(::toTransportMessage)
             requestMessages += mapOf(
                 "role" to "user",
-                "content" to FINAL_USER_PROMPT
+                "content" to finalUserPrompt()
             )
             return requestMessages
         }

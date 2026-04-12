@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/theme/omni_theme_palette.dart';
 import 'package:ui/theme/theme_context.dart';
 
@@ -34,7 +35,11 @@ class Loading {
     final context = navigatorState.overlay!.context;
     _overlayEntry = OverlayEntry(
       builder: (_) =>
-          Center(child: _CustomLoadingWidget(message: message ?? '加载中')),
+          Center(
+            child: _CustomLoadingWidget(
+              message: LegacyTextLocalizer.localize(message ?? '加载中'),
+            ),
+          ),
     );
     Navigator.of(context).overlay!.insert(_overlayEntry!);
   }
@@ -100,11 +105,13 @@ class AppToast {
     final alignment = _alignmentFor(position);
     final EdgeInsets margin = _marginFor(position);
 
+    final localizedMessage = LegacyTextLocalizer.localize(message);
+
     _entry = OverlayEntry(
       builder: (context) => SafeArea(
         child: IgnorePointer(
           child: _ToastContainer(
-            message: message,
+            message: localizedMessage,
             type: type,
             alignment: alignment,
             margin: margin,

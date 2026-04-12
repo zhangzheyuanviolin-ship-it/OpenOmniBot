@@ -1,5 +1,6 @@
 package cn.com.omnimind.bot.agent
 
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.llm.AssistantToolCall
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
@@ -41,6 +42,10 @@ class AgentOrchestrator(
         prettyPrint = true
     }
     private val tag = "AgentOrchestrator"
+
+    private fun t(zh: String, en: String): String {
+        return if (AppLocaleManager.isEnglish()) en else zh
+    }
 
     suspend fun run(input: Input): AgentResult {
         val callback = input.callback
@@ -300,7 +305,10 @@ class AgentOrchestrator(
 
         if (!hasUserFacingOutput) {
             val fallbackMessage = lastAssistantContent.ifBlank {
-                "我已完成思考，但暂时无法生成回复，请重试。"
+                t(
+                    "我已完成思考，但暂时无法生成回复，请重试。",
+                    "I finished reasoning, but I couldn't produce a reply just now. Please try again."
+                )
             }
             callback.onChatMessage(
                 fallbackMessage,
@@ -375,10 +383,14 @@ class AgentOrchestrator(
         toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult.Interrupted {
         val snapshot = toolHandle.latestProgressSnapshot()
+        val interruptedSummary = t(
+            "工具调用已被用户手动停止",
+            "Tool call was stopped manually by the user."
+        )
         val rawPayload = linkedMapOf<String, Any?>(
             "toolName" to toolName,
             "status" to "interrupted",
-            "summary" to "工具调用已被用户手动停止",
+            "summary" to interruptedSummary,
             "interruptedBy" to "user",
             "interruptionReason" to "manual_stop"
         ).apply {
@@ -392,7 +404,7 @@ class AgentOrchestrator(
         val encodedPayload = json.encodeToString(mapToJsonElement(rawPayload))
         return ToolExecutionResult.Interrupted(
             toolName = toolName,
-            summaryText = "工具调用已被用户手动停止",
+            summaryText = interruptedSummary,
             previewJson = encodedPayload,
             rawResultJson = encodedPayload,
             terminalOutput = snapshot.extras["terminalOutput"]?.toString().orEmpty().ifBlank {

@@ -133,10 +133,16 @@ class AppBackgroundVisualProfile {
       usesLightText ? const Color(0xFFA9F0B6) : const Color(0xFF52C41A);
 
   String get previewToneLabel => usesCustomTextColor
-      ? '自定义颜色'
+      ? (StorageService.getResolvedLocale().languageCode == 'en'
+            ? 'Custom Color'
+            : '自定义颜色')
       : usesLightText
-      ? '浅色文本'
-      : '深色文本';
+      ? (StorageService.getResolvedLocale().languageCode == 'en'
+            ? 'Light Text'
+            : '浅色文本')
+      : (StorageService.getResolvedLocale().languageCode == 'en'
+            ? 'Dark Text'
+            : '深色文本');
 
   static AppBackgroundVisualProfile derive({
     required AppBackgroundConfig config,

@@ -1,7 +1,9 @@
 package cn.com.omnimind.assists.task.vlmserver
 
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.llm.ChatCompletionFunction
 import cn.com.omnimind.baselib.llm.ChatCompletionTool
+import cn.com.omnimind.baselib.i18n.PromptLocale
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonArray
@@ -25,180 +27,271 @@ object VLMToolDefinitions {
         val promptGuide: String
     )
 
-    private val toolSpecs: List<ToolSpec> = listOf(
+    private fun currentLocale(): PromptLocale = AppLocaleManager.currentPromptLocale()
+
+    private fun t(locale: PromptLocale, zh: String, en: String): String {
+        return when (locale) {
+            PromptLocale.ZH_CN -> zh
+            PromptLocale.EN_US -> en
+        }
+    }
+
+    private fun buildToolSpecs(locale: PromptLocale): List<ToolSpec> = listOf(
         ToolSpec(
             name = "click",
-            description = "点击一个可见目标。",
+            description = t(locale, "点击一个可见目标。", "Tap a visible target."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "target_description" to stringSchema("要点击的目标描述。"),
-                    "x" to coordinateNumberSchema("点击位置的 X 坐标。"),
-                    "y" to coordinateNumberSchema("点击位置的 Y 坐标。")
+                    "target_description" to stringSchema(
+                        t(locale, "要点击的目标描述。", "Description of the target to tap.")
+                    ),
+                    "x" to coordinateNumberSchema(
+                        t(locale, "点击位置的 X 坐标。", "X coordinate of the tap target.")
+                    ),
+                    "y" to coordinateNumberSchema(
+                        t(locale, "点击位置的 Y 坐标。", "Y coordinate of the tap target.")
+                    )
                 ),
                 required = listOf("target_description", "x", "y")
             ),
-            promptGuide = "- click(target_description, x, y): 点击一个可见目标。"
+            promptGuide = t(
+                locale,
+                "- click(target_description, x, y): 点击一个可见目标。",
+                "- click(target_description, x, y): Tap a visible target."
+            )
         ),
         ToolSpec(
             name = "type",
-            description = "在当前输入焦点中输入文本。",
+            description = t(locale, "在当前输入焦点中输入文本。", "Type text into the current focused input."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "content" to stringSchema("要输入的文本内容。")
+                    "content" to stringSchema(
+                        t(locale, "要输入的文本内容。", "Text content to type.")
+                    )
                 ),
                 required = listOf("content")
             ),
-            promptGuide = "- type(content): 在当前输入框输入文本。"
+            promptGuide = t(
+                locale,
+                "- type(content): 在当前输入框输入文本。",
+                "- type(content): Type text into the current input box."
+            )
         ),
         ToolSpec(
             name = "scroll",
-            description = "从起点滑动到终点。",
+            description = t(locale, "从起点滑动到终点。", "Swipe from the start point to the end point."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "target_description" to stringSchema("本次滚动想浏览或定位的目标描述。"),
-                    "x1" to coordinateNumberSchema("起点 X 坐标。"),
-                    "y1" to coordinateNumberSchema("起点 Y 坐标。"),
-                    "x2" to coordinateNumberSchema("终点 X 坐标。"),
-                    "y2" to coordinateNumberSchema("终点 Y 坐标。"),
-                    "duration" to numberSchema("滑动时长，单位秒。")
+                    "target_description" to stringSchema(
+                        t(locale, "本次滚动想浏览或定位的目标描述。", "Description of what this scroll action is trying to browse or locate.")
+                    ),
+                    "x1" to coordinateNumberSchema(t(locale, "起点 X 坐标。", "Start X coordinate.")),
+                    "y1" to coordinateNumberSchema(t(locale, "起点 Y 坐标。", "Start Y coordinate.")),
+                    "x2" to coordinateNumberSchema(t(locale, "终点 X 坐标。", "End X coordinate.")),
+                    "y2" to coordinateNumberSchema(t(locale, "终点 Y 坐标。", "End Y coordinate.")),
+                    "duration" to numberSchema(t(locale, "滑动时长，单位秒。", "Swipe duration in seconds."))
                 ),
                 required = listOf("target_description", "x1", "y1", "x2", "y2")
             ),
-            promptGuide = "- scroll(target_description, x1, y1, x2, y2, duration?): 在屏幕上滑动。"
+            promptGuide = t(
+                locale,
+                "- scroll(target_description, x1, y1, x2, y2, duration?): 在屏幕上滑动。",
+                "- scroll(target_description, x1, y1, x2, y2, duration?): Swipe on the screen."
+            )
         ),
         ToolSpec(
             name = "long_press",
-            description = "长按一个目标。",
+            description = t(locale, "长按一个目标。", "Long-press a target."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "target_description" to stringSchema("要长按的目标描述。"),
-                    "x" to coordinateNumberSchema("长按位置的 X 坐标。"),
-                    "y" to coordinateNumberSchema("长按位置的 Y 坐标。")
+                    "target_description" to stringSchema(
+                        t(locale, "要长按的目标描述。", "Description of the target to long-press.")
+                    ),
+                    "x" to coordinateNumberSchema(t(locale, "长按位置的 X 坐标。", "X coordinate of the long press.")),
+                    "y" to coordinateNumberSchema(t(locale, "长按位置的 Y 坐标。", "Y coordinate of the long press."))
                 ),
                 required = listOf("target_description", "x", "y")
             ),
-            promptGuide = "- long_press(target_description, x, y): 长按一个目标。"
+            promptGuide = t(
+                locale,
+                "- long_press(target_description, x, y): 长按一个目标。",
+                "- long_press(target_description, x, y): Long-press a target."
+            )
         ),
         ToolSpec(
             name = "open_app",
-            description = "打开指定应用。",
+            description = t(locale, "打开指定应用。", "Open a specific app."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "package_name" to stringSchema("目标应用的 Android package name。")
+                    "package_name" to stringSchema(
+                        t(locale, "目标应用的 Android package name。", "Android package name of the target app.")
+                    )
                 ),
                 required = listOf("package_name")
             ),
-            promptGuide = "- open_app(package_name): 打开指定应用。"
+            promptGuide = t(
+                locale,
+                "- open_app(package_name): 打开指定应用。",
+                "- open_app(package_name): Open a specific app."
+            )
         ),
         ToolSpec(
             name = "press_home",
-            description = "回到桌面。",
+            description = t(locale, "回到桌面。", "Go to the home screen."),
             parameters = objectSchema(),
-            promptGuide = "- press_home(): 回到桌面。"
+            promptGuide = t(locale, "- press_home(): 回到桌面。", "- press_home(): Go to the home screen.")
         ),
         ToolSpec(
             name = "press_back",
-            description = "返回上一级。",
+            description = t(locale, "返回上一级。", "Go back one level."),
             parameters = objectSchema(),
-            promptGuide = "- press_back(): 返回上一级。"
+            promptGuide = t(locale, "- press_back(): 返回上一级。", "- press_back(): Go back one level.")
         ),
         ToolSpec(
             name = "wait",
-            description = "等待界面稳定。",
+            description = t(locale, "等待界面稳定。", "Wait for the UI to stabilize."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "duration_ms" to integerSchema("等待时长，单位毫秒。"),
-                    "duration" to numberSchema("兼容字段：等待时长，单位秒。")
+                    "duration_ms" to integerSchema(
+                        t(locale, "等待时长，单位毫秒。", "Wait duration in milliseconds.")
+                    ),
+                    "duration" to numberSchema(
+                        t(locale, "兼容字段：等待时长，单位秒。", "Compatibility field: wait duration in seconds.")
+                    )
                 ),
                 required = listOf("duration_ms")
             ),
-            promptGuide = "- wait(duration_ms): 等待指定毫秒数。若服务商兼容性较差，也可额外提供 duration(秒)。"
+            promptGuide = t(
+                locale,
+                "- wait(duration_ms): 等待指定毫秒数。若服务商兼容性较差，也可额外提供 duration(秒)。",
+                "- wait(duration_ms): Wait for the specified number of milliseconds. If provider compatibility is weak, you may also include duration in seconds."
+            )
         ),
         ToolSpec(
             name = "hot_key",
-            description = "发送一个受支持的快捷键。",
+            description = t(locale, "发送一个受支持的快捷键。", "Send a supported hot key."),
             parameters = objectSchema(
                 properties = linkedMapOf(
                     "key" to enumSchema(
-                        description = "当前受支持的快捷键。",
+                        description = t(locale, "当前受支持的快捷键。", "Supported hot keys."),
                         values = listOf("ENTER", "BACK", "HOME")
                     )
                 ),
                 required = listOf("key")
             ),
-            promptGuide = "- hot_key(key): 兼容 ENTER / BACK / HOME，但系统导航优先使用 press_back 或 press_home。"
+            promptGuide = t(
+                locale,
+                "- hot_key(key): 兼容 ENTER / BACK / HOME，但系统导航优先使用 press_back 或 press_home。",
+                "- hot_key(key): Supports ENTER / BACK / HOME, but prefer press_back or press_home for system navigation."
+            )
         ),
         ToolSpec(
             name = "finished",
-            description = "任务真正完成时结束。",
+            description = t(locale, "任务真正完成时结束。", "End the task only when it is truly complete."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "content" to stringSchema("给用户的最终完成说明，可为空。")
+                    "content" to stringSchema(
+                        t(locale, "给用户的最终完成说明，可为空。", "Final completion note for the user. May be empty.")
+                    )
                 )
             ),
-            promptGuide = "- finished(content?): 仅在任务真正完成时调用。"
+            promptGuide = t(
+                locale,
+                "- finished(content?): 仅在任务真正完成时调用。",
+                "- finished(content?): Call only when the task is truly complete."
+            )
         ),
         ToolSpec(
             name = "info",
-            description = "向用户询问或请求手动协助。",
+            description = t(locale, "向用户询问或请求手动协助。", "Ask the user a question or request manual help."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "value" to stringSchema("你要问用户的问题或需要用户执行的说明。")
+                    "value" to stringSchema(
+                        t(locale, "你要问用户的问题或需要用户执行的说明。", "Question to ask the user or instructions for the user to perform.")
+                    )
                 ),
                 required = listOf("value")
             ),
-            promptGuide = "- info(value): 询问用户或请求用户协助。"
+            promptGuide = t(
+                locale,
+                "- info(value): 询问用户或请求用户协助。",
+                "- info(value): Ask the user for information or manual assistance."
+            )
         ),
         ToolSpec(
             name = "feedback",
-            description = "反馈当前上下文与目标不匹配。",
+            description = t(locale, "反馈当前上下文与目标不匹配。", "Report that the current context does not match the goal."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "value" to stringSchema("反馈原因。")
+                    "value" to stringSchema(t(locale, "反馈原因。", "Reason for the feedback."))
                 ),
                 required = listOf("value")
             ),
-            promptGuide = "- feedback(value): 请求上层重新规划。"
+            promptGuide = t(
+                locale,
+                "- feedback(value): 请求上层重新规划。",
+                "- feedback(value): Ask the upper layer to re-plan."
+            )
         ),
         ToolSpec(
             name = "abort",
-            description = "任务无法继续时终止。",
+            description = t(locale, "任务无法继续时终止。", "Abort when the task cannot continue."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "value" to stringSchema("终止任务的原因。")
+                    "value" to stringSchema(t(locale, "终止任务的原因。", "Reason for aborting the task."))
                 )
             ),
-            promptGuide = "- abort(value?): 在任务无法继续时终止。"
+            promptGuide = t(
+                locale,
+                "- abort(value?): 在任务无法继续时终止。",
+                "- abort(value?): Abort when the task cannot continue."
+            )
         ),
         ToolSpec(
             name = "require_user_choice",
-            description = "让用户在若干选项中选择一个。",
+            description = t(locale, "让用户在若干选项中选择一个。", "Ask the user to choose one option from a list."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "options" to stringArraySchema("可供用户选择的选项列表。"),
-                    "prompt" to stringSchema("要求用户做选择的提示文案。")
+                    "options" to stringArraySchema(
+                        t(locale, "可供用户选择的选项列表。", "List of options the user can choose from.")
+                    ),
+                    "prompt" to stringSchema(
+                        t(locale, "要求用户做选择的提示文案。", "Prompt shown to the user when asking for a choice.")
+                    )
                 ),
                 required = listOf("options", "prompt")
             ),
-            promptGuide = "- require_user_choice(options, prompt): 让用户做互斥选择。"
+            promptGuide = t(
+                locale,
+                "- require_user_choice(options, prompt): 让用户做互斥选择。",
+                "- require_user_choice(options, prompt): Ask the user to make a mutually exclusive choice."
+            )
         ),
         ToolSpec(
             name = "require_user_confirmation",
-            description = "让用户确认当前状态后继续。",
+            description = t(locale, "让用户确认当前状态后继续。", "Ask the user to confirm the current state before continuing."),
             parameters = objectSchema(
                 properties = linkedMapOf(
-                    "prompt" to stringSchema("要求用户确认的提示文案。")
+                    "prompt" to stringSchema(
+                        t(locale, "要求用户确认的提示文案。", "Prompt asking the user for confirmation.")
+                    )
                 ),
                 required = listOf("prompt")
             ),
-            promptGuide = "- require_user_confirmation(prompt): 让用户确认后继续。"
+            promptGuide = t(
+                locale,
+                "- require_user_confirmation(prompt): 让用户确认后继续。",
+                "- require_user_confirmation(prompt): Ask the user to confirm before continuing."
+            )
         )
     )
 
-    private val toolSpecsByName: Map<String, ToolSpec> = toolSpecs.associateBy { it.name }
+    private fun toolSpecs(locale: PromptLocale = currentLocale()): List<ToolSpec> {
+        return buildToolSpecs(locale)
+    }
 
-    fun tools(): List<ChatCompletionTool> {
-        return toolSpecs.map { spec ->
+    fun tools(locale: PromptLocale = currentLocale()): List<ChatCompletionTool> {
+        return toolSpecs(locale).map { spec ->
             ChatCompletionTool(
                 function = ChatCompletionFunction(
                     name = spec.name,
@@ -209,27 +302,39 @@ object VLMToolDefinitions {
         }
     }
 
-    fun renderPromptGuide(): String {
-        val guides = toolSpecs.joinToString(separator = "\n") { it.promptGuide }
+    fun renderPromptGuide(locale: PromptLocale = currentLocale()): String {
+        val guides = toolSpecs(locale).joinToString(separator = "\n") { it.promptGuide }
         return buildString {
             appendLine(guides)
-            append("注意：所有 function.arguments 必须是严格合法的 JSON object。坐标必须分别写入 x / y / x1 / y1 / x2 / y2 字段，不要写成 \"x\": 827, 76 这类非法格式。")
+            append(
+                t(
+                    locale,
+                    "注意：所有 function.arguments 必须是严格合法的 JSON object。坐标必须分别写入 x / y / x1 / y1 / x2 / y2 字段，不要写成 \"x\": 827, 76 这类非法格式。",
+                    "Important: every function.arguments value must be a strictly valid JSON object. Coordinates must be written into x / y / x1 / y1 / x2 / y2 as separate scalar fields. Do not emit invalid forms such as \"x\": 827, 76."
+                )
+            )
         }
     }
 
-    fun responseContract(): String {
-        return """{"observation":"当前界面的关键状态","thought":"为什么要执行这个工具","summary":"执行完本步后新的历史总结"}"""
+    fun responseContract(locale: PromptLocale = currentLocale()): String {
+        return when (locale) {
+            PromptLocale.ZH_CN ->
+                """{"observation":"当前界面的关键状态","thought":"为什么要执行这个工具","summary":"执行完本步后新的历史总结"}"""
+            PromptLocale.EN_US ->
+                """{"observation":"key state of the current screen","thought":"why this tool should be executed","summary":"updated running summary after this step"}"""
+        }
     }
 
-    fun toolSpec(name: String): ToolSpec? = toolSpecsByName[name]
+    fun toolSpec(name: String, locale: PromptLocale = currentLocale()): ToolSpec? =
+        toolSpecs(locale).firstOrNull { it.name == name }
 
-    fun propertiesFor(toolName: String): Map<String, JsonObject> {
-        val properties = toolSpec(toolName)?.parameters?.get("properties") as? JsonObject ?: return emptyMap()
+    fun propertiesFor(toolName: String, locale: PromptLocale = currentLocale()): Map<String, JsonObject> {
+        val properties = toolSpec(toolName, locale)?.parameters?.get("properties") as? JsonObject ?: return emptyMap()
         return properties.mapValues { (_, value) -> value as? JsonObject ?: JsonObject(emptyMap()) }
     }
 
-    fun requiredFieldsFor(toolName: String): List<String> {
-        val required = toolSpec(toolName)?.parameters?.get("required") as? JsonArray ?: return emptyList()
+    fun requiredFieldsFor(toolName: String, locale: PromptLocale = currentLocale()): List<String> {
+        val required = toolSpec(toolName, locale)?.parameters?.get("required") as? JsonArray ?: return emptyList()
         return required.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) }
     }
 

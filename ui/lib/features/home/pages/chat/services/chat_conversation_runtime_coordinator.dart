@@ -10,6 +10,7 @@ import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
+import 'package:ui/services/storage_service.dart';
 import 'package:ui/utils/data_parser.dart';
 
 const String kChatRuntimeModeNormal = 'normal';
@@ -95,9 +96,13 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   static const Map<String, String> _executionPermissionNameToId =
       <String, String>{
         '无障碍权限': kAccessibilityPermissionId,
+        'Accessibility': kAccessibilityPermissionId,
         '悬浮窗权限': kOverlayPermissionId,
+        'Overlay': kOverlayPermissionId,
         '应用列表读取权限': kInstalledAppsPermissionId,
+        'Installed Apps Access': kInstalledAppsPermissionId,
         '公共文件访问': kPublicStoragePermissionId,
+        'Public Storage Access': kPublicStoragePermissionId,
       };
 
   String _agentTextBaseId(String taskId) => '$taskId-text';
@@ -109,6 +114,18 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       <String, _PendingPersistenceRequest>{};
 
   bool _initialized = false;
+
+  bool get _isEnglish => StorageService.getResolvedLocale().languageCode == 'en';
+
+  String _permissionDisplayName(String raw) {
+    return switch (raw.trim()) {
+      '无障碍权限' || 'Accessibility' => _isEnglish ? 'Accessibility' : '无障碍权限',
+      '悬浮窗权限' || 'Overlay' => _isEnglish ? 'Overlay' : '悬浮窗权限',
+      '应用列表读取权限' || 'Installed Apps Access' => _isEnglish ? 'Installed Apps Access' : '应用列表读取权限',
+      '公共文件访问' || 'Public Storage Access' => _isEnglish ? 'Public Storage Access' : '公共文件访问',
+      _ => raw.trim(),
+    };
+  }
 
   void ensureInitialized() {
     if (_initialized) return;
@@ -820,7 +837,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       cardId: runtime.activeToolCardId!,
       event: event,
       status: 'running',
-      summary: event.summary.isNotEmpty ? event.summary : '正在调用工具',
+      summary: event.summary.isNotEmpty
+          ? event.summary
+          : (_isEnglish ? 'Calling tool' : '正在调用工具'),
       progress: event.progress,
       resultPreviewJson: event.resultPreviewJson,
       rawResultJson: event.rawResultJson,
@@ -859,7 +878,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       cardId: cardId,
       event: event,
       status: 'running',
-      summary: event.summary.isNotEmpty ? event.summary : '正在调用工具',
+      summary: event.summary.isNotEmpty
+          ? event.summary
+          : (_isEnglish ? 'Calling tool' : '正在调用工具'),
       progress: event.progress,
       resultPreviewJson: event.resultPreviewJson,
       rawResultJson: event.rawResultJson,
@@ -1263,7 +1284,12 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
               id: fallbackId,
               type: 1,
               user: 2,
-              content: {'text': '暂时无法生成回复，请重试。', 'id': fallbackId},
+              content: {
+                'text': _isEnglish
+                    ? "I can't generate a reply right now. Please try again."
+                    : '暂时无法生成回复，请重试。',
+                'id': fallbackId,
+              },
             ),
           );
         }
@@ -1337,8 +1363,12 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         _resolvePendingAgentTextMessageId(runtime, taskId) ??
         _nextAgentTextMessageId(runtime, taskId);
     final message = error.trim().isEmpty
-        ? '暂时无法生成回复，请重试。'
-        : '暂时无法生成回复，请重试。${error.trim()}';
+        ? (_isEnglish
+              ? "I can't generate a reply right now. Please try again."
+              : '暂时无法生成回复，请重试。')
+        : (_isEnglish
+              ? "I can't generate a reply right now. Please try again. ${error.trim()}"
+              : '暂时无法生成回复，请重试。${error.trim()}');
     final index = runtime.messages.indexWhere((msg) => msg.id == textId);
     if (index == -1) {
       runtime.messages.insert(
@@ -1397,8 +1427,15 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final shouldShowPermissionCard =
         executionPermissionIds.isNotEmpty &&
         executionPermissionIds.length == missing.length;
-    final names = missing.join('、');
-    final message = names.isEmpty ? '执行任务前需要先开启权限' : '执行任务前，请先开启：$names';
+    final localizedNames = missing.map(_permissionDisplayName).toList(growable: false);
+    final names = localizedNames.join(_isEnglish ? ', ' : '、');
+    final message = names.isEmpty
+        ? (_isEnglish
+              ? 'Permissions must be enabled before running tasks'
+              : '执行任务前需要先开启权限')
+        : (_isEnglish
+              ? 'Enable these permissions before running tasks: $names'
+              : '执行任务前，请先开启：$names');
 
     interruptActiveToolCard(
       conversationId: binding.conversationId,
@@ -1858,7 +1895,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final cardData = {
       'type': 'agent_tool_summary',
       'taskId': taskId,
-      'cardId': cardId,
       'toolName': event.toolName,
       'displayName': event.displayName,
       'toolTitle': event.toolTitle.isNotEmpty
@@ -2041,7 +2077,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       return candidate;
     }
 
-    const notice = '[只显示最近的部分终端输出]\n';
+    final notice = _isEnglish
+        ? '[Only the most recent terminal output is shown]\n'
+        : '[只显示最近的部分终端输出]\n';
     final body = candidate.startsWith(notice)
         ? candidate.substring(notice.length)
         : candidate;
@@ -2063,7 +2101,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       if (message.user != 1) continue;
       final text = message.content?['text'] as String? ?? '';
       if (text.isEmpty) continue;
-      buffer.write('用户: $text\n');
+      buffer.write(_isEnglish ? 'User: $text\n' : '用户: $text\n');
     }
     return buffer.toString().trim();
   }

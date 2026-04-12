@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.agent
 
 import android.content.Context
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.bot.mcp.RemoteMcpDiscoveryRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -91,6 +92,7 @@ class OmniAgentExecutor(
             }
             val discoveredServers = RemoteMcpDiscoveryRegistry.discoverEnabledServers()
             val toolRegistry = AgentToolRegistry(
+                context = context,
                 discoveredServers = discoveredServers
             )
             val initialMessages = buildInitialMessages(
@@ -187,7 +189,8 @@ class OmniAgentExecutor(
             skillsRootShellPath = skillsRootShellPath,
             skillsRootAndroidPath = skillsRootAndroidPath,
             resolvedSkills = resolvedSkills,
-            memoryContext = memoryContext
+            memoryContext = memoryContext,
+            locale = AppLocaleManager.resolvePromptLocale(context)
         )
         messages.add(
             cn.com.omnimind.baselib.llm.ChatCompletionMessage(

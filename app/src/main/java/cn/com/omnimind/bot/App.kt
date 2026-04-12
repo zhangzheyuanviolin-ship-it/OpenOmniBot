@@ -2,6 +2,7 @@ package cn.com.omnimind.bot
 
 import BaseApplication
 import cn.com.omnimind.baselib.database.DatabaseHelper
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
@@ -93,6 +94,7 @@ class App : BaseApplication() {
             "App super.onCreate cost: ${System.currentTimeMillis() - appStartTime}ms"
         )
         instance = this
+        AppLocaleManager.applyAppLocale(this)
         com.rk.libcommons.application = this
         Res.application = this
 

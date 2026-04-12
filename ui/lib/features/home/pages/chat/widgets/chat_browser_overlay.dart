@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/agent_browser_session_service.dart';
 
 class ChatBrowserOverlay extends StatelessWidget {
@@ -26,10 +27,11 @@ class ChatBrowserOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolvedTitle = title.trim().isEmpty ? 'Agent Browser' : title.trim();
+    final defaultTitle = context.l10n.browserOverlayTitle;
+    final resolvedTitle = title.trim().isEmpty ? defaultTitle : title.trim();
     final resolvedUrl = currentUrl.trim();
     final dragText = resolvedUrl.isNotEmpty
-        ? '${resolvedTitle == 'Agent Browser' ? '' : '$resolvedTitle · '}$resolvedUrl'
+        ? '${resolvedTitle == defaultTitle ? '' : '$resolvedTitle · '}$resolvedUrl'
         : resolvedTitle;
     return Material(
       elevation: 18,
@@ -87,7 +89,7 @@ class ChatBrowserOverlay extends StatelessWidget {
                             color: Color(0xFF617390),
                           ),
                           splashRadius: 18,
-                          tooltip: '关闭浏览器窗口',
+                          tooltip: context.l10n.browserOverlayClose,
                         ),
                       ],
                     ),
@@ -105,9 +107,9 @@ class ChatBrowserOverlay extends StatelessWidget {
                             },
                             creationParamsCodec: const StandardMessageCodec(),
                           )
-                        : const Center(
+                        : Center(
                             child: Text(
-                              '当前平台暂不支持浏览器工具视图',
+                              context.l10n.browserOverlayUnsupported,
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,

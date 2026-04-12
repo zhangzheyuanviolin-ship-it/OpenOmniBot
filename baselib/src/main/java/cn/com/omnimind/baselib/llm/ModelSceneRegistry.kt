@@ -1,6 +1,8 @@
 package cn.com.omnimind.baselib.llm
 
 import android.content.Context
+import cn.com.omnimind.baselib.i18n.AppLanguageMode
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.OmniLog
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -65,6 +67,8 @@ object ModelSceneRegistry {
         val model: String,
         val prompt: String? = null,
         val description: String? = null,
+        val promptI18n: Map<String, String> = emptyMap(),
+        val descriptionI18n: Map<String, String> = emptyMap(),
         val isRelativeCoordinate: Boolean = false,
         val transport: SceneTransport? = null,
         val responseParser: ResponseParser? = null,
@@ -400,6 +404,8 @@ object ModelSceneRegistry {
             model = profile.model,
             prompt = profile.prompt,
             description = profile.description,
+            promptI18n = emptyMap(),
+            descriptionI18n = emptyMap(),
             isRelativeCoordinate = profile.isRelativeCoordinate,
             transport = profile.transport,
             responseParser = profile.responseParser,
@@ -511,8 +517,14 @@ object ModelSceneRegistry {
         return SceneRuntimeProfile(
             sceneId = sceneId,
             model = effectiveModelBeforeOverride,
-            prompt = baseScene.prompt,
-            description = baseScene.description,
+            prompt = resolveLocalizedValue(
+                single = baseScene.prompt,
+                localized = baseScene.promptI18n
+            ),
+            description = resolveLocalizedValue(
+                single = baseScene.description,
+                localized = baseScene.descriptionI18n
+            ),
             isRelativeCoordinate = baseScene.isRelativeCoordinate,
             transport = transport,
             responseParser = parser,
@@ -543,6 +555,8 @@ object ModelSceneRegistry {
             model = model,
             prompt = config["prompt"] as? String,
             description = config["description"] as? String,
+            promptI18n = readLocalizedMap(config["prompt_i18n"]),
+            descriptionI18n = readLocalizedMap(config["description_i18n"]),
             isRelativeCoordinate = readBoolean(config["is_relative_coordinate"]),
             transport = SceneTransport.fromRaw(config["transport"]),
             responseParser = ResponseParser.fromRaw(config["response_parser"]),
@@ -557,6 +571,38 @@ object ModelSceneRegistry {
             is String -> raw.equals("true", ignoreCase = true)
             else -> false
         }
+    }
+
+    private fun readLocalizedMap(raw: Any?): Map<String, String> {
+        val value = raw as? Map<*, *> ?: return emptyMap()
+        return value.entries.mapNotNull { (key, item) ->
+            val normalizedKey = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val normalizedValue = item?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            normalizedKey to normalizedValue
+        }.toMap()
+    }
+
+    private fun resolveLocalizedValue(
+        single: String?,
+        localized: Map<String, String>
+    ): String? {
+        if (localized.isEmpty()) {
+            return single
+        }
+        val context = applicationContext
+        val locale = if (context != null) {
+            AppLocaleManager.resolvePromptLocale(context)
+        } else {
+            AppLocaleManager.resolvePromptLocale(
+                mode = AppLanguageMode.SYSTEM,
+                systemLocale = java.util.Locale.getDefault()
+            )
+        }
+        return localized[locale.tag]
+            ?: localized[locale.locale.language]
+            ?: localized["en-US"]
+            ?: localized["zh-CN"]
+            ?: single
     }
 
     private fun defaultTransportForScene(sceneId: String): SceneTransport {

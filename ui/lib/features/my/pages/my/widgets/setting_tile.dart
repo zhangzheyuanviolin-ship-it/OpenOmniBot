@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/theme/app_text_styles.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:flutter_svg/svg.dart';
@@ -32,7 +33,7 @@ class SettingTile extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                title,
+                context.trLegacy(title),
                 style: TextStyle(
                   fontSize: AppTextStyles.fontSizeMain,
                   fontWeight: FontWeight.w300,

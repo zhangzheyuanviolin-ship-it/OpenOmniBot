@@ -1,5 +1,6 @@
 package cn.com.omnimind.bot.agent
 
+import cn.com.omnimind.baselib.i18n.PromptLocale
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import org.junit.Assert.assertEquals
@@ -19,13 +20,14 @@ class AgentWorkspaceManagerChatDocTest {
             ensureDefaultWorkspaceDocs(
                 soulFile = soulFile,
                 chatFile = chatFile,
-                longMemoryFile = memoryFile
+                longMemoryFile = memoryFile,
+                locale = PromptLocale.ZH_CN
             )
 
             assertTrue(soulFile.exists())
             assertTrue(chatFile.exists())
             assertTrue(memoryFile.exists())
-            assertEquals(defaultChatTemplateText(), chatFile.readText())
+            assertEquals(defaultChatTemplateText(PromptLocale.ZH_CN), chatFile.readText())
         } finally {
             tempRoot.deleteRecursively()
         }
@@ -44,7 +46,8 @@ class AgentWorkspaceManagerChatDocTest {
             ensureDefaultWorkspaceDocs(
                 soulFile = soulFile,
                 chatFile = chatFile,
-                longMemoryFile = memoryFile
+                longMemoryFile = memoryFile,
+                locale = PromptLocale.ZH_CN
             )
 
             assertEquals("# CHAT\ncustom prompt\n", chatFile.readText())
