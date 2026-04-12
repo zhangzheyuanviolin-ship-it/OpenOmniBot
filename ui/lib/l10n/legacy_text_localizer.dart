@@ -59,7 +59,7 @@ class LegacyTextLocalizer {
     '正在调用工具': 'Calling tool',
     '暂时无法生成回复，请重试。': "I can't generate a reply right now. Please try again.",
     '[只显示最近的部分终端输出]\n': '[Only the most recent terminal output is shown]\n',
-    '搜索全部对话': 'Search all conversations',
+    '搜索全部对话': 'Search',
     '清空搜索': 'Clear search',
     '抱歉，刚刚网络开小差了。再发一次试试？':
         'Sorry, the network stumbled just now. Please try sending it again.',

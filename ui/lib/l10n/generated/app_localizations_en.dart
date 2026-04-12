@@ -21,7 +21,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonLoading => 'Loading';
 
   @override
-  String get homeDrawerSearchHint => 'Search all conversations';
+  String get homeDrawerSearchHint => 'Search';
 
   @override
   String get homeDrawerClearSearch => 'Clear search';
