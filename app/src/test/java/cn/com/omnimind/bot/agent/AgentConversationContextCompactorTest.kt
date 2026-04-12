@@ -5,11 +5,27 @@ import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import java.util.Locale
 
 class AgentConversationContextCompactorTest {
+    private lateinit var originalLocale: Locale
+
+    @Before
+    fun setUp() {
+        originalLocale = Locale.getDefault()
+        Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+    }
+
+    @After
+    fun tearDown() {
+        Locale.setDefault(originalLocale)
+    }
+
     @Test
     fun `buildCompactionRequestMessages adds ephemeral cache control to system prompt block`() {
         val requestMessages = AgentConversationContextCompactor.buildCompactionRequestMessages(
