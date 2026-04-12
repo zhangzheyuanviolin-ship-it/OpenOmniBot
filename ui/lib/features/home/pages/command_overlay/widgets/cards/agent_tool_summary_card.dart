@@ -262,6 +262,7 @@ class AgentToolSummaryCard extends StatelessWidget {
                 title: title,
                 runId: runId,
                 raw: raw,
+                payload: payload,
               ),
             ),
           ),
@@ -275,6 +276,7 @@ class AgentToolSummaryCard extends StatelessWidget {
     required String title,
     required String runId,
     required Map<String, dynamic> raw,
+    required Map<String, dynamic> payload,
   }) {
     final extra =
         (raw['extra'] as Map<dynamic, dynamic>?) ?? const <dynamic, dynamic>{};
@@ -283,6 +285,12 @@ class AgentToolSummaryCard extends StatelessWidget {
         const <dynamic, dynamic>{};
     final steps = (raw['steps'] as List<dynamic>?) ?? const <dynamic>[];
     final success = raw['success'] == true;
+    final ingestPayload = payload['ingest_payload'] is Map
+        ? Map<String, dynamic>.from(payload['ingest_payload'] as Map)
+        : payload['raw_trace'] is Map
+        ? Map<String, dynamic>.from(payload['raw_trace'] as Map)
+        : const <String, dynamic>{};
+    final canImport = runId.isNotEmpty || ingestPayload.isNotEmpty;
     final compileKind = (extra['compile_kind'] ?? '').toString().trim();
     final compileLabel = compileKind.isEmpty
         ? 'compile unknown'
@@ -566,11 +574,26 @@ class AgentToolSummaryCard extends StatelessWidget {
                   child: const Text('复制 run_id'),
                 ),
               FilledButton.icon(
-                onPressed: runId.isEmpty
+                onPressed: !canImport
                     ? null
-                    : () => _importRunLogToOmniFlow(context, runId: runId),
+                    : () => _importRunLogToOmniFlow(
+                        context,
+                        runId: runId,
+                        ingestPayload: ingestPayload,
+                      ),
                 icon: const Icon(Icons.psychology_alt_outlined),
                 label: const Text('记忆'),
+              ),
+              OutlinedButton.icon(
+                onPressed: !canImport
+                    ? null
+                    : () => _replayRunLogViaOmniFlow(
+                        context,
+                        runId: runId,
+                        ingestPayload: ingestPayload,
+                      ),
+                icon: const Icon(Icons.play_arrow_outlined),
+                label: const Text('重放'),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -586,6 +609,7 @@ class AgentToolSummaryCard extends StatelessWidget {
   Future<void> _importRunLogToOmniFlow(
     BuildContext context, {
     required String runId,
+    Map<String, dynamic> ingestPayload = const <String, dynamic>{},
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -633,7 +657,23 @@ class AgentToolSummaryCard extends StatelessWidget {
     );
     loadingShown = true;
     try {
-      final result = await AssistsMessageService.importUtgRunLog(runId: runId);
+      var effectiveRunId = runId.trim();
+      if (effectiveRunId.isEmpty && ingestPayload.isNotEmpty) {
+        final appendResult = await AssistsMessageService.ingestTraceRunLog(
+          ingestPayload: ingestPayload,
+        );
+        effectiveRunId = appendResult.runId.trim();
+        if (!appendResult.success || effectiveRunId.isEmpty) {
+          throw Exception(
+            appendResult.errorMessage?.trim().isNotEmpty == true
+                ? appendResult.errorMessage
+                : 'OmniFlow 未能先导入这条执行 trace',
+          );
+        }
+      }
+      final result = await AssistsMessageService.importUtgRunLog(
+        runId: effectiveRunId,
+      );
       if (!context.mounted) {
         return;
       }
@@ -658,7 +698,7 @@ class AgentToolSummaryCard extends StatelessWidget {
           type: ToastType.error,
         );
       }
-    } catch (_) {
+    } catch (e) {
       if (context.mounted && loadingShown) {
         Navigator.of(context, rootNavigator: true).pop();
         loadingShown = false;
@@ -666,7 +706,128 @@ class AgentToolSummaryCard extends StatelessWidget {
       if (!context.mounted) {
         return;
       }
-      showToast('记忆到 OmniFlow 失败', type: ToastType.error);
+      final message = e.toString().trim();
+      showToast(
+        message.isEmpty ? '记忆到 OmniFlow 失败' : '记忆到 OmniFlow 失败：$message',
+        type: ToastType.error,
+      );
+    }
+  }
+
+  Future<void> _replayRunLogViaOmniFlow(
+    BuildContext context, {
+    required String runId,
+    Map<String, dynamic> ingestPayload = const <String, dynamic>{},
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('通过 OmniFlow 重放'),
+          content: const Text('是否确定将这次执行记录导入 OmniFlow 临时区，并立即重放该轨迹？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!context.mounted || confirmed != true) {
+      return;
+    }
+    var loadingShown = false;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return const AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.4),
+              ),
+              SizedBox(width: 12),
+              Expanded(child: Text('正在导入并重放 OmniFlow 轨迹...')),
+            ],
+          ),
+        );
+      },
+    );
+    loadingShown = true;
+    try {
+      var effectiveRunId = runId.trim();
+      if (effectiveRunId.isEmpty && ingestPayload.isNotEmpty) {
+        final appendResult = await AssistsMessageService.ingestTraceRunLog(
+          ingestPayload: ingestPayload,
+        );
+        effectiveRunId = appendResult.runId.trim();
+        if (!appendResult.success || effectiveRunId.isEmpty) {
+          throw Exception(
+            appendResult.errorMessage?.trim().isNotEmpty == true
+                ? appendResult.errorMessage
+                : 'OmniFlow 未能先导入这条执行 trace',
+          );
+        }
+      }
+      final importResult = await AssistsMessageService.importUtgRunLog(
+        runId: effectiveRunId,
+      );
+      if (!context.mounted) {
+        return;
+      }
+      if (!importResult.success) {
+        if (loadingShown) {
+          Navigator.of(context, rootNavigator: true).pop();
+          loadingShown = false;
+        }
+        showToast(
+          importResult.errorMessage ?? '该 run_log 不能转换成可重放轨迹',
+          type: ToastType.error,
+        );
+        return;
+      }
+      final pathId = importResult.createdPathId.trim();
+      if (pathId.isEmpty) {
+        if (loadingShown) {
+          Navigator.of(context, rootNavigator: true).pop();
+          loadingShown = false;
+        }
+        showToast('该 run_log 未生成可重放轨迹', type: ToastType.error);
+        return;
+      }
+      final result = await AssistsMessageService.runUtgPath(pathId: pathId);
+      if (!context.mounted) {
+        return;
+      }
+      if (loadingShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingShown = false;
+      }
+      showToast(
+        result.success ? '已通过 OmniFlow 重放：$pathId' : 'OmniFlow 重放失败：$pathId',
+        type: result.success ? ToastType.success : ToastType.error,
+      );
+    } catch (e) {
+      if (context.mounted && loadingShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingShown = false;
+      }
+      if (!context.mounted) {
+        return;
+      }
+      final message = e.toString().trim();
+      showToast(
+        message.isEmpty ? '通过 OmniFlow 重放失败' : '通过 OmniFlow 重放失败：$message',
+        type: ToastType.error,
+      );
     }
   }
 

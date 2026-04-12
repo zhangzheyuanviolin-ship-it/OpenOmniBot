@@ -8,6 +8,23 @@ import cn.com.omnimind.accessibility.util.XmlTreeUtils
 import cn.com.omnimind.assists.api.bean.VLMTaskPreHookResult
 import cn.com.omnimind.assists.api.bean.VLMTaskRunLogPayload
 import cn.com.omnimind.assists.controller.accessibility.AccessibilityController
+import cn.com.omnimind.assists.task.vlmserver.AbortAction
+import cn.com.omnimind.assists.task.vlmserver.ClickAction
+import cn.com.omnimind.assists.task.vlmserver.FeedbackAction
+import cn.com.omnimind.assists.task.vlmserver.FinishedAction
+import cn.com.omnimind.assists.task.vlmserver.HotKeyAction
+import cn.com.omnimind.assists.task.vlmserver.InfoAction
+import cn.com.omnimind.assists.task.vlmserver.LongPressAction
+import cn.com.omnimind.assists.task.vlmserver.OpenAppAction
+import cn.com.omnimind.assists.task.vlmserver.PressBackAction
+import cn.com.omnimind.assists.task.vlmserver.PressHomeAction
+import cn.com.omnimind.assists.task.vlmserver.RecordAction
+import cn.com.omnimind.assists.task.vlmserver.RequireUserChoiceAction
+import cn.com.omnimind.assists.task.vlmserver.RequireUserConfirmationAction
+import cn.com.omnimind.assists.task.vlmserver.ScrollAction
+import cn.com.omnimind.assists.task.vlmserver.TypeAction
+import cn.com.omnimind.assists.task.vlmserver.UIAction
+import cn.com.omnimind.assists.task.vlmserver.WaitAction
 import cn.com.omnimind.baselib.util.ImageQuality
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.manager.AssistsCoreManager
@@ -26,7 +43,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URI
-import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 /**
@@ -117,17 +133,25 @@ object UtgBridge {
         @SerializedName("run_log") val runLog: Map<String, Any?>,
     )
 
-    data class AppendRawTraceRunLogRequest(
-        @SerializedName("source") val source: String,
-        @SerializedName("task_id") val taskId: String? = null,
+    data class IngestRequest(
         @SerializedName("goal") val goal: String,
-        @SerializedName("started_at") val startedAt: String? = null,
-        @SerializedName("finished_at") val finishedAt: String? = null,
-        @SerializedName("compile_gate") val compileGate: Map<String, Any?> = emptyMap(),
-        @SerializedName("terminal_result") val terminalResult: Map<String, Any?> = emptyMap(),
-        @SerializedName("final_observation") val finalObservation: Map<String, Any?> = emptyMap(),
-        @SerializedName("task_report_summary") val taskReportSummary: Map<String, Any?> = emptyMap(),
-        @SerializedName("events") val events: List<Map<String, Any?>> = emptyList(),
+        @SerializedName("steps") val steps: List<StepRecord>,
+        @SerializedName("auto_import") val autoImport: Boolean = true,
+    )
+
+    data class StepRecord(
+        @SerializedName("observation") val observation: ObservationRecord,
+        @SerializedName("tool_call") val toolCall: ToolCallRecord,
+    )
+
+    data class ObservationRecord(
+        @SerializedName("xml") val xml: String?,
+        @SerializedName("package_name") val packageName: String?,
+    )
+
+    data class ToolCallRecord(
+        @SerializedName("name") val name: String,
+        @SerializedName("params") val params: Map<String, Any?> = emptyMap(),
     )
 
     data class AppendRunLogResponse(
@@ -552,7 +576,7 @@ object UtgBridge {
         )
     }
 
-    suspend fun appendRawTraceRunLog(
+    suspend fun ingestVlmTaskRunLog(
         payload: VLMTaskRunLogPayload,
     ): AppendRunLogResponse? {
         if (payload.compileGateResult?.kind == "hit") {
@@ -565,8 +589,8 @@ object UtgBridge {
             )
         }
         return post(
-            path = "/run_logs/append_raw_trace",
-            payload = buildRawTracePayload(payload),
+            path = "/run_logs/ingest",
+            payload = buildIngestPayload(payload),
             responseClass = AppendRunLogResponse::class.java,
         )
     }
@@ -577,9 +601,9 @@ object UtgBridge {
             return
         }
         runCatching {
-            val appendResponse = appendRawTraceRunLog(payload)
+            val appendResponse = ingestVlmTaskRunLog(payload)
             val providerPersisted = appendResponse?.success == true
-            val rawTracePayload = buildRawTracePayload(payload)
+            val ingestPayload = buildIngestPayload(payload)
             val snapshot = linkedMapOf<String, Any?>(
                 "success" to providerPersisted,
                 "cached_locally" to true,
@@ -589,11 +613,11 @@ object UtgBridge {
                 "run_id" to appendResponse?.runId,
                 "run_log_path" to appendResponse?.runLogPath,
                 "run_log" to appendResponse?.runLog,
-                "raw_trace" to rawTracePayload,
+                "ingest_payload" to ingestPayload,
                 "error_message" to if (providerPersisted) {
                     null
                 } else {
-                    "provider append unavailable; using local cached raw_trace snapshot"
+                    "provider ingest unavailable; using local cached ingest_payload snapshot"
                 },
             )
             mmkv.encode(
@@ -946,27 +970,62 @@ object UtgBridge {
         null
     }
 
-    private fun buildRawTracePayload(
-        payload: VLMTaskRunLogPayload,
-    ): AppendRawTraceRunLogRequest {
-        val traceMeta = payload.traceSessionMeta
-        return AppendRawTraceRunLogRequest(
-            source = traceMeta.stringValue("source") ?: "oob_vlm_task",
-            taskId = traceMeta.stringValue("task_id"),
-            goal = payload.goal,
-            startedAt = traceMeta["started_at"]?.toString()?.takeIf { it.isNotBlank() }
-                ?: isoFromMs(payload.startedAtMs),
-            finishedAt = traceMeta["finished_at"]?.toString()?.takeIf { it.isNotBlank() }
-                ?: isoFromMs(payload.finishedAtMs),
-            compileGate = traceMeta.mapValue("compile_gate"),
-            terminalResult = traceMeta.mapValue("terminal_result"),
-            finalObservation = linkedMapOf(
-                "xml" to payload.finalXml,
-                "package_name" to payload.finalPackageName,
-            ),
-            taskReportSummary = traceMeta.mapValue("task_report_summary"),
-            events = payload.rawEvents,
-        )
+    private fun buildIngestPayload(payload: VLMTaskRunLogPayload): IngestRequest {
+        val steps = payload.taskReport.executionTrace.map { step ->
+            StepRecord(
+                observation = ObservationRecord(
+                    xml = step.observationXml,
+                    packageName = step.packageName,
+                ),
+                toolCall = uiActionToToolCall(step.action),
+            )
+        }
+        return IngestRequest(goal = payload.goal, steps = steps)
+    }
+
+    private fun uiActionToToolCall(action: UIAction): ToolCallRecord {
+        return when (action) {
+            is ClickAction -> ToolCallRecord(
+                "click",
+                mapOf("x" to action.x, "y" to action.y, "target_description" to action.targetDescription)
+            )
+            is TypeAction -> ToolCallRecord("input_text", mapOf("text" to action.content))
+            is ScrollAction -> ToolCallRecord(
+                "swipe",
+                mapOf(
+                    "x1" to action.x1,
+                    "y1" to action.y1,
+                    "x2" to action.x2,
+                    "y2" to action.y2,
+                    "target_description" to action.targetDescription,
+                )
+            )
+            is LongPressAction -> ToolCallRecord(
+                "long_press",
+                mapOf("x" to action.x, "y" to action.y, "target_description" to action.targetDescription)
+            )
+            is OpenAppAction -> ToolCallRecord("open_app", mapOf("package_name" to action.packageName))
+            is PressHomeAction -> ToolCallRecord("press_key", mapOf("key" to "HOME"))
+            is PressBackAction -> ToolCallRecord("press_key", mapOf("key" to "BACK"))
+            is WaitAction -> ToolCallRecord(
+                "wait",
+                mapOf("duration_ms" to (action.durationMs ?: (action.duration?.times(1000))))
+            )
+            is FinishedAction -> ToolCallRecord("finished", mapOf("content" to action.content))
+            is RecordAction -> ToolCallRecord("record", mapOf("content" to action.content))
+            is InfoAction -> ToolCallRecord("info", mapOf("value" to action.value))
+            is FeedbackAction -> ToolCallRecord("feedback", mapOf("value" to action.value))
+            is AbortAction -> ToolCallRecord("abort", mapOf("value" to action.value))
+            is HotKeyAction -> ToolCallRecord("press_key", mapOf("key" to action.key))
+            is RequireUserChoiceAction -> ToolCallRecord(
+                "require_user_choice",
+                mapOf("prompt" to action.prompt, "options" to action.options)
+            )
+            is RequireUserConfirmationAction -> ToolCallRecord(
+                "require_user_confirmation",
+                mapOf("prompt" to action.prompt)
+            )
+        }
     }
 
     private fun parseJsonMap(raw: String?): Map<String, Any?>? {
@@ -977,10 +1036,6 @@ object UtgBridge {
             @Suppress("UNCHECKED_CAST")
             gson.fromJson(raw, Map::class.java) as? Map<String, Any?>
         }.getOrNull()
-    }
-
-    private fun isoFromMs(value: Long?): String? {
-        return value?.let { Instant.ofEpochMilli(it).toString() }
     }
 
     private fun Map<String, Any?>.mapValue(key: String): Map<String, Any?> {

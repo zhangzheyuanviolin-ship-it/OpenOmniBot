@@ -594,11 +594,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
      * Return the locally cached run-log snapshot for one finished `vlm_task`.
      *
      * The snapshot may contain the provider-returned canonical run when upload
-     * succeeds, or a raw-trace fallback snapshot when provider append fails.
+     * succeeds, or an ingest-payload fallback snapshot when provider ingest fails.
      *
      * Args:
      *     call: Method-call payload carrying the originating `taskId`.
-     *     result: Flutter result callback receiving `{success, run_log, raw_trace, ...}`.
+     *     result: Flutter result callback receiving
+     *         `{success, run_log, ingest_payload, ...}`.
      */
     fun getVlmTaskRunLog(
         call: MethodCall, result: MethodChannel.Result,
@@ -663,21 +664,23 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             try {
                 val method = call.argument<String>("method")?.trim().orEmpty().uppercase()
                 val path = call.argument<String>("path")?.trim().orEmpty()
+                val routePath = path.substringBefore('?')
                 val payload = call.argument<Any>("payload")
                 val baseUrl = call.argument<String>("baseUrl")?.trim()
                 val isAllowedRequest =
-                    (method == "GET" && path == "/health") ||
-                        (method == "GET" && path == "/paths") ||
-                        (method == "DELETE" && Regex("^/paths/[^/]+$").matches(path)) ||
-                        (method == "POST" && Regex("^/paths/[^/]+/distill$").matches(path)) ||
-                        (method == "GET" && Regex("^/paths/[^/]+/bundle$").matches(path)) ||
-                        (method == "POST" && path == "/paths/import_bundle") ||
-                        (method == "GET" && path == "/run_logs") ||
-                        (method == "GET" && Regex("^/run_logs/[^/]+$").matches(path)) ||
-                        (method == "POST" && path == "/run_logs/import") ||
-                        (method == "POST" && path == "/cloud_paths/download") ||
-                        (method == "POST" && path == "/cloud_paths/upload") ||
-                        (method == "POST" && path == "/run_compiled_path")
+                    (method == "GET" && routePath == "/health") ||
+                        (method == "GET" && routePath == "/paths") ||
+                        (method == "DELETE" && Regex("^/paths/[^/]+$").matches(routePath)) ||
+                        (method == "POST" && Regex("^/paths/[^/]+/distill$").matches(routePath)) ||
+                        (method == "GET" && Regex("^/paths/[^/]+/bundle$").matches(routePath)) ||
+                        (method == "POST" && routePath == "/paths/import_bundle") ||
+                        (method == "GET" && routePath == "/run_logs") ||
+                        (method == "GET" && Regex("^/run_logs/[^/]+$").matches(routePath)) ||
+                        (method == "POST" && routePath == "/run_logs/ingest") ||
+                        (method == "POST" && routePath == "/run_logs/import") ||
+                        (method == "POST" && routePath == "/cloud_paths/download") ||
+                        (method == "POST" && routePath == "/cloud_paths/upload") ||
+                        (method == "POST" && routePath == "/run_compiled_path")
                 if (!isAllowedRequest) {
                     throw IllegalArgumentException("unsupported_utg_debug_route")
                 }

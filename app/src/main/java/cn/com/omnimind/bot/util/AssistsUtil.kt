@@ -261,9 +261,9 @@ class AssistsUtil {
                 if (onTaskRunLogReady != null) {
                     onTaskRunLogReady.invoke(payload)
                 } else {
-                    val response = UtgBridge.appendRawTraceRunLog(payload)
+                    val response = UtgBridge.ingestVlmTaskRunLog(payload)
                     if (response == null) {
-                        Log.w(TAG, "appendRawTraceRunLog returned null")
+                        Log.w(TAG, "ingestVlmTaskRunLog returned null")
                     }
                 }
             }

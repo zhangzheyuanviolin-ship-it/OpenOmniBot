@@ -1933,7 +1933,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       showToast(
         result.success
             ? '已通过 OmniFlow 执行 ${path.pathId}'
-            : 'OmniFlow 执行失败：${path.pathId}',
+            : (result.errorMessage?.trim().isNotEmpty == true
+                  ? 'OmniFlow 执行失败：${result.errorMessage}'
+                  : 'OmniFlow 执行失败：${path.pathId}'),
         type: result.success ? ToastType.success : ToastType.error,
       );
       await AppStateService.navigateBackToChat();

@@ -686,6 +686,45 @@ class UtgRunLogImportResult {
   }
 }
 
+class UtgAppendRunLogResult {
+  final bool success;
+  final String runId;
+  final String runLogPath;
+  final String provider;
+  final String? errorCode;
+  final String? errorMessage;
+  final Map<String, dynamic> runLog;
+  final Map<String, dynamic> rawJson;
+
+  const UtgAppendRunLogResult({
+    required this.success,
+    required this.runId,
+    required this.runLogPath,
+    required this.provider,
+    required this.errorCode,
+    required this.errorMessage,
+    required this.runLog,
+    required this.rawJson,
+  });
+
+  factory UtgAppendRunLogResult.fromMap(Map<String, dynamic> map) {
+    return UtgAppendRunLogResult(
+      success: map['success'] == true,
+      runId: (map['run_id'] ?? '').toString(),
+      runLogPath: (map['run_log_path'] ?? '').toString(),
+      provider: (map['provider'] ?? '').toString(),
+      errorCode: map['error_code']?.toString(),
+      errorMessage: map['error_message']?.toString(),
+      runLog: Map<String, dynamic>.from(
+        (map['run_log'] as Map<dynamic, dynamic>? ?? const {}).map(
+          (k, v) => MapEntry(k.toString(), v),
+        ),
+      ),
+      rawJson: Map<String, dynamic>.from(map),
+    );
+  }
+}
+
 class AgentToolEventData {
   final String taskId;
   final String toolName;
@@ -1450,7 +1489,241 @@ class AssistsMessageService {
         'error_message': '未找到对应的 run_log',
       };
     }
-    return result.map((key, value) => MapEntry(key.toString(), value));
+    final payload = result.map((key, value) => MapEntry(key.toString(), value));
+    final runLog = payload['run_log'];
+    final hasCanonicalRunLog =
+        runLog is Map && Map<String, dynamic>.from(runLog).isNotEmpty;
+    if (hasCanonicalRunLog) {
+      return payload;
+    }
+    final ingestPayload = payload['ingest_payload'];
+    if (ingestPayload is Map) {
+      final trace = Map<String, dynamic>.from(ingestPayload);
+      final steps = (trace['steps'] as List<dynamic>?) ?? const [];
+      final synthesizedSteps = <Map<String, dynamic>>[];
+      var lastToolName = '';
+      var finalObservation = <String, dynamic>{};
+      for (final item in steps) {
+        if (item is! Map) {
+          continue;
+        }
+        final step = Map<String, dynamic>.from(item);
+        final observation =
+            (step['observation'] as Map<dynamic, dynamic>?)?.map(
+              (key, value) => MapEntry(key.toString(), value),
+            ) ??
+            const <String, dynamic>{};
+        final toolCall =
+            (step['tool_call'] as Map<dynamic, dynamic>?)?.map(
+              (key, value) => MapEntry(key.toString(), value),
+            ) ??
+            const <String, dynamic>{};
+        final toolName = (toolCall['name'] ?? '').toString().trim();
+        final toolParams =
+            (toolCall['params'] as Map<dynamic, dynamic>?)?.map(
+              (key, value) => MapEntry(key.toString(), value),
+            ) ??
+            const <String, dynamic>{};
+        if (toolName.isEmpty && observation.isEmpty) {
+          continue;
+        }
+        if (observation.isNotEmpty) {
+          finalObservation = Map<String, dynamic>.from(observation);
+        }
+        if (toolName.isNotEmpty) {
+          lastToolName = toolName;
+        }
+        final action = <String, dynamic>{
+          'type': toolName,
+          'params': Map<String, dynamic>.from(toolParams),
+        };
+        synthesizedSteps.add(<String, dynamic>{
+          'step_index': synthesizedSteps.length,
+          'plan': <String, dynamic>{
+            'tool_name': toolName.isEmpty ? 'unknown' : toolName,
+            'tool_args': Map<String, dynamic>.from(toolParams),
+            'planner_used': true,
+            'reason': 'ingest_payload_fallback',
+          },
+          'operation_description': toolName.isEmpty ? '未记录动作' : toolName,
+          'executed_actions': toolName.isEmpty
+              ? const <dynamic>[]
+              : <dynamic>[action],
+          'act_result': <String, dynamic>{
+            'success': true,
+            'source': 'oob_vlm_task',
+            'result_summary': <String, dynamic>{},
+          },
+        });
+      }
+      var doneReason = synthesizedSteps.isEmpty ? 'unknown' : 'completed';
+      if (lastToolName == 'abort') {
+        doneReason = 'failed';
+      } else if (lastToolName == 'info' ||
+          lastToolName == 'require_user_choice' ||
+          lastToolName == 'require_user_confirmation') {
+        doneReason = 'waiting_input';
+      } else if (lastToolName == 'finished') {
+        doneReason = 'completed';
+      }
+      payload['run_log'] = <String, dynamic>{
+        'goal': (trace['goal'] ?? '').toString(),
+        'success': doneReason == 'completed',
+        'done_reason': doneReason,
+        'started_at': '',
+        'finished_at': '',
+        'step_count': synthesizedSteps.length,
+        'steps': synthesizedSteps,
+        'final_observation': finalObservation,
+        'extra': <String, dynamic>{
+          'source': 'oob_vlm_task',
+          'error_message': (payload['error_message'] ?? '').toString(),
+          'ingest_payload_fallback': true,
+        },
+      };
+      return payload;
+    }
+    final rawTrace = payload['raw_trace'];
+    if (rawTrace is! Map) {
+      return payload;
+    }
+    final trace = Map<String, dynamic>.from(rawTrace);
+    final compileGate =
+        (trace['compile_gate'] as Map<dynamic, dynamic>?) ?? const {};
+    final terminalResult =
+        (trace['terminal_result'] as Map<dynamic, dynamic>?) ?? const {};
+    final finalObservation =
+        (trace['final_observation'] as Map<dynamic, dynamic>?) ?? const {};
+    final taskReportSummary =
+        (trace['task_report_summary'] as Map<dynamic, dynamic>?) ?? const {};
+    final executionTrace =
+        (taskReportSummary['execution_trace'] as List<dynamic>?) ?? const [];
+    final events = (trace['events'] as List<dynamic>?) ?? const [];
+    final success = taskReportSummary['success'] == true;
+    final terminalStatus = (terminalResult['status'] ?? '')
+        .toString()
+        .trim()
+        .toUpperCase();
+    final doneReason = terminalStatus == 'CANCELLED'
+        ? 'user_cancelled'
+        : terminalStatus == 'WAITING_INPUT'
+        ? 'waiting_input'
+        : success
+        ? 'completed'
+        : 'failed';
+    final synthesizedSteps = <Map<String, dynamic>>[];
+    for (final item in executionTrace) {
+      if (item is! Map) {
+        continue;
+      }
+      final step = Map<String, dynamic>.from(item);
+      final stepAction =
+          (step['action'] as Map<dynamic, dynamic>?)?.map(
+            (key, value) => MapEntry(key.toString(), value),
+          ) ??
+          const <String, dynamic>{};
+      final stepIndex = step['step_index'] is num
+          ? (step['step_index'] as num).toInt()
+          : int.tryParse((step['step_index'] ?? '').toString()) ??
+                synthesizedSteps.length;
+      final isFinished =
+          (stepAction['type'] ?? '').toString().trim() == 'finished';
+      synthesizedSteps.add(<String, dynamic>{
+        'step_index': stepIndex,
+        'plan': <String, dynamic>{
+          'tool_name': isFinished ? 'finish' : 'run_action',
+          'tool_args': isFinished
+              ? const <String, dynamic>{}
+              : <String, dynamic>{'action': stepAction},
+          'planner_used': true,
+          'reason': 'raw_trace_fallback',
+        },
+        'executed_actions': isFinished || stepAction.isEmpty
+            ? const <dynamic>[]
+            : <dynamic>[stepAction],
+        'act_result': <String, dynamic>{
+          'success': true,
+          'source': 'oob_vlm_task',
+          'result_summary': <String, dynamic>{
+            'message': (step['result'] ?? '').toString(),
+            'thought': (step['thought'] ?? '').toString(),
+            'summary': (step['summary'] ?? '').toString(),
+          },
+        },
+      });
+    }
+    if (synthesizedSteps.isEmpty) {
+      for (final item in events) {
+        if (item is! Map) {
+          continue;
+        }
+        final event = Map<String, dynamic>.from(item);
+        final request =
+            (event['request'] as Map<dynamic, dynamic>?)?.map(
+              (key, value) => MapEntry(key.toString(), value),
+            ) ??
+            const <String, dynamic>{};
+        final action =
+            (request['action'] as Map<dynamic, dynamic>?)?.map(
+              (key, value) => MapEntry(key.toString(), value),
+            ) ??
+            const <String, dynamic>{};
+        if (action.isEmpty) {
+          continue;
+        }
+        final response =
+            (event['response'] as Map<dynamic, dynamic>?)?.map(
+              (key, value) => MapEntry(key.toString(), value),
+            ) ??
+            const <String, dynamic>{};
+        final stepIndex = event['step_index'] is num
+            ? (event['step_index'] as num).toInt()
+            : int.tryParse((event['step_index'] ?? '').toString()) ??
+                  synthesizedSteps.length;
+        synthesizedSteps.add(<String, dynamic>{
+          'step_index': stepIndex,
+          'plan': <String, dynamic>{
+            'tool_name': 'run_action',
+            'tool_args': <String, dynamic>{'action': action},
+            'planner_used': true,
+            'reason': 'raw_trace_event_fallback',
+          },
+          'executed_actions': <dynamic>[action],
+          'act_result': <String, dynamic>{
+            'success': response['success'] != false,
+            'source': 'oob_vlm_task',
+            'error_message': (response['message'] ?? '').toString().trim(),
+            'result_summary': <String, dynamic>{'raw_response': response},
+          },
+        });
+      }
+    }
+    payload['run_log'] = <String, dynamic>{
+      'goal': (trace['goal'] ?? '').toString(),
+      'success': success,
+      'done_reason': doneReason,
+      'started_at': (trace['started_at'] ?? '').toString(),
+      'finished_at': (trace['finished_at'] ?? '').toString(),
+      'step_count': synthesizedSteps.length,
+      'steps': synthesizedSteps,
+      'final_observation': Map<String, dynamic>.from(
+        finalObservation.map((key, value) => MapEntry(key.toString(), value)),
+      ),
+      'extra': <String, dynamic>{
+        'source': (trace['source'] ?? 'oob_vlm_task').toString(),
+        'compile_kind': (compileGate['kind'] ?? '').toString(),
+        'compile_summary': (compileGate['summary'] ?? '').toString(),
+        'error_message':
+            (taskReportSummary['error'] ??
+                    terminalResult['error_message'] ??
+                    payload['error_message'] ??
+                    '')
+                .toString(),
+        'raw_trace_fallback': true,
+        'raw_trace_event_count': events.length,
+      },
+    };
+    return payload;
   }
 
   static Future<UtgRunLogImportResult> importUtgRunLog({
@@ -1464,6 +1737,19 @@ class AssistsMessageService {
       payload: {'run_id': runId.trim()},
     );
     return UtgRunLogImportResult.fromMap(decoded);
+  }
+
+  static Future<UtgAppendRunLogResult> ingestTraceRunLog({
+    required Map<String, dynamic> ingestPayload,
+    String? baseUrl,
+  }) async {
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/run_logs/ingest',
+      baseUrl: baseUrl,
+      payload: ingestPayload,
+    );
+    return UtgAppendRunLogResult.fromMap(decoded);
   }
 
   static Future<UtgPathsSnapshot> getUtgPaths({String? baseUrl}) async {
