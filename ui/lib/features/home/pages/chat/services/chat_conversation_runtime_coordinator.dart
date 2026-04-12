@@ -46,6 +46,7 @@ class ChatConversationRuntimeState {
   String? lastAgentTaskId;
   String? activeToolCardId;
   String? activeThinkingCardId;
+  String? activeContextCompactionMarkerId;
   String? pendingAgentTextTaskId;
   bool pendingThinkingRoundSplit = false;
   int toolCardSequence = 0;
@@ -115,14 +116,17 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
   bool _initialized = false;
 
-  bool get _isEnglish => StorageService.getResolvedLocale().languageCode == 'en';
+  bool get _isEnglish =>
+      StorageService.getResolvedLocale().languageCode == 'en';
 
   String _permissionDisplayName(String raw) {
     return switch (raw.trim()) {
       '无障碍权限' || 'Accessibility' => _isEnglish ? 'Accessibility' : '无障碍权限',
       '悬浮窗权限' || 'Overlay' => _isEnglish ? 'Overlay' : '悬浮窗权限',
-      '应用列表读取权限' || 'Installed Apps Access' => _isEnglish ? 'Installed Apps Access' : '应用列表读取权限',
-      '公共文件访问' || 'Public Storage Access' => _isEnglish ? 'Public Storage Access' : '公共文件访问',
+      '应用列表读取权限' || 'Installed Apps Access' =>
+        _isEnglish ? 'Installed Apps Access' : '应用列表读取权限',
+      '公共文件访问' || 'Public Storage Access' =>
+        _isEnglish ? 'Public Storage Access' : '公共文件访问',
       _ => raw.trim(),
     };
   }
@@ -232,6 +236,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     String? lastAgentTaskId,
     String? activeToolCardId,
     String? activeThinkingCardId,
+    String? activeContextCompactionMarkerId,
     String? pendingAgentTextTaskId,
     bool pendingThinkingRoundSplit = false,
     int toolCardSequence = 0,
@@ -269,6 +274,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.lastAgentTaskId = lastAgentTaskId;
     runtime.activeToolCardId = activeToolCardId;
     runtime.activeThinkingCardId = activeThinkingCardId;
+    runtime.activeContextCompactionMarkerId = activeContextCompactionMarkerId;
     runtime.pendingAgentTextTaskId = pendingAgentTextTaskId;
     runtime.pendingThinkingRoundSplit = pendingThinkingRoundSplit;
     runtime.toolCardSequence = toolCardSequence;
@@ -405,6 +411,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.pendingAgentTextTaskId = null;
     runtime.activeToolCardId = null;
     runtime.activeThinkingCardId = null;
+    runtime.activeContextCompactionMarkerId = null;
     runtime.pendingThinkingRoundSplit = false;
     runtime.toolCardSequence = 0;
     runtime.thinkingRound = 0;
@@ -1157,12 +1164,24 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       latestPromptTokens: latestPromptTokens,
       promptTokenThreshold: promptTokenThreshold,
     );
-    runtime.isContextCompressing = isCompacting;
-    notifyListeners();
-    schedulePersistRuntimeConversation(
-      conversationId: binding.conversationId,
-      mode: binding.mode,
-    );
+    if (isCompacting) {
+      beginContextCompaction(
+        conversationId: binding.conversationId,
+        mode: binding.mode,
+        taskId: taskId,
+        trigger: 'auto',
+        latestPromptTokens: latestPromptTokens,
+        promptTokenThreshold: promptTokenThreshold,
+      );
+    } else {
+      finishContextCompaction(
+        conversationId: binding.conversationId,
+        mode: binding.mode,
+        status: 'completed',
+        latestPromptTokens: latestPromptTokens,
+        promptTokenThreshold: promptTokenThreshold,
+      );
+    }
   }
 
   void _handleAgentPromptTokenUsageChanged(
@@ -1183,6 +1202,83 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     schedulePersistRuntimeConversation(
       conversationId: binding.conversationId,
       mode: binding.mode,
+    );
+  }
+
+  void beginContextCompaction({
+    required int conversationId,
+    required String mode,
+    String? taskId,
+    String trigger = 'auto',
+    int? latestPromptTokens,
+    int? promptTokenThreshold,
+  }) {
+    final runtime = runtimeFor(conversationId: conversationId, mode: mode);
+    if (runtime == null) return;
+
+    _applyPromptTokenUsageUpdate(
+      runtime,
+      latestPromptTokens: latestPromptTokens,
+      promptTokenThreshold: promptTokenThreshold,
+    );
+    runtime.isContextCompressing = true;
+    final activeMarkerId = runtime.activeContextCompactionMarkerId;
+    final markerId =
+        activeMarkerId != null &&
+            runtime.messages.any((message) => message.id == activeMarkerId)
+        ? activeMarkerId
+        : _buildContextCompactionMarkerId(
+            conversationId: conversationId,
+            taskId: taskId,
+            trigger: trigger,
+          );
+    runtime.activeContextCompactionMarkerId = markerId;
+    _upsertContextCompactionMarker(
+      runtime,
+      markerId: markerId,
+      status: 'compressing',
+      trigger: trigger,
+      latestPromptTokens: latestPromptTokens,
+      promptTokenThreshold: promptTokenThreshold,
+    );
+    notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: conversationId,
+      mode: mode,
+    );
+  }
+
+  void finishContextCompaction({
+    required int conversationId,
+    required String mode,
+    String status = 'completed',
+    int? latestPromptTokens,
+    int? promptTokenThreshold,
+  }) {
+    final runtime = runtimeFor(conversationId: conversationId, mode: mode);
+    if (runtime == null) return;
+
+    _applyPromptTokenUsageUpdate(
+      runtime,
+      latestPromptTokens: latestPromptTokens,
+      promptTokenThreshold: promptTokenThreshold,
+    );
+    runtime.isContextCompressing = false;
+    final markerId = runtime.activeContextCompactionMarkerId;
+    if (markerId != null) {
+      _upsertContextCompactionMarker(
+        runtime,
+        markerId: markerId,
+        status: status,
+        latestPromptTokens: latestPromptTokens,
+        promptTokenThreshold: promptTokenThreshold,
+      );
+    }
+    runtime.activeContextCompactionMarkerId = null;
+    notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: conversationId,
+      mode: mode,
     );
   }
 
@@ -1427,7 +1523,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final shouldShowPermissionCard =
         executionPermissionIds.isNotEmpty &&
         executionPermissionIds.length == missing.length;
-    final localizedNames = missing.map(_permissionDisplayName).toList(growable: false);
+    final localizedNames = missing
+        .map(_permissionDisplayName)
+        .toList(growable: false);
     final names = localizedNames.join(_isEnglish ? ', ' : '、');
     final message = names.isEmpty
         ? (_isEnglish
@@ -1668,6 +1766,112 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       conversationId: runtime.conversationId,
       mode: runtime.mode,
       message: runtime.messages.first,
+    );
+  }
+
+  String _buildContextCompactionMarkerId({
+    required int conversationId,
+    String? taskId,
+    required String trigger,
+  }) {
+    final suffix = DateTime.now().millisecondsSinceEpoch;
+    final normalizedTaskId = taskId?.trim();
+    if (normalizedTaskId != null && normalizedTaskId.isNotEmpty) {
+      return '$normalizedTaskId-context-compaction-$suffix';
+    }
+    return 'conversation-$conversationId-$trigger-context-compaction-$suffix';
+  }
+
+  void _upsertContextCompactionMarker(
+    ChatConversationRuntimeState runtime, {
+    required String markerId,
+    required String status,
+    String trigger = 'auto',
+    int? latestPromptTokens,
+    int? promptTokenThreshold,
+  }) {
+    final index = runtime.messages.indexWhere((msg) => msg.id == markerId);
+    final existing = index == -1 ? null : runtime.messages[index];
+    final existingCardData = Map<String, dynamic>.from(
+      existing?.cardData ?? const <String, dynamic>{},
+    );
+    final startTime =
+        (existingCardData['startTime'] as int?) ??
+        DateTime.now().millisecondsSinceEpoch;
+    final endTime = status == 'compressing'
+        ? null
+        : DateTime.now().millisecondsSinceEpoch;
+    final resolvedTriggerRaw = (existingCardData['trigger'] ?? trigger)
+        .toString()
+        .trim();
+    final resolvedTrigger = resolvedTriggerRaw.isEmpty
+        ? trigger
+        : resolvedTriggerRaw;
+    final cardData = <String, dynamic>{
+      'type': 'context_compaction_marker',
+      'status': status,
+      'label': _contextCompactionLabel(status),
+      'trigger': resolvedTrigger,
+      'startTime': startTime,
+      'endTime': endTime,
+      'latestPromptTokens':
+          latestPromptTokens ?? runtime.conversation?.latestPromptTokens,
+      'promptTokenThreshold':
+          promptTokenThreshold ?? runtime.conversation?.promptTokenThreshold,
+    };
+    final message = ChatMessageModel(
+      id: markerId,
+      type: 2,
+      user: 3,
+      content: {'cardData': cardData, 'id': markerId},
+      createAt: DateTime.fromMillisecondsSinceEpoch(startTime),
+    );
+    if (index == -1) {
+      runtime.messages.insert(0, message);
+    } else {
+      runtime.messages[index] = existing!.copyWith(
+        content: {'cardData': cardData, 'id': markerId},
+      );
+    }
+    _persistContextCompactionMarkerIfNeeded(
+      conversationId: runtime.conversationId,
+      mode: runtime.mode,
+      message: index == -1 ? message : runtime.messages[index],
+    );
+  }
+
+  String _contextCompactionLabel(String status) {
+    return switch (status) {
+      'compressing' => _isEnglish ? 'Compressing' : '正在压缩',
+      'noop' => _isEnglish ? 'No compaction needed' : '无需压缩',
+      'failed' => _isEnglish ? 'Compaction failed' : '压缩失败',
+      _ => _isEnglish ? 'Compacted' : '已压缩',
+    };
+  }
+
+  void _persistContextCompactionMarkerIfNeeded({
+    required int conversationId,
+    required String mode,
+    required ChatMessageModel message,
+  }) {
+    final cardData = message.cardData;
+    if (message.type != 2 || cardData?['type'] != 'context_compaction_marker') {
+      return;
+    }
+    unawaited(
+      ConversationHistoryService.upsertConversationUiCard(
+        conversationId,
+        entryId: message.id,
+        cardData: Map<String, dynamic>.from(cardData!),
+        createdAtMillis: message.createAt.millisecondsSinceEpoch,
+        mode: _conversationModeFromRuntimeMode(
+          mode,
+          conversation: runtimeFor(
+            conversationId: conversationId,
+            mode: mode,
+          )?.conversation,
+        ),
+      ),
     );
   }
 

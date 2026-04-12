@@ -55,6 +55,7 @@ class OmniAgentExecutor(
         conversationId: Long?,
         conversationMode: String,
         modelOverride: AgentModelOverride?,
+        reasoningEffort: String?,
         terminalEnvironment: Map<String, String>,
         callback: AgentCallback,
         runControl: AgentRunControl = NoOpAgentRunControl
@@ -118,6 +119,9 @@ class OmniAgentExecutor(
             )
             val contextCompactor = AgentConversationContextCompactor(
                 historyRepository = historyRepository,
+                modelScene = agentModelScene,
+                modelOverride = modelOverride,
+                reasoningEffort = reasoningEffort,
                 json = json
             )
             toolRouter = AgentToolRouter(
@@ -152,6 +156,7 @@ class OmniAgentExecutor(
                         workspaceManager = workspaceManager,
                         workspaceMemoryService = memoryService,
                         conversationMode = conversationMode,
+                        reasoningEffort = reasoningEffort,
                         terminalEnvironment = terminalEnvironment,
                         runControl = runControl
                     )

@@ -150,7 +150,8 @@ class TaskManager(
             params.onMessagePush,
             params.provider,
             params.openClawConfig,
-            params.modelOverride
+            params.modelOverride,
+            params.reasoningEffort
         )
     }
 

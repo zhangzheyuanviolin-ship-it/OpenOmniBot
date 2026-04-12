@@ -95,15 +95,19 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
       if (!mounted) return;
       setState(() {
         _conversationModelOverride = null;
+        _conversationReasoningEffort = null;
         if (_pendingConversationModelOverride == null) {
           _showConversationModelMentionChip = false;
         }
       });
       return;
     }
-    final override = await ConversationModelOverrideService.getOverride(
-      conversationId,
-    );
+    final results = await Future.wait<dynamic>([
+      ConversationModelOverrideService.getOverride(conversationId),
+      ConversationReasoningEffortService.getEffort(conversationId),
+    ]);
+    final override = results[0] as ConversationModelOverride?;
+    final reasoningEffort = results[1] as String?;
     if (!mounted) return;
     final nextSelection = override == null
         ? _pendingConversationModelOverride
@@ -113,7 +117,9 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
           );
     setState(() {
       _conversationModelOverride = override;
+      _conversationReasoningEffort = reasoningEffort;
       _pendingConversationModelOverride = null;
+      _pendingConversationReasoningEffort = null;
       _showConversationModelMentionChip = override != null;
       _modelOptionsByProfileId = _mergeChatModelOptions(
         profiles: _modelProviderProfiles,
@@ -130,32 +136,46 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
     int conversationId,
   ) async {
     final pending = _pendingConversationModelOverride;
-    if (pending == null) {
-      if (_conversationModelOverride?.conversationId == conversationId) {
-        return;
-      }
-      await _loadConversationModelOverrideForNormalConversation(conversationId);
+    final pendingReasoningEffort = _pendingConversationReasoningEffort;
+    if (pending == null && pendingReasoningEffort == null) {
       return;
     }
 
-    final value = ConversationModelOverride(
-      conversationId: conversationId,
-      providerProfileId: pending.providerProfileId,
-      modelId: pending.modelId,
-    );
-    await ConversationModelOverrideService.saveOverride(value);
+    ConversationModelOverride? value;
+    if (pending != null) {
+      value = ConversationModelOverride(
+        conversationId: conversationId,
+        providerProfileId: pending.providerProfileId,
+        modelId: pending.modelId,
+      );
+      await ConversationModelOverrideService.saveOverride(value);
+    }
+    final normalizedEffort = _normalizeReasoningEffort(pendingReasoningEffort);
+    if (normalizedEffort != null) {
+      await ConversationReasoningEffortService.saveEffort(
+        conversationId,
+        normalizedEffort,
+      );
+    }
     if (!mounted) return;
     setState(() {
-      _conversationModelOverride = value;
+      if (value != null) {
+        _conversationModelOverride = value;
+      }
+      _conversationReasoningEffort =
+          normalizedEffort ?? _conversationReasoningEffort;
       _pendingConversationModelOverride = null;
+      _pendingConversationReasoningEffort = null;
       _modelOptionsByProfileId = _mergeChatModelOptions(
         profiles: _modelProviderProfiles,
         source: _modelOptionsByProfileId,
         sceneCatalog: _sceneCatalog,
-        overrideSelection: _ChatModelOverrideSelection(
-          providerProfileId: value.providerProfileId,
-          modelId: value.modelId,
-        ),
+        overrideSelection: value == null
+            ? _activeConversationModelOverrideSelection
+            : _ChatModelOverrideSelection(
+                providerProfileId: value.providerProfileId,
+                modelId: value.modelId,
+              ),
       );
     });
   }
@@ -240,6 +260,34 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
 
     final switchedLabel = displayAsMentionChip ? '@$modelId' : modelId;
     showToast('已切换到 $switchedLabel', type: ToastType.success);
+  }
+
+  @override
+  Future<void> _applyConversationReasoningEffort(String reasoningEffort) async {
+    final normalizedEffort = _normalizeReasoningEffort(reasoningEffort);
+    if (normalizedEffort == null || _activeMode != ChatPageMode.normal) {
+      return;
+    }
+    final normalConversationId =
+        _currentConversationIdByMode[ChatPageMode.normal];
+    if (normalConversationId == null) {
+      if (!mounted) return;
+      setState(() {
+        _pendingConversationReasoningEffort = normalizedEffort;
+        _conversationReasoningEffort = null;
+      });
+    } else {
+      await ConversationReasoningEffortService.saveEffort(
+        normalConversationId,
+        normalizedEffort,
+      );
+      if (!mounted) return;
+      setState(() {
+        _conversationReasoningEffort = normalizedEffort;
+        _pendingConversationReasoningEffort = null;
+      });
+    }
+    showToast('已设置思考强度为 $normalizedEffort', type: ToastType.success);
   }
 
   @override

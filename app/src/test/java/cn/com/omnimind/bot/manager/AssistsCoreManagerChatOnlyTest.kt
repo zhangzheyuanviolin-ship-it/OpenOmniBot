@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.manager
 
 import cn.com.omnimind.baselib.llm.ModelProviderProfile
+import cn.com.omnimind.assists.api.bean.TaskParams
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -121,5 +122,44 @@ class AssistsCoreManagerChatOnlyTest {
         val result = extractChatTaskTextPayload(chunk)
 
         assertEquals("", result)
+    }
+
+    @Test
+    fun `extractChatTaskPromptTokens parses usage chunk`() {
+        val chunk = """
+            {"choices":[{"delta":{"content":"hello"}}],"usage":{"prompt_tokens":4096}}
+        """.trimIndent()
+
+        val result = extractChatTaskPromptTokens(chunk)
+
+        assertEquals(4096, result)
+    }
+
+    @Test
+    fun `chatModelOverrideToAgentModelOverride preserves chat override transport fields`() {
+        val result = chatModelOverrideToAgentModelOverride(
+            TaskParams.ChatModelOverride(
+                providerProfileId = "provider-1",
+                modelId = "gpt-5.4-mini",
+                apiBase = "https://example.com/v1",
+                apiKey = "secret",
+                protocolType = "openai_compatible"
+            )
+        )
+
+        assertNotNull(result)
+        assertEquals("provider-1", result?.providerProfileId)
+        assertEquals("gpt-5.4-mini", result?.modelId)
+        assertEquals("https://example.com/v1", result?.apiBase)
+        assertEquals("secret", result?.apiKey)
+        assertEquals("openai_compatible", result?.protocolType)
+    }
+
+    @Test
+    fun `normalizeReasoningEffort accepts supported values only`() {
+        assertEquals("low", normalizeReasoningEffort(" low "))
+        assertEquals("high", normalizeReasoningEffort("HIGH"))
+        assertNull(normalizeReasoningEffort("medium"))
+        assertNull(normalizeReasoningEffort(""))
     }
 }

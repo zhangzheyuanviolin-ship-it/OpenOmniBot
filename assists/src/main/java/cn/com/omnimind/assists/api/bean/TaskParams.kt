@@ -29,7 +29,8 @@ sealed class TaskParams {
         val onMessagePush: OnMessagePushListener,
         val provider: String? = null,
         val openClawConfig: OpenClawConfig? = null,
-        val modelOverride: ChatModelOverride? = null
+        val modelOverride: ChatModelOverride? = null,
+        val reasoningEffort: String? = null
     ) : TaskParams();
     //VLM任务参数
     data class VLMOperationTaskParams(

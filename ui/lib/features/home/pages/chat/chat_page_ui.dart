@@ -3,6 +3,10 @@ part of 'chat_page.dart';
 const int _kDefaultContextTokenThreshold = 128000;
 const int _kMinContextTokenThreshold = 10000;
 const int _kMaxContextTokenThreshold = 512000;
+const double _kChatMessageBottomSafeSpacing = 12.0;
+const double _kSlashCommandDrawerRadius = 18.0;
+const double _kSlashCommandDrawerHandleWidth = 36.0;
+const double _kSlashCommandDrawerHandleHeight = 4.0;
 
 enum _UserMessageQuickAction { copy, retry }
 
@@ -21,7 +25,220 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final measuredComposerHeight = _inputAreaHeight > 0.5
         ? _inputAreaHeight + _kChatInputWrapperTopPadding
         : _kChatInputFallbackHeight;
-    return measuredComposerHeight + inputBottomPadding + keyboardSpacer;
+    return measuredComposerHeight +
+        inputBottomPadding +
+        keyboardSpacer +
+        _kChatMessageBottomSafeSpacing;
+  }
+
+  void _scheduleSlashCommandPanelInsetSync(bool visible) {
+    final mode = _activeMode;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      double nextHeight = 0;
+      if (visible) {
+        final context = _openClawPanelKey.currentContext;
+        final renderBox = context?.findRenderObject() as RenderBox?;
+        if (renderBox != null && renderBox.hasSize) {
+          nextHeight = renderBox.size.height;
+        }
+      }
+      final currentHeight = _slashCommandPanelOccupiedHeightByMode[mode] ?? 0;
+      if ((currentHeight - nextHeight).abs() < 0.5) {
+        return;
+      }
+      setState(() {
+        _slashCommandPanelOccupiedHeightByMode[mode] = nextHeight;
+      });
+    });
+  }
+
+  void _scheduleSlashCommandOccupiedHeightSync(double height) {
+    final normalized = height.isFinite ? height : 0.0;
+    if ((_slashCommandPanelOccupiedHeight - normalized).abs() < 0.5) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          (_slashCommandPanelOccupiedHeight - normalized).abs() < 0.5) {
+        return;
+      }
+      setState(() {
+        _slashCommandPanelOccupiedHeightByMode[_activeMode] = normalized;
+      });
+    });
+  }
+
+  List<Map<String, dynamic>> _buildSlashCommandCards() {
+    final route = _resolveSlashCommandPanelRoute(_messageController.text);
+    if (route == _SlashCommandPanelRoute.effort &&
+        _supportsReasoningEffortCommand) {
+      final activeEffort = _activeConversationReasoningEffort;
+      final query = _slashCommandRouteQuery(route).toLowerCase();
+      final efforts = <String>['low', 'high']
+          .where((effort) {
+            return query.isEmpty || effort.contains(query);
+          })
+          .toList(growable: false);
+      return efforts
+          .map((effort) {
+            final isSelected = effort == activeEffort;
+            return <String, dynamic>{
+              'cardId': 'slash-command-effort-$effort',
+              'toolName': effort,
+              'toolTitle': effort,
+              'displayName': effort,
+              'toolType': 'command',
+              'toolTypeLabel': '思考',
+              'status': isSelected ? 'success' : 'running',
+              'statusLabel': isSelected ? '已选' : '可选',
+              'summary': isSelected ? '当前思考强度：$effort' : '将思考强度切换为 $effort',
+              'progress': '用于后续请求的 reasoning_effort 参数',
+            };
+          })
+          .toList(growable: false);
+    }
+
+    final commands = <Map<String, dynamic>>[];
+    if (_supportsManualContextCompaction) {
+      commands.add(<String, dynamic>{
+        'cardId': 'slash-command-compact',
+        'toolName': '/compact',
+        'toolTitle': '/compact',
+        'displayName': '/compact',
+        'toolType': 'command',
+        'toolTypeLabel': '上下文',
+        'status': 'running',
+        'statusLabel': '命令',
+        'summary': '手动压缩当前对话上下文',
+        'progress': '把当前会话历史压缩成 replacement summary',
+      });
+    }
+    if (_supportsReasoningEffortCommand) {
+      final activeEffort = _activeConversationReasoningEffort;
+      commands.add(<String, dynamic>{
+        'cardId': 'slash-command-effort',
+        'toolName': '/effort',
+        'toolTitle': '/effort',
+        'displayName': '/effort',
+        'toolType': 'command',
+        'toolTypeLabel': '思考',
+        'status': activeEffort == null ? 'running' : 'success',
+        'statusLabel': activeEffort ?? '命令',
+        'summary': activeEffort == null
+            ? '设置当前会话的思考强度'
+            : '当前思考强度：$activeEffort',
+        'progress': '点击后选择 low 或 high',
+      });
+    }
+    if (_isOpenClawSurface) {
+      commands.add(<String, dynamic>{
+        'cardId': 'slash-command-openclaw',
+        'toolName': '/openclaw',
+        'toolTitle': '/openclaw',
+        'displayName': '/openclaw',
+        'toolType': 'command',
+        'toolTypeLabel': '网关',
+        'status': 'running',
+        'statusLabel': '命令',
+        'summary': '手动配置远端或自定义 OpenClaw 网关',
+        'progress': '填写 Base URL、Token 与 User ID',
+      });
+    }
+    return commands;
+  }
+
+  void _handleSlashCommandCardSelected(Map<String, dynamic> cardData) {
+    final command = (cardData['toolTitle'] ?? cardData['displayName'] ?? '')
+        .toString()
+        .trim();
+    switch (command) {
+      case '/compact':
+        unawaited(_executeManualContextCompactionCommand());
+        break;
+      case '/effort':
+        _messageController.value = const TextEditingValue(
+          text: '/effort ',
+          selection: TextSelection.collapsed(offset: 8),
+        );
+        _inputFocusNode.requestFocus();
+        _handleSlashCommandInput();
+        break;
+      case 'low':
+      case 'high':
+        unawaited(_applyConversationReasoningEffort(command));
+        _messageController.clear();
+        _hideSlashCommandPanel();
+        break;
+      case '/openclaw':
+        _showOpenClawCommandPanel(expand: true);
+        break;
+      default:
+        break;
+    }
+  }
+
+  Widget _buildSlashCommandDrawerSurface({
+    required Widget child,
+    bool bodyHasOwnPadding = false,
+  }) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final surfaceColor = isDark
+        ? palette.surfacePrimary
+        : const Color(0xFFF9FCFF);
+    final handleColor = isDark
+        ? palette.borderStrong.withValues(alpha: 0.9)
+        : const Color(0x334E627D);
+    return Material(
+      color: Colors.transparent,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(_kSlashCommandDrawerRadius),
+          ),
+          border: isDark
+              ? Border.all(color: palette.borderSubtle.withValues(alpha: 0.72))
+              : Border.all(color: const Color(0x120F2034)),
+          boxShadow: [
+            BoxShadow(
+              color: isDark
+                  ? palette.shadowColor.withValues(alpha: 0.34)
+                  : const Color(0x18111B2D),
+              blurRadius: isDark ? 20 : 16,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 6),
+                child: Container(
+                  width: _kSlashCommandDrawerHandleWidth,
+                  height: _kSlashCommandDrawerHandleHeight,
+                  decoration: BoxDecoration(
+                    color: handleColor,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              bodyHasOwnPadding
+                  ? child
+                  : Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: child,
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   ChatPaneOverlayAnchorGeometry _resolveToolActivityAnchorGeometry({
@@ -245,11 +462,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   @override
   Widget _buildSlashCommandPanel() {
     final palette = context.omniPalette;
-    final isDark = context.isDarkTheme;
-    final visible =
-        _showModelMentionPanel ||
-        (_isOpenClawSurface &&
-            (_showSlashCommandPanel || _openClawPanelExpanded));
+    final visible = _showModelMentionPanel || _openClawPanelExpanded;
+    _scheduleSlashCommandPanelInsetSync(visible);
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
       transitionBuilder: (child, animation) {
@@ -266,80 +480,81 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       },
       child: !visible
           ? const SizedBox.shrink()
-          : Container(
+          : KeyedSubtree(
               key: _openClawPanelKey,
-              padding: _showModelMentionPanel
-                  ? EdgeInsets.zero
-                  : const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDark ? palette.surfacePrimary : Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: isDark ? Border.all(color: palette.borderSubtle) : null,
-                boxShadow: [
-                  BoxShadow(
-                    color: (isDark ? palette.shadowColor : Colors.black)
-                        .withValues(alpha: isDark ? 0.22 : 0.08),
-                    blurRadius: isDark ? 18 : 14,
-                    offset: Offset(0, isDark ? 8 : 6),
-                  ),
-                ],
-              ),
-              child: _openClawPanelExpanded
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'OpenClaw 配置',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: palette.textPrimary,
+              child: _showModelMentionPanel
+                  ? Container(
+                      decoration: BoxDecoration(
+                        color: context.isDarkTheme
+                            ? palette.surfacePrimary
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: context.isDarkTheme
+                            ? Border.all(color: palette.borderSubtle)
+                            : null,
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                (context.isDarkTheme
+                                        ? palette.shadowColor
+                                        : Colors.black)
+                                    .withValues(
+                                      alpha: context.isDarkTheme ? 0.22 : 0.08,
+                                    ),
+                            blurRadius: context.isDarkTheme ? 18 : 14,
+                            offset: Offset(0, context.isDarkTheme ? 8 : 6),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _openClawBaseUrlController,
-                          decoration: const InputDecoration(
-                            labelText: 'Base URL',
-                            hintText: 'http://192.168.1.10:18789',
-                            isDense: true,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _openClawTokenController,
-                          decoration: const InputDecoration(
-                            labelText: 'Token（可选）',
-                            hintText: '为空表示无需 token',
-                            isDense: true,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _openClawUserIdController,
-                          decoration: const InputDecoration(
-                            labelText: 'User ID（可选）',
-                            isDense: true,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: _buildModelMentionPanel(),
                     )
-                  : _showModelMentionPanel
-                  ? _buildModelMentionPanel()
-                  : !_isOpenClawSurface
-                  ? const SizedBox.shrink()
-                  : Column(
-                      children: [
-                        _buildOpenClawCommandRow(
-                          icon: Icons.link_rounded,
-                          iconColor: const Color(0xFF2C7FEB),
-                          title: '/openclaw',
-                          subtitle: '手动配置远端或自定义 OpenClaw 网关',
-                          onTap: () {
-                            _showOpenClawCommandPanel(expand: true);
-                          },
-                        ),
-                      ],
+                  : _buildSlashCommandDrawerSurface(
+                      bodyHasOwnPadding: _openClawPanelExpanded,
+                      child: _openClawPanelExpanded
+                          ? Padding(
+                              padding: const EdgeInsets.fromLTRB(14, 2, 14, 14),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'OpenClaw 配置',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: palette.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: _openClawBaseUrlController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Base URL',
+                                      hintText: 'http://192.168.1.10:18789',
+                                      isDense: true,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: _openClawTokenController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Token（可选）',
+                                      hintText: '为空表示无需 token',
+                                      isDense: true,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: _openClawUserIdController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'User ID（可选）',
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : const SizedBox.shrink(),
                     ),
             ),
     );
@@ -353,12 +568,20 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     double bottomOverlayInset = 0,
   }) {
     final runtime = _runtimeForMode(mode);
+    final resolvedMessages = runtime?.messages ?? _messagesByMode[mode]!;
+    final showToolActivityStrip =
+        mode == _activeMode &&
+        _isInputAreaVisible &&
+        !_showSlashCommandPanel &&
+        !_openClawPanelExpanded &&
+        extractAgentToolCards(resolvedMessages).isNotEmpty;
     return ChatMessageList(
-      messages: runtime?.messages ?? _messagesByMode[mode]!,
+      messages: resolvedMessages,
       scrollController: _scrollControllerForMode(mode),
       bottomOverlayInset:
           bottomOverlayInset +
-          (mode == _activeMode ? _toolActivityOccupiedHeight : 0),
+          (mode == _activeMode ? _slashCommandPanelOccupiedHeight : 0) +
+          (showToolActivityStrip ? _toolActivityOccupiedHeight : 0),
       onBeforeTaskExecute: handleBeforeTaskExecute,
       onCancelTask: _onCancelTaskFromCard,
       onRequestAuthorize: mode == ChatPageMode.normal
@@ -467,11 +690,24 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     required VoidCallback onMenuTap,
   }) {
     final toolActivityCards = extractAgentToolCards(_messages);
+    final slashCommandCards =
+        _showSlashCommandPanel &&
+            !_showModelMentionPanel &&
+            !_openClawPanelExpanded
+        ? _buildSlashCommandCards()
+        : const <Map<String, dynamic>>[];
+    final showSlashCommandStrip =
+        _isInputAreaVisible && slashCommandCards.isNotEmpty;
+    final showToolActivityStrip =
+        _isInputAreaVisible &&
+        toolActivityCards.isNotEmpty &&
+        !_showSlashCommandPanel &&
+        !_openClawPanelExpanded;
     final toolActivityCanExpand = toolActivityCards.length > 1;
     final suppressToolActivitySurfaceShadow =
         _inputFocusNode.hasFocus &&
         (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0.0) > 0;
-    final toolActivityAnchor = toolActivityCards.isEmpty
+    final overlayAnchor = (toolActivityCards.isEmpty && !showSlashCommandStrip)
         ? null
         : _resolveToolActivityAnchorGeometry(
             layoutContext: layoutContext,
@@ -480,12 +716,24 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             keyboardSpacer: keyboardSpacer,
             inputAreaHeight: _inputAreaHeight,
           );
-    if (toolActivityCards.isEmpty && _toolActivityOccupiedHeight > 0) {
+    if ((!showToolActivityStrip || toolActivityCards.isEmpty) &&
+        _toolActivityOccupiedHeight > 0) {
       _scheduleToolActivityInsetSync(0);
+    }
+    if (!showSlashCommandStrip &&
+        !_showModelMentionPanel &&
+        !_openClawPanelExpanded &&
+        _slashCommandPanelOccupiedHeight > 0) {
+      _scheduleSlashCommandOccupiedHeightSync(0);
     }
     if (!toolActivityCanExpand && _isToolActivityExpanded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _setToolActivityExpanded(false);
+      });
+    }
+    if (!showSlashCommandStrip && _isSlashCommandExpanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _setSlashCommandExpanded(false);
       });
     }
     final showAppUpdateIndicator =
@@ -615,6 +863,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                       useLargeComposerStyle: true,
                       useAttachmentPickerForPlus: true,
                       onPickAttachment: _pickAttachments,
+                      onTriggerSlashCommand: _triggerSlashCommandPanel,
                       attachments: _pendingAttachments,
                       onRemoveAttachment: _removePendingAttachment,
                       selectedModelOverrideId:
@@ -657,18 +906,18 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               onTap: () => _setToolActivityExpanded(false),
             ),
           ),
-        if (_isInputAreaVisible && toolActivityCards.isNotEmpty)
+        if (showToolActivityStrip)
           Positioned(
-            left: toolActivityAnchor?.rect.left ?? 24,
+            left: overlayAnchor?.rect.left ?? 24,
             width:
-                toolActivityAnchor?.rect.width ??
+                overlayAnchor?.rect.width ??
                 math.max(0.0, constraints.maxWidth - 48),
-            bottom: toolActivityAnchor?.bottom ?? 0,
+            bottom: overlayAnchor?.bottom ?? 0,
             child: _buildNormalSurfaceTransition(
               viewportWidth: constraints.maxWidth,
               child: ChatToolActivityStrip(
                 messages: _messages,
-                anchorRect: toolActivityAnchor?.rect,
+                anchorRect: overlayAnchor?.rect,
                 onOccupiedHeightChanged: _scheduleToolActivityInsetSync,
                 expanded: _isToolActivityExpanded,
                 onExpandedChanged: _setToolActivityExpanded,
@@ -677,10 +926,34 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               ),
             ),
           ),
-        if (_showModelMentionPanel ||
-            _showSlashCommandPanel ||
-            _openClawPanelExpanded ||
-            _isOpenClawSurface)
+        if (showSlashCommandStrip)
+          Positioned(
+            left: overlayAnchor?.rect.left ?? 24,
+            width:
+                overlayAnchor?.rect.width ??
+                math.max(0.0, constraints.maxWidth - 48),
+            bottom: overlayAnchor?.bottom ?? 0,
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: Container(
+                key: _slashCommandStripKey,
+                child: KeyedSubtree(
+                  key: ValueKey<String>(
+                    'slash-command-${_resolveSlashCommandPanelRoute(_messageController.text).name}',
+                  ),
+                  child: ChatCommandActivityStrip(
+                    commands: slashCommandCards,
+                    anchorRect: overlayAnchor?.rect,
+                    onOccupiedHeightChanged:
+                        _scheduleSlashCommandOccupiedHeightSync,
+                    suppressSurfaceShadow: suppressToolActivitySurfaceShadow,
+                    onSelectCommand: _handleSlashCommandCardSelected,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (_showModelMentionPanel || _openClawPanelExpanded)
           Positioned(
             left: 24,
             right: 24,
@@ -688,13 +961,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             child: _buildNormalSurfaceTransition(
               viewportWidth: constraints.maxWidth,
               child: _buildSlashCommandPanel(),
-            ),
-          ),
-        if (_isContextCompressing)
-          Positioned.fill(
-            child: _buildNormalSurfaceTransition(
-              viewportWidth: constraints.maxWidth,
-              child: _buildContextCompressingHint(),
             ),
           ),
         if (_isPopupVisible)

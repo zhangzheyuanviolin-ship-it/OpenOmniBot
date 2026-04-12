@@ -78,6 +78,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       lastAgentTaskId: runtime?.lastAgentTaskId,
       activeToolCardId: runtime?.activeToolCardId,
       activeThinkingCardId: runtime?.activeThinkingCardId,
+      activeContextCompactionMarkerId: runtime?.activeContextCompactionMarkerId,
       pendingAgentTextTaskId: runtime?.pendingAgentTextTaskId,
       pendingThinkingRoundSplit: runtime?.pendingThinkingRoundSplit ?? false,
       toolCardSequence: runtime?.toolCardSequence ?? 0,
@@ -525,6 +526,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       userMessage: userMessage,
       userAttachments: userAttachments,
       modelOverride: _buildChatModelOverridePayload(),
+      reasoningEffort: _activeConversationReasoningEffort,
     );
     if (success) {
       return;
@@ -594,6 +596,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
             ? int.tryParse(userMessageId.split('-').first)
             : null,
         modelOverride: _buildAgentModelOverridePayload(),
+        reasoningEffort: _activeConversationReasoningEffort,
         terminalEnvironment: _buildAgentTerminalEnvironmentPayload(),
       );
       if (!success) {

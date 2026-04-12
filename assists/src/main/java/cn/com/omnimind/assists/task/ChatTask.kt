@@ -51,6 +51,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
     private var provider: String? = null
     private var openClawConfig: TaskParams.OpenClawConfig? = null
     private var modelOverride: TaskParams.ChatModelOverride? = null
+    private var reasoningEffort: String? = null
     private var openClawFinished = false
     private var openClawLoggedFirstEvent = false
     private var openClawWebSocket: WebSocket? = null
@@ -70,7 +71,8 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
         onMessagePushListener: OnMessagePushListener,
         provider: String? = null,
         openClawConfig: TaskParams.OpenClawConfig? = null,
-        modelOverride: TaskParams.ChatModelOverride? = null
+        modelOverride: TaskParams.ChatModelOverride? = null,
+        reasoningEffort: String? = null
     ) {
         super.start{
             try {
@@ -80,6 +82,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                 this@ChatTask.provider = provider?.trim()?.lowercase()
                 this@ChatTask.openClawConfig = openClawConfig
                 this@ChatTask.modelOverride = modelOverride
+                this@ChatTask.reasoningEffort = reasoningEffort?.trim()?.lowercase()
                 this@ChatTask.openClawFinished = false
                 this@ChatTask.openClawLoggedFirstEvent = false
                 this@ChatTask.openClawWebSocket = null
@@ -154,7 +157,8 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                         explicitApiBase = modelOverride?.apiBase,
                         explicitApiKey = modelOverride?.apiKey,
                         explicitModel = modelOverride?.modelId,
-                        explicitProtocolType = modelOverride?.protocolType
+                        explicitProtocolType = modelOverride?.protocolType,
+                        reasoningEffort = this@ChatTask.reasoningEffort
                     )
                 }
             } catch (e: Http429Exception){

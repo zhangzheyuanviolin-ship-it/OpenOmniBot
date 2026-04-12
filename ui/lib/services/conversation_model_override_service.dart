@@ -90,3 +90,67 @@ class ConversationModelOverrideService {
     return <String, dynamic>{};
   }
 }
+
+class ConversationReasoningEffortService {
+  static const String _kConversationReasoningEffortsKey =
+      'conversation_reasoning_efforts_v1';
+  static const Set<String> _kSupportedEfforts = {'low', 'high'};
+
+  static Future<String?> getEffort(int conversationId) async {
+    final map = _readEffortMap();
+    final raw = map[conversationId.toString()];
+    return _normalizeEffort(raw?.toString());
+  }
+
+  static Future<void> saveEffort(int conversationId, String effort) async {
+    final normalized = _normalizeEffort(effort);
+    if (normalized == null) {
+      await clearEffort(conversationId);
+      return;
+    }
+    final map = _readEffortMap();
+    map[conversationId.toString()] = normalized;
+    await StorageService.setString(
+      _kConversationReasoningEffortsKey,
+      jsonEncode(map),
+    );
+  }
+
+  static Future<void> clearEffort(int conversationId) async {
+    final map = _readEffortMap();
+    map.remove(conversationId.toString());
+    await StorageService.setString(
+      _kConversationReasoningEffortsKey,
+      jsonEncode(map),
+    );
+  }
+
+  static String? normalizeEffort(String? raw) => _normalizeEffort(raw);
+
+  static Map<String, dynamic> _readEffortMap() {
+    final raw = StorageService.getString(
+      _kConversationReasoningEffortsKey,
+      defaultValue: '',
+    );
+    if (raw == null || raw.trim().isEmpty) {
+      return <String, dynamic>{};
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // ignore broken cache
+    }
+    return <String, dynamic>{};
+  }
+
+  static String? _normalizeEffort(String? raw) {
+    final normalized = raw?.trim().toLowerCase();
+    if (normalized == null || !_kSupportedEfforts.contains(normalized)) {
+      return null;
+    }
+    return normalized;
+  }
+}

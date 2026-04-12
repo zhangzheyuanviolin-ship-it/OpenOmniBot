@@ -147,6 +147,29 @@ class AgentOrchestratorTest {
     }
 
     @Test
+    fun reasoningEffortIsForwardedIntoModelRequests() = runBlocking {
+        val llmClient = FakeLlmClient(
+            turns = listOf(
+                assistantTurn(content = "已按低思考强度返回。")
+            )
+        )
+
+        createOrchestrator(llmClient, FakeToolExecutor()).run(
+            AgentOrchestrator.Input(
+                callback = RecordingCallback(),
+                initialMessages = initialMessages("简单回答"),
+                executionEnv = FakeExecutionEnvironment(
+                    "简单回答",
+                    reasoningEffort = "low"
+                )
+            )
+        )
+
+        assertEquals(1, llmClient.requests.size)
+        assertEquals("low", llmClient.requests.first().reasoningEffort)
+    }
+
+    @Test
     fun terminalExecuteRunsOnlyOncePerExplicitToolCall() = runBlocking {
         val llmClient = FakeLlmClient(
             turns = listOf(
@@ -607,6 +630,7 @@ class AgentOrchestratorTest {
     private class FakeExecutionEnvironment(
         override val userMessage: String,
         override val conversationMode: String = "normal",
+        override val reasoningEffort: String? = null,
         override val runControl: AgentRunControl = NoOpAgentRunControl
     ) : AgentExecutionEnvironment {
         override val agentRunId: String = "test-run"

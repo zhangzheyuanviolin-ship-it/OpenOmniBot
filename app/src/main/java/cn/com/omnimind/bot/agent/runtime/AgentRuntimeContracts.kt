@@ -13,6 +13,7 @@ interface AgentExecutionEnvironment {
     val workspaceManager: AgentWorkspaceManager
     val workspaceMemoryService: WorkspaceMemoryService
     val conversationMode: String
+    val reasoningEffort: String?
     val terminalEnvironment: Map<String, String>
     val runControl: AgentRunControl
 }
@@ -28,6 +29,7 @@ data class DefaultAgentExecutionEnvironment(
     override val workspaceManager: AgentWorkspaceManager,
     override val workspaceMemoryService: WorkspaceMemoryService,
     override val conversationMode: String,
+    override val reasoningEffort: String? = null,
     override val terminalEnvironment: Map<String, String> = emptyMap(),
     override val runControl: AgentRunControl = NoOpAgentRunControl
 ) : AgentExecutionEnvironment

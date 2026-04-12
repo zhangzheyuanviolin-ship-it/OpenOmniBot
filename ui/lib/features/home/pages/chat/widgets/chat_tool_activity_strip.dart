@@ -373,6 +373,249 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
   }
 }
 
+class ChatCommandActivityStrip extends StatefulWidget {
+  const ChatCommandActivityStrip({
+    super.key,
+    required this.commands,
+    required this.onSelectCommand,
+    this.anchorRect,
+    this.onOccupiedHeightChanged,
+    this.suppressSurfaceShadow = false,
+  });
+
+  final List<Map<String, dynamic>> commands;
+  final ValueChanged<Map<String, dynamic>> onSelectCommand;
+  final Rect? anchorRect;
+  final ValueChanged<double>? onOccupiedHeightChanged;
+  final bool suppressSurfaceShadow;
+
+  @override
+  State<ChatCommandActivityStrip> createState() =>
+      _ChatCommandActivityStripState();
+}
+
+class _ChatCommandActivityStripState extends State<ChatCommandActivityStrip> {
+  double? _lastReportedOccupiedHeight;
+  final Set<int> _heldPointerIds = <int>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final commands = widget.commands;
+    if (commands.isEmpty) {
+      _reportOccupiedHeight(0);
+      return const SizedBox.shrink();
+    }
+
+    final activeCard = commands.first;
+    final historyCards = commands.length > 1
+        ? commands.sublist(1)
+        : const <Map<String, dynamic>>[];
+    final showHistory = historyCards.isNotEmpty;
+    final historyHeight = showHistory
+        ? _resolveHistoryHeight(historyCards)
+        : 0.0;
+    final dividerHeight = showHistory ? 1.0 : 0.0;
+    final surfaceHeight =
+        _kToolActivityRowHeight + historyHeight + dividerHeight;
+    _reportOccupiedHeight(surfaceHeight);
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutQuart,
+      alignment: Alignment.bottomLeft,
+      child: SizedBox(
+        width: widget.anchorRect?.width ?? double.infinity,
+        height: surfaceHeight,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: _kToolActivitySurfaceHorizontalInset,
+              right: _kToolActivitySurfaceHorizontalInset,
+              bottom: 0,
+              child: _CommandDrawerSurface(
+                activeCard: activeCard,
+                historyCards: historyCards,
+                historyHeight: historyHeight,
+                expanded: showHistory,
+                canExpand: false,
+                suppressShadow: widget.suppressSurfaceShadow,
+                leadingInset: 0,
+                onToggle: () {},
+                onSelectCommand: widget.onSelectCommand,
+                onHistoryPointerDown: _handleHistoryPointerDown,
+                onHistoryPointerEnd: _handleHistoryPointerEnd,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatCommandActivityStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.commands.isEmpty && _lastReportedOccupiedHeight != 0) {
+      _reportOccupiedHeight(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _releaseHeldPointers();
+    super.dispose();
+  }
+
+  double _resolveHistoryHeight(List<Map<String, dynamic>> cards) {
+    final visibleCount = cards.length.clamp(1, 5);
+    final estimated = visibleCount * _kToolActivityRowHeight;
+    return math.min(_kToolActivityDrawerMaxHeight, estimated.toDouble());
+  }
+
+  void _handleHistoryPointerDown(int pointer) {
+    if (_heldPointerIds.add(pointer)) {
+      ToolCardDetailGestureGate.holdPointer(pointer);
+    }
+  }
+
+  void _handleHistoryPointerEnd(int pointer) {
+    if (_heldPointerIds.remove(pointer)) {
+      ToolCardDetailGestureGate.releasePointer(pointer);
+    }
+  }
+
+  void _releaseHeldPointers() {
+    if (_heldPointerIds.isEmpty) {
+      return;
+    }
+    for (final pointer in _heldPointerIds.toList(growable: false)) {
+      ToolCardDetailGestureGate.releasePointer(pointer);
+    }
+    _heldPointerIds.clear();
+  }
+
+  void _reportOccupiedHeight(double height) {
+    if (widget.onOccupiedHeightChanged == null) {
+      return;
+    }
+    final normalized = height.isFinite ? height : 0.0;
+    if (_lastReportedOccupiedHeight != null &&
+        (_lastReportedOccupiedHeight! - normalized).abs() < 0.5) {
+      return;
+    }
+    _lastReportedOccupiedHeight = normalized;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      widget.onOccupiedHeightChanged?.call(normalized);
+    });
+  }
+}
+
+class _CommandDrawerSurface extends StatelessWidget {
+  const _CommandDrawerSurface({
+    required this.activeCard,
+    required this.historyCards,
+    required this.historyHeight,
+    required this.expanded,
+    required this.canExpand,
+    required this.suppressShadow,
+    required this.leadingInset,
+    required this.onToggle,
+    required this.onSelectCommand,
+    required this.onHistoryPointerDown,
+    required this.onHistoryPointerEnd,
+  });
+
+  final Map<String, dynamic> activeCard;
+  final List<Map<String, dynamic>> historyCards;
+  final double historyHeight;
+  final bool expanded;
+  final bool canExpand;
+  final bool suppressShadow;
+  final double leadingInset;
+  final VoidCallback onToggle;
+  final ValueChanged<Map<String, dynamic>> onSelectCommand;
+  final ValueChanged<int> onHistoryPointerDown;
+  final ValueChanged<int> onHistoryPointerEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final surfaceColor = context.isDarkTheme
+        ? palette.surfacePrimary
+        : _kToolActivitySurfaceColor;
+    final dividerColor = context.isDarkTheme
+        ? palette.borderSubtle.withValues(alpha: 0.52)
+        : const Color(0x140F2034);
+    final bottomReveal = suppressShadow
+        ? _kToolActivityAttachedBorderReveal
+        : 0.0;
+    return PhysicalShape(
+      key: const ValueKey('chat-command-activity-bar'),
+      color: surfaceColor,
+      shadowColor: suppressShadow
+          ? Colors.transparent
+          : context.isDarkTheme
+          ? palette.shadowColor.withValues(alpha: 0.42)
+          : const Color(0x18111B2D),
+      elevation: suppressShadow ? 0 : (expanded ? 8 : 6),
+      clipBehavior: Clip.antiAlias,
+      clipper: _ActivityDrawerClipper(
+        showPreviewCutout: false,
+        bottomReveal: bottomReveal,
+      ),
+      child: ColoredBox(
+        color: surfaceColor,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedCrossFade(
+              duration: const Duration(milliseconds: 240),
+              firstCurve: Curves.easeInCubic,
+              secondCurve: Curves.easeOutCubic,
+              sizeCurve: Curves.easeOutQuart,
+              alignment: Alignment.bottomCenter,
+              crossFadeState: expanded
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              firstChild: const SizedBox.shrink(
+                key: ValueKey('collapsed-command-panel'),
+              ),
+              secondChild: SizedBox(
+                height: historyHeight,
+                child: _HistoryDrawer(
+                  cards: historyCards,
+                  onOpenCard: onSelectCommand,
+                  onPointerDown: onHistoryPointerDown,
+                  onPointerEnd: onHistoryPointerEnd,
+                ),
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              height: expanded ? 1 : 0,
+              margin: const EdgeInsets.only(left: 18, right: 10),
+              color: dividerColor,
+            ),
+            ToolActivityRow(
+              card: activeCard,
+              leadingInset: leadingInset,
+              onTap: () => onSelectCommand(activeCard),
+              trailing: canExpand
+                  ? _ActivityBarTrailing(expanded: expanded, onToggle: onToggle)
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ActivityDrawerSurface extends StatelessWidget {
   const _ActivityDrawerSurface({
     required this.activeCard,

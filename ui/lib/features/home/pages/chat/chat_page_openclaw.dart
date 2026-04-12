@@ -2,6 +2,27 @@ part of 'chat_page.dart';
 
 mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
   @override
+  bool get _supportsManualContextCompaction => !_isOpenClawSurface;
+
+  @override
+  void _triggerSlashCommandPanel() {
+    final currentText = _messageController.text;
+    final slashPrefixed = currentText.trimLeft().startsWith('/');
+    if (!slashPrefixed) {
+      _messageController.value = const TextEditingValue(
+        text: '/',
+        selection: TextSelection.collapsed(offset: 1),
+      );
+    } else {
+      _messageController.selection = TextSelection.collapsed(
+        offset: currentText.length,
+      );
+    }
+    _inputFocusNode.requestFocus();
+    _handleSlashCommandInput();
+  }
+
+  @override
   Future<void> _loadOpenClawConfig() async {
     try {
       final enabled =
@@ -50,7 +71,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
   void _handleSlashCommandInput() {
     final value = _messageController.value;
     final shouldShowSlash = value.text.trimLeft().startsWith('/');
-    final shouldShowOpenClawSlash = _isOpenClawSurface && shouldShowSlash;
+    final slashRoute = _resolveSlashCommandPanelRoute(value.text);
     final nextMentionToken = shouldShowSlash
         ? null
         : _parseActiveModelMentionToken(value);
@@ -60,9 +81,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
         ? false
         : _openClawPanelExpanded;
     final nextSlashPanelVisible =
-        shouldShowOpenClawSlash ||
-        shouldShowModelMention ||
-        nextOpenClawPanelExpanded;
+        shouldShowSlash || shouldShowModelMention || nextOpenClawPanelExpanded;
 
     if (!mounted) return;
 
@@ -70,7 +89,9 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
         nextSlashPanelVisible != _showSlashCommandPanel ||
         shouldShowModelMention != _showModelMentionPanel ||
         nextMentionToken != _activeModelMentionToken ||
-        nextOpenClawPanelExpanded != _openClawPanelExpanded;
+        nextOpenClawPanelExpanded != _openClawPanelExpanded ||
+        _isSlashCommandExpanded !=
+            (shouldShowSlash && slashRoute == _SlashCommandPanelRoute.effort);
     if (!shouldUpdate) {
       return;
     }
@@ -80,6 +101,8 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
       _showModelMentionPanel = shouldShowModelMention;
       _activeModelMentionToken = nextMentionToken;
       _openClawPanelExpanded = nextOpenClawPanelExpanded;
+      _slashCommandExpandedByMode[_activeMode] =
+          shouldShowSlash && slashRoute == _SlashCommandPanelRoute.effort;
     });
   }
 
@@ -110,6 +133,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
       _showSlashCommandPanel = false;
       _showModelMentionPanel = false;
       _openClawPanelExpanded = false;
+      _slashCommandExpandedByMode[_activeMode] = false;
     });
   }
 
@@ -132,6 +156,7 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
       return;
     }
     if (_isPointerInside(_openClawPanelKey, position) ||
+        _isPointerInside(_slashCommandStripKey, position) ||
         _isPointerInside(_inputAreaKey, position)) {
       return;
     }
@@ -177,6 +202,35 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
   Future<bool> _tryHandleSlashCommand(String messageText) async {
     final trimmed = messageText.trim();
     if (!trimmed.startsWith('/')) return false;
+
+    if (trimmed == '/compact' || trimmed.startsWith('/compact ')) {
+      await _executeManualContextCompactionCommand();
+      return true;
+    }
+
+    if (trimmed == '/effort') {
+      _triggerSlashCommandPanel();
+      return true;
+    }
+    if (trimmed.startsWith('/effort ')) {
+      if (!_supportsReasoningEffortCommand) {
+        _messageController.clear();
+        _hideSlashCommandPanel();
+        _showSnackBar('当前模式暂不支持 /effort');
+        return true;
+      }
+      final effort = _normalizeReasoningEffort(
+        trimmed.substring('/effort'.length).trimLeft(),
+      );
+      if (effort == null) {
+        _showSnackBar('可用思考强度：low、high');
+        return true;
+      }
+      await _applyConversationReasoningEffort(effort);
+      _messageController.clear();
+      _hideSlashCommandPanel();
+      return true;
+    }
 
     if (!trimmed.startsWith('/openclaw')) {
       return false;
@@ -230,73 +284,119 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
   }
 
   @override
-  Future<void> _checkOpenClawConnection() async {
-    await OpenClawConnectionChecker.checkAndToast(_openClawBaseUrl);
+  Future<void> _executeManualContextCompactionCommand() async {
+    if (!_supportsManualContextCompaction) {
+      _messageController.clear();
+      _hideSlashCommandPanel();
+      showToast('当前模式暂不支持 /compact', type: ToastType.warning);
+      return;
+    }
+
+    final runtime = _runtimeForMode(_activeMode);
+    if ((runtime?.hasInFlightTask ?? false) ||
+        _isAiResponding ||
+        _isExecutingTask ||
+        _isCheckingExecutableTask) {
+      _messageController.clear();
+      _hideSlashCommandPanel();
+      showToast('请等待当前任务结束后再压缩', type: ToastType.warning);
+      return;
+    }
+
+    try {
+      await _ensureActiveConversationReadyForStreaming();
+    } catch (_) {
+      _messageController.clear();
+      _hideSlashCommandPanel();
+      showToast('当前对话尚未准备好', type: ToastType.warning);
+      return;
+    }
+
+    final conversationId = _currentConversationId;
+    if (conversationId == null) {
+      _messageController.clear();
+      _hideSlashCommandPanel();
+      showToast('当前暂无可压缩的上下文', type: ToastType.warning);
+      return;
+    }
+    final modeKey = _modeKey(_activeMode);
+    final conversationMode = activeConversationModeValue.storageValue;
+    final latestPromptTokens = _currentConversation?.latestPromptTokens;
+    final promptTokenThreshold = _currentConversation?.promptTokenThreshold;
+    final modelOverride =
+        activeConversationModeValue == ConversationMode.chatOnly
+        ? _buildChatModelOverridePayload()
+        : _buildAgentModelOverridePayload();
+    final reasoningEffort = _activeConversationReasoningEffort;
+
+    _messageController.clear();
+    _inputFocusNode.unfocus();
+    _hideSlashCommandPanel();
+
+    _runtimeCoordinator.beginContextCompaction(
+      conversationId: conversationId,
+      mode: modeKey,
+      trigger: 'manual',
+      latestPromptTokens: latestPromptTokens,
+      promptTokenThreshold: promptTokenThreshold,
+    );
+
+    try {
+      final result = await AssistsMessageService.compactConversationContext(
+        conversationId: conversationId,
+        conversationMode: conversationMode,
+        modelOverride: modelOverride,
+        reasoningEffort: reasoningEffort,
+      );
+      final conversationPayload = result['conversation'];
+      if (conversationPayload is Map) {
+        final updatedConversation = ConversationModel.fromJson(
+          Map<String, dynamic>.from(conversationPayload),
+        );
+        _currentConversation = updatedConversation;
+        _syncRuntimeSnapshotForMode(
+          _activeMode,
+          conversation: updatedConversation,
+        );
+      }
+      final compacted = result['compacted'] == true;
+      final reason = (result['reason'] ?? '').toString().trim();
+      final status = compacted
+          ? 'completed'
+          : reason == 'no_candidate' || reason == 'no_prompt_messages'
+          ? 'noop'
+          : 'failed';
+      _runtimeCoordinator.finishContextCompaction(
+        conversationId: conversationId,
+        mode: modeKey,
+        status: status,
+        latestPromptTokens: latestPromptTokens,
+        promptTokenThreshold: promptTokenThreshold,
+      );
+      if (!mounted) return;
+      if (compacted) {
+        showToast('上下文已压缩', type: ToastType.success);
+      } else if (status == 'noop') {
+        showToast('当前暂无可压缩的上下文', type: ToastType.warning);
+      } else {
+        showToast('上下文压缩失败', type: ToastType.error);
+      }
+    } catch (_) {
+      _runtimeCoordinator.finishContextCompaction(
+        conversationId: conversationId,
+        mode: modeKey,
+        status: 'failed',
+        latestPromptTokens: latestPromptTokens,
+        promptTokenThreshold: promptTokenThreshold,
+      );
+      if (mounted) {
+        showToast('上下文压缩失败', type: ToastType.error);
+      }
+    }
   }
 
   @override
-  Widget _buildOpenClawCommandRow({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    final palette = context.omniPalette;
-    final isDark = context.isDarkTheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isDark ? palette.surfaceSecondary : const Color(0xFFF8FAFD),
-          borderRadius: BorderRadius.circular(12),
-          border: isDark ? Border.all(color: palette.borderSubtle) : null,
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: iconColor),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? palette.textPrimary
-                          : const Color(0xFF1F2937),
-                    ),
-                  ),
-                  if (subtitle != null && subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark
-                            ? palette.textSecondary
-                            : const Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 16,
-              color: isDark ? palette.textTertiary : const Color(0xFF94A3B8),
-            ),
-          ],
-        ),
-      ),
-    );
+  Future<void> _checkOpenClawConnection() async {
+    await OpenClawConnectionChecker.checkAndToast(_openClawBaseUrl);
   }
 }

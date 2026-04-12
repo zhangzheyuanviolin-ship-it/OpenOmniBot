@@ -8,6 +8,47 @@ import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail
 import 'package:ui/models/chat_message_model.dart';
 
 void main() {
+  testWidgets('command strip renders all commands without expand toggle', (
+    tester,
+  ) async {
+    final commands = [
+      {
+        'cardId': 'slash-command-compact',
+        'toolTitle': '/compact',
+        'toolType': 'command',
+        'toolTypeLabel': '上下文',
+        'status': 'running',
+        'statusLabel': '命令',
+        'summary': '手动压缩',
+      },
+      {
+        'cardId': 'slash-command-effort',
+        'toolTitle': '/effort',
+        'toolType': 'command',
+        'toolTypeLabel': '思考',
+        'status': 'success',
+        'statusLabel': 'low',
+        'summary': '设置思考强度',
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatCommandActivityStrip(
+            commands: commands,
+            onSelectCommand: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('/compact'), findsOneWidget);
+    expect(find.text('/effort'), findsOneWidget);
+    expect(find.byKey(kChatToolActivityToggleKey), findsNothing);
+  });
+
   testWidgets(
     'renders current tool title and expands history without duplicating current item',
     (tester) async {

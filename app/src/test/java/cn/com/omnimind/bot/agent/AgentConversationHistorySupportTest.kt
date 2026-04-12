@@ -306,8 +306,13 @@ class AgentConversationHistorySupportTest {
         )
 
         assertEquals(3, seed.historyMessages.size)
-        assertEquals("system", seed.historyMessages.first().role)
-        assertTrue(seed.historyMessages.first().content!!.jsonPrimitive.content.contains("压缩总结"))
+        assertEquals("user", seed.historyMessages.first().role)
+        assertTrue(
+            seed.historyMessages.first().content!!.jsonPrimitive.content.startsWith(
+                "<context-summary> The following is a summary of the earlier conversation that was compacted to save context space."
+            )
+        )
+        assertTrue(seed.historyMessages.first().content!!.jsonPrimitive.content.contains("保留旧需求"))
         assertEquals("user", seed.historyMessages[1].role)
         assertEquals("新问题", seed.historyMessages[1].content!!.jsonPrimitive.content)
         assertEquals("assistant", seed.historyMessages[2].role)
@@ -332,7 +337,7 @@ class AgentConversationHistorySupportTest {
     }
 
     @Test
-    fun `selectEntriesToCompact stops before latest user message`() {
+    fun `selectEntriesToCompact includes historical tool context before latest user`() {
         val entries = listOf(
             buildUserEntry(id = 1, entryId = "u1", text = "第一轮问题"),
             buildAssistantEntry(id = 2, entryId = "a1", text = "第一轮回答"),
@@ -398,13 +403,13 @@ class AgentConversationHistorySupportTest {
     }
 
     @Test
-    fun `buildRuntimeCompactionWindow uses current summary and only compacts raw history before latest user`() {
+    fun `buildRuntimeCompactionWindow uses current summary and compacts all historical context before latest user`() {
         val messages = listOf(
             ChatCompletionMessage(
                 role = "system",
                 content = JsonPrimitive("main system")
             ),
-            AgentConversationHistorySupport.buildContextSummarySystemMessage(
+            AgentConversationHistorySupport.buildContextSummaryUserMessage(
                 "【用户目标与约束】\n旧总结"
             ),
             ChatCompletionMessage(
@@ -434,7 +439,70 @@ class AgentConversationHistorySupportTest {
     }
 
     @Test
-    fun `rebuildMessagesWithCompactedSummary keeps minimal runtime context plus pending tool calls`() {
+    fun `buildRuntimeCompactionWindow keeps historical tool replay inside compaction window`() {
+        val historicalToolCalls = listOf(
+            AssistantToolCall(
+                id = "tool-call-old",
+                function = AssistantToolCallFunction(
+                    name = "browser_use",
+                    arguments = """{"url":"https://example.com/old"}"""
+                )
+            )
+        )
+        val messages = listOf(
+            ChatCompletionMessage(
+                role = "system",
+                content = JsonPrimitive("main system")
+            ),
+            AgentConversationHistorySupport.buildContextSummaryUserMessage(
+                "【用户目标与约束】\n旧总结"
+            ),
+            ChatCompletionMessage(
+                role = "user",
+                content = JsonPrimitive("更早的问题")
+            ),
+            ChatCompletionMessage(
+                role = "assistant",
+                content = JsonPrimitive("更早的回答")
+            ),
+            ChatCompletionMessage(
+                role = "assistant",
+                toolCalls = historicalToolCalls
+            ),
+            ChatCompletionMessage(
+                role = "tool",
+                toolCallId = "tool-call-old",
+                content = JsonPrimitive("""{"summary":"旧工具结果"}""")
+            ),
+            ChatCompletionMessage(
+                role = "user",
+                content = JsonPrimitive("当前问题")
+            )
+        )
+
+        val window = AgentConversationHistorySupport.buildRuntimeCompactionWindow(messages)
+
+        assertEquals(
+            listOf("user", "assistant", "assistant", "tool"),
+            window?.messagesToCompact?.map { it.role }
+        )
+        assertEquals("更早的问题", window?.messagesToCompact?.first()?.content?.jsonPrimitive?.content)
+        assertEquals("更早的回答", window?.messagesToCompact?.get(1)?.content?.jsonPrimitive?.content)
+        assertEquals("browser_use", window?.messagesToCompact?.get(2)?.toolCalls?.single()?.function?.name)
+        assertEquals("""{"summary":"旧工具结果"}""", window?.messagesToCompact?.get(3)?.content?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `rebuildMessagesWithCompactedSummary keeps summary plus current turn context`() {
+        val historicalToolCalls = listOf(
+            AssistantToolCall(
+                id = "tool-call-old",
+                function = AssistantToolCallFunction(
+                    name = "browser_use",
+                    arguments = """{"url":"https://example.com/old"}"""
+                )
+            )
+        )
         val pendingToolCalls = listOf(
             AssistantToolCall(
                 id = "tool-call-1",
@@ -449,8 +517,29 @@ class AgentConversationHistorySupportTest {
                 role = "system",
                 content = JsonPrimitive("main system")
             ),
-            AgentConversationHistorySupport.buildContextSummarySystemMessage(
+            AgentConversationHistorySupport.buildContextSummaryUserMessage(
                 "【用户目标与约束】\n旧总结"
+            ),
+            ChatCompletionMessage(
+                role = "user",
+                content = JsonPrimitive("旧问题")
+            ),
+            ChatCompletionMessage(
+                role = "assistant",
+                content = JsonPrimitive("旧回答")
+            ),
+            ChatCompletionMessage(
+                role = "assistant",
+                toolCalls = historicalToolCalls
+            ),
+            ChatCompletionMessage(
+                role = "tool",
+                toolCallId = "tool-call-old",
+                content = JsonPrimitive("""{"summary":"旧工具结果"}""")
+            ),
+            ChatCompletionMessage(
+                role = "assistant",
+                content = JsonPrimitive("旧工具后的解释")
             ),
             ChatCompletionMessage(
                 role = "user",
@@ -468,11 +557,19 @@ class AgentConversationHistorySupportTest {
             summary = "【用户目标与约束】\n新总结"
         )
 
-        assertEquals(listOf("system", "system", "user", "assistant"), rebuilt.map { it.role })
+        assertEquals(
+            listOf("system", "user", "user", "assistant"),
+            rebuilt.map { it.role }
+        )
         assertEquals("main system", rebuilt[0].content!!.jsonPrimitive.content)
         assertTrue(rebuilt[1].content!!.jsonPrimitive.content.contains("新总结"))
+        assertTrue(
+            rebuilt[1].content!!.jsonPrimitive.content.startsWith(
+                "<context-summary> The following is a summary of the earlier conversation that was compacted to save context space."
+            )
+        )
         assertEquals("当前问题", rebuilt[2].content!!.jsonPrimitive.content)
-        assertNull(rebuilt[3].content)
+        assertEquals("不应保留的中间文本", rebuilt[3].content!!.jsonPrimitive.content)
         assertEquals("browser_use", rebuilt[3].toolCalls?.single()?.function?.name)
     }
 

@@ -173,8 +173,19 @@ class AgentConversationHistoryRepository(
         conversationMode: String,
         messages: List<Map<String, Any?>>
     ) = withContext(Dispatchers.IO) {
+        val existingConversation = DatabaseHelper.getConversationById(conversationId)
+        val existingEntries = DatabaseHelper.getAgentConversationEntriesAsc(
+            conversationId,
+            conversationMode
+        )
+        val preservedSummary = existingConversation?.contextSummary
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        val cutoffEntryId = existingConversation?.contextSummaryCutoffEntryDbId?.let { cutoffDbId ->
+            existingEntries.firstOrNull { it.id == cutoffDbId }?.entryId
+        }
+        var remappedCutoffEntryDbId: Long? = null
         DatabaseHelper.deleteAgentConversationThread(conversationId, conversationMode)
-        resetContextSummary(conversationId)
         ConversationSnapshotOrdering.prepareForStorage(messages).forEach { prepared ->
             val message = prepared.payload
             val entryId = message["id"]?.toString()?.trim().orEmpty().ifEmpty {
@@ -187,7 +198,7 @@ class AgentConversationHistoryRepository(
             }
             val status = if (message["isError"] == true) STATUS_ERROR else STATUS_SUCCESS
             val summary = extractSummaryFromMessagePayload(message)
-            upsertEntry(
+            val insertedId = DatabaseHelper.upsertAgentConversationEntry(
                 AgentConversationEntry(
                     conversationId = conversationId,
                     conversationMode = conversationMode,
@@ -200,6 +211,24 @@ class AgentConversationHistoryRepository(
                     updatedAt = prepared.createdAt
                 )
             )
+            if (entryId == cutoffEntryId) {
+                remappedCutoffEntryDbId = insertedId
+            }
+        }
+        if (preservedSummary != null && remappedCutoffEntryDbId != null) {
+            val refreshedConversation = DatabaseHelper.getConversationById(conversationId)
+            if (refreshedConversation != null) {
+                DatabaseHelper.updateConversation(
+                    refreshedConversation.copy(
+                        contextSummary = preservedSummary,
+                        contextSummaryCutoffEntryDbId = remappedCutoffEntryDbId,
+                        contextSummaryUpdatedAt = existingConversation?.contextSummaryUpdatedAt
+                            ?: refreshedConversation.contextSummaryUpdatedAt
+                    )
+                )
+            }
+        } else {
+            resetContextSummary(conversationId)
         }
         refreshConversationMetadata(conversationId)
     }
