@@ -8,6 +8,21 @@ enum _UserMessageQuickAction { copy, retry }
 
 mixin _ChatPageUiMixin on _ChatPageStateBase {
   ChatPaneOverlayAnchorGeometry? _lastStableToolActivityAnchorGeometry;
+  static const double _kChatInputWrapperTopPadding = 8.0;
+  static const double _kChatInputFallbackHeight = 80.0;
+
+  double _resolveNormalSurfaceComposerInset({
+    required double inputBottomPadding,
+    required double keyboardSpacer,
+  }) {
+    if (!_isInputAreaVisible) {
+      return 0.0;
+    }
+    final measuredComposerHeight = _inputAreaHeight > 0.5
+        ? _inputAreaHeight + _kChatInputWrapperTopPadding
+        : _kChatInputFallbackHeight;
+    return measuredComposerHeight + inputBottomPadding + keyboardSpacer;
+  }
 
   ChatPaneOverlayAnchorGeometry _resolveToolActivityAnchorGeometry({
     required BuildContext layoutContext,
@@ -334,13 +349,16 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   Widget _buildModeMessagePage(
     ChatPageMode mode,
     AppBackgroundConfig appearanceConfig,
-    AppBackgroundVisualProfile visualProfile,
-  ) {
+    AppBackgroundVisualProfile visualProfile, {
+    double bottomOverlayInset = 0,
+  }) {
     final runtime = _runtimeForMode(mode);
     return ChatMessageList(
       messages: runtime?.messages ?? _messagesByMode[mode]!,
       scrollController: _scrollControllerForMode(mode),
-      bottomOverlayInset: mode == _activeMode ? _toolActivityOccupiedHeight : 0,
+      bottomOverlayInset:
+          bottomOverlayInset +
+          (mode == _activeMode ? _toolActivityOccupiedHeight : 0),
       onBeforeTaskExecute: handleBeforeTaskExecute,
       onCancelTask: _onCancelTaskFromCard,
       onRequestAuthorize: mode == ChatPageMode.normal
@@ -482,6 +500,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final bottomRegionBackgroundColor = !backgroundActive && context.isDarkTheme
         ? context.omniPalette.pageBackground
         : Colors.transparent;
+    final composerBottomOffset = inputBottomPadding + keyboardSpacer;
+    final composerReservedInset = _resolveNormalSurfaceComposerInset(
+      inputBottomPadding: inputBottomPadding,
+      keyboardSpacer: keyboardSpacer,
+    );
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
@@ -550,22 +573,35 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 ),
               ),
             Expanded(child: conversationBody),
-            if (_vlmInfoQuestion != null)
-              _buildNormalSurfaceTransition(
-                viewportWidth: constraints.maxWidth,
-                child: VlmInfoPrompt(
-                  question: _vlmInfoQuestion!,
-                  controller: _vlmAnswerController,
-                  isSubmitting: _isSubmittingVlmReply,
-                  onSubmit: onSubmitVlmInfo,
-                  onDismiss: dismissVlmInfo,
-                ),
+          ],
+        ),
+        if (_vlmInfoQuestion != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: composerReservedInset,
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: VlmInfoPrompt(
+                question: _vlmInfoQuestion!,
+                controller: _vlmAnswerController,
+                isSubmitting: _isSubmittingVlmReply,
+                onSubmit: onSubmitVlmInfo,
+                onDismiss: dismissVlmInfo,
               ),
-            if (_isInputAreaVisible)
-              _buildNormalSurfaceTransition(
-                viewportWidth: constraints.maxWidth,
-                child: ColoredBox(
-                  color: bottomRegionBackgroundColor,
+            ),
+          ),
+        if (_isInputAreaVisible)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: ColoredBox(
+                color: bottomRegionBackgroundColor,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: composerBottomOffset),
                   child: Container(
                     key: _inputAreaKey,
                     child: ChatInputWrapper(
@@ -610,12 +646,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   ),
                 ),
               ),
-            ColoredBox(
-              color: bottomRegionBackgroundColor,
-              child: SizedBox(height: inputBottomPadding + keyboardSpacer),
             ),
-          ],
-        ),
+          ),
         if (!hideWorkspaceOverlays &&
             toolActivityCanExpand &&
             _isToolActivityExpanded)
@@ -845,6 +877,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                             ChatPageMode.normal,
                             backgroundConfig,
                             visualProfile,
+                            bottomOverlayInset:
+                                _resolveNormalSurfaceComposerInset(
+                                  inputBottomPadding: inputBottomPadding,
+                                  keyboardSpacer: keyboardSpacer,
+                                ),
                           ),
                           hideWorkspaceOverlays: false,
                           showMenuButton: true,
@@ -1018,26 +1055,30 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                       commandPanelBottomOffset:
                                           commandPanelBottomOffset,
                                       conversationBody: ClipRect(
-                                        child:
-                                            NotificationListener<
-                                              ScrollNotification
-                                            >(
-                                              onNotification:
-                                                  _handleModePageScrollNotification,
-                                              child: PageView(
-                                                controller: _modePageController,
-                                                onPageChanged:
-                                                    _handleModePageChanged,
-                                                children: [
-                                                  _buildModeMessagePage(
-                                                    ChatPageMode.normal,
-                                                    backgroundConfig,
-                                                    visualProfile,
-                                                  ),
-                                                  _buildWorkspaceSurfacePage(),
-                                                ],
+                                        child: NotificationListener<ScrollNotification>(
+                                          onNotification:
+                                              _handleModePageScrollNotification,
+                                          child: PageView(
+                                            controller: _modePageController,
+                                            onPageChanged:
+                                                _handleModePageChanged,
+                                            children: [
+                                              _buildModeMessagePage(
+                                                ChatPageMode.normal,
+                                                backgroundConfig,
+                                                visualProfile,
+                                                bottomOverlayInset:
+                                                    _resolveNormalSurfaceComposerInset(
+                                                      inputBottomPadding:
+                                                          inputBottomPadding,
+                                                      keyboardSpacer:
+                                                          keyboardSpacer,
+                                                    ),
                                               ),
-                                            ),
+                                              _buildWorkspaceSurfacePage(),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                       hideWorkspaceOverlays:
                                           _isWorkspaceSurface,

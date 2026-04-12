@@ -1611,8 +1611,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   Widget _buildModeMessagePage(
     ChatPageMode mode,
     AppBackgroundConfig appearanceConfig,
-    AppBackgroundVisualProfile visualProfile,
-  );
+    AppBackgroundVisualProfile visualProfile, {
+    double bottomOverlayInset = 0,
+  });
 
   Widget _buildWorkspaceSurfacePage();
 }
