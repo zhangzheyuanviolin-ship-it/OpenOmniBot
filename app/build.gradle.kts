@@ -166,7 +166,6 @@ dependencies {
     implementation(project(":uikit"))
     implementation(project(":baselib"))
     implementation(project(":omniinfer-server"))
-    implementation(project(":model_downloader"))
     implementation(project(":core:main"))
     implementation(project(":core:terminal-view"))
     implementation(project(":core:terminal-emulator"))
