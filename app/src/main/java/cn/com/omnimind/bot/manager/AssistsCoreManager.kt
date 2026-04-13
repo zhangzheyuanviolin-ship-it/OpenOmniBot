@@ -174,42 +174,51 @@ internal fun extractChatTaskTextPayload(content: String): String {
     if (normalized.isEmpty() || normalized == "[DONE]") {
         return ""
     }
-    if (!normalized.startsWith("{")) {
+    if (!normalized.startsWith("{") && !normalized.startsWith("[")) {
         return normalized
     }
     val parsed = runCatching {
-        val json = JSONObject(normalized)
-        when {
-            json.has("text") -> extractTextPayload(json.opt("text"))
-            json.has("output_text") -> extractTextPayload(json.opt("output_text"))
-            json.has("content") -> extractTextPayload(json.opt("content"))
-            json.has("message") && json.opt("message") is String -> json.optString("message").trim()
-            json.has("choices") -> {
-                val firstChoice = json.optJSONArray("choices")?.optJSONObject(0)
-                val delta = firstChoice?.optJSONObject("delta")
-                val message = firstChoice?.optJSONObject("message")
-                when {
-                    delta != null -> extractTextPayload(delta.opt("content"))
-                    message != null -> extractTextPayload(message.opt("content"))
-                    firstChoice != null -> extractTextPayload(
-                        firstChoice.opt("text") ?: firstChoice.opt("content")
-                    )
-                    else -> ""
+        if (normalized.startsWith("[")) {
+            val array = JSONArray(normalized)
+            buildString {
+                for (index in 0 until array.length()) {
+                    append(extractChatTaskTextPayload(array.opt(index)?.toString().orEmpty()))
                 }
-            }
-            json.has("output") -> {
-                val output = json.optJSONArray("output")
-                if (output == null) {
-                    ""
-                } else {
-                    buildString {
-                        for (index in 0 until output.length()) {
-                            append(extractTextPayload(output.opt(index)))
-                        }
-                    }.trim()
+            }.trim()
+        } else {
+            val json = JSONObject(normalized)
+            when {
+                json.has("text") -> extractTextPayload(json.opt("text"))
+                json.has("output_text") -> extractTextPayload(json.opt("output_text"))
+                json.has("content") -> extractTextPayload(json.opt("content"))
+                json.has("message") && json.opt("message") is String -> json.optString("message").trim()
+                json.has("choices") -> {
+                    val firstChoice = json.optJSONArray("choices")?.optJSONObject(0)
+                    val delta = firstChoice?.optJSONObject("delta")
+                    val message = firstChoice?.optJSONObject("message")
+                    when {
+                        delta != null -> extractTextPayload(delta.opt("content"))
+                        message != null -> extractTextPayload(message.opt("content"))
+                        firstChoice != null -> extractTextPayload(
+                            firstChoice.opt("text") ?: firstChoice.opt("content")
+                        )
+                        else -> ""
+                    }
                 }
+                json.has("output") -> {
+                    val output = json.optJSONArray("output")
+                    if (output == null) {
+                        ""
+                    } else {
+                        buildString {
+                            for (index in 0 until output.length()) {
+                                append(extractTextPayload(output.opt(index)))
+                            }
+                        }.trim()
+                    }
+                }
+                else -> ""
             }
-            else -> ""
         }
     }.getOrElse { "" }.trim()
     if (parsed.isNotEmpty()) {

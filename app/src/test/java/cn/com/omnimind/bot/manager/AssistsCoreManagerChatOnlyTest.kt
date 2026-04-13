@@ -125,6 +125,30 @@ class AssistsCoreManagerChatOnlyTest {
     }
 
     @Test
+    fun `extractChatTaskTextPayload preserves array chunk order`() {
+        val chunk = """
+            [
+              {"choices":[{"delta":{"role":"assistant","content":"就是"}}]},
+              {"choices":[{"delta":{"content":"这两个"}}]},
+              {"choices":[{"delta":{"content":"字"}}]},
+              {"choices":[{"delta":{"content":"。"}}]},
+              {"choices":[{"delta":{"content":"不然"}}]},
+              {"choices":[{"delta":{"content":"呢"}}]},
+              {"choices":[{"delta":{"content":"，"}}]},
+              {"choices":[{"delta":{"content":"你想"}}]},
+              {"choices":[{"delta":{"content":"听"}}]},
+              {"choices":[{"delta":{"content":"哪个"}}]},
+              {"choices":[{"delta":{"content":"？"}}]},
+              {"choices":[{"delta":{},"finish_reason":"stop"}]}
+            ]
+        """.trimIndent()
+
+        val result = extractChatTaskTextPayload(chunk)
+
+        assertEquals("就是这两个字。不然呢，你想听哪个？", result)
+    }
+
+    @Test
     fun `extractChatTaskPromptTokens parses usage chunk`() {
         val chunk = """
             {"choices":[{"delta":{"content":"hello"}}],"usage":{"prompt_tokens":4096}}
