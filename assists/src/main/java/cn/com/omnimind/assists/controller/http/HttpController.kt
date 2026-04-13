@@ -122,26 +122,40 @@ object HttpController {
                 type: String?,
                 data: String
             ) {
-                appendStreamLogChunk(fullContent, data)
-                data.trim()
-                    .takeIf { it.isNotEmpty() && it != "[DONE]" }
-                    ?.let(rawEvents::add)
                 delegate.onEvent(eventSource, id, type, data)
+                runCatching {
+                    appendStreamLogChunk(fullContent, data)
+                    data.trim()
+                        .takeIf { it.isNotEmpty() && it != "[DONE]" }
+                        ?.let(rawEvents::add)
+                }.onFailure {
+                    OmniLog.w(
+                        TAG,
+                        "ignore stream log chunk for $label: ${it.message}"
+                    )
+                }
             }
 
             override fun onClosed(eventSource: EventSource) {
-                if (fullContent.isNotEmpty()) {
-                    logResponseBody(label, fullContent.toString())
-                }
-                requestLogSeed?.let { seed ->
-                    persistAiRequestLog(
-                        seed = seed,
-                        success = true,
-                        statusCode = responseCode,
-                        responseJson = AiRequestLogStore.buildStreamResponseJson(rawEvents)
+                delegate.onClosed(eventSource)
+                runCatching {
+                    if (fullContent.isNotEmpty()) {
+                        logResponseBody(label, fullContent.toString())
+                    }
+                    requestLogSeed?.let { seed ->
+                        persistAiRequestLog(
+                            seed = seed,
+                            success = true,
+                            statusCode = responseCode,
+                            responseJson = AiRequestLogStore.buildStreamResponseJson(rawEvents)
+                        )
+                    }
+                }.onFailure {
+                    OmniLog.w(
+                        TAG,
+                        "ignore stream close logging for $label: ${it.message}"
                     )
                 }
-                delegate.onClosed(eventSource)
             }
 
             override fun onFailure(
@@ -149,23 +163,30 @@ object HttpController {
                 t: Throwable?,
                 response: okhttp3.Response?
             ) {
-                if (fullContent.isNotEmpty()) {
-                    logResponseBody("$label (partial)", fullContent.toString())
-                }
-                requestLogSeed?.let { seed ->
-                    val fallbackBody = runCatching {
-                        response?.peekBody(1024L * 1024L)?.string()
-                    }.getOrNull()
-                    persistAiRequestLog(
-                        seed = seed,
-                        success = false,
-                        statusCode = response?.code ?: responseCode,
-                        responseJson = AiRequestLogStore.buildStreamResponseJson(rawEvents)
-                            .ifBlank { AiRequestLogStore.prettyJsonOrRaw(fallbackBody) },
-                        errorMessage = t?.message
+                delegate.onFailure(eventSource, t, response)
+                runCatching {
+                    if (fullContent.isNotEmpty()) {
+                        logResponseBody("$label (partial)", fullContent.toString())
+                    }
+                    requestLogSeed?.let { seed ->
+                        val fallbackBody = runCatching {
+                            response?.peekBody(1024L * 1024L)?.string()
+                        }.getOrNull()
+                        persistAiRequestLog(
+                            seed = seed,
+                            success = false,
+                            statusCode = response?.code ?: responseCode,
+                            responseJson = AiRequestLogStore.buildStreamResponseJson(rawEvents)
+                                .ifBlank { AiRequestLogStore.prettyJsonOrRaw(fallbackBody) },
+                            errorMessage = t?.message
+                        )
+                    }
+                }.onFailure {
+                    OmniLog.w(
+                        TAG,
+                        "ignore stream failure logging for $label: ${it.message}"
                     )
                 }
-                delegate.onFailure(eventSource, t, response)
             }
         }
     }
@@ -228,11 +249,15 @@ object HttpController {
     }
 
     private fun logResponseBody(label: String, body: String?) {
-        val normalized = body?.trim()?.takeIf { it.isNotEmpty() } ?: "<empty>"
-        val chunks = normalized.chunked(RESPONSE_LOG_CHUNK_SIZE)
-        chunks.forEachIndexed { index, chunk ->
-            val suffix = if (chunks.size == 1) "" else " (${index + 1}/${chunks.size})"
-            OmniLog.i(TAG, "$label Response Body$suffix: $chunk")
+        runCatching {
+            val normalized = body?.trim()?.takeIf { it.isNotEmpty() } ?: "<empty>"
+            val chunks = normalized.chunked(RESPONSE_LOG_CHUNK_SIZE)
+            chunks.forEachIndexed { index, chunk ->
+                val suffix = if (chunks.size == 1) "" else " (${index + 1}/${chunks.size})"
+                OmniLog.i(TAG, "$label Response Body$suffix: $chunk")
+            }
+        }.onFailure {
+            OmniLog.w(TAG, "ignore response body log failure: ${it.message}")
         }
     }
 
@@ -243,21 +268,28 @@ object HttpController {
         responseJson: String = "",
         errorMessage: String? = null
     ) {
-        AiRequestLogStore.append(
-            AiRequestLogEntry(
-                label = seed.label,
-                model = seed.model,
-                protocolType = seed.protocolType,
-                url = seed.url,
-                method = seed.method,
-                stream = seed.stream,
-                statusCode = statusCode,
-                success = success,
-                requestJson = AiRequestLogStore.prettyJsonOrRaw(seed.requestJson),
-                responseJson = responseJson,
-                errorMessage = errorMessage?.trim()?.takeIf { it.isNotEmpty() }
+        runCatching {
+            AiRequestLogStore.append(
+                AiRequestLogEntry(
+                    label = seed.label,
+                    model = seed.model,
+                    protocolType = seed.protocolType,
+                    url = seed.url,
+                    method = seed.method,
+                    stream = seed.stream,
+                    statusCode = statusCode,
+                    success = success,
+                    requestJson = AiRequestLogStore.prettyJsonOrRaw(seed.requestJson),
+                    responseJson = responseJson,
+                    errorMessage = errorMessage?.trim()?.takeIf { it.isNotEmpty() }
+                )
             )
-        )
+        }.onFailure {
+            OmniLog.w(
+                TAG,
+                "ignore AI request log persistence failure for ${seed.label}: ${it.message}"
+            )
+        }
     }
 
     private fun logSceneProfile(resolved: ResolvedSceneRequest) {
@@ -781,13 +813,22 @@ object HttpController {
                 }
             }
             val stopReason = json.optString("stop_reason", "").takeIf { it.isNotEmpty() }
+            val contentText = textBuilder.toString()
+
+            OmniLog.i(
+                TAG,
+                "[non-stream anthropic parse] content_len=${contentText.length}, " +
+                    "tool_calls=${toolCalls.size}, stop_reason=$stopReason, " +
+                    "content_preview=${contentText.take(200)}"
+            )
+
             SceneChatCompletionResponse(
                 success = true,
                 code = "200",
                 message = "success",
                 parser = parser,
                 route = routeTag,
-                content = textBuilder.toString(),
+                content = contentText,
                 finishReason = stopReason,
                 toolCalls = toolCalls,
                 rawResponseBody = body
@@ -1031,7 +1072,8 @@ object HttpController {
 
     private fun createChatRequestFromText(
         resolved: ResolvedSceneRequest,
-        text: String
+        text: String,
+        reasoningEffort: String? = null
     ): ChatCompletionRequest {
         return ChatCompletionRequest(
             model = resolved.resolvedModel,
@@ -1040,14 +1082,16 @@ object HttpController {
                     role = "user",
                     content = JsonPrimitive(text)
                 )
-            )
+            ),
+            reasoningEffort = reasoningEffort
         )
     }
 
     private fun createChatRequestFromMessages(
         resolved: ResolvedSceneRequest,
         messages: List<Map<String, Any>>,
-        enableThinking: Boolean? = null
+        enableThinking: Boolean? = null,
+        reasoningEffort: String? = null
     ): ChatCompletionRequest {
         val chatMessages = messages.map { message ->
             ChatCompletionMessage(
@@ -1062,6 +1106,7 @@ object HttpController {
             model = resolved.resolvedModel,
             messages = chatMessages,
             enableThinking = enableThinking,
+            reasoningEffort = reasoningEffort,
             streamOptions = ChatCompletionStreamOptions(includeUsage = true),
         )
     }
@@ -1511,16 +1556,28 @@ object HttpController {
         model: String,
         messages: List<Map<String, Any>>,
         event: EventSourceListener,
-        enableThinking: Boolean? = null
+        enableThinking: Boolean? = null,
+        explicitApiBase: String? = null,
+        explicitApiKey: String? = null,
+        explicitModel: String? = null,
+        explicitProtocolType: String? = null,
+        reasoningEffort: String? = null
     ): EventSource {
-        val resolved = resolveSceneRequest(model)
+        val resolved = resolveSceneRequest(
+            modelOrScene = model,
+            explicitApiBase = explicitApiBase,
+            explicitApiKey = explicitApiKey,
+            explicitModel = explicitModel,
+            explicitProtocolType = explicitProtocolType
+        )
         logSceneProfile(resolved)
         prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(
             chatRequest = createChatRequestFromMessages(
                 resolved = resolved,
                 messages = messages,
-                enableThinking = enableThinking
+                enableThinking = enableThinking,
+                reasoningEffort = reasoningEffort
             ),
             apiBase = resolved.apiBase,
             apiKey = resolved.apiKey,
@@ -2159,6 +2216,13 @@ object HttpController {
                 .orEmpty()
             val finishReason = firstChoice.optString("finish_reason").trim().takeIf { it.isNotEmpty() }
             val toolCalls = parseToolCalls(firstChoice, message)
+
+            OmniLog.i(
+                TAG,
+                "[non-stream openai parse] content_len=${content.length}, " +
+                    "reasoning_len=${reasoning.length}, tool_calls=${toolCalls.size}, " +
+                    "finish=$finishReason, content_preview=${content.take(200)}"
+            )
 
             SceneChatCompletionResponse(
                 success = true,

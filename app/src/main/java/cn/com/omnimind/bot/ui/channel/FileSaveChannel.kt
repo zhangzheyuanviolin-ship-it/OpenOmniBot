@@ -12,6 +12,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.util.AssistsUtil
 import io.flutter.embedding.engine.FlutterEngine
@@ -101,6 +102,11 @@ class FileSaveChannel {
     private var channel: MethodChannel? = null
     private var context: Context? = null
 
+    private fun chooserTitle(zh: String, en: String): String {
+        val safeContext = context
+        return if (safeContext != null && AppLocaleManager.isEnglish(safeContext)) en else zh
+    }
+
     fun onCreate(context: Context) {
         this.context = context
     }
@@ -149,7 +155,7 @@ class FileSaveChannel {
                 return
             }
             grantUriPermissionToResolvers(activity, intent, contentUri)
-            activity.startActivity(Intent.createChooser(intent, "打开文件").apply {
+            activity.startActivity(Intent.createChooser(intent, chooserTitle("打开文件", "Open File")).apply {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 clipData = ClipData.newUri(activity.contentResolver, sourceFile.name, contentUri)
             })
@@ -203,7 +209,7 @@ class FileSaveChannel {
                 return
             }
             grantUriPermissionToResolvers(activity, intent, contentUri)
-            activity.startActivity(Intent.createChooser(intent, "分享文件").apply {
+            activity.startActivity(Intent.createChooser(intent, chooserTitle("分享文件", "Share File")).apply {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 clipData = ClipData.newUri(activity.contentResolver, fileName ?: sourceFile.name, contentUri)
             })

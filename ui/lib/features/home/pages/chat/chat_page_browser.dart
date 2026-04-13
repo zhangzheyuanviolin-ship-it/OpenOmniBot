@@ -37,7 +37,8 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
     if ((_showModelMentionPanel ||
             _showSlashCommandPanel ||
             _openClawPanelExpanded) &&
-        _isPointerInside(_openClawPanelKey, event.position)) {
+        (_isPointerInside(_openClawPanelKey, event.position) ||
+            _isPointerInside(_slashCommandStripKey, event.position))) {
       _pageGesturePointerId = null;
       _pageVerticalDragDelta = 0;
       return;

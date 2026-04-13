@@ -50,22 +50,30 @@ OpenOmniBot 是一个基于 Android 原生 Kotlin 与 Flutter 构建的端侧 AI
 
 <h2 id="quick-start">快速开始</h2>
 
-![example](docs/tutorial/example.jpg)
+<p align="center">
+  <img src="docs/tutorial/example.jpg" alt="示例" width="260" />
+</p>
 
 ### 配置
 
 在左侧栏的设置页面内打开配置：
 
-![设置 AI 能力](docs/tutorial/1.png)
-![配置 AI 提供商](docs/tutorial/2.png)
+<p align="center">
+  <img src="docs/tutorial/1.png" alt="设置 AI 能力" width="420" />
+  <img src="docs/tutorial/2.png" alt="配置 AI 提供商" width="260" />
+</p>
 
 然后前往场景模型配置：
 
-![配置 AI 模型](docs/tutorial/3.png)
+<p align="center">
+  <img src="docs/tutorial/3.png" alt="配置 AI 模型" width="260" />
+</p>
 
 说明：除了 `Memory embedding` 强制需要嵌入模型之外，其他场景为了获得更好的体验，建议优先使用多模态或视觉模型。
 
-![Alpine 环境](docs/tutorial/alpine.jpg)
+<p align="center">
+  <img src="docs/tutorial/alpine.jpg" alt="Alpine 环境" width="260" />
+</p>
 
 一般情况下，应用启动时会自动初始化 Alpine 环境，你也可以在这里自行管理环境。
 
@@ -77,35 +85,47 @@ OpenOmniBot 是一个基于 Android 原生 Kotlin 与 Flutter 构建的端侧 AI
 
 在技能仓库中可以选择开启或关闭某项技能：
 
-![技能仓库](docs/tutorial/skills_store.jpg)
-![技能示例](docs/tutorial/skills_example.jpg)
+<p align="center">
+  <img src="docs/tutorial/skills_store.jpg" alt="技能仓库" width="260" />
+  <img src="docs/tutorial/skills_example.jpg" alt="技能示例" width="260" />
+</p>
 
 ### VLM 任务
 
-![VLM 任务](docs/tutorial/vlm.jpg)
+<p align="center">
+  <img src="docs/tutorial/vlm.jpg" alt="VLM 任务" width="260" />
+</p>
 
 开始任务前，请先在聊天页右上角完成所有必要权限授权。
 
 ### 本地模型推理
 
-![本地推理](docs/tutorial/local_inference.jpg)
+<p align="center">
+  <img src="docs/tutorial/local_inference.jpg" alt="本地推理" width="260" />
+</p>
 
 支持 MNN 和 llama 后端。
 
 ### 定时任务
 
-![定时任务](docs/tutorial/timed.jpg)
-![时间设置](docs/tutorial/timing.jpg)
+<p align="center">
+  <img src="docs/tutorial/timed.jpg" alt="定时任务" width="260" />
+  <img src="docs/tutorial/timing.jpg" alt="时间设置" width="260" />
+</p>
 
 定时任务是可执行的任务，例如 VLM 任务和 subagent 流程；闹钟仅用于提醒。你也可以把一个完整任务交给 subagent，它会像完整 agent 一样执行。
 
 ### 浏览器
 
-![浏览器](docs/tutorial/browser.jpg)
+<p align="center">
+  <img src="docs/tutorial/browser.jpg" alt="浏览器" width="260" />
+</p>
 
 ### Workspace
 
-![Workspace](docs/tutorial/workspace.jpg)
+<p align="center">
+  <img src="docs/tutorial/workspace.jpg" alt="Workspace" width="260" />
+</p>
 
 <h2 id="development-guide">开发指南</h2>
 
@@ -158,7 +178,7 @@ OpenOmniBot/
 
 <h2 id="community">其他</h2>
 
-感谢社区开发者对 OpenOmniBot 的支持。
+感谢 [LINUX.DO](linux.do) 等社区开发者对 OpenOmniBot 的支持。
 
 特别感谢这些优秀的开源项目：
 

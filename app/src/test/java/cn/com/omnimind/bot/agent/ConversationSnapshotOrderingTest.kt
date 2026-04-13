@@ -125,6 +125,84 @@ class ConversationSnapshotOrderingTest {
         )
     }
 
+    @Test
+    fun `prepareForStorage keeps logical phase order when persisted timestamps drift inside one task`() {
+        val messages = listOf(
+            assistantMessage(
+                id = "1711872000100-ai-assistant",
+                createAt = "2026-03-31T18:00:00.300",
+                text = "助手回答"
+            ),
+            userMessage(
+                id = "1711872000100-ai-user",
+                createAt = "2026-03-31T18:00:00.200",
+                text = "用户提问"
+            ),
+            deepThinkingMessage(
+                id = "1711872000100-ai-thinking",
+                createAt = "2026-03-31T18:00:00.100",
+                taskId = "1711872000100-ai",
+                startTime = localMillis("2026-03-31T18:00:00.100"),
+                thinking = "思考过程"
+            )
+        )
+
+        val orderedIds = ConversationSnapshotOrdering.prepareForStorage(messages)
+            .map { it.payload["id"] }
+
+        assertEquals(
+            listOf(
+                "1711872000100-ai-user",
+                "1711872000100-ai-thinking",
+                "1711872000100-ai-assistant"
+            ),
+            orderedIds
+        )
+    }
+
+    @Test
+    fun `sortForDisplay preserves interleaved thinking rounds by timestamp within one reply`() {
+        val messages = listOf(
+            deepThinkingMessage(
+                id = "1711872000100-ai-thinking-2",
+                createAt = "2026-03-31T18:00:00.130",
+                taskId = "1711872000100-ai",
+                startTime = localMillis("2026-03-31T18:00:00.130"),
+                thinking = "第二段思考"
+            ),
+            assistantMessage(
+                id = "1711872000100-ai-assistant",
+                createAt = "2026-03-31T18:00:00.120",
+                text = "开始输出回答"
+            ),
+            deepThinkingMessage(
+                id = "1711872000100-ai-thinking",
+                createAt = "2026-03-31T18:00:00.110",
+                taskId = "1711872000100-ai",
+                startTime = localMillis("2026-03-31T18:00:00.110"),
+                thinking = "第一段思考"
+            ),
+            userMessage(
+                id = "1711872000100-ai-user",
+                createAt = "2026-03-31T18:00:00.100",
+                text = "用户提问"
+            )
+        )
+
+        val orderedIds = ConversationSnapshotOrdering.sortForDisplay(messages)
+            .map { it["id"] }
+
+        assertEquals(
+            listOf(
+                "1711872000100-ai-thinking-2",
+                "1711872000100-ai-assistant",
+                "1711872000100-ai-thinking",
+                "1711872000100-ai-user"
+            ),
+            orderedIds
+        )
+    }
+
     private fun userMessage(
         id: String,
         createAt: String,

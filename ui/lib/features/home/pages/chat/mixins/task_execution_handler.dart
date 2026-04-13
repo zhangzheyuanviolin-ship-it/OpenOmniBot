@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ui/models/conversation_model.dart';
 import 'package:ui/utils/ui.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/assists_core_service.dart';
@@ -11,6 +12,8 @@ import '../../command_overlay/services/chat_service.dart';
 
 /// 聊天上下文存储的key
 const String kChatContextStorageKey = 'chat_context_for_summary';
+const String kCompactedContextSummaryPrefix =
+    '<context-summary> The following is a summary of the earlier conversation that was compacted to save context space.';
 
 /// 任务执行处理 Mixin
 /// 负责处理可执行任务、发送消息等功能
@@ -20,6 +23,7 @@ mixin TaskExecutionHandler<T extends StatefulWidget> on State<T> {
   // ===================== 抽象属性/方法（需要在主类中实现）=====================
 
   List<ChatMessageModel> get messages;
+  ConversationModel? get currentConversation;
   TextEditingController get messageController;
   FocusNode get inputFocusNode;
   bool get isAiResponding;
@@ -94,6 +98,18 @@ mixin TaskExecutionHandler<T extends StatefulWidget> on State<T> {
           history.insert(0, {'role': 'assistant', 'content': text});
         }
       }
+    }
+    final contextSummary = (currentConversation?.contextSummary ?? '').trim();
+    if (contextSummary.isNotEmpty &&
+        !history.any((message) {
+          final content = message['content'];
+          return content is String &&
+              content.startsWith(kCompactedContextSummaryPrefix);
+        })) {
+      history.insert(0, {
+        'role': 'user',
+        'content': '$kCompactedContextSummaryPrefix\n$contextSummary',
+      });
     }
     return history;
   }

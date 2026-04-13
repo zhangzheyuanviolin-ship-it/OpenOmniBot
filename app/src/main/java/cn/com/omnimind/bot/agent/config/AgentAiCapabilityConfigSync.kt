@@ -160,6 +160,7 @@ class AgentAiCapabilityConfigSync private constructor(
     private fun startWatchingLocked() {
         val file = configFileLocked()
         val soulFile = soulFileLocked()
+        val chatFile = chatFileLocked()
         val parentDir = file.parentFile ?: return
         observer?.stopWatching()
         observer = object : FileObserver(
@@ -171,7 +172,10 @@ class AgentAiCapabilityConfigSync private constructor(
         ) {
             override fun onEvent(event: Int, path: String?) {
                 val changedName = path ?: return
-                if (changedName != file.name && changedName != soulFile.name) {
+                if (changedName != file.name &&
+                    changedName != soulFile.name &&
+                    changedName != chatFile.name
+                ) {
                     return
                 }
                 scope.launch {
@@ -187,6 +191,7 @@ class AgentAiCapabilityConfigSync private constructor(
             when (changedFileName) {
                 configFileLocked().name -> handleObservedConfigFileChangeLocked()
                 soulFileLocked().name -> handleObservedSoulFileChangeLocked()
+                chatFileLocked().name -> handleObservedChatFileChangeLocked()
             }
         }
     }
@@ -241,6 +246,16 @@ class AgentAiCapabilityConfigSync private constructor(
         AssistsCoreManager.dispatchAgentAiConfigChanged(
             source = "file",
             path = shellPathForFileLocked(soulFileLocked())
+        )
+    }
+
+    private fun handleObservedChatFileChangeLocked() {
+        if (!chatFileLocked().exists()) {
+            workspaceManager.ensureRuntimeDirectories()
+        }
+        AssistsCoreManager.dispatchAgentAiConfigChanged(
+            source = "file",
+            path = shellPathForFileLocked(chatFileLocked())
         )
     }
 
@@ -540,6 +555,10 @@ class AgentAiCapabilityConfigSync private constructor(
 
     private fun soulFileLocked(): File {
         return workspaceManager.soulMarkdownFile()
+    }
+
+    private fun chatFileLocked(): File {
+        return workspaceManager.chatMarkdownFile()
     }
 
     private fun shellPathForFileLocked(file: File): String {

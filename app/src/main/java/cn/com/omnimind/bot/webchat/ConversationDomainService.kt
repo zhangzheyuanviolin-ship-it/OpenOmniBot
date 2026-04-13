@@ -3,7 +3,9 @@ package cn.com.omnimind.bot.webchat
 import android.content.Context
 import cn.com.omnimind.baselib.database.Conversation
 import cn.com.omnimind.baselib.database.DatabaseHelper
+import cn.com.omnimind.bot.agent.AgentConversationContextCompactor
 import cn.com.omnimind.bot.agent.AgentConversationHistoryRepository
+import cn.com.omnimind.bot.agent.AgentModelOverride
 
 class ConversationDomainService(
     private val context: Context
@@ -220,6 +222,35 @@ class ConversationDomainService(
             createdAt = createdAt
         )
         publishMessagesReplaced(conversationId, normalizedMode)
+    }
+
+    suspend fun compactConversationContext(
+        conversationId: Long,
+        conversationMode: String,
+        modelOverride: AgentModelOverride?,
+        reasoningEffort: String? = null
+    ): Map<String, Any?> {
+        val normalizedMode = normalizeConversationMode(conversationMode)
+        val compactor = AgentConversationContextCompactor(
+            historyRepository = historyRepository,
+            modelScene = AgentConversationContextCompactor.DEFAULT_AGENT_MODEL_SCENE,
+            modelOverride = modelOverride,
+            reasoningEffort = reasoningEffort
+        )
+        val outcome = compactor.compactConversationContext(
+            conversationId = conversationId,
+            conversationMode = normalizedMode
+        )
+        val updatedConversation = DatabaseHelper.getConversationById(conversationId)
+        if (outcome.compacted && updatedConversation != null) {
+            publishConversationEvent("conversation_updated", updatedConversation)
+        }
+        return linkedMapOf(
+            "compacted" to outcome.compacted,
+            "reason" to outcome.reason,
+            "summary" to outcome.summary,
+            "conversation" to updatedConversation?.let(::conversationToPayload)
+        )
     }
 
     suspend fun clearConversationMessages(

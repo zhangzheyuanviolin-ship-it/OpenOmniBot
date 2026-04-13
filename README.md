@@ -50,22 +50,30 @@ OpenOmniBot is an on-device AI agent built with native Android Kotlin and Flutte
 
 <h2 id="quick-start">Quick Start</h2>
 
-![example](docs/tutorial/one.png)
+<p align="center">
+  <img src="docs/tutorial/one.png" alt="Example" width="260" />
+</p>
 
 ### Configure the app
 
 Open the settings page from the left sidebar:
 
-![Configure AI capabilities](docs/tutorial/two.png)
-![Configure AI providers](docs/tutorial/three.png)
+<p align="center">
+  <img src="docs/tutorial/two.png" alt="Configure AI capabilities" width="420" />
+  <img src="docs/tutorial/three.png" alt="Configure AI providers" width="260" />
+</p>
 
 Then open the scenario model settings:
 
-![Configure AI models](docs/tutorial/four.png)
+<p align="center">
+  <img src="docs/tutorial/four.png" alt="Configure AI models" width="260" />
+</p>
 
 Note: `Memory embedding` requires an embedding model. For the best overall experience, the other scenarios should use multimodal or vision-capable models whenever possible.
 
-![Alpine environment](docs/tutorial/five.jpg)
+<p align="center">
+  <img src="docs/tutorial/five.jpg" alt="Alpine environment" width="260" />
+</p>
 
 The app usually initializes the Alpine environment automatically on startup, and you can also manage that environment from the same settings area.
 
@@ -77,35 +85,47 @@ You can ask OmniBot to install a skill by simply sending it the repository link.
 
 Enable or disable skills from the skill repository:
 
-![Skill store](docs/tutorial/six.png)
-![Skill example](docs/tutorial/seven.png)
+<p align="center">
+  <img src="docs/tutorial/six.png" alt="Skill store" width="260" />
+  <img src="docs/tutorial/seven.png" alt="Skill example" width="260" />
+</p>
 
 ### VLM tasks
 
-![VLM task](docs/tutorial/eight.png)
+<p align="center">
+  <img src="docs/tutorial/eight.png" alt="VLM task" width="260" />
+</p>
 
 Before starting a task, open the chat page and grant all required permissions from the top-right corner.
 
 ### Local model inference
 
-![Local inference](docs/tutorial/nine.png)
+<p align="center">
+  <img src="docs/tutorial/nine.png" alt="Local inference" width="260" />
+</p>
 
 Supports both MNN and llama backends.
 
 ### Scheduled tasks
 
-![Scheduled task](docs/tutorial/ten.png)
-![Timing](docs/tutorial/eleven.png)
+<p align="center">
+  <img src="docs/tutorial/ten.png" alt="Scheduled task" width="260" />
+  <img src="docs/tutorial/eleven.png" alt="Timing" width="260" />
+</p>
 
 Scheduled tasks can execute work such as VLM tasks and subagent flows. Alarms are reminder-only. A subagent can be assigned a complete task and behaves like a full agent.
 
 ### Browser
 
-![Browser](docs/tutorial/twelve.png)
+<p align="center">
+  <img src="docs/tutorial/twelve.png" alt="Browser" width="260" />
+</p>
 
 ### Workspace
 
-![Workspace](docs/tutorial/workspace.jpg)
+<p align="center">
+  <img src="docs/tutorial/workspace.jpg" alt="Workspace" width="260" />
+</p>
 
 <h2 id="development-guide">Development Guide</h2>
 
@@ -122,6 +142,7 @@ cd OpenOmniBot
 
 git submodule update --init third_party/omniinfer
 git -C third_party/omniinfer submodule update --init framework/mnn
+git -C third_party/omniinfer submodule update --init framework/llama.cpp
 
 cd ui
 flutter pub get
@@ -158,7 +179,7 @@ OpenOmniBot/
 
 <h2 id="community">Community</h2>
 
-Thanks to the community developers supporting OpenOmniBot.
+Thanks to the community （including [LINUX](linux.do)）developers supporting OpenOmniBot.
 
 Special thanks to these open-source projects:
 

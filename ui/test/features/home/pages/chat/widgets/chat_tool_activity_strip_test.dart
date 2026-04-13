@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,47 @@ import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail
 import 'package:ui/models/chat_message_model.dart';
 
 void main() {
+  testWidgets('command strip renders all commands without expand toggle', (
+    tester,
+  ) async {
+    final commands = [
+      {
+        'cardId': 'slash-command-compact',
+        'toolTitle': '/compact',
+        'toolType': 'command',
+        'toolTypeLabel': '上下文',
+        'status': 'running',
+        'statusLabel': '命令',
+        'summary': '手动压缩',
+      },
+      {
+        'cardId': 'slash-command-effort',
+        'toolTitle': '/effort',
+        'toolType': 'command',
+        'toolTypeLabel': '思考',
+        'status': 'success',
+        'statusLabel': 'low',
+        'summary': '设置思考强度',
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatCommandActivityStrip(
+            commands: commands,
+            onSelectCommand: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('/compact'), findsOneWidget);
+    expect(find.text('/effort'), findsOneWidget);
+    expect(find.byKey(kChatToolActivityToggleKey), findsNothing);
+  });
+
   testWidgets(
     'renders current tool title and expands history without duplicating current item',
     (tester) async {
@@ -251,6 +293,115 @@ void main() {
       find.descendant(of: dialog, matching: find.textContaining('终端 · 成功')),
       findsNothing,
     );
+  });
+
+  testWidgets('running active tool shows stop button and taps stop only', (
+    tester,
+  ) async {
+    var stopCalls = 0;
+    var lastTaskId = '';
+    var lastCardId = '';
+    var expanded = false;
+    final messages = [
+      ChatMessageModel.cardMessage({
+        'type': 'agent_tool_summary',
+        'taskId': 'task-stop-1',
+        'cardId': 'task-stop-1-tool-1',
+        'status': 'running',
+        'toolType': 'terminal',
+        'toolTitle': '停止中的工具',
+        'summary': '终端正在运行',
+      }, id: 'task-stop-1-tool-1'),
+      ChatMessageModel.cardMessage({
+        'type': 'agent_tool_summary',
+        'taskId': 'task-stop-1',
+        'cardId': 'task-stop-1-tool-0',
+        'status': 'success',
+        'toolType': 'workspace',
+        'toolTitle': '历史工具',
+        'summary': '历史结果',
+      }, id: 'task-stop-1-tool-0'),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            return Scaffold(
+              body: ChatToolActivityStrip(
+                messages: messages,
+                expanded: expanded,
+                onExpandedChanged: (value) => setState(() => expanded = value),
+                onStopToolCall: (taskId, cardId) async {
+                  stopCalls += 1;
+                  lastTaskId = taskId;
+                  lastCardId = cardId;
+                  return true;
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(kChatToolActivityStopKey), findsOneWidget);
+
+    await tester.tap(find.byKey(kChatToolActivityStopKey));
+    await tester.pump();
+
+    expect(stopCalls, 1);
+    expect(lastTaskId, 'task-stop-1');
+    expect(lastCardId, 'task-stop-1-tool-1');
+    expect(expanded, isFalse);
+    expect(
+      find.byKey(kChatToolActivityPreviewKey).hitTestable(),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('stop button stays disabled while stop request is pending', (
+    tester,
+  ) async {
+    final completer = Completer<bool>();
+    var stopCalls = 0;
+    final messages = [
+      ChatMessageModel.cardMessage({
+        'type': 'agent_tool_summary',
+        'taskId': 'task-stop-pending',
+        'cardId': 'task-stop-pending-tool-1',
+        'status': 'running',
+        'toolType': 'terminal',
+        'toolTitle': '等待停止',
+        'summary': '终端正在运行',
+      }, id: 'task-stop-pending-tool-1'),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatToolActivityStrip(
+            messages: messages,
+            onStopToolCall: (_, __) {
+              stopCalls += 1;
+              return completer.future;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(kChatToolActivityStopKey));
+    await tester.pump();
+    await tester.tap(find.byKey(kChatToolActivityStopKey));
+    await tester.pump();
+
+    expect(stopCalls, 1);
+
+    completer.complete(true);
+    await tester.pumpAndSettle();
   });
 
   testWidgets('expanded history row opens its own tool detail', (tester) async {

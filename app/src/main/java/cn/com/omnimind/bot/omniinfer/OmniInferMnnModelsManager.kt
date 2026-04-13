@@ -1,18 +1,20 @@
-﻿package cn.com.omnimind.bot.omniinfer
+package cn.com.omnimind.bot.omniinfer
 
 import android.content.Context
-import com.alibaba.mls.api.download.DownloadInfo
-import com.alibaba.mls.api.download.DownloadListener
-import com.alibaba.mls.api.download.DownloadState
-import com.alibaba.mls.api.download.ModelDownloadManager
-import com.alibaba.mls.api.source.ModelSources
+import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import com.tencent.mmkv.MMKV
+import cn.com.omnimind.baselib.util.OmniLog
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.File
+import java.nio.file.Files
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 object OmniInferMnnModelsManager {
+    private const val TAG = "OmniInferMnnModelsManager"
     private const val BACKEND_NAME = OmniInferLocalRuntime.BACKEND_OMNIINFER_MNN
     private const val MMKV_ID = "omniinfer_config"
     private const val KEY_ACTIVE_MODEL_ID = "omniinfer_mnn_active_model_id"
@@ -34,67 +36,21 @@ object OmniInferMnnModelsManager {
         val fileSize: Long,
         val downloadedAt: Long,
         val readOnly: Boolean,
-        val downloadInfo: DownloadInfo?,
+        val downloadInfo: MnnDownloadInfo?,
     )
 
     private var appContext: Context? = null
     private var eventDispatcher: ((Map<String, Any?>) -> Unit)? = null
     private val mmkv: MMKV by lazy { MMKV.mmkvWithID(MMKV_ID) }
-    private val downloadListenerLock = Any()
-
-    @Volatile
-    private var downloadListenerRegistered = false
-
-    private val downloadListener = object : DownloadListener {
-        override fun onDownloadStart(modelId: String) {
-            emitDownloadUpdate(modelId)
-        }
-
-        override fun onDownloadProgress(modelId: String, downloadInfo: DownloadInfo) {
-            emitDownloadUpdate(modelId, downloadInfo)
-        }
-
-        override fun onDownloadFinished(modelId: String, path: String) {
-            emitDownloadUpdate(modelId)
-            emitEvent("downloads_changed", emptyMap())
-            appContext?.let {
-                OmniInferBuiltinProviderRefresher.refreshAsync(
-                    it,
-                    "mnn_download_finished:$modelId"
-                )
-            }
-        }
-
-        override fun onDownloadFailed(modelId: String, e: Exception) {
-            emitDownloadUpdate(modelId)
-            emitEvent("downloads_changed", emptyMap())
-        }
-
-        override fun onDownloadPaused(modelId: String) {
-            emitDownloadUpdate(modelId)
-            emitEvent("downloads_changed", emptyMap())
-        }
-
-        override fun onDownloadFileRemoved(modelId: String) {
-            emitDownloadUpdate(modelId)
-            emitEvent("downloads_changed", emptyMap())
-        }
-
-        override fun onDownloadTotalSize(modelId: String, totalSize: Long) {
-            emitDownloadUpdate(modelId)
-        }
-
-        override fun onDownloadHasUpdate(modelId: String, downloadInfo: DownloadInfo) {
-            emitDownloadUpdate(modelId, downloadInfo)
-        }
-    }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val activeDownloads = ConcurrentHashMap<String, MnnRepoDownloadTask>()
 
     fun setContext(context: Context) {
         val applicationContext = context.applicationContext
         appContext = applicationContext
+        ensureMnnModelSymlink(applicationContext)
         OmniInferLocalRuntime.setContext(applicationContext)
         OmniInferMnnMarketRepository.setContext(applicationContext)
-        ensureDownloadListenerRegistered(applicationContext)
     }
 
     fun setEventDispatcher(dispatcher: ((Map<String, Any?>) -> Unit)?) {
@@ -102,6 +58,8 @@ object OmniInferMnnModelsManager {
     }
 
     fun clear() {
+        activeDownloads.values.forEach { it.cancel() }
+        activeDownloads.clear()
         eventDispatcher = null
     }
 
@@ -182,7 +140,7 @@ object OmniInferMnnModelsManager {
             .map(::marketModelToMap)
         return mapOf(
             "source" to selectedSource,
-            "availableSources" to ModelSources.sourceList,
+            "availableSources" to MnnModelSources.sourceList,
             "category" to "llm",
             "models" to models,
         )
@@ -208,7 +166,7 @@ object OmniInferMnnModelsManager {
             "baseUrl" to OmniInferLocalRuntime.getBaseUrl(),
             "activeModelId" to getActiveModelId(),
             "downloadProvider" to getDownloadProvider(),
-            "availableSources" to ModelSources.sourceList,
+            "availableSources" to MnnModelSources.sourceList,
             "loadedBackend" to OmniInferLocalRuntime.getLoadedBackend(),
             "loadedModelId" to getLoadedModelId(),
         )
@@ -243,9 +201,21 @@ object OmniInferMnnModelsManager {
     fun startApiService(modelId: String? = null): Map<String, Any?> {
         val targetModelId = modelId?.trim().orEmpty().ifBlank { getActiveModelId() }
         if (targetModelId.isBlank()) {
+            OmniLog.w(TAG, "[startApiService] no modelId specified and no active model")
             return getConfig()
         }
-        val resolved = findInstalledRecord(targetModelId) ?: return getConfig()
+        val resolved = findInstalledRecord(targetModelId)
+        if (resolved == null) {
+            OmniLog.w(TAG, "[startApiService] model not found: $targetModelId")
+            return getConfig()
+        }
+        OmniLog.i(
+            TAG,
+            "[startApiService] modelId=${resolved.id}, name=${resolved.name}, " +
+                "configPath=${resolved.configPath}, path=${resolved.path}, " +
+                "source=${resolved.source}, backend=$BACKEND_NAME, " +
+                "fileSize=${resolved.fileSize}, vendor=${resolved.vendor}"
+        )
         mmkv.encode(KEY_ACTIVE_MODEL_ID, resolved.id)
         OmniInferLocalRuntime.loadModel(
             modelId = resolved.id,
@@ -281,20 +251,51 @@ object OmniInferMnnModelsManager {
 
     fun startDownload(modelId: String) {
         val context = ensureContext()
-        ensureDownloadListenerRegistered(context)
-        val resolved = resolveMarketModel(modelId) ?: return
-        val manager = ModelDownloadManager.getInstance(context)
-        manager.startDownload(resolved.downloadId)
-        emitDownloadUpdate(resolved.modelId, manager.getDownloadInfo(resolved.downloadId))
+        val resolved = resolveMarketModel(modelId) ?: run {
+            emitEvent("download_error", mapOf("modelId" to modelId, "error" to "No download source"))
+            return
+        }
+        if (activeDownloads.containsKey(resolved.downloadId)) return
+
+        val repoDirName = resolved.repoPath.substringAfterLast('/')
+        val destDir = File(AgentWorkspaceManager.modelsMnnDirectory(context), repoDirName)
+        destDir.mkdirs()
+
+        val task = MnnRepoDownloadTask(
+            downloadId = resolved.downloadId,
+            source = resolved.source,
+            repoPath = resolved.repoPath,
+            destDir = destDir,
+        )
+        activeDownloads[resolved.downloadId] = task
+        emitDownloadUpdate(resolved.modelId, task.info)
+
+        scope.launch {
+            try {
+                task.execute { info ->
+                    emitDownloadUpdate(resolved.modelId, info)
+                }
+                activeDownloads.remove(resolved.downloadId)
+                emitDownloadUpdate(resolved.modelId, task.info)
+                emitEvent("downloads_changed", emptyMap())
+                OmniInferBuiltinProviderRefresher.refreshAsync(
+                    context, "mnn_download_finished:${resolved.modelId}"
+                )
+            } catch (_: Exception) {
+                activeDownloads.remove(resolved.downloadId)
+                emitDownloadUpdate(resolved.modelId, task.info)
+                emitEvent("downloads_changed", emptyMap())
+            }
+        }
     }
 
     fun pauseDownload(modelId: String) {
-        val context = ensureContext()
-        ensureDownloadListenerRegistered(context)
         val resolved = resolveMarketModel(modelId) ?: return
-        val manager = ModelDownloadManager.getInstance(context)
-        manager.pauseDownload(resolved.downloadId)
-        emitDownloadUpdate(resolved.modelId, manager.getDownloadInfo(resolved.downloadId))
+        val task = activeDownloads.remove(resolved.downloadId) ?: return
+        task.cancel()
+        val pausedInfo = task.info.copy(downloadState = MnnDownloadState.DOWNLOAD_PAUSED)
+        emitDownloadUpdate(resolved.modelId, pausedInfo)
+        emitEvent("downloads_changed", emptyMap())
     }
 
     suspend fun deleteModel(modelId: String): List<Map<String, Any?>> {
@@ -307,7 +308,16 @@ object OmniInferMnnModelsManager {
         if (isModelCurrentlyLoaded(target.id)) {
             OmniInferLocalRuntime.stop()
         }
-        ModelDownloadManager.getInstance(context).deleteModel(target.downloadModelId ?: target.id)
+        // Cancel active download if any
+        val downloadId = target.downloadModelId ?: target.id
+        activeDownloads.remove(downloadId)?.cancel()
+        // Delete the model directory
+        val modelDir = File(target.path)
+        if (modelDir.exists()) {
+            modelDir.deleteRecursively()
+        }
+        // Also clean up old blob+symlink storage (backward compat with old downloader)
+        cleanupLegacyStorage(context, downloadId)
         if (getActiveModelId() == target.id) {
             mmkv.encode(KEY_ACTIVE_MODEL_ID, "")
         }
@@ -317,35 +327,44 @@ object OmniInferMnnModelsManager {
         return listInstalledModels()
     }
 
-    private fun ensureContext(): Context {
-        return appContext ?: error("OmniInfer MNN context is not initialized")
-    }
+    // ---- Symlink migration (legacy .mnnmodels → workspace) ------------------------------------
 
-    private fun getActiveModelId(): String {
-        val stored = mmkv.decodeString(KEY_ACTIVE_MODEL_ID, "").orEmpty()
-        val normalized = normalizeStoredModelId(stored)
-        if (normalized != stored) {
-            mmkv.encode(KEY_ACTIVE_MODEL_ID, normalized)
+    private fun ensureMnnModelSymlink(context: Context) {
+        val workspaceDir = AgentWorkspaceManager.modelsMnnDirectory(context)
+        val legacyDir = File(context.filesDir, ".mnnmodels")
+        val legacyPath = legacyDir.toPath()
+        val workspacePath = workspaceDir.toPath()
+
+        if (Files.isSymbolicLink(legacyPath)) {
+            return
         }
-        return normalized
-    }
-
-    private fun shouldAutoStartOnAppOpen(): Boolean {
-        return mmkv.decodeBool(KEY_AUTO_START, false)
-    }
-
-    private fun getDownloadProvider(): String {
-        return normalizeSource(mmkv.decodeString(KEY_DOWNLOAD_PROVIDER, ModelSources.sourceModelScope))
-    }
-
-    private fun normalizeSource(rawSource: String?): String {
-        val source = rawSource?.trim().orEmpty()
-        return if (ModelSources.sourceList.contains(source)) {
-            source
-        } else {
-            ModelSources.sourceModelScope
+        workspaceDir.mkdirs()
+        if (legacyDir.exists() && legacyDir.isDirectory) {
+            var allMoved = true
+            legacyDir.listFiles()?.forEach { child ->
+                val target = File(workspaceDir, child.name)
+                if (!target.exists()) {
+                    if (!child.renameTo(target)) {
+                        allMoved = false
+                    }
+                }
+            }
+            if (!allMoved) return
+            legacyDir.deleteRecursively()
         }
+        runCatching { Files.createSymbolicLink(legacyPath, workspacePath) }
     }
+
+    private fun resolveDisplayPath(file: File): String {
+        val context = appContext ?: return file.absolutePath
+        val legacyPrefix = File(context.filesDir, ".mnnmodels").absolutePath
+        val path = file.absolutePath
+        if (!path.startsWith(legacyPrefix)) return path
+        return AgentWorkspaceManager.modelsMnnDirectory(context).absolutePath +
+            path.removePrefix(legacyPrefix)
+    }
+
+    // ---- Installed model detection (filesystem scan) ------------------------------------------
 
     private fun installedRecords(): List<InstalledModelRecord> {
         val preferredIds = buildSet {
@@ -409,32 +428,72 @@ object OmniInferMnnModelsManager {
         return false
     }
 
+    /**
+     * Scan the MNN models directory for downloaded models (directories containing config.json).
+     * Matches found directories against market models by directory name.
+     */
     private fun downloadedRecords(): List<InstalledModelRecord> {
         val context = ensureContext()
-        val downloadManager = ModelDownloadManager.getInstance(context)
-        return OmniInferMnnMarketRepository.allModels().mapNotNull { resolved ->
-            val downloadPath = downloadManager.getDownloadedFile(resolved.downloadId) ?: return@mapNotNull null
-            val configFile = File(downloadPath, "config.json")
-            if (!configFile.exists()) {
-                return@mapNotNull null
-            }
+        val mnnDir = AgentWorkspaceManager.modelsMnnDirectory(context)
+        if (!mnnDir.exists()) return emptyList()
+
+        val allModels = OmniInferMnnMarketRepository.allModels()
+
+        // Build lookup: directory name → resolved market model
+        val dirNameToModel = mutableMapOf<String, OmniInferMnnMarketRepository.ResolvedMarketModel>()
+        for (model in allModels) {
+            val dirName = model.repoPath.substringAfterLast('/')
+            dirNameToModel.putIfAbsent(dirName, model)
+        }
+
+        return scanModelDirectories(mnnDir).mapNotNull { modelDir ->
+            val configFile = File(modelDir, "config.json")
+            if (!configFile.exists()) return@mapNotNull null
+
+            val dirName = modelDir.name
+            val resolved = dirNameToModel[dirName]
+            val activeTask = resolved?.let { activeDownloads[it.downloadId] }
+            val downloadInfo = activeTask?.info
+
             InstalledModelRecord(
-                id = resolved.modelId,
-                name = resolved.item.modelName.ifBlank { resolved.modelId },
-                path = downloadPath.absolutePath,
-                configPath = configFile.absolutePath,
-                downloadModelId = resolved.downloadId,
-                source = resolved.source,
-                description = buildDescription(resolved.item),
-                vendor = resolved.item.vendor.orEmpty(),
-                tags = (resolved.item.tags + listOf("MNN")).distinct(),
-                extraTags = resolved.item.extraTags,
-                fileSize = resolved.item.fileSize,
-                downloadedAt = downloadPath.lastModified(),
+                id = resolved?.modelId ?: dirName,
+                name = resolved?.item?.modelName?.ifBlank { dirName } ?: dirName,
+                path = resolveDisplayPath(modelDir),
+                configPath = resolveDisplayPath(configFile),
+                downloadModelId = resolved?.downloadId,
+                source = resolved?.source ?: "unknown",
+                description = resolved?.let { buildDescription(it.item) } ?: "",
+                vendor = resolved?.item?.vendor.orEmpty(),
+                tags = (resolved?.item?.tags?.plus(listOf("MNN"))?.distinct() ?: listOf("MNN")),
+                extraTags = resolved?.item?.extraTags ?: emptyList(),
+                fileSize = resolved?.item?.fileSize ?: 0L,
+                downloadedAt = modelDir.lastModified(),
                 readOnly = false,
-                downloadInfo = downloadManager.getDownloadInfo(resolved.downloadId),
+                downloadInfo = downloadInfo,
             )
         }
+    }
+
+    /**
+     * Scan for model directories, handling both flat layout and source-subfolder layout
+     * left by the old downloader (hf/, modelscope/, modelers/ subdirectories).
+     */
+    private fun scanModelDirectories(rootDir: File): List<File> {
+        val result = mutableListOf<File>()
+        rootDir.listFiles()?.forEach { child ->
+            if (!child.isDirectory) return@forEach
+            if (File(child, "config.json").exists()) {
+                result.add(child)
+            } else {
+                // Old layout: source subfolders containing model directories
+                child.listFiles()?.forEach { grandchild ->
+                    if (grandchild.isDirectory && File(grandchild, "config.json").exists()) {
+                        result.add(grandchild)
+                    }
+                }
+            }
+        }
+        return result
     }
 
     private fun manualRecords(): List<InstalledModelRecord> {
@@ -479,6 +538,8 @@ object OmniInferMnnModelsManager {
         return installedRecords().firstOrNull { it.id == normalizedModelId }
     }
 
+    // ---- Map conversion for Flutter -----------------------------------------------------------
+
     private fun installedRecordToMap(record: InstalledModelRecord): Map<String, Any?> {
         val activeModelId = getActiveModelId()
         val loadedModelId = getLoadedModelId()
@@ -509,30 +570,43 @@ object OmniInferMnnModelsManager {
 
     private fun marketModelToMap(model: OmniInferMnnMarketRepository.ResolvedMarketModel): Map<String, Any?> {
         val context = ensureContext()
-        val downloadManager = ModelDownloadManager.getInstance(context)
-        val downloadedFile = downloadManager.getDownloadedFile(model.downloadId)
-        val downloadInfo = downloadManager.getDownloadInfo(model.downloadId)
-        val fileSize = if (model.item.fileSize > 0L) model.item.fileSize else downloadInfo.totalSize
+        val mnnDir = AgentWorkspaceManager.modelsMnnDirectory(context)
+        val repoDirName = model.repoPath.substringAfterLast('/')
+        val downloadedFile = scanModelDirectories(mnnDir)
+            .firstOrNull { it.name == repoDirName }
+        val activeTask = activeDownloads[model.downloadId]
+        val downloadInfo: MnnDownloadInfo? = activeTask?.info
+            ?: if (downloadedFile != null) {
+                MnnDownloadInfo(
+                    downloadState = MnnDownloadState.DOWNLOAD_SUCCESS,
+                    progress = 1.0,
+                    totalSize = model.item.fileSize,
+                    savedSize = model.item.fileSize,
+                )
+            } else {
+                null
+            }
+        val fileSize = if (model.item.fileSize > 0L) model.item.fileSize else downloadInfo?.totalSize ?: 0L
         return mapOf(
             "id" to model.modelId,
             "name" to model.item.modelName,
             "category" to "llm",
             "source" to model.source,
             "description" to buildDescription(model.item),
-            "path" to downloadedFile?.absolutePath.orEmpty(),
+            "path" to (downloadedFile?.let(::resolveDisplayPath)).orEmpty(),
             "vendor" to model.item.vendor.orEmpty(),
             "tags" to (model.item.tags + listOf("MNN")).distinct(),
             "extraTags" to model.item.extraTags,
             "active" to (model.modelId == getActiveModelId()),
             "isLocal" to (downloadedFile != null),
             "isPinned" to false,
-            "hasUpdate" to downloadInfo.hasUpdate,
+            "hasUpdate" to (downloadInfo?.hasUpdate == true),
             "fileSize" to fileSize,
             "sizeB" to fileSize.toDouble(),
             "formattedSize" to formatSize(fileSize),
             "lastUsedAt" to 0,
             "downloadedAt" to (downloadedFile?.lastModified() ?: 0L),
-            "download" to downloadInfo.toMap(),
+            "download" to downloadInfo?.toMap(),
             "readOnly" to false,
         )
     }
@@ -546,35 +620,36 @@ object OmniInferMnnModelsManager {
         }.joinToString(separator = " | ")
     }
 
-    private fun ensureDownloadListenerRegistered(context: Context) {
-        if (downloadListenerRegistered) {
-            return
-        }
-        synchronized(downloadListenerLock) {
-            if (downloadListenerRegistered) {
-                return
-            }
-            ModelDownloadManager.getInstance(context).addListener(downloadListener)
-            downloadListenerRegistered = true
-        }
+    // ---- Internal helpers ----------------------------------------------------------------------
+
+    private fun ensureContext(): Context {
+        return appContext ?: error("OmniInfer MNN context is not initialized")
     }
 
-    private fun emitConfigChanged() {
-        emitEvent("config_changed", mapOf("config" to getConfig()))
+    private fun getActiveModelId(): String {
+        val stored = mmkv.decodeString(KEY_ACTIVE_MODEL_ID, "").orEmpty()
+        val normalized = normalizeStoredModelId(stored)
+        if (normalized != stored) {
+            mmkv.encode(KEY_ACTIVE_MODEL_ID, normalized)
+        }
+        return normalized
     }
 
-    private fun emitDownloadUpdate(
-        modelId: String,
-        downloadInfo: DownloadInfo? = appContext?.let { ModelDownloadManager.getInstance(it).getDownloadInfo(modelId) },
-    ) {
-        val publicModelId = normalizeStoredModelId(modelId)
-        emitEvent(
-            "download_update",
-            mapOf(
-                "modelId" to publicModelId,
-                "download" to downloadInfo?.toMap(),
-            )
-        )
+    private fun shouldAutoStartOnAppOpen(): Boolean {
+        return mmkv.decodeBool(KEY_AUTO_START, false)
+    }
+
+    private fun getDownloadProvider(): String {
+        return normalizeSource(mmkv.decodeString(KEY_DOWNLOAD_PROVIDER, MnnModelSources.sourceModelScope))
+    }
+
+    private fun normalizeSource(rawSource: String?): String {
+        val source = rawSource?.trim().orEmpty()
+        return if (MnnModelSources.sourceList.contains(source)) {
+            source
+        } else {
+            MnnModelSources.sourceModelScope
+        }
     }
 
     private fun getLoadedModelId(): String {
@@ -598,6 +673,45 @@ object OmniInferMnnModelsManager {
             getLoadedModelId() == modelId.trim()
     }
 
+    /**
+     * Clean up legacy blob+symlink storage left by the old model_downloader submodule.
+     */
+    private fun cleanupLegacyStorage(context: Context, downloadId: String) {
+        val mnnDir = AgentWorkspaceManager.modelsMnnDirectory(context)
+        // Old downloader stored blobs under source-specific subfolders: hf/, modelscope/, modelers/
+        val sourceSubDirs = listOf("hf", "modelscope", "modelers")
+        for (sub in sourceSubDirs) {
+            val sourceDir = File(mnnDir, sub)
+            if (!sourceDir.isDirectory) continue
+            // Look for repo folders matching pattern models--{...}
+            sourceDir.listFiles()?.forEach { child ->
+                if (child.isDirectory && child.name.startsWith("models--")) {
+                    child.deleteRecursively()
+                }
+            }
+        }
+    }
+
+    // ---- Event emission -----------------------------------------------------------------------
+
+    private fun emitConfigChanged() {
+        emitEvent("config_changed", mapOf("config" to getConfig()))
+    }
+
+    private fun emitDownloadUpdate(
+        modelId: String,
+        downloadInfo: MnnDownloadInfo?,
+    ) {
+        val publicModelId = normalizeStoredModelId(modelId)
+        emitEvent(
+            "download_update",
+            mapOf(
+                "modelId" to publicModelId,
+                "download" to downloadInfo?.toMap(),
+            )
+        )
+    }
+
     private fun emitEvent(type: String, payload: Map<String, Any?>) {
         eventDispatcher?.invoke(
             buildMap {
@@ -607,17 +721,17 @@ object OmniInferMnnModelsManager {
         )
     }
 
-    private fun DownloadInfo.toMap(): Map<String, Any?> {
+    private fun MnnDownloadInfo.toMap(): Map<String, Any?> {
         return mapOf(
             "state" to downloadState,
             "stateLabel" to when (downloadState) {
-                DownloadState.NOT_START -> "not_started"
-                DownloadState.PREPARING -> "preparing"
-                DownloadState.DOWNLOADING -> "downloading"
-                DownloadState.DOWNLOAD_SUCCESS -> "completed"
-                DownloadState.DOWNLOAD_FAILED -> "failed"
-                DownloadState.DOWNLOAD_PAUSED -> "paused"
-                DownloadState.DOWNLOAD_CANCELLED -> "cancelled"
+                MnnDownloadState.NOT_START -> "not_started"
+                MnnDownloadState.PREPARING -> "preparing"
+                MnnDownloadState.DOWNLOADING -> "downloading"
+                MnnDownloadState.DOWNLOAD_SUCCESS -> "completed"
+                MnnDownloadState.DOWNLOAD_FAILED -> "failed"
+                MnnDownloadState.DOWNLOAD_PAUSED -> "paused"
+                MnnDownloadState.DOWNLOAD_CANCELLED -> "cancelled"
                 else -> "unknown"
             },
             "progress" to progress,
@@ -644,4 +758,3 @@ object OmniInferMnnModelsManager {
         }
     }
 }
-

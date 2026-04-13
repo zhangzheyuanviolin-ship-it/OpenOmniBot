@@ -173,6 +173,14 @@ mixin _ChatInputAreaComposerMixin
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         SizedBox(width: 28, height: 28, child: _buildLargeAddButton()),
+        if (widget.onTriggerSlashCommand != null) ...[
+          const SizedBox(width: 4),
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: _buildSlashTriggerButton(iconSize: 20),
+          ),
+        ],
         const Spacer(),
         if (contextUsageRatio != null) ...[
           _ContextUsageRingButton(
@@ -277,6 +285,25 @@ mixin _ChatInputAreaComposerMixin
         });
         widget.onPopupVisibilityChanged?.call(false);
       },
+    );
+  }
+
+  Widget _buildSlashTriggerButton({required double iconSize}) {
+    return IconButton(
+      key: const ValueKey('chat-input-trigger-slash-button'),
+      padding: EdgeInsets.zero,
+      iconSize: iconSize,
+      icon: _commandSvg,
+      tooltip: '命令',
+      onPressed: widget.onTriggerSlashCommand == null
+          ? null
+          : () {
+              if (_isPopupVisible) {
+                setState(() => _isPopupVisible = false);
+                widget.onPopupVisibilityChanged?.call(false);
+              }
+              widget.onTriggerSlashCommand?.call();
+            },
     );
   }
 
@@ -622,6 +649,14 @@ mixin _ChatInputAreaComposerMixin
         // OpenClaw 按钮 - 始终显示在固定位置
         if (openClawButton != null) ...[
           openClawButton,
+          const SizedBox(width: 2),
+        ],
+        if (widget.onTriggerSlashCommand != null) ...[
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: _buildSlashTriggerButton(iconSize: 18),
+          ),
           const SizedBox(width: 2),
         ],
         if (contextUsageRatio != null) ...[

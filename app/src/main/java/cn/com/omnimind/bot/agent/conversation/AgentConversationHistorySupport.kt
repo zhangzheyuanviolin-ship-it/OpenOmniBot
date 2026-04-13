@@ -35,11 +35,13 @@ internal object AgentConversationHistorySupport {
     private const val MAX_TOOL_SUMMARY_CHARS = 240
     private const val MAX_TOOL_PREVIEW_CHARS = 800
     private const val MAX_TOOL_TERMINAL_CHARS = 1200
-    private const val CONTEXT_SUMMARY_SYSTEM_PREFIX = """
+    private const val LEGACY_CONTEXT_SUMMARY_SYSTEM_PREFIX = """
 以下是同一会话较早历史的压缩总结。它替代了压缩点之前的原始消息，请在后续对话中将其视为既有上下文。
 如果总结与压缩点之后的新消息冲突，应以后续原始消息为准。
 
 """
+    private const val CONTEXT_SUMMARY_USER_PREFIX =
+        "<context-summary> The following is a summary of the earlier conversation that was compacted to save context space."
 
     private val gson = Gson()
 
@@ -50,7 +52,7 @@ internal object AgentConversationHistorySupport {
     ): AgentConversationHistoryRepository.PromptSeed {
         val historyMessages = mutableListOf<ChatCompletionMessage>()
         contextSummary?.trim()?.takeIf { it.isNotEmpty() }?.let { summary ->
-            historyMessages += buildContextSummarySystemMessage(summary)
+            historyMessages += buildContextSummaryUserMessage(summary)
         }
         historyMessages += buildPromptRelevantMessages(
             entries = entries,
@@ -108,25 +110,50 @@ internal object AgentConversationHistorySupport {
         return replayMessages
     }
 
-    fun buildContextSummarySystemMessage(summary: String): ChatCompletionMessage {
+    fun buildContextSummaryUserMessage(summary: String): ChatCompletionMessage {
+        val normalizedSummary = summary.trim()
+        val content = if (normalizedSummary.isEmpty()) {
+            CONTEXT_SUMMARY_USER_PREFIX
+        } else {
+            "$CONTEXT_SUMMARY_USER_PREFIX\n\n$normalizedSummary"
+        }
         return ChatCompletionMessage(
-            role = "system",
-            content = JsonPrimitive(CONTEXT_SUMMARY_SYSTEM_PREFIX + summary.trim())
+            role = "user",
+            content = JsonPrimitive(content)
         )
+    }
+
+    fun buildContextSummarySystemMessage(summary: String): ChatCompletionMessage {
+        return buildContextSummaryUserMessage(summary)
     }
 
     fun extractContextSummaryText(message: ChatCompletionMessage): String? {
         val content = message.content as? JsonPrimitive ?: return null
-        if (message.role != "system" || !content.content.startsWith(CONTEXT_SUMMARY_SYSTEM_PREFIX)) {
-            return null
+        return when {
+            message.role == "user" &&
+                content.content.startsWith(CONTEXT_SUMMARY_USER_PREFIX) -> {
+                content.content.removePrefix(CONTEXT_SUMMARY_USER_PREFIX).trim()
+            }
+
+            message.role == "system" &&
+                content.content.startsWith(LEGACY_CONTEXT_SUMMARY_SYSTEM_PREFIX) -> {
+                content.content.removePrefix(LEGACY_CONTEXT_SUMMARY_SYSTEM_PREFIX).trim()
+            }
+
+            else -> null
         }
-        return content.content.removePrefix(CONTEXT_SUMMARY_SYSTEM_PREFIX).trim()
+    }
+
+    fun isContextSummaryMessage(message: ChatCompletionMessage): Boolean {
+        val content = message.content as? JsonPrimitive ?: return false
+        return (message.role == "user" &&
+            content.content.startsWith(CONTEXT_SUMMARY_USER_PREFIX)) ||
+            (message.role == "system" &&
+                content.content.startsWith(LEGACY_CONTEXT_SUMMARY_SYSTEM_PREFIX))
     }
 
     fun isContextSummarySystemMessage(message: ChatCompletionMessage): Boolean {
-        val content = message.content as? JsonPrimitive ?: return false
-        return message.role == "system" &&
-            content.content.startsWith(CONTEXT_SUMMARY_SYSTEM_PREFIX)
+        return isContextSummaryMessage(message)
     }
 
     fun isPromptRelevantEntry(entry: AgentConversationEntry): Boolean {
@@ -165,18 +192,26 @@ internal object AgentConversationHistorySupport {
         val leadingSystemCount = messages.takeWhile { it.role == "system" }.size
         var summaryIndex = -1
         for (index in 0 until leadingSystemCount) {
-            if (isContextSummarySystemMessage(messages[index])) {
+            if (isContextSummaryMessage(messages[index])) {
                 summaryIndex = index
             }
         }
-        val latestUserIndex = messages.indexOfLast { it.role == "user" }
+        if (summaryIndex == -1 &&
+            leadingSystemCount < messages.size &&
+            isContextSummaryMessage(messages[leadingSystemCount])
+        ) {
+            summaryIndex = leadingSystemCount
+        }
+        val latestUserIndex = messages.indexOfLast { message ->
+            message.role == "user" && !isContextSummaryMessage(message)
+        }
         if (latestUserIndex == -1) return null
         val compactionStartIndex = if (summaryIndex >= 0) summaryIndex + 1 else leadingSystemCount
         if (latestUserIndex <= compactionStartIndex) {
             return null
         }
         val messagesToCompact = messages.subList(compactionStartIndex, latestUserIndex)
-            .filter { it.role != "system" }
+            .filter { it.role != "system" && !isContextSummaryMessage(it) }
         if (messagesToCompact.isEmpty()) {
             return null
         }
@@ -197,29 +232,23 @@ internal object AgentConversationHistorySupport {
     ): List<ChatCompletionMessage> {
         val preservedSystemMessages = messages
             .takeWhile { it.role == "system" }
-            .filterNot(::isContextSummarySystemMessage)
-        val latestUserIndex = messages.indexOfLast { it.role == "user" }
+            .filterNot(::isContextSummaryMessage)
+        val latestUserIndex = messages.indexOfLast { message ->
+            message.role == "user" && !isContextSummaryMessage(message)
+        }
         if (latestUserIndex == -1) {
-            return preservedSystemMessages + buildContextSummarySystemMessage(summary)
+            return preservedSystemMessages + buildContextSummaryUserMessage(summary)
         }
         val rebuilt = mutableListOf<ChatCompletionMessage>()
         rebuilt += preservedSystemMessages
-        rebuilt += buildContextSummarySystemMessage(summary)
-        rebuilt += messages[latestUserIndex]
-        messages.drop(latestUserIndex + 1)
-            .firstOrNull { message -> message.role == "assistant" && !message.toolCalls.isNullOrEmpty() }
-            ?.let { pendingToolCallMessage ->
-                rebuilt += ChatCompletionMessage(
-                    role = "assistant",
-                    toolCalls = pendingToolCallMessage.toolCalls,
-                    name = pendingToolCallMessage.name
-                )
-            }
+        rebuilt += buildContextSummaryUserMessage(summary)
+        rebuilt += messages.subList(latestUserIndex, messages.size)
         return rebuilt
     }
 
     fun normalizeInterruptedEntries(
-        entries: List<AgentConversationEntry>
+        entries: List<AgentConversationEntry>,
+        finalizeLatestThinkingEntries: Boolean = false
     ): List<AgentConversationEntry> {
         if (entries.isEmpty()) return entries
         val normalized = entries.map { entry ->
@@ -248,7 +277,10 @@ internal object AgentConversationHistorySupport {
                 )
             }
         }
-        return normalizeStaleThinkingEntries(normalized)
+        return normalizeStaleThinkingEntries(
+            entries = normalized,
+            finalizeLatestThinkingEntries = finalizeLatestThinkingEntries
+        )
     }
 
     fun mergeToolPayload(
@@ -292,6 +324,7 @@ internal object AgentConversationHistorySupport {
 
         return linkedMapOf<String, Any?>(
             "taskId" to chooseAny("taskId"),
+            "cardId" to chooseText("cardId"),
             "toolName" to chooseText("toolName"),
             "displayName" to chooseText("displayName"),
             "toolTitle" to chooseText("toolTitle"),
@@ -308,6 +341,8 @@ internal object AgentConversationHistorySupport {
             "terminalOutputDelta" to terminalOutputDelta,
             "terminalSessionId" to chooseAny("terminalSessionId"),
             "terminalStreamState" to chooseText("terminalStreamState"),
+            "interruptedBy" to chooseText("interruptedBy"),
+            "interruptionReason" to chooseText("interruptionReason"),
             "timedOut" to (incoming["timedOut"] ?: existing["timedOut"] ?: false),
             "workspaceId" to chooseAny("workspaceId"),
             "artifacts" to toListOfStringAnyMap(incoming["artifacts"]).ifEmpty {
@@ -426,6 +461,12 @@ internal object AgentConversationHistorySupport {
                 MAX_TOOL_SUMMARY_CHARS
             )
         )
+        payload["interruptedBy"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["interruptedBy"] = it
+        }
+        payload["interruptionReason"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["interruptionReason"] = it
+        }
         payload["serverName"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
             content["serverName"] = it
         }
@@ -552,7 +593,8 @@ internal object AgentConversationHistorySupport {
     }
 
     private fun normalizeStaleThinkingEntries(
-        entries: List<AgentConversationEntry>
+        entries: List<AgentConversationEntry>,
+        finalizeLatestThinkingEntries: Boolean
     ): List<AgentConversationEntry> {
         if (entries.isEmpty()) return entries
 
@@ -600,24 +642,33 @@ internal object AgentConversationHistorySupport {
             val latest = ordered.lastOrNull()
             val terminalTime = latest?.taskId?.let { terminalEntryTimeByTask[it] }
 
-            ordered.forEach { thinkingEntry ->
+            ordered.forEachIndexed { orderedIndex, thinkingEntry ->
+                val nextThinkingStart = ordered.getOrNull(orderedIndex + 1)?.startTime
                 val shouldFinalize = when {
                     latest == null -> false
                     thinkingEntry.index != latest.index -> true
                     terminalTime != null && terminalTime >= thinkingEntry.startTime -> true
+                    finalizeLatestThinkingEntries -> true
                     else -> false
                 }
                 if (!shouldFinalize) {
-                    return@forEach
+                    return@forEachIndexed
+                }
+                val resolvedEndTime = when {
+                    terminalTime != null -> terminalTime
+                    nextThinkingStart != null -> nextThinkingStart
+                    finalizeLatestThinkingEntries -> maxOf(
+                        thinkingEntry.startTime,
+                        thinkingEntry.entry.updatedAt,
+                        thinkingEntry.entry.createdAt
+                    )
+                    else -> System.currentTimeMillis()
                 }
                 val normalized = finalizeThinkingEntry(
                     entry = thinkingEntry.entry,
                     payload = thinkingEntry.payload,
                     cardData = thinkingEntry.cardData,
-                    endTime = maxOf(
-                        thinkingEntry.startTime,
-                        terminalTime ?: System.currentTimeMillis()
-                    )
+                    endTime = maxOf(thinkingEntry.startTime, resolvedEndTime)
                 )
                 if (normalized != null) {
                     updatedEntries[thinkingEntry.index] = normalized

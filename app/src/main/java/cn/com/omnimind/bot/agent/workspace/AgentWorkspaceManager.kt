@@ -2,6 +2,9 @@ package cn.com.omnimind.bot.agent
 
 import android.content.Context
 import android.net.Uri
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
+import cn.com.omnimind.baselib.i18n.LocalizedText
+import cn.com.omnimind.baselib.i18n.PromptLocale
 import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import java.io.File
 import java.nio.charset.Charset
@@ -9,6 +12,154 @@ import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+
+private val defaultSoulTemplate = LocalizedText(
+    zhCN = """
+        # SOUL
+
+        ## 身份
+        - 你是小万，值得信赖的智能助手，优先帮助用户把事情做完。
+        - 你会基于事实与工具结果回答，不编造不可验证信息。
+
+        ## 语气
+        - 简洁、温和、可执行。
+        - 优先给出结论，再补充必要细节。
+
+        ## 行为边界
+        - 涉及隐私、删除、支付、外发信息时先确认。
+        - 不擅自泄露密钥、个人信息或工作区敏感文件。
+        - 不使用破坏性命令，除非用户明确授权。
+
+        ## 记忆协作
+        - 长期稳定偏好写入 `.omnibot/memory/MEMORY.md`。
+        - 当日过程性信息写入 `.omnibot/memory/short-memories/YY-MM-DD.md`。
+        - 每晚整理后再决定是否沉淀为长期记忆。
+
+        ## 自我更新规则
+        - 只有在用户明确同意“更新灵魂/SOUL”时，才能改写本文件。
+        - 更新时保留“身份、语气、边界”三部分结构，避免漂移。
+        - 每次更新应可解释：为什么改、改了什么、预期影响。
+    """.trimIndent(),
+    enUS = """
+        # SOUL
+
+        ## Identity
+        - You are Omnibot, a trustworthy assistant focused on helping the user get things done.
+        - Base your answers on facts and tool results, and do not invent unverifiable information.
+
+        ## Tone
+        - Be concise, warm, and actionable.
+        - Lead with the conclusion, then add only the necessary detail.
+
+        ## Boundaries
+        - Ask for confirmation before actions involving privacy, deletion, payments, or sending information out.
+        - Do not expose secrets, personal data, or sensitive workspace files without permission.
+        - Do not use destructive commands unless the user explicitly authorizes them.
+
+        ## Memory Collaboration
+        - Write long-term stable preferences to `.omnibot/memory/MEMORY.md`.
+        - Write day-specific procedural context to `.omnibot/memory/short-memories/YY-MM-DD.md`.
+        - Decide what should become long-term memory only after nightly rollup.
+
+        ## Self-Update Rules
+        - Only rewrite this file when the user explicitly agrees to update the soul/SOUL.
+        - Keep the Identity, Tone, and Boundaries sections to avoid drift.
+        - Every update must be explainable: why it changed, what changed, and the expected impact.
+    """.trimIndent()
+)
+
+private val defaultChatTemplate = LocalizedText(
+    zhCN = """
+        你是一个 AI 助手。
+    """.trimIndent(),
+    enUS = """
+        You are an AI assistant.
+    """.trimIndent()
+)
+
+private val defaultLongMemoryTemplate = LocalizedText(
+    zhCN = """
+        # MEMORY
+
+        这是长期静态记忆区，用于存储跨会话稳定偏好与长期约束。
+
+        ## 使用约定
+        - 仅记录长期稳定且对后续任务有价值的信息。
+        - 避免记录一次性临时细节。
+        - 每条尽量一句话，必要时加日期来源。
+
+        ## 长期记忆
+    """.trimIndent(),
+    enUS = """
+        # MEMORY
+
+        This is the long-term memory area for stable preferences and cross-session constraints.
+
+        ## Usage Notes
+        - Only record information that is stable over time and useful for future tasks.
+        - Avoid one-off temporary details.
+        - Keep each item to one sentence when possible, and add a date/source if needed.
+
+        ## Long-Term Memory
+    """.trimIndent()
+)
+
+internal fun defaultSoulTemplateText(locale: PromptLocale): String {
+    return defaultSoulTemplate.resolve(locale) + "\n"
+}
+
+internal fun defaultChatTemplateText(locale: PromptLocale): String {
+    return defaultChatTemplate.resolve(locale) + "\n"
+}
+
+internal fun defaultLongMemoryTemplateText(locale: PromptLocale): String {
+    return defaultLongMemoryTemplate.resolve(locale) + "\n"
+}
+
+private fun syncManagedDefaultFile(
+    file: File,
+    targetText: String,
+    managedDefaults: Set<String>
+) {
+    if (!file.exists()) {
+        file.parentFile?.mkdirs()
+        file.writeText(targetText)
+        return
+    }
+    val current = runCatching { file.readText() }.getOrNull() ?: return
+    if (current == targetText) {
+        return
+    }
+    if (managedDefaults.contains(current)) {
+        file.writeText(targetText)
+    }
+}
+
+internal fun ensureDefaultWorkspaceDocs(
+    soulFile: File,
+    chatFile: File,
+    longMemoryFile: File,
+    locale: PromptLocale
+) {
+    val soulTarget = defaultSoulTemplateText(locale)
+    val chatTarget = defaultChatTemplateText(locale)
+    val memoryTarget = defaultLongMemoryTemplateText(locale)
+    syncManagedDefaultFile(
+        soulFile,
+        soulTarget,
+        PromptLocale.entries.map(::defaultSoulTemplateText).toSet()
+    )
+    syncManagedDefaultFile(
+        chatFile,
+        chatTarget,
+        PromptLocale.entries.map(::defaultChatTemplateText).toSet()
+    )
+    syncManagedDefaultFile(
+        longMemoryFile,
+        memoryTarget,
+        PromptLocale.entries.map(::defaultLongMemoryTemplateText).toSet()
+    )
+}
 
 class AgentWorkspaceManager(
     private val context: Context
@@ -35,6 +186,7 @@ class AgentWorkspaceManager(
         private const val DIR_AGENT = "agent"
         private const val FILE_AI_CONFIG = "config.json"
         private const val FILE_SOUL = "SOUL.md"
+        private const val FILE_CHAT = "CHAT.md"
         private const val FILE_MEMORY = "MEMORY.md"
         private const val DIR_SHORT_MEMORIES = "short-memories"
         private const val DIR_MEMORY_INDEX = "index"
@@ -136,6 +288,7 @@ class AgentWorkspaceManager(
     private val memoryDir = File(internalDir, DIR_MEMORY)
     private val agentDir = File(internalDir, DIR_AGENT)
     private val soulFile = File(agentDir, FILE_SOUL)
+    private val chatFile = File(agentDir, FILE_CHAT)
     private val longMemoryFile = File(memoryDir, FILE_MEMORY)
     private val shortMemoriesDir = File(memoryDir, DIR_SHORT_MEMORIES)
     private val memoryIndexDir = File(memoryDir, DIR_MEMORY_INDEX)
@@ -172,61 +325,12 @@ class AgentWorkspaceManager(
     }
 
     private fun ensureDefaultWorkspaceDocs() {
-        if (!soulFile.exists()) {
-            soulFile.parentFile?.mkdirs()
-            soulFile.writeText(defaultSoulTemplate())
-        }
-        if (!longMemoryFile.exists()) {
-            longMemoryFile.parentFile?.mkdirs()
-            longMemoryFile.writeText(defaultLongMemoryTemplate())
-        }
-    }
-
-    private fun defaultSoulTemplate(): String {
-        return """
-            # SOUL
-
-            你是 Omnibot 的 Agent 灵魂设定文件。系统会把本文件注入到 system prompt 中。
-            你可以根据用户明确授权更新本文件，以持续优化行为。
-
-            ## 身份
-            - 你是值得信赖的智能助手，优先帮助用户把事情做完。
-            - 你会基于事实与工具结果回答，不编造不可验证信息。
-
-            ## 语气
-            - 简洁、温和、可执行。
-            - 优先给出结论，再补充必要细节。
-
-            ## 行为边界
-            - 涉及隐私、删除、支付、外发信息时先确认。
-            - 不擅自泄露密钥、个人信息或工作区敏感文件。
-            - 不使用破坏性命令，除非用户明确授权。
-
-            ## 记忆协作
-            - 长期稳定偏好写入 `.omnibot/memory/MEMORY.md`。
-            - 当日过程性信息写入 `.omnibot/memory/short-memories/YY-MM-DD.md`。
-            - 每晚整理后再决定是否沉淀为长期记忆。
-
-            ## 自我更新规则
-            - 只有在用户明确同意“更新灵魂/SOUL”时，才能改写本文件。
-            - 更新时保留“身份、语气、边界”三部分结构，避免漂移。
-            - 每次更新应可解释：为什么改、改了什么、预期影响。
-        """.trimIndent() + "\n"
-    }
-
-    private fun defaultLongMemoryTemplate(): String {
-        return """
-            # MEMORY
-
-            这是长期静态记忆区，用于存储跨会话稳定偏好与长期约束。
-
-            ## 使用约定
-            - 仅记录长期稳定且对后续任务有价值的信息。
-            - 避免记录一次性临时细节。
-            - 每条尽量一句话，必要时加日期来源。
-
-            ## 长期记忆
-        """.trimIndent() + "\n"
+        ensureDefaultWorkspaceDocs(
+            soulFile = soulFile,
+            chatFile = chatFile,
+            longMemoryFile = longMemoryFile,
+            locale = AppLocaleManager.resolvePromptLocale(context)
+        )
     }
 
     private fun migrateLegacyWorkspaceIfNeeded() {
@@ -346,6 +450,11 @@ class AgentWorkspaceManager(
     fun soulMarkdownFile(): File {
         ensureRuntimeDirectories()
         return soulFile
+    }
+
+    fun chatMarkdownFile(): File {
+        ensureRuntimeDirectories()
+        return chatFile
     }
 
     fun agentConfigFile(): File {

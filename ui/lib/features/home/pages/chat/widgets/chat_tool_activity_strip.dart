@@ -22,6 +22,9 @@ const ValueKey<String> kChatToolActivityPreviewKey = ValueKey<String>(
 const ValueKey<String> kChatToolActivityToggleKey = ValueKey<String>(
   'chat-tool-activity-toggle',
 );
+const ValueKey<String> kChatToolActivityStopKey = ValueKey<String>(
+  'chat-tool-activity-stop',
+);
 
 const double _kToolActivityRowHeight = 32;
 const double _kToolActivitySurfaceRadius = 18;
@@ -32,7 +35,7 @@ const double _kToolActivitySurfaceHorizontalInset = 20;
 const double _kToolActivityDrawerMaxHeight = 264;
 const double _kToolActivityTypeSlotWidth = 34;
 const double _kToolActivityStatusSlotWidth = 42;
-const double _kToolActivityTrailingSlotWidth = 18;
+const double _kToolActivityTrailingSlotWidth = 24;
 const double _kToolActivityAttachedBorderReveal = 1.5;
 const Color _kToolActivitySurfaceColor = Color(0xFFF9FCFF);
 const BorderRadius _kToolActivitySurfaceBorderRadius = BorderRadius.only(
@@ -52,6 +55,7 @@ class ChatToolActivityStrip extends StatefulWidget {
     this.expanded,
     this.onExpandedChanged,
     this.suppressSurfaceShadow = false,
+    this.onStopToolCall,
   });
 
   final List<ChatMessageModel> messages;
@@ -60,6 +64,7 @@ class ChatToolActivityStrip extends StatefulWidget {
   final bool? expanded;
   final ValueChanged<bool>? onExpandedChanged;
   final bool suppressSurfaceShadow;
+  final Future<bool> Function(String taskId, String cardId)? onStopToolCall;
 
   @override
   State<ChatToolActivityStrip> createState() => _ChatToolActivityStripState();
@@ -69,6 +74,7 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
   bool _expanded = false;
   double? _lastReportedOccupiedHeight;
   final Set<int> _heldPointerIds = <int>{};
+  String? _pendingStopCardId;
 
   bool get _resolvedExpanded => widget.expanded ?? _expanded;
 
@@ -83,6 +89,7 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
     }
 
     final activeCardId = _cardIdentity(activeCard);
+    _schedulePendingStopResetIfNeeded(activeCardId: activeCardId);
     final historyCards = cards
         .where((card) => _cardIdentity(card) != activeCardId)
         .toList(growable: false);
@@ -136,6 +143,10 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
                 suppressShadow: widget.suppressSurfaceShadow,
                 leadingInset: isExpanded ? 0 : collapsedLeadingInset,
                 onToggle: () => _handleExpandedChanged(!isExpanded),
+                onStopToolCall: widget.onStopToolCall == null
+                    ? null
+                    : () => _handleStopToolCall(activeCard),
+                isStopPending: _pendingStopCardId == activeCardId,
                 onOpenCard: (cardData) =>
                     _openCardDetailDialog(context, cardData: cardData),
                 onHistoryPointerDown: _handleHistoryPointerDown,
@@ -180,6 +191,7 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
   @override
   void didUpdateWidget(covariant ChatToolActivityStrip oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _schedulePendingStopResetIfNeeded();
     if (widget.messages.isEmpty && _lastReportedOccupiedHeight != 0) {
       _reportOccupiedHeight(0);
     }
@@ -243,6 +255,76 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
     });
   }
 
+  void _schedulePendingStopResetIfNeeded({String? activeCardId}) {
+    final pendingCardId = _pendingStopCardId;
+    if (pendingCardId == null) {
+      return;
+    }
+    final cards = extractAgentToolCards(widget.messages);
+    Map<String, dynamic>? pendingCard;
+    for (final card in cards) {
+      if (_cardIdentity(card) == pendingCardId) {
+        pendingCard = card;
+        break;
+      }
+    }
+    final resolvedActiveCard = resolveActiveAgentToolCard(cards);
+    final normalizedActiveCardId =
+        activeCardId ??
+        (resolvedActiveCard == null ? null : _cardIdentity(resolvedActiveCard));
+    final stillPending =
+        pendingCard != null &&
+        (pendingCard['status'] ?? '').toString() == 'running' &&
+        normalizedActiveCardId == pendingCardId;
+    if (stillPending) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _pendingStopCardId != pendingCardId) {
+        return;
+      }
+      setState(() {
+        _pendingStopCardId = null;
+      });
+    });
+  }
+
+  Future<void> _handleStopToolCall(Map<String, dynamic> cardData) async {
+    final onStopToolCall = widget.onStopToolCall;
+    if (onStopToolCall == null) {
+      return;
+    }
+    final taskId = (cardData['taskId'] ?? '').toString().trim();
+    final cardId = _cardIdentity(cardData);
+    if (taskId.isEmpty || cardId.isEmpty || _pendingStopCardId == cardId) {
+      return;
+    }
+    setState(() {
+      _pendingStopCardId = cardId;
+    });
+
+    var success = false;
+    try {
+      success = await onStopToolCall(taskId, cardId);
+    } catch (_) {
+      success = false;
+    }
+    if (!mounted) {
+      return;
+    }
+    if (success) {
+      return;
+    }
+    setState(() {
+      if (_pendingStopCardId == cardId) {
+        _pendingStopCardId = null;
+      }
+    });
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(const SnackBar(content: Text('停止工具调用失败，请稍后重试')));
+  }
+
   void _handleHistoryPointerDown(int pointer) {
     if (_heldPointerIds.add(pointer)) {
       ToolCardDetailGestureGate.holdPointer(pointer);
@@ -291,6 +373,249 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
   }
 }
 
+class ChatCommandActivityStrip extends StatefulWidget {
+  const ChatCommandActivityStrip({
+    super.key,
+    required this.commands,
+    required this.onSelectCommand,
+    this.anchorRect,
+    this.onOccupiedHeightChanged,
+    this.suppressSurfaceShadow = false,
+  });
+
+  final List<Map<String, dynamic>> commands;
+  final ValueChanged<Map<String, dynamic>> onSelectCommand;
+  final Rect? anchorRect;
+  final ValueChanged<double>? onOccupiedHeightChanged;
+  final bool suppressSurfaceShadow;
+
+  @override
+  State<ChatCommandActivityStrip> createState() =>
+      _ChatCommandActivityStripState();
+}
+
+class _ChatCommandActivityStripState extends State<ChatCommandActivityStrip> {
+  double? _lastReportedOccupiedHeight;
+  final Set<int> _heldPointerIds = <int>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final commands = widget.commands;
+    if (commands.isEmpty) {
+      _reportOccupiedHeight(0);
+      return const SizedBox.shrink();
+    }
+
+    final activeCard = commands.first;
+    final historyCards = commands.length > 1
+        ? commands.sublist(1)
+        : const <Map<String, dynamic>>[];
+    final showHistory = historyCards.isNotEmpty;
+    final historyHeight = showHistory
+        ? _resolveHistoryHeight(historyCards)
+        : 0.0;
+    final dividerHeight = showHistory ? 1.0 : 0.0;
+    final surfaceHeight =
+        _kToolActivityRowHeight + historyHeight + dividerHeight;
+    _reportOccupiedHeight(surfaceHeight);
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutQuart,
+      alignment: Alignment.bottomLeft,
+      child: SizedBox(
+        width: widget.anchorRect?.width ?? double.infinity,
+        height: surfaceHeight,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: _kToolActivitySurfaceHorizontalInset,
+              right: _kToolActivitySurfaceHorizontalInset,
+              bottom: 0,
+              child: _CommandDrawerSurface(
+                activeCard: activeCard,
+                historyCards: historyCards,
+                historyHeight: historyHeight,
+                expanded: showHistory,
+                canExpand: false,
+                suppressShadow: widget.suppressSurfaceShadow,
+                leadingInset: 0,
+                onToggle: () {},
+                onSelectCommand: widget.onSelectCommand,
+                onHistoryPointerDown: _handleHistoryPointerDown,
+                onHistoryPointerEnd: _handleHistoryPointerEnd,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatCommandActivityStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.commands.isEmpty && _lastReportedOccupiedHeight != 0) {
+      _reportOccupiedHeight(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _releaseHeldPointers();
+    super.dispose();
+  }
+
+  double _resolveHistoryHeight(List<Map<String, dynamic>> cards) {
+    final visibleCount = cards.length.clamp(1, 5);
+    final estimated = visibleCount * _kToolActivityRowHeight;
+    return math.min(_kToolActivityDrawerMaxHeight, estimated.toDouble());
+  }
+
+  void _handleHistoryPointerDown(int pointer) {
+    if (_heldPointerIds.add(pointer)) {
+      ToolCardDetailGestureGate.holdPointer(pointer);
+    }
+  }
+
+  void _handleHistoryPointerEnd(int pointer) {
+    if (_heldPointerIds.remove(pointer)) {
+      ToolCardDetailGestureGate.releasePointer(pointer);
+    }
+  }
+
+  void _releaseHeldPointers() {
+    if (_heldPointerIds.isEmpty) {
+      return;
+    }
+    for (final pointer in _heldPointerIds.toList(growable: false)) {
+      ToolCardDetailGestureGate.releasePointer(pointer);
+    }
+    _heldPointerIds.clear();
+  }
+
+  void _reportOccupiedHeight(double height) {
+    if (widget.onOccupiedHeightChanged == null) {
+      return;
+    }
+    final normalized = height.isFinite ? height : 0.0;
+    if (_lastReportedOccupiedHeight != null &&
+        (_lastReportedOccupiedHeight! - normalized).abs() < 0.5) {
+      return;
+    }
+    _lastReportedOccupiedHeight = normalized;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      widget.onOccupiedHeightChanged?.call(normalized);
+    });
+  }
+}
+
+class _CommandDrawerSurface extends StatelessWidget {
+  const _CommandDrawerSurface({
+    required this.activeCard,
+    required this.historyCards,
+    required this.historyHeight,
+    required this.expanded,
+    required this.canExpand,
+    required this.suppressShadow,
+    required this.leadingInset,
+    required this.onToggle,
+    required this.onSelectCommand,
+    required this.onHistoryPointerDown,
+    required this.onHistoryPointerEnd,
+  });
+
+  final Map<String, dynamic> activeCard;
+  final List<Map<String, dynamic>> historyCards;
+  final double historyHeight;
+  final bool expanded;
+  final bool canExpand;
+  final bool suppressShadow;
+  final double leadingInset;
+  final VoidCallback onToggle;
+  final ValueChanged<Map<String, dynamic>> onSelectCommand;
+  final ValueChanged<int> onHistoryPointerDown;
+  final ValueChanged<int> onHistoryPointerEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final surfaceColor = context.isDarkTheme
+        ? palette.surfacePrimary
+        : _kToolActivitySurfaceColor;
+    final dividerColor = context.isDarkTheme
+        ? palette.borderSubtle.withValues(alpha: 0.52)
+        : const Color(0x140F2034);
+    final bottomReveal = suppressShadow
+        ? _kToolActivityAttachedBorderReveal
+        : 0.0;
+    return PhysicalShape(
+      key: const ValueKey('chat-command-activity-bar'),
+      color: surfaceColor,
+      shadowColor: suppressShadow
+          ? Colors.transparent
+          : context.isDarkTheme
+          ? palette.shadowColor.withValues(alpha: 0.42)
+          : const Color(0x18111B2D),
+      elevation: suppressShadow ? 0 : (expanded ? 8 : 6),
+      clipBehavior: Clip.antiAlias,
+      clipper: _ActivityDrawerClipper(
+        showPreviewCutout: false,
+        bottomReveal: bottomReveal,
+      ),
+      child: ColoredBox(
+        color: surfaceColor,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedCrossFade(
+              duration: const Duration(milliseconds: 240),
+              firstCurve: Curves.easeInCubic,
+              secondCurve: Curves.easeOutCubic,
+              sizeCurve: Curves.easeOutQuart,
+              alignment: Alignment.bottomCenter,
+              crossFadeState: expanded
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              firstChild: const SizedBox.shrink(
+                key: ValueKey('collapsed-command-panel'),
+              ),
+              secondChild: SizedBox(
+                height: historyHeight,
+                child: _HistoryDrawer(
+                  cards: historyCards,
+                  onOpenCard: onSelectCommand,
+                  onPointerDown: onHistoryPointerDown,
+                  onPointerEnd: onHistoryPointerEnd,
+                ),
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              height: expanded ? 1 : 0,
+              margin: const EdgeInsets.only(left: 18, right: 10),
+              color: dividerColor,
+            ),
+            ToolActivityRow(
+              card: activeCard,
+              leadingInset: leadingInset,
+              onTap: () => onSelectCommand(activeCard),
+              trailing: canExpand
+                  ? _ActivityBarTrailing(expanded: expanded, onToggle: onToggle)
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ActivityDrawerSurface extends StatelessWidget {
   const _ActivityDrawerSurface({
     required this.activeCard,
@@ -301,6 +626,8 @@ class _ActivityDrawerSurface extends StatelessWidget {
     required this.suppressShadow,
     required this.leadingInset,
     required this.onToggle,
+    required this.isStopPending,
+    required this.onStopToolCall,
     required this.onOpenCard,
     required this.onHistoryPointerDown,
     required this.onHistoryPointerEnd,
@@ -314,6 +641,8 @@ class _ActivityDrawerSurface extends StatelessWidget {
   final bool suppressShadow;
   final double leadingInset;
   final VoidCallback onToggle;
+  final bool isStopPending;
+  final VoidCallback? onStopToolCall;
   final ValueChanged<Map<String, dynamic>> onOpenCard;
   final ValueChanged<int> onHistoryPointerDown;
   final ValueChanged<int> onHistoryPointerEnd;
@@ -378,24 +707,27 @@ class _ActivityDrawerSurface extends StatelessWidget {
               margin: const EdgeInsets.only(left: 18, right: 10),
               color: dividerColor,
             ),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
+            ToolActivityRow(
+              card: activeCard,
+              leadingInset: leadingInset,
               onTap: canExpand ? onToggle : null,
-              child: ToolActivityRow(
-                card: activeCard,
-                leadingInset: leadingInset,
-                trailing: canExpand
-                    ? _ActivityBarTrailing(
-                        expanded: expanded,
-                        onToggle: onToggle,
-                      )
-                    : null,
-              ),
+              trailing: _supportsToolStop(activeCard) && onStopToolCall != null
+                  ? _ToolStopButton(
+                      enabled: !isStopPending,
+                      onTap: onStopToolCall,
+                    )
+                  : canExpand
+                  ? _ActivityBarTrailing(expanded: expanded, onToggle: onToggle)
+                  : null,
             ),
           ],
         ),
       ),
     );
+  }
+
+  bool _supportsToolStop(Map<String, dynamic> cardData) {
+    return (cardData['status'] ?? '').toString() == 'running';
   }
 }
 
@@ -421,6 +753,65 @@ class _ActivityBarTrailing extends StatelessWidget {
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
           child: Icon(Icons.keyboard_arrow_up_rounded, size: 14, color: color),
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolStopButton extends StatelessWidget {
+  const _ToolStopButton({required this.enabled, required this.onTap});
+
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final baseColor = context.isDarkTheme
+        ? palette.textSecondary
+        : const Color(0xFF657891);
+    final foregroundColor = enabled
+        ? baseColor
+        : baseColor.withValues(alpha: 0.42);
+    final borderColor = enabled
+        ? foregroundColor.withValues(alpha: 0.48)
+        : foregroundColor.withValues(alpha: 0.3);
+    final backgroundColor = context.isDarkTheme
+        ? palette.surfaceElevated.withValues(alpha: enabled ? 0.88 : 0.72)
+        : Colors.white.withValues(alpha: enabled ? 0.9 : 0.72);
+
+    return Tooltip(
+      message: enabled ? '停止工具' : '正在停止工具',
+      child: GestureDetector(
+        key: kChatToolActivityStopKey,
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onTap : null,
+        child: SizedBox(
+          width: _kToolActivityTrailingSlotWidth,
+          height: _kToolActivityRowHeight,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: borderColor, width: 1),
+              ),
+              alignment: Alignment.center,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 6.5,
+                height: 6.5,
+                decoration: BoxDecoration(
+                  color: foregroundColor,
+                  borderRadius: BorderRadius.circular(1.8),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -492,11 +883,13 @@ class ToolActivityRow extends StatelessWidget {
     super.key,
     required this.card,
     this.leadingInset = 0,
+    this.onTap,
     this.trailing,
   });
 
   final Map<String, dynamic> card;
   final double leadingInset;
+  final VoidCallback? onTap;
   final Widget? trailing;
 
   @override
@@ -528,50 +921,65 @@ class ToolActivityRow extends StatelessWidget {
                     28;
             return Row(
               children: [
-                _StatusDot(status: status),
-                const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    resolveAgentToolTitle(card),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: primaryTextColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                      height: 1.05,
-                    ),
-                  ),
-                ),
-                SizedBox(width: showTypeLabel ? 6 : 0),
-                SizedBox(
-                  width: showTypeLabel ? _kToolActivityTypeSlotWidth : 0,
-                  child: showTypeLabel
-                      ? Align(
-                          alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onTap,
+                    child: Row(
+                      children: [
+                        _StatusDot(status: status),
+                        const SizedBox(width: 6),
+                        Expanded(
                           child: Text(
-                            toolTypeLabel,
+                            resolveAgentToolTitle(card),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
                             style: TextStyle(
-                              color: secondaryTextColor,
-                              fontSize: 9,
+                              color: primaryTextColor,
+                              fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              letterSpacing: -0.1,
+                              letterSpacing: -0.2,
                               height: 1.05,
                             ),
                           ),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 4),
-                SizedBox(
-                  width: _kToolActivityStatusSlotWidth,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: _StatusTag(status: status, label: statusLabel),
+                        ),
+                        SizedBox(width: showTypeLabel ? 6 : 0),
+                        SizedBox(
+                          width: showTypeLabel
+                              ? _kToolActivityTypeSlotWidth
+                              : 0,
+                          child: showTypeLabel
+                              ? Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    toolTypeLabel,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.right,
+                                    style: TextStyle(
+                                      color: secondaryTextColor,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: -0.1,
+                                      height: 1.05,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 4),
+                        SizedBox(
+                          width: _kToolActivityStatusSlotWidth,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _StatusTag(
+                              status: status,
+                              label: statusLabel,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: 4),

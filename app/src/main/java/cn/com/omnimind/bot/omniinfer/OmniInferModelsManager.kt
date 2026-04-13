@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -133,8 +134,13 @@ object OmniInferModelsManager {
 
     private fun findModelFile(modelId: String): File? {
         val fileName = "$modelId.gguf"
-        val newFile = File(getModelDir(), fileName)
-        if (newFile.exists()) return newFile
+        // New structure: subdirectory per model
+        val subDirFile = File(getModelDir(), "$modelId/$fileName")
+        if (subDirFile.exists()) return subDirFile
+        // Old structure: flat layout
+        val flatFile = File(getModelDir(), fileName)
+        if (flatFile.exists()) return flatFile
+        // Legacy external directory
         val legacyDir = getLegacyModelDir()
         if (legacyDir != null) {
             val legacyFile = File(legacyDir, fileName)
@@ -148,11 +154,18 @@ object OmniInferModelsManager {
         val seen = mutableSetOf<String>()
         val allFiles = mutableListOf<File>()
 
-        getModelDir().listFiles { file -> file.isFile && file.name.endsWith(".gguf") }
-            ?.forEach { file -> if (seen.add(file.name)) allFiles.add(file) }
+        val modelDir = getModelDir()
+        // New structure: subdirectories containing .gguf files (skip mmproj)
+        modelDir.listFiles { f -> f.isDirectory }?.forEach { dir ->
+            dir.listFiles { f -> f.isFile && f.name.endsWith(".gguf") && !f.name.contains("mmproj") }
+                ?.forEach { file -> if (seen.add(file.nameWithoutExtension)) allFiles.add(file) }
+        }
+        // Old structure: flat .gguf files
+        modelDir.listFiles { f -> f.isFile && f.name.endsWith(".gguf") }
+            ?.forEach { file -> if (seen.add(file.nameWithoutExtension)) allFiles.add(file) }
 
         getLegacyModelDir()?.listFiles { file -> file.isFile && file.name.endsWith(".gguf") }
-            ?.forEach { file -> if (seen.add(file.name)) allFiles.add(file) }
+            ?.forEach { file -> if (seen.add(file.nameWithoutExtension)) allFiles.add(file) }
 
         return allFiles
             .sortedByDescending { it.lastModified() }
@@ -373,13 +386,17 @@ object OmniInferModelsManager {
             emitEvent("download_error", mapOf("modelId" to modelId, "error" to "No download source"))
             return
         }
-        val repoBaseName = resolved.first.substringAfterLast("/")
+        val repoBaseName = resolved.repo.substringAfterLast("/")
             .removeSuffix("-GGUF")
             .removeSuffix("-gguf")
-        val remoteFileName = "$repoBaseName-${resolved.second}.gguf"
-        val url = buildDownloadUrl(source, resolved.first, remoteFileName)
-        val destination = File(getModelDir(), "$modelId.gguf")
-        val task = DownloadTask(modelId, url, destination)
+        val remoteFileName = "$repoBaseName-${resolved.quant}.gguf"
+        val url = buildDownloadUrl(source, resolved.repo, remoteFileName)
+        val modelSubDir = File(getModelDir(), modelId)
+        modelSubDir.mkdirs()
+        val destination = File(modelSubDir, "$modelId.gguf")
+        val mmprojUrl = if (resolved.needsMmproj) buildDownloadUrl(source, resolved.repo, "mmproj-F16.gguf") else null
+        val mmprojDest = if (resolved.needsMmproj) File(modelSubDir, "mmproj-F16.gguf") else null
+        val task = DownloadTask(modelId, url, destination, mmprojUrl, mmprojDest)
         activeDownloads[modelId] = task
         task.start()
     }
@@ -393,7 +410,19 @@ object OmniInferModelsManager {
         if (OmniInferLocalRuntime.isModelLoaded(OmniInferLocalRuntime.BACKEND_LLAMA_CPP, modelId)) {
             OmniInferLocalRuntime.stop()
         }
-        findModelFile(modelId)?.delete()
+        // Delete subdirectory (new structure) including mmproj
+        val modelSubDir = File(getModelDir(), modelId)
+        if (modelSubDir.isDirectory) {
+            modelSubDir.deleteRecursively()
+        }
+        // Also delete flat file (old structure) if exists
+        val flatFile = File(getModelDir(), "$modelId.gguf")
+        if (flatFile.exists()) flatFile.delete()
+        // Legacy
+        getLegacyModelDir()?.let { dir ->
+            val legacyFile = File(dir, "$modelId.gguf")
+            if (legacyFile.exists()) legacyFile.delete()
+        }
         if (getActiveModelId() == modelId) {
             mmkv.encode(KEY_ACTIVE_MODEL_ID, "")
         }
@@ -405,7 +434,13 @@ object OmniInferModelsManager {
         return listInstalledModels()
     }
 
-    private fun findRepoAndQuantForModel(modelId: String, source: String): Pair<String, String>? {
+    private data class ResolvedModel(
+        val repo: String,
+        val quant: String,
+        val needsMmproj: Boolean,
+    )
+
+    private fun findRepoAndQuantForModel(modelId: String, source: String): ResolvedModel? {
         ensureMarketSeedLoaded()
         cachedMarketModels.forEach { model ->
             val modelName = model["modelName"]?.jsonPrimitive?.contentOrNull ?: return@forEach
@@ -414,7 +449,8 @@ object OmniInferModelsManager {
                 if ("$modelName-$quantName" == modelId) {
                     val repo = model["sources"]?.jsonObject?.get(source)?.jsonPrimitive?.contentOrNull
                         ?: return null
-                    return repo to quantName
+                    val needsMmproj = model["mmproj"]?.jsonPrimitive?.booleanOrNull == true
+                    return ResolvedModel(repo, quantName, needsMmproj)
                 }
             }
         }
@@ -546,6 +582,8 @@ object OmniInferModelsManager {
         private val modelId: String,
         private val url: String,
         private val destFile: File,
+        private val mmprojUrl: String? = null,
+        private val mmprojDest: File? = null,
     ) {
         private var call: Call? = null
         private val cancelled = AtomicBoolean(false)
@@ -558,6 +596,9 @@ object OmniInferModelsManager {
 
         @Volatile
         private var totalSize: Long = 0L
+
+        @Volatile
+        private var stage: String = "downloading"
 
         fun cancel() {
             cancelled.set(true)
@@ -573,58 +614,78 @@ object OmniInferModelsManager {
                 "totalSize" to totalSize,
                 "speedInfo" to "",
                 "errorMessage" to "",
-                "progressStage" to "downloading",
+                "progressStage" to stage,
                 "currentFile" to destFile.name,
                 "hasUpdate" to false,
             )
         }
 
+        private fun downloadFile(fileUrl: String, dest: File): Boolean {
+            val tempFile = File(dest.parent, dest.name + ".part")
+            val existingSize = if (tempFile.exists()) tempFile.length() else 0L
+            val requestBuilder = Request.Builder().url(fileUrl)
+            if (existingSize > 0) {
+                requestBuilder.header("Range", "bytes=$existingSize-")
+            }
+            call = OmniInferModelsManager.client.newCall(requestBuilder.build())
+            val response = call!!.execute()
+            if (!response.isSuccessful && response.code != 206) {
+                throw IOException("HTTP ${response.code}")
+            }
+            val body = response.body ?: throw IOException("Empty body")
+            val contentLength = body.contentLength()
+            totalSize = if (response.code == 206) existingSize + contentLength else contentLength
+            savedSize = if (response.code == 206) existingSize else 0L
+            val output = RandomAccessFile(tempFile, "rw")
+            if (response.code == 206) {
+                output.seek(existingSize)
+            } else {
+                output.setLength(0)
+            }
+            val buffer = ByteArray(8192)
+            val input = body.byteStream()
+            var lastEmitTime = 0L
+            while (!cancelled.get()) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                output.write(buffer, 0, read)
+                savedSize += read
+                progress = if (totalSize > 0) savedSize.toDouble() / totalSize else 0.0
+                val now = System.currentTimeMillis()
+                if (now - lastEmitTime > 500) {
+                    lastEmitTime = now
+                    OmniInferModelsManager.emitEvent("downloads_changed", mapOf("modelId" to modelId))
+                }
+            }
+            output.close()
+            input.close()
+            body.closeQuietly()
+            if (!cancelled.get()) {
+                tempFile.renameTo(dest)
+                return true
+            }
+            return false
+        }
+
         fun start() {
             OmniInferModelsManager.scope.launch {
                 try {
-                    val tempFile = File(destFile.parent, destFile.name + ".part")
-                    val existingSize = if (tempFile.exists()) tempFile.length() else 0L
-                    val requestBuilder = Request.Builder().url(url)
-                    if (existingSize > 0) {
-                        requestBuilder.header("Range", "bytes=$existingSize-")
-                    }
-                    call = OmniInferModelsManager.client.newCall(requestBuilder.build())
-                    val response = call!!.execute()
-                    if (!response.isSuccessful && response.code != 206) {
-                        throw IOException("HTTP ${response.code}")
-                    }
-                    val body = response.body ?: throw IOException("Empty body")
-                    val contentLength = body.contentLength()
-                    totalSize = if (response.code == 206) existingSize + contentLength else contentLength
-                    savedSize = if (response.code == 206) existingSize else 0L
-                    val output = RandomAccessFile(tempFile, "rw")
-                    if (response.code == 206) {
-                        output.seek(existingSize)
-                    } else {
-                        output.setLength(0)
-                    }
-                    val buffer = ByteArray(8192)
-                    val input = body.byteStream()
-                    var lastEmitTime = 0L
-                    while (!cancelled.get()) {
-                        val read = input.read(buffer)
-                        if (read == -1) {
-                            break
-                        }
-                        output.write(buffer, 0, read)
-                        savedSize += read
-                        progress = if (totalSize > 0) savedSize.toDouble() / totalSize else 0.0
-                        val now = System.currentTimeMillis()
-                        if (now - lastEmitTime > 500) {
-                            lastEmitTime = now
+                    stage = "downloading"
+                    if (!downloadFile(url, destFile)) return@launch
+
+                    // Download mmproj if needed
+                    if (mmprojUrl != null && mmprojDest != null && !cancelled.get()) {
+                        if (!mmprojDest.exists()) {
+                            stage = "downloading mmproj"
+                            progress = 0.0
+                            savedSize = 0L
+                            totalSize = 0L
                             OmniInferModelsManager.emitEvent("downloads_changed", mapOf("modelId" to modelId))
+                            if (!downloadFile(mmprojUrl, mmprojDest)) return@launch
                         }
                     }
-                    output.close()
-                    input.close()
-                    body.closeQuietly()
+
                     if (!cancelled.get()) {
-                        tempFile.renameTo(destFile)
                         OmniInferModelsManager.activeDownloads.remove(modelId)
                         OmniInferModelsManager.emitEvent("downloads_changed", mapOf("modelId" to modelId))
                         OmniInferModelsManager.appContext?.let {

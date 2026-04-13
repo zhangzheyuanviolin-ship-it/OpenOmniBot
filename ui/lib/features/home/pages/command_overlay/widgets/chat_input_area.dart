@@ -49,6 +49,14 @@ const String _kLucideMicSvgDark =
     '</defs>'
     '</svg>';
 
+const String _kLucideCommandSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-command-icon lucide-command">'
+    '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>'
+    '</svg>';
+
 enum RecordingState { idle, starting, recording, stopping, waitingServerStop }
 
 class ChatInputAttachment {
@@ -100,6 +108,7 @@ class ChatInputArea extends StatefulWidget {
   final Future<void> Function()? onPickAttachment;
   final List<ChatInputAttachment> attachments;
   final ValueChanged<String>? onRemoveAttachment;
+  final VoidCallback? onTriggerSlashCommand;
   final String? selectedModelOverrideId;
   final VoidCallback? onClearSelectedModelOverride;
   final double? contextUsageRatio;
@@ -125,6 +134,7 @@ class ChatInputArea extends StatefulWidget {
     this.onPickAttachment,
     this.attachments = const [],
     this.onRemoveAttachment,
+    this.onTriggerSlashCommand,
     this.selectedModelOverrideId,
     this.onClearSelectedModelOverride,
     this.contextUsageRatio,
@@ -341,6 +351,7 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
   late Widget _sendSvg;
   late Widget _pauseSvg;
   late Widget _addSvg;
+  late Widget _commandSvg;
 
   // 按钮动画相关
   final Duration _buttonAnimationDuration = const Duration(milliseconds: 200);
@@ -358,6 +369,7 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     _sendSvg = const SizedBox.shrink();
     _pauseSvg = const SizedBox.shrink();
     _addSvg = const SizedBox.shrink();
+    _commandSvg = const SizedBox.shrink();
     // 进入界面先预取 asr ws token（仅用于 WS 握手）
     _initSpeechRecognition();
     _composerFlowController = AnimationController(
@@ -432,6 +444,30 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
             'assets/home/input_add_icon.svg',
             width: 20,
             height: 20,
+          );
+    _commandSvg = context.isDarkTheme
+        ? _buildDarkActionButtonIcon(
+            size: 20,
+            backgroundColor: palette.surfaceSecondary,
+            borderColor: palette.borderSubtle,
+            foreground: SvgPicture.string(
+              _kLucideCommandSvg,
+              width: 12,
+              height: 12,
+              colorFilter: ColorFilter.mode(
+                palette.textPrimary,
+                BlendMode.srcIn,
+              ),
+            ),
+          )
+        : SvgPicture.string(
+            _kLucideCommandSvg,
+            width: 20,
+            height: 20,
+            colorFilter: const ColorFilter.mode(
+              Color(0xFF54627A),
+              BlendMode.srcIn,
+            ),
           );
   }
 

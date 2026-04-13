@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/theme/theme_context.dart';
 
@@ -338,7 +339,7 @@ class _ChatPreviewChrome extends StatelessWidget {
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
-              '聊天文本 · ${visualProfile.previewToneLabel}',
+              '${context.l10n.appearancePreviewChat} · ${visualProfile.previewToneLabel}',
               style: TextStyle(
                 color: visualProfile.secondaryTextColor,
                 fontSize: 11 * textScale,
@@ -354,8 +355,8 @@ class _ChatPreviewChrome extends StatelessWidget {
               _PreviewMessageCard(
                 alignment: Alignment.centerLeft,
                 widthFactor: 0.66,
-                title: '这是一段聊天文本示例',
-                subtitle: '会根据背景整体深浅切换',
+                title: context.l10n.appearancePreviewChat,
+                subtitle: context.l10n.appearanceTextColorSubtitle,
                 visualProfile: visualProfile,
                 userStyle: false,
                 textScale: textScale,
@@ -364,7 +365,7 @@ class _ChatPreviewChrome extends StatelessWidget {
               _PreviewMessageCard(
                 alignment: Alignment.centerRight,
                 widthFactor: 0.52,
-                title: '文本颜色已适配',
+                title: context.l10n.appearanceTextColorTitle,
                 subtitle: visualProfile.previewToneLabel,
                 visualProfile: visualProfile,
                 userStyle: true,

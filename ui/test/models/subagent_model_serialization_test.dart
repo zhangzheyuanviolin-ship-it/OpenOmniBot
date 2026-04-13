@@ -3,6 +3,18 @@ import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/scheduled_task.dart';
 
 void main() {
+  test('ConversationMode supports chat_only serialization', () {
+    expect(ConversationMode.chatOnly.storageValue, 'chat_only');
+    expect(
+      ConversationMode.fromStorageValue('chat_only'),
+      ConversationMode.chatOnly,
+    );
+    expect(
+      ConversationMode.fromStorageValue('CHAT_ONLY'),
+      ConversationMode.chatOnly,
+    );
+  });
+
   test('ConversationMode supports subagent serialization', () {
     expect(ConversationMode.subagent.storageValue, 'subagent');
     expect(

@@ -21,6 +21,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 open class AgentConversationContextCompactor(
     private val historyRepository: AgentConversationHistoryRepository,
+    private val modelScene: String = DEFAULT_AGENT_MODEL_SCENE,
+    private val modelOverride: AgentModelOverride? = null,
+    private val reasoningEffort: String? = null,
     private val json: Json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -28,29 +31,41 @@ open class AgentConversationContextCompactor(
         explicitNulls = false
     }
 ) {
+    data class CompactionOutcome(
+        val compacted: Boolean,
+        val summary: String? = null,
+        val cutoffEntryDbId: Long? = null,
+        val reason: String? = null
+    )
+
     companion object {
         const val DEFAULT_PROMPT_TOKEN_THRESHOLD = 128_000
-        private const val CHAT_COMPACTOR_SCENE = "scene.compactor.context.chat"
+        const val DEFAULT_AGENT_MODEL_SCENE = "scene.dispatch.model"
         private const val TAG = "AgentConversationContextCompactor"
         private val EPHEMERAL_CACHE_CONTROL = mapOf("type" to "ephemeral")
         private const val COMPACTION_REQUEST_PROMPT = """
-/no_think
-你是一个用户与Agent对话上下文压缩器。你的职责是把一段多轮聊天历史压缩为一份可持续累积的上下文总结，供后续对话继续参考。\n\n
-# 要求：\n
-1. 只输出纯文本，不要 JSON，不要 Markdown 代码块。\n
-3. 保留长期目标、用户偏好、约束条件、关键文件路径、参数、工具结果、未完成任务、待确认点。\n
-4. 去掉冗余寒暄、重复措辞、无关中间推理，但不能丢失会影响后续执行的重要事实。\n
-5. 如果系统消息里已经给出旧的累计总结，要将其与新历史整合为一份新的累计总结，而不是简单拼接。\n
-6. 不要编造不存在的事实；不确定时明确写“待确认”。\n
-# 输出格式：\n
-## 用户目标与约束 \n- ...\n\n## 已确认事实与已完成结果\n- ...\n\n## 关键上下文与参数\n- ...\n\n## 未完成事项与下一步\n- ...\n
+You are a context compaction engine. Your summary will REPLACE the original messages in the conversation context window — the agent will rely on it to continue working. Write the summary in the same language the user used in the conversation.
 
-"""
-        private const val EXISTING_SUMMARY_PROMPT_PREFIX = """
-以下是之前已经累计好的历史总结，请将它与后续原始历史合并为新的累计总结：
+MUST PRESERVE (never omit or shorten):
+- All file paths, directory names, URLs, UUIDs, and identifiers — copy verbatim
+- Commands executed and their outcomes (success/failure/output)
+- Active tasks: what was requested, what's done, what's still pending
+- Key decisions made and their rationale
+- Errors encountered and how they were resolved
+- Important constraints, rules, or user preferences mentioned
+- Any tool calls and their results that affect current state
 
+STRUCTURE:
+1. Start with a one-line summary of the overall goal
+2. Then a concise narrative of what happened, preserving technical details
+3. End with a "Current state" section: what's done, what's pending, any blockers
+
+PRIORITIZE recent context over older history — the agent needs to know what it was doing most recently, not just what was discussed early on.
+
+Do NOT translate or alter code snippets, file paths, identifiers, or error messages. Be concise but never lose information the agent needs to continue.
 """
-        private const val FINAL_USER_PROMPT = "请把以上历史压缩为新的累计总结。"
+        private const val FINAL_USER_PROMPT =
+            "Generate the replacement context summary now."
 
         internal fun buildCompactionRequestMessages(
             existingSummary: String?,
@@ -65,9 +80,8 @@ open class AgentConversationContextCompactor(
                 )
             )
             existingSummary?.trim()?.takeIf { it.isNotEmpty() }?.let { summary ->
-                requestMessages += mapOf(
-                    "role" to "system",
-                    "content" to (EXISTING_SUMMARY_PROMPT_PREFIX.trim() + "\n\n" + summary)
+                requestMessages += toTransportMessage(
+                    AgentConversationHistorySupport.buildContextSummaryUserMessage(summary)
                 )
             }
             requestMessages += messagesToCompact.map(::toTransportMessage)
@@ -184,21 +198,18 @@ open class AgentConversationContextCompactor(
         )
         try {
             return runCatching {
-                val requestMessages = buildCompactionRequestMessages(
+                val outcome = compactAndPersist(
+                    conversationId = conversationId,
                     existingSummary = runtimeWindow.existingSummary
                         ?: candidate.conversation.contextSummary,
-                    messagesToCompact = runtimeWindow.messagesToCompact
+                    messagesToCompact = runtimeWindow.messagesToCompact,
+                    cutoffEntryDbId = candidate.cutoffEntryDbId
                 )
-                val summary = requestCompactedSummary(requestMessages)
-                if (summary.isBlank()) {
+                val summary = outcome.summary.orEmpty()
+                if (!outcome.compacted || summary.isBlank()) {
                     OmniLog.w(TAG, "conversation=$conversationId compaction returned blank summary")
                     messages
                 } else {
-                    historyRepository.updateContextSummary(
-                        conversationId = conversationId,
-                        summary = summary,
-                        cutoffEntryDbId = candidate.cutoffEntryDbId
-                    )
                     AgentConversationHistorySupport.rebuildMessagesWithCompactedSummary(
                         messages = messages,
                         summary = summary
@@ -218,6 +229,69 @@ open class AgentConversationContextCompactor(
                 promptTokenThreshold = promptTokenThreshold
             )
         }
+    }
+
+    open suspend fun compactConversationContext(
+        conversationId: Long,
+        conversationMode: String
+    ): CompactionOutcome {
+        val candidate = historyRepository.getContextCompactionCandidate(
+            conversationId = conversationId,
+            conversationMode = conversationMode
+        ) ?: return CompactionOutcome(
+            compacted = false,
+            reason = "no_candidate"
+        )
+        val messagesToCompact = AgentConversationHistorySupport.buildPromptRelevantMessages(
+            candidate.entriesToCompact
+        )
+        if (messagesToCompact.isEmpty()) {
+            return CompactionOutcome(
+                compacted = false,
+                reason = "no_prompt_messages"
+            )
+        }
+        return compactAndPersist(
+            conversationId = conversationId,
+            existingSummary = candidate.conversation.contextSummary,
+            messagesToCompact = messagesToCompact,
+            cutoffEntryDbId = candidate.cutoffEntryDbId
+        )
+    }
+
+    private suspend fun compactAndPersist(
+        conversationId: Long,
+        existingSummary: String?,
+        messagesToCompact: List<ChatCompletionMessage>,
+        cutoffEntryDbId: Long
+    ): CompactionOutcome {
+        if (messagesToCompact.isEmpty()) {
+            return CompactionOutcome(
+                compacted = false,
+                reason = "no_prompt_messages"
+            )
+        }
+        val requestMessages = buildCompactionRequestMessages(
+            existingSummary = existingSummary,
+            messagesToCompact = messagesToCompact
+        )
+        val summary = requestCompactedSummary(requestMessages)
+        if (summary.isBlank()) {
+            return CompactionOutcome(
+                compacted = false,
+                reason = "blank_summary"
+            )
+        }
+        historyRepository.updateContextSummary(
+            conversationId = conversationId,
+            summary = summary,
+            cutoffEntryDbId = cutoffEntryDbId
+        )
+        return CompactionOutcome(
+            compacted = true,
+            summary = summary,
+            cutoffEntryDbId = cutoffEntryDbId
+        )
     }
 
     private suspend fun requestCompactedSummary(
@@ -282,10 +356,15 @@ open class AgentConversationContextCompactor(
 
         try {
             eventSource = HttpController.postLLMStreamRequestWithContextAsFlow(
-                model = CHAT_COMPACTOR_SCENE,
+                model = modelScene,
                 messages = messages,
                 event = listener,
-                enableThinking = false
+                enableThinking = false,
+                explicitApiBase = modelOverride?.apiBase,
+                explicitApiKey = modelOverride?.apiKey,
+                explicitModel = modelOverride?.modelId,
+                explicitProtocolType = modelOverride?.protocolType,
+                reasoningEffort = reasoningEffort
             )
             result.await()
         } finally {

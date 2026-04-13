@@ -81,6 +81,9 @@ void main() {
     const normalTarget = ConversationThreadTarget.newConversation(
       mode: ConversationMode.normal,
     );
+    const chatOnlyTarget = ConversationThreadTarget.newConversation(
+      mode: ConversationMode.chatOnly,
+    );
     const openClawTarget = ConversationThreadTarget.existing(
       conversationId: 22,
       mode: ConversationMode.openclaw,
@@ -89,6 +92,10 @@ void main() {
     await ConversationHistoryService.saveCurrentConversationTarget(
       normalTarget,
       mode: ConversationMode.normal,
+    );
+    await ConversationHistoryService.saveCurrentConversationTarget(
+      chatOnlyTarget,
+      mode: ConversationMode.chatOnly,
     );
     await ConversationHistoryService.saveCurrentConversationTarget(
       openClawTarget,
@@ -100,6 +107,12 @@ void main() {
         mode: ConversationMode.normal,
       ),
       normalTarget,
+    );
+    expect(
+      await ConversationHistoryService.getCurrentConversationTarget(
+        mode: ConversationMode.chatOnly,
+      ),
+      chatOnlyTarget,
     );
     expect(
       await ConversationHistoryService.getCurrentConversationTarget(
@@ -113,6 +126,20 @@ void main() {
       ),
       isNull,
     );
+  });
+
+  test('round-trips chat_only storage keys through parser', () {
+    final parsed = ConversationHistoryService.tryParseConversationMessagesKey(
+      ConversationHistoryService.conversationMessagesKey(
+        9,
+        mode: ConversationMode.chatOnly,
+      ),
+    );
+
+    expect(parsed, isNotNull);
+    expect(parsed!.conversationId, 9);
+    expect(parsed.mode, ConversationMode.chatOnly);
+    expect(parsed.threadKey, 'chat_only:9');
   });
 
   test('round-trips last visible thread target with mode metadata', () async {

@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.agent
 
 import android.content.Context
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.bot.mcp.RemoteMcpDiscoveryRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -54,8 +55,10 @@ class OmniAgentExecutor(
         conversationId: Long?,
         conversationMode: String,
         modelOverride: AgentModelOverride?,
+        reasoningEffort: String?,
         terminalEnvironment: Map<String, String>,
-        callback: AgentCallback
+        callback: AgentCallback,
+        runControl: AgentRunControl = NoOpAgentRunControl
     ): AgentResult {
         var toolRouter: AgentToolRouter? = null
         return try {
@@ -90,6 +93,7 @@ class OmniAgentExecutor(
             }
             val discoveredServers = RemoteMcpDiscoveryRegistry.discoverEnabledServers()
             val toolRegistry = AgentToolRegistry(
+                context = context,
                 discoveredServers = discoveredServers
             )
             val initialMessages = buildInitialMessages(
@@ -115,6 +119,9 @@ class OmniAgentExecutor(
             )
             val contextCompactor = AgentConversationContextCompactor(
                 historyRepository = historyRepository,
+                modelScene = agentModelScene,
+                modelOverride = modelOverride,
+                reasoningEffort = reasoningEffort,
                 json = json
             )
             toolRouter = AgentToolRouter(
@@ -149,7 +156,9 @@ class OmniAgentExecutor(
                         workspaceManager = workspaceManager,
                         workspaceMemoryService = memoryService,
                         conversationMode = conversationMode,
-                        terminalEnvironment = terminalEnvironment
+                        reasoningEffort = reasoningEffort,
+                        terminalEnvironment = terminalEnvironment,
+                        runControl = runControl
                     )
                 )
             )
@@ -185,7 +194,8 @@ class OmniAgentExecutor(
             skillsRootShellPath = skillsRootShellPath,
             skillsRootAndroidPath = skillsRootAndroidPath,
             resolvedSkills = resolvedSkills,
-            memoryContext = memoryContext
+            memoryContext = memoryContext,
+            locale = AppLocaleManager.resolvePromptLocale(context)
         )
         messages.add(
             cn.com.omnimind.baselib.llm.ChatCompletionMessage(

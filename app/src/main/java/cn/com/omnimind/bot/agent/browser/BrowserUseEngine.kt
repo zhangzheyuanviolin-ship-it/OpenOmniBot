@@ -533,6 +533,17 @@ class BrowserUseEngine(
         )
     }
 
+    suspend fun requestInterruptCurrentAction() {
+        withContext(Dispatchers.Main.immediate) {
+            tabs.values.forEach { tab ->
+                runCatching { tab.webView.stopLoading() }
+                tab.isLoading = false
+                tab.loadWaiter?.cancel(ManualToolStopCancellationException())
+                tab.loadWaiter = null
+            }
+        }
+    }
+
     suspend fun captureActiveFramePng(): ByteArray? {
         val tab = activeTabId?.let { tabs[it] } ?: tabs.values.lastOrNull() ?: return null
         activeTabId = tab.tabId

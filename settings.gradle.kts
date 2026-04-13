@@ -47,25 +47,19 @@ fun requireOmniInferModule(moduleName: String, moduleDir: File, markerFileName: 
     throw GradleException(
         """
         Missing required OmniInfer sources for $moduleName at: ${moduleDir.relativeTo(settingsDir)}
-        
+
         Initialize the required submodules with:
           git submodule update --init third_party/omniinfer
-          git -C third_party/omniinfer submodule update --init framework/mnn
         """.trimIndent()
     )
 }
 
 val omniInferServerDir = File(settingsDir, "third_party/omniinfer/android/omniinfer-server")
-val modelDownloaderDir =
-    File(settingsDir, "third_party/omniinfer/framework/mnn/apps/frameworks/model_downloader/android")
 
 requireOmniInferModule(":omniinfer-server", omniInferServerDir, "build.gradle.kts")
-requireOmniInferModule(":model_downloader", modelDownloaderDir, "build.gradle")
 
 include(":omniinfer-server")
 project(":omniinfer-server").projectDir = omniInferServerDir
-include(":model_downloader")
-project(":model_downloader").projectDir = modelDownloaderDir
 include(":uikit")
 include(":core:main")
 project(":core:main").projectDir = File(settingsDir, "ReTerminal/core/main")

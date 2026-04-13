@@ -138,6 +138,21 @@ sealed class ToolExecutionResult {
         override val actions: List<ArtifactAction> = emptyList()
     ) : ToolExecutionResult()
 
+    data class Interrupted(
+        val toolName: String,
+        val summaryText: String = "工具调用已被用户手动停止",
+        val previewJson: String = "{}",
+        val rawResultJson: String = "{}",
+        val interruptedBy: String = "user",
+        val interruptionReason: String = "manual_stop",
+        val terminalOutput: String = "",
+        val terminalSessionId: String? = null,
+        val terminalStreamState: String = "interrupted",
+        override val artifacts: List<ArtifactRef> = emptyList(),
+        override val workspaceId: String? = null,
+        override val actions: List<ArtifactAction> = emptyList()
+    ) : ToolExecutionResult()
+
     data class ContextResult(
         val toolName: String,
         val summaryText: String,

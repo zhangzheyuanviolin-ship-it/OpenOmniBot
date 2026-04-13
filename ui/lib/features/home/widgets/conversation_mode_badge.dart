@@ -22,6 +22,11 @@ class ConversationModeBadge extends StatelessWidget {
               const Color(0xFFBA8757),
               0.2,
             )!,
+            ConversationMode.chatOnly => Color.lerp(
+              palette.surfaceSecondary,
+              const Color(0xFF6E8CCB),
+              0.18,
+            )!,
             ConversationMode.subagent => Color.lerp(
               palette.surfaceSecondary,
               const Color(0xFF6E9F73),
@@ -35,12 +40,14 @@ class ConversationModeBadge extends StatelessWidget {
           }
         : switch (mode) {
             ConversationMode.openclaw => const Color(0xFFFBE7D3),
+            ConversationMode.chatOnly => const Color(0xFFE7EEFF),
             ConversationMode.subagent => const Color(0xFFE8F6EF),
             ConversationMode.normal => const Color(0xFFE6EEF9),
           };
     final textColor = context.isDarkTheme
         ? switch (mode) {
             ConversationMode.openclaw => const Color(0xFFE7D0B0),
+            ConversationMode.chatOnly => const Color(0xFFD6E0FF),
             ConversationMode.subagent => const Color(0xFFD5E6D6),
             ConversationMode.normal => Color.lerp(
               palette.textPrimary,
@@ -50,6 +57,7 @@ class ConversationModeBadge extends StatelessWidget {
           }
         : switch (mode) {
             ConversationMode.openclaw => const Color(0xFF9A540D),
+            ConversationMode.chatOnly => const Color(0xFF3158B7),
             ConversationMode.subagent => const Color(0xFF167A49),
             ConversationMode.normal => const Color(0xFF2552A6),
           };

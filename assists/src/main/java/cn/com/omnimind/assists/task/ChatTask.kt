@@ -50,6 +50,8 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
     private var isManualCancel = false // 标记是否为主动取消
     private var provider: String? = null
     private var openClawConfig: TaskParams.OpenClawConfig? = null
+    private var modelOverride: TaskParams.ChatModelOverride? = null
+    private var reasoningEffort: String? = null
     private var openClawFinished = false
     private var openClawLoggedFirstEvent = false
     private var openClawWebSocket: WebSocket? = null
@@ -68,7 +70,9 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
         content: List<Map<String, Any>>,
         onMessagePushListener: OnMessagePushListener,
         provider: String? = null,
-        openClawConfig: TaskParams.OpenClawConfig? = null
+        openClawConfig: TaskParams.OpenClawConfig? = null,
+        modelOverride: TaskParams.ChatModelOverride? = null,
+        reasoningEffort: String? = null
     ) {
         super.start{
             try {
@@ -77,6 +81,8 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                 this@ChatTask.onMessagePushListener = onMessagePushListener
                 this@ChatTask.provider = provider?.trim()?.lowercase()
                 this@ChatTask.openClawConfig = openClawConfig
+                this@ChatTask.modelOverride = modelOverride
+                this@ChatTask.reasoningEffort = reasoningEffort?.trim()?.lowercase()
                 this@ChatTask.openClawFinished = false
                 this@ChatTask.openClawLoggedFirstEvent = false
                 this@ChatTask.openClawWebSocket = null
@@ -98,7 +104,9 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                     )
                 } else {
                     eventSource = HttpController.postLLMStreamRequestWithContextAsFlow(
-                        "scene.dispatch.model", content, object : EventSourceListener() {
+                        model = "scene.dispatch.model",
+                        messages = content,
+                        event = object : EventSourceListener() {
                             override fun onEvent(
                                 eventSource: EventSource, id: String?, type: String?, data: String
                             ) {
@@ -145,7 +153,12 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                                     taskManager.unregisterChatTask(taskID)
                                 }
                             }
-                        }
+                        },
+                        explicitApiBase = modelOverride?.apiBase,
+                        explicitApiKey = modelOverride?.apiKey,
+                        explicitModel = modelOverride?.modelId,
+                        explicitProtocolType = modelOverride?.protocolType,
+                        reasoningEffort = this@ChatTask.reasoningEffort
                     )
                 }
             } catch (e: Http429Exception){

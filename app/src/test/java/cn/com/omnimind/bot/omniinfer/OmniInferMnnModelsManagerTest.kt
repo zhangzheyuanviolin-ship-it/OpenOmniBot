@@ -1,6 +1,5 @@
 package cn.com.omnimind.bot.omniinfer
 
-import com.alibaba.mls.api.download.DownloadInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -71,7 +70,7 @@ class OmniInferMnnModelsManagerTest {
             fileSize = 0L,
             downloadedAt = 0L,
             readOnly = readOnly,
-            downloadInfo = DownloadInfo(),
+            downloadInfo = MnnDownloadInfo(),
         )
     }
 }

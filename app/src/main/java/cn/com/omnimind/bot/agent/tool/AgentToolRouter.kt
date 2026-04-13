@@ -3,6 +3,7 @@ package cn.com.omnimind.bot.agent
 import android.content.Context
 import android.net.Uri
 import android.provider.Settings
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.RemoteMcpClient
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
@@ -89,17 +90,307 @@ class AgentToolRouter(
         private const val DEFAULT_SKILL_READ_MAX_CHARS = 16_000
     }
 
+    private val isEnglishLocale: Boolean
+        get() = AppLocaleManager.isEnglish(context)
+
+    private val englishTextMap: Map<String, String> = mapOf(
+        "应用列表读取权限" to "Installed Apps Access",
+        "无障碍权限" to "Accessibility",
+        "悬浮窗权限" to "Overlay",
+        "精确闹钟权限(SCHEDULE_EXACT_ALARM)" to "Exact alarm permission (SCHEDULE_EXACT_ALARM)",
+        "通知权限(POST_NOTIFICATIONS)" to "Notification permission (POST_NOTIFICATIONS)",
+        "日历权限(READ/WRITE_CALENDAR)" to "Calendar permission (READ/WRITE_CALENDAR)",
+        "正在查询已安装应用" to "Querying installed apps",
+        "未找到匹配的已安装应用。" to "No matching installed apps found.",
+        "查询已安装应用失败" to "Failed to query installed apps",
+        "浏览器操作失败" to "Browser action failed",
+        "正在查询当前时间" to "Querying current time",
+        "查询当前时间失败" to "Failed to query current time",
+        "请提供继续执行所需的信息。" to "Please provide the information required to continue.",
+        "视觉执行失败" to "Vision task failed",
+        "视觉任务已完成" to "Vision task completed",
+        "视觉任务超时，设备上可能仍在继续执行" to
+            "Vision task timed out; execution may still be continuing on the device.",
+        "正在调用内嵌 Alpine 终端执行命令" to "Running a command in the embedded Alpine terminal",
+        "终端输出更新中" to "Terminal output is updating",
+        "终端命令执行失败" to "Terminal command failed",
+        "正在启动内嵌终端会话" to "Starting embedded terminal session",
+        "打开工作区" to "Open Workspace",
+        "终端会话启动失败" to "Failed to start terminal session",
+        "正在向终端会话发送命令" to "Sending command to terminal session",
+        "会话命令仍在运行，请先读取输出确认状态" to
+            "The session command is still running. Read the output first to confirm its state.",
+        "会话命令执行完成" to "Session command completed",
+        "会话命令执行失败" to "Session command failed",
+        "终端会话命令执行失败" to "Failed to execute terminal session command",
+        "终端会话暂无输出" to "Terminal session has no output yet",
+        "已读取终端会话输出" to "Read terminal session output",
+        "读取终端会话失败" to "Failed to read terminal session output",
+        "正在结束终端会话" to "Stopping terminal session",
+        "缺少 sessionId" to "Missing sessionId",
+        "结束终端会话失败" to "Failed to stop terminal session",
+        "读取文件失败" to "Failed to read file",
+        "正在写入文件" to "Writing file",
+        "缺少 content" to "Missing content",
+        "写入文件失败" to "Failed to write file",
+        "正在编辑文件" to "Editing file",
+        "缺少 oldText" to "Missing oldText",
+        "文件中未找到 oldText" to "oldText was not found in the file",
+        "编辑文件失败" to "Failed to edit file",
+        "打开目录" to "Open Directory",
+        "列目录失败" to "Failed to list directory",
+        "缺少 query" to "Missing query",
+        "未找到匹配结果" to "No matching results found",
+        "搜索文件失败" to "Failed to search files",
+        "查看文件信息失败" to "Failed to inspect file info",
+        "正在移动文件" to "Moving file",
+        "移动文件失败" to "Failed to move file",
+        "当前没有匹配的 skills" to "No matching skills found",
+        "列出 skills 失败" to "Failed to list skills",
+        "缺少 skillId" to "Missing skillId",
+        "当前环境不可用" to "Current environment unavailable",
+        "读取 skill 失败" to "Failed to read skill",
+        "正在创建定时任务" to "Creating scheduled task",
+        "targetKind 仅支持 vlm 或 subagent" to "`targetKind` only supports `vlm` or `subagent`",
+        "vlm 定时任务缺少 goal" to "Missing `goal` for the VLM scheduled task",
+        "subagent 定时任务缺少 subagentPrompt" to
+            "Missing `subagentPrompt` for the subagent scheduled task",
+        "定时任务已创建" to "Scheduled task created",
+        "正在读取定时任务列表" to "Loading scheduled tasks",
+        "当前没有定时任务。" to "There are no scheduled tasks.",
+        "正在更新定时任务" to "Updating scheduled task",
+        "定时任务已更新" to "Scheduled task updated",
+        "正在删除定时任务" to "Deleting scheduled task",
+        "定时任务已删除" to "Scheduled task deleted",
+        "正在创建提醒闹钟" to "Creating reminder alarm",
+        "title 不能为空" to "`title` cannot be empty",
+        "triggerAt 不能为空" to "`triggerAt` cannot be empty",
+        "提醒闹钟已创建" to "Reminder alarm created",
+        "正在读取提醒闹钟列表" to "Loading reminder alarms",
+        "当前没有提醒闹钟。" to "There are no reminder alarms.",
+        "正在删除提醒闹钟" to "Deleting reminder alarm",
+        "alarmId 不能为空" to "`alarmId` cannot be empty",
+        "提醒闹钟已删除" to "Reminder alarm deleted",
+        "正在请求日历权限" to "Requesting calendar permission",
+        "正在读取日历列表" to "Loading calendars",
+        "未找到符合条件的日历。" to "No calendars matched the criteria.",
+        "正在创建日程" to "Creating calendar event",
+        "startAt 不能为空" to "`startAt` cannot be empty",
+        "endAt 不能为空" to "`endAt` cannot be empty",
+        "日程已创建" to "Calendar event created",
+        "正在查询日程" to "Querying calendar events",
+        "正在修改日程" to "Updating calendar event",
+        "eventId 不能为空" to "`eventId` cannot be empty",
+        "日程已更新" to "Calendar event updated",
+        "正在删除日程" to "Deleting calendar event",
+        "日程已删除" to "Calendar event deleted",
+        "action 不能为空" to "`action` cannot be empty",
+        "正在发送系统播放命令" to "Sending system play command",
+        "正在准备播放音频" to "Preparing audio playback",
+        "正在暂停播放" to "Pausing playback",
+        "正在恢复播放" to "Resuming playback",
+        "正在停止播放" to "Stopping playback",
+        "正在调整播放进度" to "Seeking playback",
+        "正在读取播放状态" to "Reading playback status",
+        "正在切换到下一首" to "Skipping to the next track",
+        "正在切换到上一首" to "Going back to the previous track",
+        "正在执行音乐播放控制" to "Running music playback control",
+        "seek 动作需要提供 positionSeconds" to "`seek` requires `positionSeconds`",
+        "音乐播放控制已执行" to "Music playback control executed",
+        "正在检索 workspace 记忆" to "Searching workspace memory",
+        "query 不能为空" to "`query` cannot be empty",
+        "未命中相关记忆。" to "No relevant memory hits found.",
+        "正在写入当日记忆" to "Writing daily memory",
+        "text 不能为空" to "`text` cannot be empty",
+        "已写入当日记忆" to "Daily memory written",
+        "已写入当日短期记忆。" to "Short-term memory for today has been written.",
+        "正在沉淀长期记忆" to "Writing long-term memory",
+        "已写入长期记忆" to "Long-term memory written",
+        "检测到重复，已跳过" to "Duplicate detected; skipped",
+        "已沉淀一条长期记忆。" to "One long-term memory entry has been stored.",
+        "长期记忆已存在同类条目，跳过写入。" to
+            "A similar long-term memory entry already exists, so writing was skipped.",
+        "正在整理当日记忆" to "Rolling up daily memory",
+        "记忆整理完成" to "Memory rollup completed",
+        "tasks 不能为空" to "`tasks` cannot be empty",
+        "当前会话仍有命令在执行，请先读取输出或停止会话。" to
+            "A command is still running in the current session. Read its output or stop the session first.",
+        "终端会话初始化超时，可能仍在后台继续运行。" to
+            "Terminal session initialization timed out and may still be running in the background.",
+        "终端命令等待超时，可能仍在后台继续运行。" to
+            "Terminal command timed out and may still be running in the background.",
+        "command 不能为空" to "`command` cannot be empty",
+        "terminal_execute 缺少 command" to "`terminal_execute` is missing `command`",
+        "executionMode 仅支持 termux 或 proot" to
+            "`executionMode` only supports `termux` or `proot`",
+        "缺少 command" to "Missing command"
+    )
+
     private suspend fun ensureRunActive() {
         currentCoroutineContext().ensureActive()
+    }
+
+    private fun localized(text: String?): String {
+        if (text == null || !isEnglishLocale) {
+            return text.orEmpty()
+        }
+        englishTextMap[text]?.let { return it }
+
+        when {
+            text.startsWith("当前时间：") ->
+                return "Current time: ${text.removePrefix("当前时间：")}"
+            text.startsWith("终端会话已启动：") ->
+                return "Terminal session started: ${text.removePrefix("终端会话已启动：")}"
+            text.startsWith("终端会话不存在或不属于当前 workspace：") ->
+                return "Terminal session does not exist or does not belong to the current workspace: ${text.removePrefix("终端会话不存在或不属于当前 workspace：")}"
+            text.startsWith("终端会话不存在或已结束：") ->
+                return "Terminal session does not exist or has already ended: ${text.removePrefix("终端会话不存在或已结束：")}"
+            text.startsWith("文件不存在：") ->
+                return "File does not exist: ${text.removePrefix("文件不存在：")}"
+            text.startsWith("目标不是文件：") ->
+                return "Target is not a file: ${text.removePrefix("目标不是文件：")}"
+            text.startsWith("已读取文件：") ->
+                return "Read file: ${text.removePrefix("已读取文件：")}"
+            text.startsWith("已追加写入文件：") ->
+                return "Appended to file: ${text.removePrefix("已追加写入文件：")}"
+            text.startsWith("已写入文件：") ->
+                return "Wrote file: ${text.removePrefix("已写入文件：")}"
+            text.startsWith("目标文件不存在：") ->
+                return "Target file does not exist: ${text.removePrefix("目标文件不存在：")}"
+            text.startsWith("目录不存在：") ->
+                return "Directory does not exist: ${text.removePrefix("目录不存在：")}"
+            text.startsWith("路径不存在：") ->
+                return "Path does not exist: ${text.removePrefix("路径不存在：")}"
+            text.startsWith("已读取路径信息：") ->
+                return "Read path info: ${text.removePrefix("已读取路径信息：")}"
+            text.startsWith("源文件不存在：") ->
+                return "Source file does not exist: ${text.removePrefix("源文件不存在：")}"
+            text.startsWith("目标已存在：") ->
+                return "Target already exists: ${text.removePrefix("目标已存在：")}"
+            text.startsWith("已移动到：") ->
+                return "Moved to: ${text.removePrefix("已移动到：")}"
+            text.startsWith("未找到 skill：") ->
+                return "Skill not found: ${text.removePrefix("未找到 skill：")}"
+            text.startsWith("读取 SKILL.md 失败：") ->
+                return "Failed to read SKILL.md: ${text.removePrefix("读取 SKILL.md 失败：")}"
+            text.startsWith("已读取 skill：") ->
+                return "Read skill: ${text.removePrefix("已读取 skill：")}"
+            text.startsWith("终端会话不存在或不属于当前 agent：") ->
+                return "Terminal session does not exist or does not belong to the current agent: ${text.removePrefix("终端会话不存在或不属于当前 agent：")}"
+            text.startsWith("终端会话不存在：") ->
+                return "Terminal session does not exist: ${text.removePrefix("终端会话不存在：")}"
+            text.startsWith("不支持的 action：") ->
+                return "Unsupported action: ${text.removePrefix("不支持的 action：")}"
+            text.startsWith("正在调用 ") && text.contains(" 的 ") -> {
+                val remainder = text.removePrefix("正在调用 ")
+                val parts = remainder.split(" 的 ", limit = 2)
+                if (parts.size == 2) {
+                    return "Calling ${parts[0]} / ${parts[1]}"
+                }
+            }
+        }
+
+        Regex("^找到 (\\d+) 个已安装应用。$").matchEntire(text)?.let {
+            return "Found ${it.groupValues[1]} installed apps."
+        }
+        Regex("^共找到 (\\d+) 项$").matchEntire(text)?.let {
+            return "Found ${it.groupValues[1]} items."
+        }
+        Regex("^找到 (\\d+) 个匹配结果$").matchEntire(text)?.let {
+            return "Found ${it.groupValues[1]} matching results."
+        }
+        Regex("^共找到 (\\d+) 个 skill$").matchEntire(text)?.let {
+            return "Found ${it.groupValues[1]} skills."
+        }
+        Regex("^当前共有 (\\d+) 个定时任务。$").matchEntire(text)?.let {
+            return "There are currently ${it.groupValues[1]} scheduled tasks."
+        }
+        Regex("^当前共有 (\\d+) 个提醒闹钟。$").matchEntire(text)?.let {
+            return "There are currently ${it.groupValues[1]} reminder alarms."
+        }
+        Regex("^找到 (\\d+) 个日历。$").matchEntire(text)?.let {
+            return "Found ${it.groupValues[1]} calendars."
+        }
+        Regex("^找到 (\\d+) 条日程。$").matchEntire(text)?.let {
+            return "Found ${it.groupValues[1]} calendar events."
+        }
+        Regex("^命中 (\\d+) 条记忆（词法检索）。$").matchEntire(text)?.let {
+            return "Found ${it.groupValues[1]} memory hits (lexical fallback)."
+        }
+        Regex("^命中 (\\d+) 条记忆。$").matchEntire(text)?.let {
+            return "Found ${it.groupValues[1]} memory hits."
+        }
+        Regex("^正在分派 (\\d+) 个子任务（并发 (\\d+)）$").matchEntire(text)?.let {
+            return "Dispatching ${it.groupValues[1]} subtasks (concurrency ${it.groupValues[2]})"
+        }
+        Regex("^已完成子任务：(.*)$").matchEntire(text)?.let {
+            return "Completed subtask: ${it.groupValues[1]}"
+        }
+        Regex("^已完成 (\\d+) 个 subagent 子任务。$").matchEntire(text)?.let {
+            return "Completed ${it.groupValues[1]} subagent subtasks."
+        }
+        return text
+    }
+
+    private fun localizePayloadValue(value: Any?, key: String? = null): Any? {
+        return when (value) {
+            is String -> if (
+                key in setOf("summary", "message", "error", "errorMessage", "result", "lastProgress")
+            ) {
+                localized(value)
+            } else {
+                value
+            }
+            is Map<*, *> -> value.entries.associate { (entryKey, item) ->
+                entryKey.toString() to localizePayloadValue(item, entryKey.toString())
+            }
+            is Iterable<*> -> value.map { localizePayloadValue(it, key) }
+            else -> value
+        }
+    }
+
+    private fun localizeExtras(extras: Map<String, Any?>): Map<String, Any?> {
+        return extras.mapValues { (key, value) -> localizePayloadValue(value, key) }
+    }
+
+    private fun encodeLocalizedPayload(payload: Any?): String {
+        return json.encodeToString(mapToJsonElement(localizePayloadValue(payload)))
+    }
+
+    private fun localizeMissingPermissions(missing: List<String>): List<String> {
+        return if (isEnglishLocale) missing.map(::localized) else missing
+    }
+
+    private suspend fun permissionRequiredResult(
+        callback: AgentCallback,
+        missing: List<String>
+    ): ToolExecutionResult.PermissionRequired {
+        val localizedMissing = localizeMissingPermissions(missing)
+        callback.onPermissionRequired(localizedMissing)
+        return ToolExecutionResult.PermissionRequired(localizedMissing)
+    }
+
+    private fun errorResult(
+        toolName: String,
+        message: String?,
+        fallbackMessage: String
+    ): ToolExecutionResult.Error {
+        return ToolExecutionResult.Error(toolName, localized(message ?: fallbackMessage))
     }
 
     private suspend fun reportToolProgress(
         callback: AgentCallback,
         toolName: String,
         progress: String,
-        extras: Map<String, Any?> = emptyMap()
+        extras: Map<String, Any?> = emptyMap(),
+        toolHandle: AgentToolExecutionHandle? = null
     ) {
-        callback.onToolCallProgress(toolName, progress, extras)
+        val localizedProgress = localized(progress)
+        val localizedExtras = localizeExtras(extras)
+        toolHandle?.throwIfStopRequested()
+        toolHandle?.recordProgress(localizedProgress, localizedExtras)
+        callback.onToolCallProgress(toolName, localizedProgress, localizedExtras)
+        toolHandle?.throwIfStopRequested()
         ensureRunActive()
     }
 
@@ -163,7 +454,8 @@ class AgentToolRouter(
         args: JsonObject,
         runtimeDescriptor: AgentToolRegistry.RuntimeToolDescriptor,
         env: AgentExecutionEnvironment,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
         ensureRunActive()
         return when (toolCall.function.name) {
@@ -190,7 +482,8 @@ class AgentToolRouter(
                 args = args,
                 workspace = env.workspaceDescriptor,
                 terminalEnvironment = env.terminalEnvironment,
-                callback = callback
+                callback = callback,
+                toolHandle = toolHandle
             )
             "terminal_session_start" -> executeTerminalSessionStart(
                 args = args,
@@ -202,7 +495,8 @@ class AgentToolRouter(
                 args = args,
                 workspace = env.workspaceDescriptor,
                 terminalEnvironment = env.terminalEnvironment,
-                callback = callback
+                callback = callback,
+                toolHandle = toolHandle
             )
             "terminal_session_read" -> executeTerminalSessionRead(
                 args = args,
@@ -217,7 +511,8 @@ class AgentToolRouter(
             "browser_use" -> executeBrowserUse(
                 args = args,
                 env = env,
-                callback = callback
+                callback = callback,
+                toolHandle = toolHandle
             )
             "file_read" -> executeFileRead(args, env.workspaceDescriptor, callback)
             "file_write" -> executeFileWrite(args, env.workspaceDescriptor, callback)
@@ -301,8 +596,7 @@ class AgentToolRouter(
         return try {
             if (!AssistsUtil.Setting.isInstalledAppsPermissionGranted(context)) {
                 val missing = listOf("应用列表读取权限")
-                callback.onPermissionRequired(missing)
-                return ToolExecutionResult.PermissionRequired(missing)
+                return permissionRequiredResult(callback, missing)
             }
             reportToolProgress(callback, toolName, "正在查询已安装应用")
             ensureRunActive()
@@ -320,14 +614,14 @@ class AgentToolRouter(
                     )
                 }
             )
-            val payloadJson = json.encodeToString(mapToJsonElement(payload))
+            val payloadJson = encodeLocalizedPayload(payload)
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = if (items.isEmpty()) {
+                summaryText = localized(if (items.isEmpty()) {
                     "未找到匹配的已安装应用。"
                 } else {
                     "找到 ${items.size} 个已安装应用。"
-                },
+                }),
                 previewJson = payloadJson,
                 rawResultJson = payloadJson,
                 success = true
@@ -335,30 +629,35 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (error: Exception) {
-            ToolExecutionResult.Error(toolName, error.message ?: "查询已安装应用失败")
+            errorResult(toolName, error.message, "查询已安装应用失败")
         }
     }
 
     private suspend fun executeBrowserUse(
         args: JsonObject,
         env: AgentExecutionEnvironment,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
         val toolName = "browser_use"
         return try {
             requireWorkspaceStorageAccess(callback)?.let { return it }
             val request = BrowserUseRequest.fromJson(args)
-            reportToolProgress(
-                callback,
-                toolName,
-                request.toolTitle,
-                mapOf("summary" to request.toolTitle)
-            )
             val engine = LiveAgentBrowserSessionManager.acquireEngine(
                 context = context,
                 workspaceManager = workspaceManager,
                 agentRunId = env.agentRunId,
                 workspace = env.workspaceDescriptor
+            )
+            toolHandle.bindStopAction {
+                engine.requestInterruptCurrentAction()
+            }
+            reportToolProgress(
+                callback,
+                toolName,
+                request.toolTitle,
+                mapOf("summary" to request.toolTitle),
+                toolHandle = toolHandle
             )
             val outcome = engine.execute(request)
             val payload = linkedMapOf<String, Any?>(
@@ -366,10 +665,10 @@ class AgentToolRouter(
             ).apply {
                 putAll(outcome.payload)
             }
-            val encoded = json.encodeToString(mapToJsonElement(payload))
+            val encoded = encodeLocalizedPayload(payload)
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = outcome.summaryText,
+                summaryText = localized(outcome.summaryText),
                 previewJson = encoded,
                 rawResultJson = encoded,
                 success = true,
@@ -382,7 +681,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "浏览器操作失败")
+            errorResult(toolName, e.message, "浏览器操作失败")
         }
     }
 
@@ -411,10 +710,10 @@ class AgentToolRouter(
                 "time" to now.toLocalTime().format(DateTimeFormatter.ISO_LOCAL_TIME),
                 "dayOfWeek" to now.dayOfWeek.name
             )
-            val payloadJson = json.encodeToString(mapToJsonElement(payload))
+            val payloadJson = encodeLocalizedPayload(payload)
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = "当前时间：${payload["iso8601"]}",
+                summaryText = localized("当前时间：${payload["iso8601"]}"),
                 previewJson = payloadJson,
                 rawResultJson = payloadJson,
                 success = true
@@ -422,7 +721,7 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (error: Exception) {
-            ToolExecutionResult.Error(toolName, error.message ?: "查询当前时间失败")
+            errorResult(toolName, error.message, "查询当前时间失败")
         }
     }
 
@@ -438,8 +737,7 @@ class AgentToolRouter(
             ensureRunActive()
             val missing = checkExecutionPrerequisites()
             if (missing.isNotEmpty()) {
-                callback.onPermissionRequired(missing)
-                return ToolExecutionResult.PermissionRequired(missing)
+                return permissionRequiredResult(callback, missing)
             }
 
             val goal = args["goal"]?.jsonPrimitive?.content
@@ -489,7 +787,7 @@ class AgentToolRouter(
                     reportToolProgress(callback, "vlm_task", progress, extras)
                 }
             )
-            val payloadJson = json.encodeToString(mapToJsonElement(outcome.toPayload()))
+            val payloadJson = encodeLocalizedPayload(outcome.toPayload())
             // 阻塞式 vlm_task 需要等 Agent 自己产出后续自然语言回复；
             // 这里不能再触发旧的 onVlmTaskFinished 回调，否则 Flutter 会提前清理当前会话，
             // 导致随后到达的 onAgentChatMessage / onAgentComplete 被丢弃。
@@ -497,26 +795,29 @@ class AgentToolRouter(
                 VlmToolOutcomeStatus.WAITING_INPUT -> {
                     val question = outcome.waitingQuestion
                         ?: outcome.message.ifBlank { "请提供继续执行所需的信息。" }
-                    callback.onClarifyRequired(question, null)
-                    ToolExecutionResult.Clarify(question, null)
+                    val localizedQuestion = localized(question)
+                    callback.onClarifyRequired(localizedQuestion, null)
+                    ToolExecutionResult.Clarify(localizedQuestion, null)
                 }
                 VlmToolOutcomeStatus.SCREEN_LOCKED -> {
-                    callback.onClarifyRequired(outcome.message, null)
-                    ToolExecutionResult.Clarify(outcome.message, null)
+                    val localizedQuestion = localized(outcome.message)
+                    callback.onClarifyRequired(localizedQuestion, null)
+                    ToolExecutionResult.Clarify(localizedQuestion, null)
                 }
                 VlmToolOutcomeStatus.ERROR,
                 VlmToolOutcomeStatus.CANCELLED -> {
-                    ToolExecutionResult.Error(
+                    errorResult(
                         "vlm_task",
-                        outcome.errorMessage ?: outcome.message.ifBlank { "视觉执行失败" }
+                        outcome.errorMessage ?: outcome.message,
+                        "视觉执行失败"
                     )
                 }
                 VlmToolOutcomeStatus.FINISHED -> {
                     ToolExecutionResult.ContextResult(
                         toolName = "vlm_task",
-                        summaryText = outcome.finishedContent
+                        summaryText = localized(outcome.finishedContent
                             ?: outcome.summaryText
-                            ?: outcome.message.ifBlank { "视觉任务已完成" },
+                            ?: outcome.message.ifBlank { "视觉任务已完成" }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = true
@@ -525,7 +826,7 @@ class AgentToolRouter(
                 VlmToolOutcomeStatus.TIMEOUT -> {
                     ToolExecutionResult.ContextResult(
                         toolName = "vlm_task",
-                        summaryText = "视觉任务超时，设备上可能仍在继续执行",
+                        summaryText = localized("视觉任务超时，设备上可能仍在继续执行"),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = true
@@ -535,7 +836,7 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ToolExecutionResult.Error("vlm_task", e.message ?: "Unknown error")
+            ToolExecutionResult.Error("vlm_task", localized(e.message ?: "Unknown error"))
         }
     }
 
@@ -543,10 +844,15 @@ class AgentToolRouter(
         args: JsonObject,
         workspace: AgentWorkspaceDescriptor,
         terminalEnvironment: Map<String, String>,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
         val toolName = "terminal_execute"
         return try {
+            var runningProcess: Process? = null
+            toolHandle.bindStopAction {
+                runCatching { runningProcess?.destroyForcibly() }
+            }
             reportToolProgress(
                 callback,
                 toolName,
@@ -554,7 +860,8 @@ class AgentToolRouter(
                 mapOf(
                     "summary" to "正在调用内嵌 Alpine 终端执行命令",
                     "terminalStreamState" to "starting"
-                )
+                ),
+                toolHandle = toolHandle
             )
             val rawArgs = parseTerminalExecuteArgs(args)
             val parsedArgs = rawArgs.copy(
@@ -572,6 +879,12 @@ class AgentToolRouter(
                     timeoutSeconds = parsedArgs.timeoutSeconds,
                     environment = terminalEnvironment
                 ),
+                onProcessStarted = { process ->
+                    runningProcess = process
+                    if (toolHandle.isManualStopRequested()) {
+                        runCatching { process.destroyForcibly() }
+                    }
+                },
                 onLiveUpdate = { update ->
                     reportToolProgress(
                         callback,
@@ -590,7 +903,8 @@ class AgentToolRouter(
                             "terminalSessionId" to update.sessionId,
                             "terminalOutputDelta" to update.outputDelta,
                             "terminalStreamState" to update.streamState
-                        )
+                        ),
+                        toolHandle = toolHandle
                     )
                 }
             )
@@ -604,22 +918,15 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            val errorMessage = localized(e.message ?: "终端命令执行失败")
             ToolExecutionResult.TerminalResult(
                 toolName = toolName,
-                summaryText = e.message ?: "终端命令执行失败",
-                previewJson = json.encodeToString(
-                    mapToJsonElement(
-                        mapOf("error" to (e.message ?: "终端命令执行失败"))
-                    )
-                ),
-                rawResultJson = json.encodeToString(
-                    mapToJsonElement(
-                        mapOf("error" to (e.message ?: "终端命令执行失败"))
-                    )
-                ),
+                summaryText = errorMessage,
+                previewJson = encodeLocalizedPayload(mapOf("error" to errorMessage)),
+                rawResultJson = encodeLocalizedPayload(mapOf("error" to errorMessage)),
                 success = false,
                 timedOut = false,
-                terminalOutput = e.message ?: "终端命令执行失败",
+                terminalOutput = errorMessage,
                 terminalStreamState = "error",
                 workspaceId = workspace.id
             )
@@ -663,9 +970,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.TerminalResult(
                 toolName = toolName,
-                summaryText = "终端会话已启动：$sessionId",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized("终端会话已启动：$sessionId"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 timedOut = false,
                 terminalOutput = "",
@@ -676,7 +983,7 @@ class AgentToolRouter(
                 actions = listOf(
                     ArtifactAction(
                         type = "workspace",
-                        label = "打开工作区",
+                        label = localized("打开工作区"),
                         target = workspace.uriRoot,
                         payload = mapOf(
                             "workspaceId" to workspace.id,
@@ -690,7 +997,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "终端会话启动失败")
+            errorResult(toolName, e.message, "终端会话启动失败")
         }
     }
 
@@ -698,7 +1005,8 @@ class AgentToolRouter(
         args: JsonObject,
         workspace: AgentWorkspaceDescriptor,
         terminalEnvironment: Map<String, String>,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
         val toolName = "terminal_session_exec"
         return try {
@@ -721,8 +1029,12 @@ class AgentToolRouter(
                     "summary" to "正在向终端会话发送命令",
                     "terminalSessionId" to sessionId,
                     "terminalStreamState" to "starting"
-                )
+                ),
+                toolHandle = toolHandle
             )
+            toolHandle.bindStopAction {
+                EmbeddedTerminalRuntime.stopSession(context, sessionId)
+            }
             val result = EmbeddedTerminalRuntime.executeSessionCommand(
                 context = context,
                 sessionId = sessionId,
@@ -741,7 +1053,8 @@ class AgentToolRouter(
                             "terminalSessionId" to update.sessionId,
                             "terminalOutputDelta" to update.outputDelta,
                             "terminalStreamState" to update.streamState
-                        )
+                        ),
+                        toolHandle = toolHandle
                     )
                 }
             )
@@ -773,15 +1086,15 @@ class AgentToolRouter(
             )
             ToolExecutionResult.TerminalResult(
                 toolName = toolName,
-                summaryText = if (!result.completed) {
+                summaryText = localized(if (!result.completed) {
                     result.errorMessage ?: "会话命令仍在运行，请先读取输出确认状态"
                 } else if (result.errorMessage == null && result.success) {
                     "会话命令执行完成"
                 } else {
                     result.errorMessage ?: "会话命令执行失败"
-                },
-                previewJson = json.encodeToString(mapToJsonElement(rawResult)),
-                rawResultJson = json.encodeToString(mapToJsonElement(rawResult)),
+                }),
+                previewJson = encodeLocalizedPayload(rawResult),
+                rawResultJson = encodeLocalizedPayload(rawResult),
                 success = result.completed && result.success && result.errorMessage == null,
                 timedOut = result.timedOut,
                 terminalOutput = if (result.completed) result.output else result.transcript,
@@ -794,7 +1107,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "终端会话命令执行失败")
+            errorResult(toolName, e.message, "终端会话命令执行失败")
         }
     }
 
@@ -833,9 +1146,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.TerminalResult(
                 toolName = toolName,
-                summaryText = if (content.isBlank()) "终端会话暂无输出" else "已读取终端会话输出",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized(if (content.isBlank()) "终端会话暂无输出" else "已读取终端会话输出"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 timedOut = false,
                 terminalOutput = content,
@@ -848,7 +1161,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "读取终端会话失败")
+            errorResult(toolName, e.message, "读取终端会话失败")
         }
     }
 
@@ -878,9 +1191,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.TerminalResult(
                 toolName = toolName,
-                summaryText = if (result) "终端会话已结束：$sessionId" else "终端会话不存在或已结束：$sessionId",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized(if (result) "终端会话已结束：$sessionId" else "终端会话不存在或已结束：$sessionId"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = result,
                 timedOut = false,
                 terminalOutput = if (result) "session_stopped:$sessionId" else "session_not_found:$sessionId",
@@ -892,7 +1205,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "结束终端会话失败")
+            errorResult(toolName, e.message, "结束终端会话失败")
         }
     }
 
@@ -947,9 +1260,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = "已读取文件：${file.name}",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized("已读取文件：${file.name}"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 artifacts = listOf(artifact),
                 workspaceId = workspace.id
@@ -958,7 +1271,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "读取文件失败")
+            errorResult(toolName, e.message, "读取文件失败")
         }
     }
 
@@ -998,9 +1311,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = if (append) "已追加写入文件：${file.name}" else "已写入文件：${file.name}",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized(if (append) "已追加写入文件：${file.name}" else "已写入文件：${file.name}"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 artifacts = listOf(artifact),
                 workspaceId = workspace.id
@@ -1009,7 +1322,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "写入文件失败")
+            errorResult(toolName, e.message, "写入文件失败")
         }
     }
 
@@ -1052,9 +1365,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = "已更新文件：${file.name}",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized("已更新文件：${file.name}"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 artifacts = listOf(artifact),
                 workspaceId = workspace.id
@@ -1063,7 +1376,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "编辑文件失败")
+            errorResult(toolName, e.message, "编辑文件失败")
         }
     }
 
@@ -1107,9 +1420,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = "共找到 ${files.size} 项",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized("共找到 ${files.size} 项"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 workspaceId = workspace.id,
                 actions = listOf(
@@ -1124,7 +1437,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "列目录失败")
+            errorResult(toolName, e.message, "列目录失败")
         }
     }
 
@@ -1191,9 +1504,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = if (results.isEmpty()) "未找到匹配结果" else "找到 ${results.size} 个匹配结果",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized(if (results.isEmpty()) "未找到匹配结果" else "找到 ${results.size} 个匹配结果"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 workspaceId = workspace.id
             )
@@ -1201,7 +1514,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "搜索文件失败")
+            errorResult(toolName, e.message, "搜索文件失败")
         }
     }
 
@@ -1239,9 +1552,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = "已读取路径信息：${file.name.ifBlank { workspaceManager.shellPathForAndroid(file) ?: file.absolutePath }}",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized("已读取路径信息：${file.name.ifBlank { workspaceManager.shellPathForAndroid(file) ?: file.absolutePath }}"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 artifacts = artifact?.let { listOf(it) } ?: emptyList(),
                 workspaceId = workspace.id,
@@ -1255,7 +1568,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "查看文件信息失败")
+            errorResult(toolName, e.message, "查看文件信息失败")
         }
     }
 
@@ -1303,9 +1616,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = "已移动到：${target.name}",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized("已移动到：${target.name}"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 artifacts = artifact?.let { listOf(it) } ?: emptyList(),
                 workspaceId = workspace.id
@@ -1314,7 +1627,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "移动文件失败")
+            errorResult(toolName, e.message, "移动文件失败")
         }
     }
 
@@ -1383,13 +1696,13 @@ class AgentToolRouter(
             )
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = if (items.isEmpty()) {
+                summaryText = localized(if (items.isEmpty()) {
                     "当前没有匹配的 skills"
                 } else {
                     "共找到 ${items.size} 个 skill"
-                },
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                }),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 workspaceId = workspace.id
             )
@@ -1397,7 +1710,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "列出 skills 失败")
+            errorResult(toolName, e.message, "列出 skills 失败")
         }
     }
 
@@ -1444,9 +1757,9 @@ class AgentToolRouter(
             )
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = "已读取 skill：${entry.name}",
-                previewJson = json.encodeToString(mapToJsonElement(payload)),
-                rawResultJson = json.encodeToString(mapToJsonElement(payload)),
+                summaryText = localized("已读取 skill：${entry.name}"),
+                previewJson = encodeLocalizedPayload(payload),
+                rawResultJson = encodeLocalizedPayload(payload),
                 success = true,
                 artifacts = listOf(artifact),
                 workspaceId = workspace.id
@@ -1455,7 +1768,7 @@ class AgentToolRouter(
             throw e
         } catch (e: Exception) {
             workspacePermissionResult(e, callback)?.let { return it }
-            ToolExecutionResult.Error(toolName, e.message ?: "读取 skill 失败")
+            errorResult(toolName, e.message, "读取 skill 失败")
         }
     }
 
@@ -1495,9 +1808,9 @@ class AgentToolRouter(
                     val result = scheduleToolBridge.createTask(payload)
                     ToolExecutionResult.ScheduleResult(
                         toolName = toolName,
-                        summaryText = result["summary"]?.toString()
-                            ?: "定时任务已创建",
-                        previewJson = json.encodeToString(mapToJsonElement(result)),
+                        summaryText = localized(result["summary"]?.toString()
+                            ?: "定时任务已创建"),
+                        previewJson = encodeLocalizedPayload(result),
                         success = result["success"] != false,
                         taskId = result["taskId"]?.toString()
                     )
@@ -1506,7 +1819,7 @@ class AgentToolRouter(
                 "schedule_task_list" -> {
                     reportToolProgress(callback, toolName, "正在读取定时任务列表")
                     val result = scheduleToolBridge.listTasks()
-                    val preview = json.encodeToString(mapToJsonElement(result))
+                    val preview = encodeLocalizedPayload(result)
                     val summary = if (result.isEmpty()) {
                         "当前没有定时任务。"
                     } else {
@@ -1514,7 +1827,7 @@ class AgentToolRouter(
                     }
                     ToolExecutionResult.ScheduleResult(
                         toolName = toolName,
-                        summaryText = summary,
+                        summaryText = localized(summary),
                         previewJson = preview,
                         success = true
                     )
@@ -1530,9 +1843,9 @@ class AgentToolRouter(
                     val result = scheduleToolBridge.updateTask(payload)
                     ToolExecutionResult.ScheduleResult(
                         toolName = toolName,
-                        summaryText = result["summary"]?.toString()
-                            ?: "定时任务已更新",
-                        previewJson = json.encodeToString(mapToJsonElement(result)),
+                        summaryText = localized(result["summary"]?.toString()
+                            ?: "定时任务已更新"),
+                        previewJson = encodeLocalizedPayload(result),
                         success = result["success"] != false,
                         taskId = result["taskId"]?.toString()
                     )
@@ -1543,9 +1856,9 @@ class AgentToolRouter(
                     val result = scheduleToolBridge.deleteTask(jsonObjectToMap(args))
                     ToolExecutionResult.ScheduleResult(
                         toolName = toolName,
-                        summaryText = result["summary"]?.toString()
-                            ?: "定时任务已删除",
-                        previewJson = json.encodeToString(mapToJsonElement(result)),
+                        summaryText = localized(result["summary"]?.toString()
+                            ?: "定时任务已删除"),
+                        previewJson = encodeLocalizedPayload(result),
                         success = result["success"] != false,
                         taskId = result["taskId"]?.toString()
                     )
@@ -1556,7 +1869,7 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ToolExecutionResult.Error(toolName, e.message ?: "Schedule bridge failed")
+            ToolExecutionResult.Error(toolName, localized(e.message ?: "Schedule bridge failed"))
         }
     }
 
@@ -1589,15 +1902,13 @@ class AgentToolRouter(
                     if (mode == "exact_alarm" && !alarmToolService.hasExactAlarmPermission()) {
                         alarmToolService.openExactAlarmPermissionSettings()
                         val missing = listOf("精确闹钟权限(SCHEDULE_EXACT_ALARM)")
-                        callback.onPermissionRequired(missing)
-                        return ToolExecutionResult.PermissionRequired(missing)
+                        return permissionRequiredResult(callback, missing)
                     }
                     if (mode == "exact_alarm" && !alarmToolService.hasNotificationPermission()) {
                         val granted = alarmToolService.requestNotificationPermission()
                         if (!granted) {
                             val missing = listOf("通知权限(POST_NOTIFICATIONS)")
-                            callback.onPermissionRequired(missing)
-                            return ToolExecutionResult.PermissionRequired(missing)
+                            return permissionRequiredResult(callback, missing)
                         }
                     }
 
@@ -1612,10 +1923,10 @@ class AgentToolRouter(
                             skipUi = skipUi
                         )
                     )
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = payload["summary"]?.toString().orEmpty().ifBlank { "提醒闹钟已创建" },
+                        summaryText = localized(payload["summary"]?.toString().orEmpty().ifBlank { "提醒闹钟已创建" }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = payload["success"] != false
@@ -1629,10 +1940,10 @@ class AgentToolRouter(
                         "count" to items.size,
                         "items" to items
                     )
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = if (items.isEmpty()) "当前没有提醒闹钟。" else "当前共有 ${items.size} 个提醒闹钟。",
+                        summaryText = localized(if (items.isEmpty()) "当前没有提醒闹钟。" else "当前共有 ${items.size} 个提醒闹钟。"),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = true
@@ -1646,10 +1957,10 @@ class AgentToolRouter(
                         throw IllegalArgumentException("alarmId 不能为空")
                     }
                     val payload = alarmToolService.deleteExactReminder(alarmId)
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = payload["summary"]?.toString().orEmpty().ifBlank { "提醒闹钟已删除" },
+                        summaryText = localized(payload["summary"]?.toString().orEmpty().ifBlank { "提醒闹钟已删除" }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = payload["success"] != false
@@ -1661,7 +1972,7 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ToolExecutionResult.Error(toolName, e.message ?: "Alarm tool failed")
+            ToolExecutionResult.Error(toolName, localized(e.message ?: "Alarm tool failed"))
         }
     }
 
@@ -1676,8 +1987,7 @@ class AgentToolRouter(
                 val granted = calendarToolService.requestCalendarPermissions()
                 if (!granted) {
                     val missing = listOf("日历权限(READ/WRITE_CALENDAR)")
-                    callback.onPermissionRequired(missing)
-                    return ToolExecutionResult.PermissionRequired(missing)
+                    return permissionRequiredResult(callback, missing)
                 }
             }
 
@@ -1696,14 +2006,14 @@ class AgentToolRouter(
                         "count" to items.size,
                         "items" to items
                     )
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = if (items.isEmpty()) {
+                        summaryText = localized(if (items.isEmpty()) {
                             "未找到符合条件的日历。"
                         } else {
                             "找到 ${items.size} 个日历。"
-                        },
+                        }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = true
@@ -1733,10 +2043,10 @@ class AgentToolRouter(
                             reminderMinutes = parseIntegerArray(args["reminderMinutes"] as? JsonArray)
                         )
                     )
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = payload["summary"]?.toString().orEmpty().ifBlank { "日程已创建" },
+                        summaryText = localized(payload["summary"]?.toString().orEmpty().ifBlank { "日程已创建" }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = payload["success"] != false
@@ -1756,10 +2066,10 @@ class AgentToolRouter(
                             )
                         )
                     )
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = "找到 ${payload["count"] ?: 0} 条日程。",
+                        summaryText = localized("找到 ${payload["count"] ?: 0} 条日程。"),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = payload["success"] != false
@@ -1787,10 +2097,10 @@ class AgentToolRouter(
                             }
                         )
                     )
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = payload["summary"]?.toString().orEmpty().ifBlank { "日程已更新" },
+                        summaryText = localized(payload["summary"]?.toString().orEmpty().ifBlank { "日程已更新" }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = payload["success"] != false
@@ -1802,10 +2112,10 @@ class AgentToolRouter(
                     val eventId = args["eventId"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
                     if (eventId.isBlank()) throw IllegalArgumentException("eventId 不能为空")
                     val payload = calendarToolService.deleteEvent(eventId)
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = payload["summary"]?.toString().orEmpty().ifBlank { "日程已删除" },
+                        summaryText = localized(payload["summary"]?.toString().orEmpty().ifBlank { "日程已删除" }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = payload["success"] != false
@@ -1817,7 +2127,7 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ToolExecutionResult.Error(toolName, e.message ?: "Calendar tool failed")
+            ToolExecutionResult.Error(toolName, localized(e.message ?: "Calendar tool failed"))
         }
     }
 
@@ -1907,12 +2217,12 @@ class AgentToolRouter(
                 else -> throw IllegalArgumentException("不支持的 action：$action")
             }
 
-            val payloadJson = json.encodeToString(mapToJsonElement(payload))
+            val payloadJson = encodeLocalizedPayload(payload)
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = payload["summary"]?.toString().orEmpty().ifBlank {
+                summaryText = localized(payload["summary"]?.toString().orEmpty().ifBlank {
                     "音乐播放控制已执行"
-                },
+                }),
                 previewJson = payloadJson,
                 rawResultJson = payloadJson,
                 success = payload["success"] != false
@@ -1920,7 +2230,7 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ToolExecutionResult.Error(toolName, e.message ?: "Music tool failed")
+            ToolExecutionResult.Error(toolName, localized(e.message ?: "Music tool failed"))
         }
     }
 
@@ -1954,7 +2264,10 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ToolExecutionResult.Error(remoteTool.encodedToolName, e.message ?: "MCP tool call failed")
+            ToolExecutionResult.Error(
+                remoteTool.encodedToolName,
+                localized(e.message ?: "MCP tool call failed")
+            )
         }
     }
 
@@ -1987,14 +2300,14 @@ class AgentToolRouter(
                             )
                         }
                     )
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = when {
+                        summaryText = localized(when {
                             result.hits.isEmpty() -> "未命中相关记忆。"
                             result.fallbackLexical -> "命中 ${result.hits.size} 条记忆（词法检索）。"
                             else -> "命中 ${result.hits.size} 条记忆。"
-                        },
+                        }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = true
@@ -2010,10 +2323,10 @@ class AgentToolRouter(
                         "path" to file.absolutePath,
                         "summary" to "已写入当日记忆"
                     )
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = "已写入当日短期记忆。",
+                        summaryText = localized("已写入当日短期记忆。"),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = true
@@ -2029,14 +2342,14 @@ class AgentToolRouter(
                         "inserted" to inserted,
                         "summary" to if (inserted) "已写入长期记忆" else "检测到重复，已跳过"
                     )
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = if (inserted) {
+                        summaryText = localized(if (inserted) {
                             "已沉淀一条长期记忆。"
                         } else {
                             "长期记忆已存在同类条目，跳过写入。"
-                        },
+                        }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = true
@@ -2049,10 +2362,10 @@ class AgentToolRouter(
                     val date = dateRaw?.takeIf { it.isNotEmpty() }?.let { LocalDate.parse(it) }
                         ?: LocalDate.now()
                     val payload = env.workspaceMemoryService.rollupDay(date)
-                    val payloadJson = json.encodeToString(mapToJsonElement(payload))
+                    val payloadJson = encodeLocalizedPayload(payload)
                     ToolExecutionResult.ContextResult(
                         toolName = toolName,
-                        summaryText = payload["summary"]?.toString().orEmpty().ifBlank { "记忆整理完成" },
+                        summaryText = localized(payload["summary"]?.toString().orEmpty().ifBlank { "记忆整理完成" }),
                         previewJson = payloadJson,
                         rawResultJson = payloadJson,
                         success = payload["success"] != false
@@ -2064,7 +2377,7 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ToolExecutionResult.Error(toolName, e.message ?: "memory tool failed")
+            ToolExecutionResult.Error(toolName, localized(e.message ?: "memory tool failed"))
         }
     }
 
@@ -2108,10 +2421,10 @@ class AgentToolRouter(
                 "mergeInstruction" to mergeInstruction,
                 "results" to results
             )
-            val payloadJson = json.encodeToString(mapToJsonElement(payload))
+            val payloadJson = encodeLocalizedPayload(payload)
             ToolExecutionResult.ContextResult(
                 toolName = toolName,
-                summaryText = "已完成 ${results.size} 个 subagent 子任务。",
+                summaryText = localized("已完成 ${results.size} 个 subagent 子任务。"),
                 previewJson = payloadJson,
                 rawResultJson = payloadJson,
                 success = true
@@ -2119,7 +2432,7 @@ class AgentToolRouter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ToolExecutionResult.Error(toolName, e.message ?: "subagent dispatch failed")
+            ToolExecutionResult.Error(toolName, localized(e.message ?: "subagent dispatch failed"))
         }
     }
 
@@ -2375,7 +2688,7 @@ class AgentToolRouter(
                 timedOut = false,
                 resultCode = null,
                 errorCode = null,
-                errorMessage = error.message ?: "终端命令执行失败",
+                errorMessage = localized(error.message ?: "终端命令执行失败"),
                 stdout = "",
                 stderr = fallbackSnapshot?.transcript.orEmpty(),
                 rawExtras = mapOf("executionPath" to "terminal_manager_session"),
@@ -2415,7 +2728,7 @@ class AgentToolRouter(
                 if (!setupResult.completed || setupResult.timedOut || !setupResult.errorMessage.isNullOrBlank()) {
                     stopDirectTerminalSession(session.id)
                     throw IllegalStateException(
-                        setupResult.errorMessage ?: "终端会话初始化超时，可能仍在后台继续运行。"
+                        localized(setupResult.errorMessage ?: "终端会话初始化超时，可能仍在后台继续运行。")
                     )
                 }
             }
@@ -2450,7 +2763,7 @@ class AgentToolRouter(
                     transcript = preSnapshot.transcript,
                     currentDirectory = preSnapshot.currentDirectory,
                     commandRunning = true,
-                    errorMessage = "当前会话仍有命令在执行，请先读取输出或停止会话。"
+                    errorMessage = localized("当前会话仍有命令在执行，请先读取输出或停止会话。")
                 )
             }
             executeDirectCommandInSession(
@@ -2568,7 +2881,7 @@ class AgentToolRouter(
                 transcript = snapshot.transcript,
                 currentDirectory = snapshot.currentDirectory,
                 commandRunning = snapshot.commandRunning,
-                errorMessage = "终端命令等待超时，可能仍在后台继续运行。"
+                errorMessage = localized("终端命令等待超时，可能仍在后台继续运行。")
             )
         }
 
@@ -2754,8 +3067,7 @@ class AgentToolRouter(
             return null
         }
         val missing = WorkspaceStorageAccess.requiredPermissionNames()
-        callback.onPermissionRequired(missing)
-        return ToolExecutionResult.PermissionRequired(missing)
+        return permissionRequiredResult(callback, missing)
     }
 
     private suspend fun requirePublicStorageAccessIfNeeded(
@@ -2767,8 +3079,7 @@ class AgentToolRouter(
             return null
         }
         val missing = PublicStorageAccess.requiredPermissionNames()
-        callback.onPermissionRequired(missing)
-        return ToolExecutionResult.PermissionRequired(missing)
+        return permissionRequiredResult(callback, missing)
     }
 
     private fun buildOpenDirectoryAction(
@@ -2779,7 +3090,7 @@ class AgentToolRouter(
         val target = workspaceManager.uriForFile(directory) ?: directory.absolutePath
         return ArtifactAction(
             type = "workspace",
-            label = label,
+            label = localized(label),
             target = target,
             payload = mapOf(
                 "workspaceId" to workspace.id,
@@ -2798,8 +3109,7 @@ class AgentToolRouter(
             return null
         }
         val missing = WorkspaceStorageAccess.requiredPermissionNames()
-        callback.onPermissionRequired(missing)
-        return ToolExecutionResult.PermissionRequired(missing)
+        return permissionRequiredResult(callback, missing)
     }
 
     private fun quoteShell(value: String): String = TermuxCommandBuilder.quoteForShell(value)
@@ -2886,8 +3196,8 @@ class AgentToolRouter(
         return ToolExecutionResult.TerminalResult(
             toolName = toolName,
             summaryText = buildTerminalSummary(result),
-            previewJson = json.encodeToString(mapToJsonElement(previewMap)),
-            rawResultJson = json.encodeToString(mapToJsonElement(rawResultMap)),
+            previewJson = encodeLocalizedPayload(previewMap),
+            rawResultJson = encodeLocalizedPayload(rawResultMap),
             success = result.success,
             timedOut = result.timedOut,
             terminalOutput = result.terminalOutput,
@@ -2930,32 +3240,56 @@ class AgentToolRouter(
     private fun buildTerminalSummary(result: TermuxCommandResult): String {
         val liveNote = if (result.liveFallbackReason.isNullOrBlank()) {
             ""
+        } else if (isEnglishLocale) {
+            ", falling back to showing the result after completion"
         } else {
             "，已回退为结束后展示结果"
         }
         if (result.timedOut) {
-            return "终端命令等待超时，可能仍在后台继续运行$liveNote"
+            return if (isEnglishLocale) {
+                "Terminal command timed out and may still be running in the background$liveNote"
+            } else {
+                "终端命令等待超时，可能仍在后台继续运行$liveNote"
+            }
         }
 
         val headline = firstUsefulLine(
             if (result.success) result.stdout else result.stderr.ifBlank { result.stdout }
         )
-        val suffix = headline?.let { "：$it" }.orEmpty()
+        val suffix = headline?.let {
+            if (isEnglishLocale) ": $it" else "：$it"
+        }.orEmpty()
 
         return when {
             result.success && result.resultCode == 0 ->
-                "终端命令执行成功（exit=0）$suffix$liveNote"
+                if (isEnglishLocale) {
+                    "Terminal command succeeded (exit=0)$suffix$liveNote"
+                } else {
+                    "终端命令执行成功（exit=0）$suffix$liveNote"
+                }
 
             result.success ->
-                "终端命令执行完成$suffix$liveNote"
+                if (isEnglishLocale) {
+                    "Terminal command completed$suffix$liveNote"
+                } else {
+                    "终端命令执行完成$suffix$liveNote"
+                }
 
             result.resultCode != null ->
-                "终端命令执行失败（exit=${result.resultCode}）$suffix$liveNote"
+                if (isEnglishLocale) {
+                    "Terminal command failed (exit=${result.resultCode})$suffix$liveNote"
+                } else {
+                    "终端命令执行失败（exit=${result.resultCode}）$suffix$liveNote"
+                }
 
             !result.errorMessage.isNullOrBlank() ->
-                result.errorMessage + liveNote
+                localized(result.errorMessage) + liveNote
 
-            else -> "终端命令执行失败$liveNote"
+            else -> if (isEnglishLocale) {
+                "Terminal command failed$liveNote"
+            } else {
+                "终端命令执行失败$liveNote"
+            }
         }
     }
 

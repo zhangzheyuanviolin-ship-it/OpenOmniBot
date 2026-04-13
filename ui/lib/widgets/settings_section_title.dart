@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/theme/theme_context.dart';
 
 class SettingsSectionTitle extends StatelessWidget {
@@ -26,7 +27,7 @@ class SettingsSectionTitle extends StatelessWidget {
           Row(
             children: [
               Text(
-                label,
+                context.trLegacy(label),
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -49,7 +50,7 @@ class SettingsSectionTitle extends StatelessWidget {
           if (subtitle != null) ...[
             const SizedBox(height: 6),
             Text(
-              subtitle!,
+              context.trLegacy(subtitle!),
               style: TextStyle(
                 fontSize: 12,
                 height: 1.5,

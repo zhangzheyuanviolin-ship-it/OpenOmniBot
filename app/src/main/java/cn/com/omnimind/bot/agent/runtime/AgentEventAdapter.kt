@@ -21,6 +21,7 @@ class AgentEventAdapter(
             is ToolExecutionResult.McpResult,
             is ToolExecutionResult.MemoryResult,
             is ToolExecutionResult.TerminalResult,
+            is ToolExecutionResult.Interrupted,
             is ToolExecutionResult.ContextResult -> AgentOutputKind.TOOL_RESULT
             is ToolExecutionResult.Error -> AgentOutputKind.NONE
         }
@@ -35,6 +36,7 @@ class AgentEventAdapter(
             result is ToolExecutionResult.McpResult ||
             result is ToolExecutionResult.MemoryResult ||
             result is ToolExecutionResult.TerminalResult ||
+            result is ToolExecutionResult.Interrupted ||
             result is ToolExecutionResult.ContextResult
     }
 
@@ -142,6 +144,22 @@ class AgentEventAdapter(
                 "summary" to result.summaryText,
                 "previewJson" to result.previewJson,
                 "rawResultJson" to result.rawResultJson
+            )
+
+            is ToolExecutionResult.Interrupted -> mapOf(
+                "toolName" to descriptor.name,
+                "displayName" to descriptor.displayName,
+                "toolType" to descriptor.toolType,
+                "success" to false,
+                "status" to "interrupted",
+                "summary" to result.summaryText,
+                "previewJson" to result.previewJson,
+                "rawResultJson" to result.rawResultJson,
+                "interruptedBy" to result.interruptedBy,
+                "interruptionReason" to result.interruptionReason,
+                "terminalOutput" to result.terminalOutput,
+                "terminalSessionId" to result.terminalSessionId,
+                "terminalStreamState" to result.terminalStreamState
             )
 
             is ToolExecutionResult.Error -> mapOf(

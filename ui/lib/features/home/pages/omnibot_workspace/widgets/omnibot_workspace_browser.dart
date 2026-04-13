@@ -8,6 +8,7 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
+import 'package:ui/widgets/image_preview_overlay.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
 import 'package:ui/widgets/omnibot_resource_widgets.dart';
 
@@ -1641,8 +1642,11 @@ class _WorkspaceInlineFilePreviewState
     }
     switch (widget.metadata.previewKind) {
       case 'image':
-        return InteractiveViewer(
-          child: Center(child: Image.file(File(widget.metadata.path))),
+        return OmnibotInteractiveImageView(
+          key: const ValueKey('workspace-inline-image-view'),
+          source: FileImageSource(widget.metadata.path),
+          enableFileShareOnLongPress: true,
+          viewportFraction: 1.0,
         );
       case 'audio':
       case 'video':

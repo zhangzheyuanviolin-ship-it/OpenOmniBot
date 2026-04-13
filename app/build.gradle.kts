@@ -50,7 +50,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 1
-        versionName = "0.2.8"
+        versionName = "0.3.0"
 
         ndk {
             abiFilters.addAll(listOf("arm64-v8a"))
@@ -119,6 +119,9 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 
     packaging {
         jniLibs {
@@ -163,7 +166,6 @@ dependencies {
     implementation(project(":uikit"))
     implementation(project(":baselib"))
     implementation(project(":omniinfer-server"))
-    implementation(project(":model_downloader"))
     implementation(project(":core:main"))
     implementation(project(":core:terminal-view"))
     implementation(project(":core:terminal-emulator"))

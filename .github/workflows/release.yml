@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -26,6 +27,7 @@ jobs:
 
       - name: Initialize required OmniInfer submodules
         run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
           git submodule update --init third_party/omniinfer
           git -C third_party/omniinfer submodule update --init framework/mnn framework/llama.cpp
 
