@@ -1124,10 +1124,13 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     if (current.isEmpty) {
       return incoming;
     }
+    if (incoming == current) {
+      return current;
+    }
     if (incoming.startsWith(current)) {
       return incoming;
     }
-    if (current.startsWith(incoming) || current.contains(incoming)) {
+    if (current.endsWith(incoming)) {
       return current;
     }
     final overlap = _streamingTextOverlap(current, incoming);

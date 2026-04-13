@@ -149,6 +149,26 @@ class AssistsCoreManagerChatOnlyTest {
     }
 
     @Test
+    fun `extractChatTaskTextPayload preserves whitespace and punctuation in array chunks`() {
+        val chunk = """
+            [
+              {"choices":[{"delta":{"content":"Hello"}}]},
+              {"choices":[{"delta":{"content":","}}]},
+              {"choices":[{"delta":{"content":" "}}]},
+              {"choices":[{"delta":{"content":"world"}}]},
+              {"choices":[{"delta":{"content":"!"}}]},
+              {"choices":[{"delta":{"content":"\n"}}]},
+              {"choices":[{"delta":{"content":"  Next line"}}]},
+              {"choices":[{"delta":{},"finish_reason":"stop"}]}
+            ]
+        """.trimIndent()
+
+        val result = extractChatTaskTextPayload(chunk)
+
+        assertEquals("Hello, world!\n  Next line", result)
+    }
+
+    @Test
     fun `extractChatTaskPromptTokens parses usage chunk`() {
         val chunk = """
             {"choices":[{"delta":{"content":"hello"}}],"usage":{"prompt_tokens":4096}}

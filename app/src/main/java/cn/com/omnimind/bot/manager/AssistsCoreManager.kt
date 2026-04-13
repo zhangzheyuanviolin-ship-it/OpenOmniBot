@@ -99,10 +99,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -115,6 +121,11 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 internal const val CHAT_ONLY_MODE = "chat_only"
+
+private val chatTaskPayloadJson = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+}
 
 internal fun prepareChatTaskContent(
     content: List<Map<String, Any>>,
@@ -175,52 +186,11 @@ internal fun extractChatTaskTextPayload(content: String): String {
         return ""
     }
     if (!normalized.startsWith("{") && !normalized.startsWith("[")) {
-        return normalized
+        return content
     }
     val parsed = runCatching {
-        if (normalized.startsWith("[")) {
-            val array = JSONArray(normalized)
-            buildString {
-                for (index in 0 until array.length()) {
-                    append(extractChatTaskTextPayload(array.opt(index)?.toString().orEmpty()))
-                }
-            }.trim()
-        } else {
-            val json = JSONObject(normalized)
-            when {
-                json.has("text") -> extractTextPayload(json.opt("text"))
-                json.has("output_text") -> extractTextPayload(json.opt("output_text"))
-                json.has("content") -> extractTextPayload(json.opt("content"))
-                json.has("message") && json.opt("message") is String -> json.optString("message").trim()
-                json.has("choices") -> {
-                    val firstChoice = json.optJSONArray("choices")?.optJSONObject(0)
-                    val delta = firstChoice?.optJSONObject("delta")
-                    val message = firstChoice?.optJSONObject("message")
-                    when {
-                        delta != null -> extractTextPayload(delta.opt("content"))
-                        message != null -> extractTextPayload(message.opt("content"))
-                        firstChoice != null -> extractTextPayload(
-                            firstChoice.opt("text") ?: firstChoice.opt("content")
-                        )
-                        else -> ""
-                    }
-                }
-                json.has("output") -> {
-                    val output = json.optJSONArray("output")
-                    if (output == null) {
-                        ""
-                    } else {
-                        buildString {
-                            for (index in 0 until output.length()) {
-                                append(extractTextPayload(output.opt(index)))
-                            }
-                        }.trim()
-                    }
-                }
-                else -> ""
-            }
-        }
-    }.getOrElse { "" }.trim()
+        extractChatTaskTextValue(chatTaskPayloadJson.parseToJsonElement(normalized))
+    }.getOrElse { "" }
     if (parsed.isNotEmpty()) {
         return parsed
     }
@@ -231,12 +201,80 @@ internal fun extractChatTaskTextPayload(content: String): String {
         ?.getOrNull(1)
         ?.let { raw ->
             runCatching {
-                JSONObject("""{"text":"$raw"}""").optString("text").trim()
+                chatTaskPayloadJson.parseToJsonElement(""""$raw"""")
+                    .jsonPrimitive
+                    .content
             }.getOrDefault(raw)
         }
-        ?.trim()
         .orEmpty()
     return contentMatch
+}
+
+private fun extractChatTaskTextValue(raw: JsonElement?): String {
+    return when (raw) {
+        null, JsonNull -> ""
+        is JsonPrimitive -> raw.contentOrNull.orEmpty()
+        is JsonArray -> raw.joinToString(separator = "") { item ->
+            extractChatTaskTextValue(item)
+        }
+        is JsonObject -> {
+            val directText = extractTextPayload(raw["text"])
+            if (directText.isNotEmpty()) {
+                return directText
+            }
+
+            val outputText = extractTextPayload(raw["output_text"])
+            if (outputText.isNotEmpty()) {
+                return outputText
+            }
+
+            val contentText = extractTextPayload(raw["content"])
+            if (contentText.isNotEmpty()) {
+                return contentText
+            }
+
+            val messageText = extractChatTaskTextValue(raw["message"])
+            if (messageText.isNotEmpty()) {
+                return messageText
+            }
+
+            val choices = raw["choices"] as? JsonArray
+            if (choices != null && choices.isNotEmpty()) {
+                val firstChoice = choices.firstOrNull() as? JsonObject
+                if (firstChoice != null) {
+                    val deltaText = extractChatTaskTextValue(firstChoice["delta"])
+                    if (deltaText.isNotEmpty()) {
+                        return deltaText
+                    }
+
+                    val choiceMessageText = extractChatTaskTextValue(firstChoice["message"])
+                    if (choiceMessageText.isNotEmpty()) {
+                        return choiceMessageText
+                    }
+
+                    val choiceText = extractTextPayload(
+                        firstChoice["text"] ?: firstChoice["content"]
+                    )
+                    if (choiceText.isNotEmpty()) {
+                        return choiceText
+                    }
+                }
+            }
+
+            val output = raw["output"] as? JsonArray
+            if (output != null && output.isNotEmpty()) {
+                val outputTextFromList = output.joinToString(separator = "") { item ->
+                    extractChatTaskTextValue(item)
+                }
+                if (outputTextFromList.isNotEmpty()) {
+                    return outputTextFromList
+                }
+            }
+
+            ""
+        }
+        else -> ""
+    }
 }
 
 internal fun extractChatTaskPromptTokens(content: String): Int? {
@@ -270,22 +308,20 @@ internal fun chatModelOverrideToAgentModelOverride(
     )
 }
 
-private fun extractTextPayload(raw: Any?): String {
+private fun extractTextPayload(raw: JsonElement?): String {
     return when (raw) {
-        null -> ""
-        is String -> raw.trim()
-        is JSONArray -> buildString {
-            for (index in 0 until raw.length()) {
-                append(extractTextPayload(raw.opt(index)))
+        null, JsonNull -> ""
+        is JsonPrimitive -> raw.contentOrNull.orEmpty()
+        is JsonArray -> raw.joinToString(separator = "") { item ->
+            extractTextPayload(item)
+        }
+        is JsonObject -> when {
+            raw["type"]?.jsonPrimitive?.contentOrNull.equals("text", ignoreCase = true) ||
+                raw["type"]?.jsonPrimitive?.contentOrNull.equals("output_text", ignoreCase = true) -> {
+                extractTextPayload(raw["text"])
             }
-        }.trim()
-        is JSONObject -> when {
-            raw.optString("type").equals("text", ignoreCase = true) ||
-                raw.optString("type").equals("output_text", ignoreCase = true) -> {
-                extractTextPayload(raw.opt("text"))
-            }
-            raw.has("text") -> extractTextPayload(raw.opt("text"))
-            raw.has("content") -> extractTextPayload(raw.opt("content"))
+            raw.containsKey("text") -> extractTextPayload(raw["text"])
+            raw.containsKey("content") -> extractTextPayload(raw["content"])
             else -> ""
         }
         else -> ""

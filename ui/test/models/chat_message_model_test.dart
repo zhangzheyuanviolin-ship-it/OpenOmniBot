@@ -97,4 +97,26 @@ void main() {
 
     expect(message.text, '这里是示例 payload: {"foo":1,"bar":2}');
   });
+
+  test(
+    'ChatMessageModel preserves whitespace and punctuation from persisted transport frames',
+    () {
+      final message = ChatMessageModel.fromJson({
+        'id': 'assistant-transport-whitespace',
+        'type': 1,
+        'user': 2,
+        'content': {
+          'text':
+              '{"choices":[{"delta":{"content":"Hello"}}]}'
+              '{"choices":[{"delta":{"content":","}}]}'
+              '{"choices":[{"delta":{"content":" "}}]}'
+              '{"choices":[{"delta":{"content":"world"}}]}'
+              '{"choices":[{"delta":{"content":"!"}}]}',
+        },
+        'createAt': '1774600557281',
+      });
+
+      expect(message.text, 'Hello, world!');
+    },
+  );
 }
