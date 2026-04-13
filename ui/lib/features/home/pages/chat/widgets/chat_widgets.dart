@@ -1224,20 +1224,28 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
     final Widget content;
     if (widget.messages.isEmpty) {
+      final emptyStateBottomInset = widget.bottomOverlayInset
+          .clamp(0.0, double.infinity)
+          .toDouble();
       content = GestureDetector(
         onVerticalDragUpdate: (_) {},
         behavior: HitTestBehavior.opaque,
-        child: Center(
-          child: Text(
-            '有什么可以帮助你的？',
-            style: TextStyle(
-              color:
-                  !widget.appearanceConfig.isActive &&
-                      widget.appearanceConfig.chatTextColorMode !=
-                          AppBackgroundTextColorMode.custom
-                  ? context.omniPalette.textSecondary
-                  : widget.visualProfile.secondaryTextColor,
-              fontSize: 14,
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(bottom: emptyStateBottomInset),
+          child: Center(
+            child: Text(
+              '有什么可以帮助你的？',
+              style: TextStyle(
+                color:
+                    !widget.appearanceConfig.isActive &&
+                        widget.appearanceConfig.chatTextColorMode !=
+                            AppBackgroundTextColorMode.custom
+                    ? context.omniPalette.textSecondary
+                    : widget.visualProfile.secondaryTextColor,
+                fontSize: 14,
+              ),
             ),
           ),
         ),

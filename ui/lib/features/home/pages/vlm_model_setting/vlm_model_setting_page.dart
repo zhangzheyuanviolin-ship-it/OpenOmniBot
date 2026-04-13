@@ -72,6 +72,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _baseUrlController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
+  final FocusNode _nameFocusNode = FocusNode();
+  final FocusNode _baseUrlFocusNode = FocusNode();
+  final FocusNode _apiKeyFocusNode = FocusNode();
 
   static const Duration _autoSaveDebounce = Duration(milliseconds: 600);
   static const double _modelDeleteExtentRatio = 0.24;
@@ -107,6 +110,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     }
     return _profiles.isEmpty ? null : _profiles.first;
   }
+
+  bool get _hasAnyProfileFieldFocus =>
+      _nameFocusNode.hasFocus ||
+      _baseUrlFocusNode.hasFocus ||
+      _apiKeyFocusNode.hasFocus;
 
   bool get _isDarkTheme => context.isDarkTheme;
   Color get _pageBackground =>
@@ -181,7 +189,12 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     _configChangedSubscription = AssistsMessageService
         .agentAiConfigChangedStream
         .listen((event) {
-          if ((event.source != 'file' && event.source != 'store') || !mounted) {
+          if (event.source != 'file' || !mounted) {
+            return;
+          }
+          if (_hasAnyProfileFieldFocus ||
+              _isSavingProfile ||
+              _isSwitchingProfile) {
             return;
           }
           unawaited(_loadData());
@@ -189,6 +202,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     _nameController.addListener(_onProfileChanged);
     _baseUrlController.addListener(_onProfileChanged);
     _apiKeyController.addListener(_onProfileChanged);
+    _nameFocusNode.addListener(_onProfileFieldFocusChanged);
+    _baseUrlFocusNode.addListener(_onProfileFieldFocusChanged);
+    _apiKeyFocusNode.addListener(_onProfileFieldFocusChanged);
   }
 
   @override
@@ -199,17 +215,38 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       unawaited(_persistProfileDraft());
     }
     unawaited(_persistManualModelIds());
+    _nameFocusNode.removeListener(_onProfileFieldFocusChanged);
+    _baseUrlFocusNode.removeListener(_onProfileFieldFocusChanged);
+    _apiKeyFocusNode.removeListener(_onProfileFieldFocusChanged);
     _nameController.removeListener(_onProfileChanged);
     _baseUrlController.removeListener(_onProfileChanged);
     _apiKeyController.removeListener(_onProfileChanged);
     _nameController.dispose();
     _baseUrlController.dispose();
     _apiKeyController.dispose();
+    _nameFocusNode.dispose();
+    _baseUrlFocusNode.dispose();
+    _apiKeyFocusNode.dispose();
     super.dispose();
   }
 
   void _onProfileChanged() {
     if (_isSyncingControllers || _isLoading || _isSwitchingProfile) {
+      return;
+    }
+    if (_hasAnyProfileFieldFocus) {
+      _autoSaveTimer?.cancel();
+      return;
+    }
+    _scheduleAutoSave();
+  }
+
+  void _onProfileFieldFocusChanged() {
+    if (_isSyncingControllers || _isLoading || _isSwitchingProfile) {
+      return;
+    }
+    if (_hasAnyProfileFieldFocus) {
+      _autoSaveTimer?.cancel();
       return;
     }
     _scheduleAutoSave();
@@ -505,6 +542,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       return;
     }
     FocusScope.of(context).unfocus();
+    _autoSaveTimer?.cancel();
+    if (_shouldAutoSaveDraft) {
+      await _persistProfileDraft();
+      if (!mounted) {
+        return;
+      }
+    }
     final name = (await AppDialog.input(
       context,
       title: '新增 Provider',
@@ -1270,6 +1314,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         const SizedBox(height: 12),
                         TextField(
                           controller: _nameController,
+                          focusNode: _nameFocusNode,
                           enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
                             label: 'Provider 名称',
@@ -1279,6 +1324,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         const SizedBox(height: 12),
                         TextField(
                           controller: _baseUrlController,
+                          focusNode: _baseUrlFocusNode,
                           enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
                             label: 'Base URL',
@@ -1306,6 +1352,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         const SizedBox(height: 14),
                         TextField(
                           controller: _apiKeyController,
+                          focusNode: _apiKeyFocusNode,
                           enabled: !(_currentProfile?.readOnly ?? false),
                           obscureText: _obscureApiKey,
                           decoration: _buildInputDecoration(

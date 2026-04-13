@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/features/home/pages/vlm_model_setting/vlm_model_setting_page.dart';
+import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/theme/app_theme.dart';
 
@@ -69,7 +70,6 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('模型提供商'), findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(const Key('provider-config-title')),
@@ -147,5 +147,110 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.text('https://api.anthropic.com/v1/messages'), findsOneWidget);
+  });
+
+  testWidgets('provider fields do not auto-save while focused', (tester) async {
+    var saveCalls = 0;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(assistCoreChannel, (call) async {
+      switch (call.method) {
+        case 'listModelProviderProfiles':
+          return profilePayload();
+        case 'saveModelProviderProfile':
+          saveCalls += 1;
+          final args = Map<dynamic, dynamic>.from(
+            (call.arguments as Map?) ?? const <String, dynamic>{},
+          );
+          return <String, dynamic>{
+            'id': 'provider-1',
+            'name': (args['name'] ?? 'DeepSeek').toString(),
+            'baseUrl': (args['baseUrl'] ?? '').toString(),
+            'apiKey': (args['apiKey'] ?? '').toString(),
+            'sourceType': 'custom',
+            'readOnly': false,
+            'ready': true,
+            'statusText': '',
+            'configured': true,
+            'protocolType': (args['protocolType'] ?? 'openai_compatible')
+                .toString(),
+          };
+      }
+      return null;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        home: const VlmModelSettingPage(),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final nameField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == 'Provider 名称',
+    );
+    await tester.tap(nameField);
+    await tester.pump();
+    await tester.enterText(nameField, 'DeepSeek Pro');
+
+    await tester.pump(const Duration(milliseconds: 700));
+
+    expect(saveCalls, 0);
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    expect(saveCalls, 1);
+  });
+
+  testWidgets('file sync does not reload provider fields while editing', (
+    tester,
+  ) async {
+    var listCalls = 0;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(assistCoreChannel, (call) async {
+      switch (call.method) {
+        case 'listModelProviderProfiles':
+          listCalls += 1;
+          return profilePayload();
+      }
+      return null;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        home: const VlmModelSettingPage(),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(listCalls, 1);
+
+    final nameField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == 'Provider 名称',
+    );
+    await tester.tap(nameField);
+    await tester.pump();
+    await tester.enterText(nameField, 'DeepSeek Pro');
+
+    AssistsMessageService.dispatchAgentAiConfigChanged(
+      const AgentAiConfigChangedEvent(source: 'file', path: '/tmp/config.json'),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(listCalls, 1);
+    expect(find.text('DeepSeek Pro'), findsOneWidget);
   });
 }

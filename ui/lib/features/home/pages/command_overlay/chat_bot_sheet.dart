@@ -1771,15 +1771,28 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
   }
 
   Widget _buildMessageList() {
+    final emptyStateBottomInset =
+        (_isInputAreaVisible
+                ? ((_inputAreaHeight > 0 ? _inputAreaHeight : 72.0) +
+                      MediaQuery.of(context).viewInsets.bottom +
+                      12)
+                : 0.0)
+            .clamp(0.0, double.infinity)
+            .toDouble();
     if (_messages.isEmpty) {
       // 使用 GestureDetector 阻止手势穿透到原生层
       return GestureDetector(
         onVerticalDragUpdate: (_) {},
         behavior: HitTestBehavior.opaque,
-        child: const Center(
-          child: Text(
-            '有什么可以帮助你的？',
-            style: TextStyle(color: Color(0xFF999999), fontSize: 14),
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(bottom: emptyStateBottomInset),
+          child: const Center(
+            child: Text(
+              '有什么可以帮助你的？',
+              style: TextStyle(color: Color(0xFF999999), fontSize: 14),
+            ),
           ),
         ),
       );

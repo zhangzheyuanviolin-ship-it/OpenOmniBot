@@ -21,6 +21,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -39,9 +41,13 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
 ) : Task(taskChangeListener, taskManager),
     FlowCollector<String> {
     private val responseLogChunkSize = 3500
-    // 使用单线程调度器确保消息按顺序处理，避免并发导致chunk乱序
+    // 仅使用单线程调度器并不足以保证顺序：
+    // 每个 chunk 的处理过程会 suspend（例如切到 Main 派发给 Flutter），
+    // 后续 chunk 可能在前一个恢复前继续执行，导致 UI 看到乱序文本。
+    // 因此这里额外用 Mutex 把整段监听器回调串行化，保证“收到顺序 == 派发顺序”。
     private val singleThreadDispatcher = Dispatchers.IO.limitedParallelism(1)
     private val controllerScope = CoroutineScope(SupervisorJob() + singleThreadDispatcher)
+    private val streamDispatchMutex = Mutex()
 
     private lateinit var content: List<Map<String, Any>>
     private var onMessagePushListener: OnMessagePushListener? = null
@@ -61,6 +67,14 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
     private val openClawHandshakeTimeoutMs = 10_000L
     private val openClawMinHeartbeatIntervalMs = 1_000L
     private val tag = "ChatTask"
+
+    private fun launchOrderedStreamDispatch(block: suspend () -> Unit) {
+        controllerScope.launch {
+            streamDispatchMutex.withLock {
+                block()
+            }
+        }
+    }
     override fun getTaskType(): TaskType {
         return TaskType.CHAT
     }
@@ -110,13 +124,13 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                             override fun onEvent(
                                 eventSource: EventSource, id: String?, type: String?, data: String
                             ) {
-                                controllerScope.launch {
+                                launchOrderedStreamDispatch {
                                     onMessagePushListener.onChatMessage(taskID, data, type)
                                 }
                             }
 
                             override fun onClosed(eventSource: EventSource) {
-                                controllerScope.launch {
+                                launchOrderedStreamDispatch {
                                     onMessagePushListener.onChatMessageEnd(taskID)
                                     onTaskStop(TaskFinishType.FINISH, "")
                                     onTaskDestroy()
@@ -130,7 +144,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                                 t: Throwable?,
                                 response: okhttp3.Response?
                             ) {
-                                controllerScope.launch {
+                                launchOrderedStreamDispatch {
                                     // 如果是主动取消，不发送错误消息，只结束对话
                                     if (isManualCancel) {
                                         onMessagePushListener.onChatMessageEnd(taskID)
@@ -162,7 +176,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                     )
                 }
             } catch (e: Http429Exception){
-                controllerScope.launch {
+                launchOrderedStreamDispatch {
                     OmniLog.e(tag, "openclaw rate limited task=$taskID msg=${e.message}")
                     val errorType = "rate_limited"
                     onMessagePushListener.onChatMessage(
@@ -176,7 +190,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                     taskManager.unregisterChatTask(taskID)
                 }
             } catch (e: Exception) {
-                controllerScope.launch {
+                launchOrderedStreamDispatch {
                     OmniLog.e(tag, "openclaw exception task=$taskID msg=${e.message}")
                     onMessagePushListener.onChatMessage(
                         taskID,
@@ -254,8 +268,10 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
             } else if (this@ChatTask::eventSource.isInitialized) {
                 eventSource.cancel()
             }
-            onMessagePushListener?.onChatMessageEnd(taskID)
-            taskManager.unregisterChatTask(taskID)
+            streamDispatchMutex.withLock {
+                onMessagePushListener?.onChatMessageEnd(taskID)
+                taskManager.unregisterChatTask(taskID)
+            }
         }
         taskScope.cancel()
     }
@@ -280,7 +296,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
     ): WebSocket? {
         val wsUrl = buildOpenClawGatewayWsUrl(openClawConfig.baseUrl)
         if (wsUrl.isBlank()) {
-            controllerScope.launch {
+            launchOrderedStreamDispatch {
                 onMessagePushListener.onChatMessage(taskID, "", "error")
                 onMessagePushListener.onChatMessageEnd(taskID)
                 onTaskStop(TaskFinishType.ERROR, "OpenClaw ws url invalid")
@@ -292,7 +308,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
         val userMessage = extractLatestUserMessage(content)
         val userAttachments = extractLatestUserAttachments(content)
         if (userMessage.isBlank() && userAttachments.length() == 0) {
-            controllerScope.launch {
+            launchOrderedStreamDispatch {
                 onMessagePushListener.onChatMessage(taskID, "", "error")
                 onMessagePushListener.onChatMessageEnd(taskID)
                 onTaskStop(TaskFinishType.ERROR, "OpenClaw message empty")
@@ -322,23 +338,25 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                 handshakeTimeoutJob = controllerScope.launch {
                     delay(openClawHandshakeTimeoutMs)
                     if (openClawFinished || isManualCancel || challengeReceived) return@launch
-                    OmniLog.e(tag, "openclaw handshake timeout task=$taskID")
-                    openClawFinished = true
-                    onMessagePushListener.onChatMessage(
-                        taskID,
-                        "OpenClaw handshake timeout: no connect.challenge received",
-                        "error"
-                    )
-                    onMessagePushListener.onChatMessageEnd(taskID)
-                    webSocket.close(1000, "handshake timeout")
-                    onTaskStop(TaskFinishType.ERROR, "OpenClaw handshake timeout")
-                    onTaskDestroy()
+                    streamDispatchMutex.withLock {
+                        OmniLog.e(tag, "openclaw handshake timeout task=$taskID")
+                        openClawFinished = true
+                        onMessagePushListener.onChatMessage(
+                            taskID,
+                            "OpenClaw handshake timeout: no connect.challenge received",
+                            "error"
+                        )
+                        onMessagePushListener.onChatMessageEnd(taskID)
+                        webSocket.close(1000, "handshake timeout")
+                        onTaskStop(TaskFinishType.ERROR, "OpenClaw handshake timeout")
+                        onTaskDestroy()
+                    }
                 }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                controllerScope.launch {
-                    if (openClawFinished) return@launch
+                launchOrderedStreamDispatch dispatch@{
+                    if (openClawFinished) return@dispatch
                     try {
                         val frame = org.json.JSONObject(text)
                         val type = frame.optString("type")
@@ -352,7 +370,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                                         handshakeTimeoutJob?.cancel()
                                         if (connectRequested) {
                                             OmniLog.w(tag, "openclaw duplicated connect.challenge ignored")
-                                            return@launch
+                                            return@dispatch
                                         }
                                         connectRequested = true
                                         handleConnectChallenge(
@@ -397,10 +415,10 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
 
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                controllerScope.launch {
+                launchOrderedStreamDispatch dispatch@{
                     handshakeTimeoutJob?.cancel()
                     openClawHeartbeatJob?.cancel()
-                    if (openClawFinished) return@launch
+                    if (openClawFinished) return@dispatch
                     logOpenClawBuffers("openclaw task=$taskID (partial)")
                     OmniLog.e(tag, "openclaw ws failure task=$taskID msg=${t.message}")
                     if (isManualCancel) {
@@ -417,7 +435,7 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                controllerScope.launch {
+                launchOrderedStreamDispatch dispatch@{
                     handshakeTimeoutJob?.cancel()
                     openClawHeartbeatJob?.cancel()
                     logOpenClawBuffers("openclaw task=$taskID (closed)")
@@ -435,9 +453,9 @@ class ChatTask(override val taskChangeListener: TaskChangeListener,
                             onTaskStop(TaskFinishType.ERROR, "OpenClaw closed")
                         }
                         onTaskDestroy()
-                        return@launch
+                        return@dispatch
                     }
-                    return@launch
+                    return@dispatch
                 }
             }
         })

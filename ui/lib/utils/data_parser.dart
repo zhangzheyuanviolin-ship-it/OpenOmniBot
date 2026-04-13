@@ -138,32 +138,34 @@ Map<String, dynamic> safeDecodeMap(
 }
 
 String extractChatTaskText(String? input, {bool fallbackToRawText = true}) {
-  final normalized = input?.trim() ?? '';
+  final rawInput = input ?? '';
+  final normalized = rawInput.trim();
   if (normalized.isEmpty || normalized == '[DONE]') {
     return '';
   }
 
-  final decoded = safeJsonDecode(normalized, fallback: normalized);
+  final decoded = safeJsonDecode(normalized, fallback: rawInput);
   return _extractChatTaskTextPayload(
     decoded,
-    fallbackRawText: fallbackToRawText ? normalized : '',
-  ).trim();
+    fallbackRawText: fallbackToRawText ? rawInput : '',
+  );
 }
 
 String extractChatTaskThinking(
   String? input, {
   bool fallbackToRawText = false,
 }) {
-  final normalized = input?.trim() ?? '';
+  final rawInput = input ?? '';
+  final normalized = rawInput.trim();
   if (normalized.isEmpty || normalized == '[DONE]') {
     return '';
   }
 
-  final decoded = safeJsonDecode(normalized, fallback: normalized);
+  final decoded = safeJsonDecode(normalized, fallback: rawInput);
   return _extractChatTaskThinkingPayload(
     decoded,
-    fallbackRawText: fallbackToRawText ? normalized : '',
-  ).trim();
+    fallbackRawText: fallbackToRawText ? rawInput : '',
+  );
 }
 
 String _extractChatTaskTextPayload(dynamic raw, {String fallbackRawText = ''}) {
@@ -171,14 +173,12 @@ String _extractChatTaskTextPayload(dynamic raw, {String fallbackRawText = ''}) {
     return '';
   }
   if (raw is String) {
-    return raw.trim();
+    return raw;
   }
   if (raw is List) {
     return raw
         .map((item) => _extractChatTaskTextPayload(item, fallbackRawText: ''))
-        .where((item) => item.isNotEmpty)
-        .join()
-        .trim();
+        .join();
   }
   if (raw is! Map) {
     return fallbackRawText;
@@ -268,9 +268,7 @@ String _extractChatTaskThinkingPayload(
         .map(
           (item) => _extractChatTaskThinkingPayload(item, fallbackRawText: ''),
         )
-        .where((item) => item.isNotEmpty)
-        .join()
-        .trim();
+        .join();
   }
   if (raw is! Map) {
     return fallbackRawText;
@@ -338,14 +336,10 @@ String _extractTextPayload(dynamic raw) {
     return '';
   }
   if (raw is String) {
-    return raw.trim();
+    return raw;
   }
   if (raw is List) {
-    return raw
-        .map(_extractTextPayload)
-        .where((item) => item.isNotEmpty)
-        .join()
-        .trim();
+    return raw.map(_extractTextPayload).join();
   }
   if (raw is! Map) {
     return '';
@@ -362,7 +356,7 @@ String _extractTextPayload(dynamic raw) {
 
   final directText = payload['text'];
   if (directText != null && directText is! Map && directText is! List) {
-    final text = directText.toString().trim();
+    final text = directText.toString();
     if (text.isNotEmpty) {
       return text;
     }
@@ -386,14 +380,10 @@ String _extractReasoningPayload(dynamic raw) {
     return '';
   }
   if (raw is String) {
-    return raw.trim();
+    return raw;
   }
   if (raw is List) {
-    return raw
-        .map(_extractReasoningPayload)
-        .where((item) => item.isNotEmpty)
-        .join()
-        .trim();
+    return raw.map(_extractReasoningPayload).join();
   }
   if (raw is! Map) {
     return '';
