@@ -49,7 +49,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   final Map<String, String> _runLogDetailErrorById = {};
   final Set<String> _loadingRunLogDetailIds = <String>{};
   final Set<String> _expandedStepKeys = <String>{};
-  final Set<String> _expandedSequenceKeys = <String>{};
+  final Set<String> _expandedFunctionKeys = <String>{};
 
   UtgBridgeConfig? _config;
   UtgPathsSnapshot? _pathsSnapshot;
@@ -461,10 +461,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       : const Color(0xFFB42318),
                 ),
               _buildPill('${path.stepCount} steps'),
-              _buildPill('slots ${path.slotNames.length}'),
-              if (path.slotNames.isEmpty) _buildPill('无 slots'),
-              if (path.slotNames.isNotEmpty) _buildPill('需填写 slots'),
-              ...path.slotNames.map((slot) => _buildPill(slot)),
+              _buildPill('parameters ${path.parameterNames.length}'),
+              if (path.parameterNames.isEmpty) _buildPill('无参数'),
+              if (path.parameterNames.isNotEmpty) _buildPill('需填写参数'),
+              ...path.parameterNames.map((parameter) => _buildPill(parameter)),
             ],
           ),
           const SizedBox(height: 12),
@@ -475,10 +475,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
               path.packageName,
             ].where((e) => e.trim().isNotEmpty).join(' · '),
           ),
-          if (path.slotExamples.isNotEmpty) ...[
+          if (path.parameterExamples.isNotEmpty) ...[
             const SizedBox(height: 10),
             const Text(
-              'slot 示例',
+              'parameter 示例',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -489,7 +489,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: path.slotExamples.entries
+              children: path.parameterExamples.entries
                   .map((entry) => _buildPill('${entry.key}=${entry.value}'))
                   .toList(),
             ),
@@ -666,17 +666,17 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
           ? Map<String, dynamic>.from(entry.value as Map)
           : const <String, dynamic>{};
       final node = nodeById[nodeId] ?? const <String, dynamic>{};
-      final sequences =
-          (node['sequences'] as Map<dynamic, dynamic>?) ?? const {};
-      final sequenceNames =
-          (step['sequences'] as List<dynamic>?) ?? const <dynamic>[];
-      for (final sequenceNameRaw in sequenceNames) {
-        final sequenceName = sequenceNameRaw.toString();
-        final sequence = sequences[sequenceName] is Map
-            ? Map<String, dynamic>.from(sequences[sequenceName] as Map)
+      final functions =
+          (node['functions'] as Map<dynamic, dynamic>?) ?? const {};
+      final functionNames =
+          (step['functions'] as List<dynamic>?) ?? const <dynamic>[];
+      for (final functionNameRaw in functionNames) {
+        final functionName = functionNameRaw.toString();
+        final functionPayload = functions[functionName] is Map
+            ? Map<String, dynamic>.from(functions[functionName] as Map)
             : const <String, dynamic>{};
         final actions =
-            (sequence['actions'] as List<dynamic>?) ?? const <dynamic>[];
+            (functionPayload['actions'] as List<dynamic>?) ?? const <dynamic>[];
         for (final item in actions) {
           final rawAction = item is Map
               ? Map<String, dynamic>.from(item)
@@ -731,11 +731,11 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             ),
           ),
           const SizedBox(height: 8),
-          if (path.slotNames.isNotEmpty) ...[
+          if (path.parameterNames.isNotEmpty) ...[
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: path.slotNames.map(_buildPill).toList(),
+              children: path.parameterNames.map(_buildPill).toList(),
             ),
             const SizedBox(height: 12),
           ],
@@ -751,10 +751,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   : const <String, dynamic>{};
               final node = nodeById[nodeId] ?? const <String, dynamic>{};
               final repr = (node['repr'] as Map<dynamic, dynamic>?) ?? const {};
-              final sequences =
-                  (node['sequences'] as Map<dynamic, dynamic>?) ?? const {};
-              final sequenceNames =
-                  (step['sequences'] as List<dynamic>?) ?? const <dynamic>[];
+              final functions =
+                  (node['functions'] as Map<dynamic, dynamic>?) ?? const {};
+              final functionNames =
+                  (step['functions'] as List<dynamic>?) ?? const <dynamic>[];
               final stepIndex = step['index'] is num
                   ? (step['index'] as num).toInt()
                   : 0;
@@ -793,7 +793,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                               ),
                             ),
                           ),
-                          _buildPill('${sequenceNames.length} sequences'),
+                          _buildPill('${functionNames.length} functions'),
                           const SizedBox(width: 8),
                           Icon(
                             stepExpanded
@@ -814,7 +814,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                     const SizedBox(height: 8),
                     if (!stepExpanded)
                       Text(
-                        sequenceNames.map((e) => e.toString()).join(' · '),
+                        functionNames.map((e) => e.toString()).join(' · '),
                         style: const TextStyle(
                           color: AppColors.text70,
                           fontSize: 12,
@@ -822,19 +822,19 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ),
                       )
                     else
-                      ...sequenceNames.map((sequenceNameRaw) {
-                        final sequenceName = sequenceNameRaw.toString();
-                        final sequenceKey = '$stepKey::$sequenceName';
-                        final sequenceExpanded = _expandedSequenceKeys.contains(
-                          sequenceKey,
+                      ...functionNames.map((functionNameRaw) {
+                        final functionName = functionNameRaw.toString();
+                        final functionKey = '$stepKey::$functionName';
+                        final functionExpanded = _expandedFunctionKeys.contains(
+                          functionKey,
                         );
-                        final sequence = sequences[sequenceName] is Map
+                        final functionPayload = functions[functionName] is Map
                             ? Map<String, dynamic>.from(
-                                sequences[sequenceName] as Map,
+                                functions[functionName] as Map,
                               )
                             : const <String, dynamic>{};
                         final actions =
-                            (sequence['actions'] as List<dynamic>?) ??
+                            (functionPayload['actions'] as List<dynamic>?) ??
                             const <dynamic>[];
                         return Container(
                           width: double.infinity,
@@ -850,10 +850,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                               InkWell(
                                 onTap: () {
                                   setState(() {
-                                    if (sequenceExpanded) {
-                                      _expandedSequenceKeys.remove(sequenceKey);
+                                    if (functionExpanded) {
+                                      _expandedFunctionKeys.remove(functionKey);
                                     } else {
-                                      _expandedSequenceKeys.add(sequenceKey);
+                                      _expandedFunctionKeys.add(functionKey);
                                     }
                                   });
                                 },
@@ -861,7 +861,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        sequenceName,
+                                        functionName,
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -870,7 +870,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                     _buildPill('${actions.length} actions'),
                                     const SizedBox(width: 8),
                                     Icon(
-                                      sequenceExpanded
+                                      functionExpanded
                                           ? Icons.expand_less
                                           : Icons.expand_more,
                                       color: AppColors.text70,
@@ -878,20 +878,21 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   ],
                                 ),
                               ),
-                              if ((sequence['description'] ?? '')
+                              if ((functionPayload['description'] ?? '')
                                   .toString()
                                   .trim()
                                   .isNotEmpty) ...[
                                 const SizedBox(height: 4),
                                 Text(
-                                  (sequence['description'] ?? '').toString(),
+                                  (functionPayload['description'] ?? '')
+                                      .toString(),
                                   style: const TextStyle(
                                     color: AppColors.text70,
                                   ),
                                 ),
                               ],
                               const SizedBox(height: 8),
-                              if (!sequenceExpanded)
+                              if (!functionExpanded)
                                 Text(
                                   actions
                                       .map((item) {
@@ -1754,8 +1755,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     UtgBridgeExecutionContext executionContext,
   ) async {
     final controllers = {
-      for (final slot in path.slotNames)
-        slot: TextEditingController(text: path.slotExamples[slot] ?? ''),
+      for (final parameter in path.parameterNames)
+        parameter: TextEditingController(
+          text: path.parameterExamples[parameter] ?? '',
+        ),
     };
     try {
       return await showDialog<Map<String, String>>(
@@ -1795,7 +1798,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   ),
                   const SizedBox(height: 12),
                   if (controllers.isEmpty)
-                    const Text('此轨迹无需填写 slots。')
+                    const Text('此轨迹无需填写参数。')
                   else
                     ...controllers.entries.map(
                       (entry) => Padding(
@@ -1804,7 +1807,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           controller: entry.value,
                           decoration: InputDecoration(
                             labelText: entry.key,
-                            hintText: path.slotExamples[entry.key] ?? '',
+                            hintText: path.parameterExamples[entry.key] ?? '',
                             border: const OutlineInputBorder(),
                             isDense: true,
                           ),
@@ -1916,14 +1919,14 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       final executionContext =
           await AssistsMessageService.getUtgBridgeExecutionContext();
       if (!mounted) return;
-      final slots = await _confirmPathRun(path, executionContext);
-      if (!mounted || slots == null) {
+      final arguments = await _confirmPathRun(path, executionContext);
+      if (!mounted || arguments == null) {
         return;
       }
       setState(() => _runningPathId = path.pathId);
       final result = await AssistsMessageService.runUtgPath(
         pathId: path.pathId,
-        slots: slots,
+        arguments: arguments,
         baseUrl: _baseUrlController.text.trim(),
       );
       if (!mounted) return;
@@ -2140,7 +2143,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
               path.endNodeId,
               path.startNodeDescription,
               path.endNodeDescription,
-              ...path.slotNames,
+              ...path.parameterNames,
             ].join(' ').toLowerCase();
             return haystack.contains(searchQuery);
           }).toList();
@@ -2674,7 +2677,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                             onChanged: (_) => setState(() {}),
                             decoration: InputDecoration(
                               labelText: '搜索轨迹',
-                              hintText: '按 path_id、描述、slot、node 过滤',
+                              hintText: '按 path_id、描述、parameter、node 过滤',
                               prefixIcon: const Icon(Icons.search_outlined),
                               suffixIcon: searchQuery.isEmpty
                                   ? null

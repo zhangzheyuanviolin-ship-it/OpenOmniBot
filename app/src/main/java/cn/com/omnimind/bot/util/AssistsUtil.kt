@@ -231,7 +231,7 @@ class AssistsUtil {
                     UtgBridge.RunCompiledPathRequest(
                         goal = goal,
                         pathId = pathId,
-                        slots = emptyMap(),
+                        arguments = emptyMap(),
                         bridgeBaseUrl = UtgBridge.localBridgeBaseUrl(bridgeState),
                         bridgeToken = bridgeState.token,
                         context = mapOf("source" to "oob_vlm_task"),

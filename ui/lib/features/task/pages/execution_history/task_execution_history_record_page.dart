@@ -553,13 +553,13 @@ class _TaskExecutionHistoryRecordPageState
     final requireChatbotTrigger =
         suggestionData['triggerType'] == 'require_chatbot_trigger';
 
-    // 检测 tasks 中的 slots 是否为空，判断是否需要额外信息
+    // 检测 tasks 中的参数定义是否为空，判断是否需要额外信息
     bool needsExtraInfo = false;
     final tasks = suggestionData['tasks'];
     if (tasks != null && tasks is List && tasks.isNotEmpty) {
       for (final task in tasks) {
-        final slots = task['slots'];
-        if (slots != null && slots is List && slots.isNotEmpty) {
+        final parameters = task['parameters'];
+        if (parameters != null && parameters is List && parameters.isNotEmpty) {
           needsExtraInfo = true;
           break;
         }
@@ -935,11 +935,7 @@ class _TaskExecutionHistoryRecordPageState
       backgroundColor: AppColors.background,
       appBar: _isSelectionMode
           ? _buildSelectionAppBar(filterRecords)
-          : const CommonAppBar(
-              title: '任务记录',
-              showAiBadge: true,
-              primary: true,
-            ),
+          : const CommonAppBar(title: '任务记录', showAiBadge: true, primary: true),
       body: SafeArea(
         top: false,
         child: Column(

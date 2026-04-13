@@ -165,8 +165,8 @@ class UtgPathSummary {
   final String pathId;
   final String description;
   final int stepCount;
-  final List<String> slotNames;
-  final Map<String, String> slotExamples;
+  final List<String> parameterNames;
+  final Map<String, String> parameterExamples;
   final String startNodeId;
   final String endNodeId;
   final String startNodeDescription;
@@ -193,8 +193,8 @@ class UtgPathSummary {
     required this.pathId,
     required this.description,
     required this.stepCount,
-    required this.slotNames,
-    required this.slotExamples,
+    required this.parameterNames,
+    required this.parameterExamples,
     required this.startNodeId,
     required this.endNodeId,
     required this.startNodeDescription,
@@ -226,13 +226,13 @@ class UtgPathSummary {
       stepCount: raw['step_count'] is num
           ? (raw['step_count'] as num).toInt()
           : int.tryParse((raw['step_count'] ?? '0').toString()) ?? 0,
-      slotNames:
-          (raw['slot_names'] as List<dynamic>?)
+      parameterNames:
+          (raw['parameter_names'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           const <String>[],
-      slotExamples:
-          (raw['slot_examples'] as Map<dynamic, dynamic>?)?.map(
+      parameterExamples:
+          (raw['parameter_examples'] as Map<dynamic, dynamic>?)?.map(
             (k, v) => MapEntry(k.toString(), v.toString()),
           ) ??
           const <String, String>{},
@@ -630,7 +630,7 @@ class UtgRunLogImportResult {
   final int pathsCreated;
   final int nodesCreated;
   final int nodesUpdated;
-  final int sequencesCreated;
+  final int functionsCreated;
   final List<String> warnings;
   final String runLogPath;
   final String pathKind;
@@ -646,7 +646,7 @@ class UtgRunLogImportResult {
     required this.pathsCreated,
     required this.nodesCreated,
     required this.nodesUpdated,
-    required this.sequencesCreated,
+    required this.functionsCreated,
     required this.warnings,
     required this.runLogPath,
     required this.pathKind,
@@ -670,9 +670,9 @@ class UtgRunLogImportResult {
       nodesUpdated: map['nodes_updated'] is num
           ? (map['nodes_updated'] as num).toInt()
           : int.tryParse((map['nodes_updated'] ?? '0').toString()) ?? 0,
-      sequencesCreated: map['sequences_created'] is num
-          ? (map['sequences_created'] as num).toInt()
-          : int.tryParse((map['sequences_created'] ?? '0').toString()) ?? 0,
+      functionsCreated: map['functions_created'] is num
+          ? (map['functions_created'] as num).toInt()
+          : int.tryParse((map['functions_created'] ?? '0').toString()) ?? 0,
       warnings:
           (map['warnings'] as List<dynamic>?)
               ?.map((e) => e.toString())
@@ -1840,7 +1840,7 @@ class AssistsMessageService {
 
   static Future<UtgManualRunResult> runUtgPath({
     required String pathId,
-    Map<String, String> slots = const {},
+    Map<String, String> arguments = const {},
     String? baseUrl,
   }) async {
     final executionContext = await getUtgBridgeExecutionContext();
@@ -1855,7 +1855,7 @@ class AssistsMessageService {
       payload: {
         'goal': 'manual_utg_path_run:$pathId',
         'path_id': pathId,
-        'slots': slots,
+        'arguments': arguments,
         'bridge_base_url': executionContext.bridgeBaseUrl,
         'bridge_token': executionContext.bridgeToken,
         'skip_terminal_verify': true,

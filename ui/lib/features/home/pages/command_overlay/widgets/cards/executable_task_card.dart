@@ -200,7 +200,7 @@ class _ExecutableTaskCardState extends State<ExecutableTaskCard> {
       final filledParams =
           widget.cardData['filled_params'] as Map<String, dynamic>?;
 
-      // 构建 taskJson，传入 filledParams 以填充 slotValues
+      // 构建 taskJson，传入 filledParams 以填充 arguments
       final Map<String, dynamic>? taskJsonMap =
           ExecutableTaskService.buildTaskJsonFromSuggestion(
             suggestion: suggestion,

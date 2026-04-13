@@ -97,7 +97,7 @@ object UtgBridge {
     data class RunCompiledPathRequest(
         @SerializedName("goal") val goal: String,
         @SerializedName("path_id") val pathId: String,
-        @SerializedName("slots") val slots: Map<String, String> = emptyMap(),
+        @SerializedName("arguments") val arguments: Map<String, String> = emptyMap(),
         @SerializedName("bridge_base_url") val bridgeBaseUrl: String,
         @SerializedName("bridge_token") val bridgeToken: String,
         @SerializedName("context") val context: Map<String, Any?> = emptyMap(),
@@ -127,10 +127,6 @@ object UtgBridge {
         @SerializedName("path_id") val pathId: String? = null,
         @SerializedName("planner_guidance") val plannerGuidance: String = "",
         @SerializedName("execution_route") val executionRoute: String = "",
-    )
-
-    data class AppendRunLogRequest(
-        @SerializedName("run_log") val runLog: Map<String, Any?>,
     )
 
     data class IngestRequest(
@@ -1036,17 +1032,6 @@ object UtgBridge {
             @Suppress("UNCHECKED_CAST")
             gson.fromJson(raw, Map::class.java) as? Map<String, Any?>
         }.getOrNull()
-    }
-
-    private fun Map<String, Any?>.mapValue(key: String): Map<String, Any?> {
-        val raw = this[key] as? Map<*, *> ?: return emptyMap()
-        return linkedMapOf<String, Any?>().apply {
-            raw.forEach { (itemKey, value) ->
-                if (itemKey != null) {
-                    put(itemKey.toString(), value)
-                }
-            }
-        }
     }
 
     private fun Map<String, Any?>.stringValue(key: String): String? {
