@@ -1,11 +1,8 @@
 package cn.com.omnimind.bot.omniinfer
 
-import android.app.Application
 import android.content.Context
 import cn.com.omnimind.baselib.llm.MnnLocalProviderStateStore
 import cn.com.omnimind.baselib.util.OmniLog
-import com.alibaba.mls.api.ApplicationProvider
-import com.alibaba.mls.api.download.ModelDownloadManager
 import com.omniinfer.server.OmniInferServer
 import com.tencent.mmkv.MMKV
 
@@ -27,11 +24,6 @@ object OmniInferLocalRuntime {
     fun setContext(context: Context) {
         val applicationContext = context.applicationContext
         appContext = applicationContext
-        if (applicationContext is Application) {
-            ApplicationProvider.set(applicationContext)
-            ModelDownloadManager.getInstance(applicationContext)
-                .setProgressCallbackIntervalMs(500L)
-        }
         syncProviderState()
     }
 

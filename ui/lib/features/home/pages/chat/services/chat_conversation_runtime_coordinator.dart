@@ -696,35 +696,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     final thinkingCardId = _resolveThinkingCardId(runtime, taskId);
     if (thinkingCardId != null) {
-      final hasThinkingText =
-          (runtime.currentThinkingMessages[taskId]?.trim().isNotEmpty ??
-              false) ||
-          runtime.messages.any((message) {
-            final cardData = message.cardData;
-            if (message.type != 2 || cardData?['type'] != 'deep_thinking') {
-              return false;
-            }
-            if ((cardData?['taskID'] ?? '').toString().trim() != taskId) {
-              return false;
-            }
-            return (cardData?['thinkingContent'] ?? '')
-                .toString()
-                .trim()
-                .isNotEmpty;
-          });
-
       runtime.currentThinkingStage = ThinkingStage.complete.value;
       runtime.isDeepThinking = false;
-      if (hasThinkingText) {
-        _finalizeThinkingCardsForTask(runtime, taskId);
-      } else {
-        runtime.messages.removeWhere((message) {
-          final cardData = message.cardData;
-          return message.type == 2 &&
-              cardData?['type'] == 'deep_thinking' &&
-              (cardData?['taskID'] ?? '').toString().trim() == taskId;
-        });
-      }
+      _finalizeThinkingCardsForTask(runtime, taskId);
       runtime.currentThinkingMessages.remove(taskId);
       runtime.deepThinkingContent = '';
       runtime.lastAgentTaskId = null;
