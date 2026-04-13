@@ -351,12 +351,12 @@ class ChatMessageModel {
         final choices = decoded['choices'];
         final choiceText = _tryExtractChoicesTransportText(choices);
         if (choiceText != null) {
-          return choiceText.trim();
+          return choiceText;
         }
         final output = decoded['output'];
         final outputText = _tryExtractOutputTransportText(output);
         if (outputText != null) {
-          return outputText.trim();
+          return outputText;
         }
       }
     } catch (_) {}
@@ -379,17 +379,17 @@ class ChatMessageModel {
 
     final delta = firstChoice['delta'];
     if (delta is Map) {
-      return _extractTextPayload(delta['content']).trim();
+      return _extractTextPayload(delta['content']);
     }
 
     final message = firstChoice['message'];
     if (message is Map) {
-      return _extractTextPayload(message['content']).trim();
+      return _extractTextPayload(message['content']);
     }
 
     final choiceText = _extractTextPayload(
       firstChoice['text'] ?? firstChoice['content'],
-    ).trim();
+    );
     if (choiceText.isNotEmpty) {
       return choiceText;
     }
@@ -422,25 +422,25 @@ class ChatMessageModel {
     if (!hasTransportShape) {
       return null;
     }
-    return rawOutput.map(_extractTextPayload).join().trim();
+    return rawOutput.map(_extractTextPayload).join();
   }
 
   static String _extractTextPayload(dynamic raw) {
     if (raw == null) return '';
-    if (raw is String) return raw.trim();
+    if (raw is String) return raw;
     if (raw is List) {
-      return raw.map(_extractTextPayload).join().trim();
+      return raw.map(_extractTextPayload).join();
     }
     if (raw is Map) {
       final type = raw['type']?.toString().trim().toLowerCase();
       if (type == 'text' || type == 'output_text') {
-        return _extractTextPayload(raw['text']).trim();
+        return _extractTextPayload(raw['text']);
       }
       if (raw.containsKey('text')) {
-        return _extractTextPayload(raw['text']).trim();
+        return _extractTextPayload(raw['text']);
       }
       if (raw.containsKey('content')) {
-        return _extractTextPayload(raw['content']).trim();
+        return _extractTextPayload(raw['content']);
       }
     }
     return '';
