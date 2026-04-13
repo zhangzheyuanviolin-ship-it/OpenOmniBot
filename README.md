@@ -50,22 +50,22 @@ OpenOmniBot is an on-device AI agent built with native Android Kotlin and Flutte
 
 <h2 id="quick-start">Quick Start</h2>
 
-![example](docs/tutorial/example.jpg)
+![example](docs/tutorial/one.png)
 
 ### Configure the app
 
 Open the settings page from the left sidebar:
 
-![Configure AI capabilities](docs/tutorial/1.png)
-![Configure AI providers](docs/tutorial/2.png)
+![Configure AI capabilities](docs/tutorial/two.png)
+![Configure AI providers](docs/tutorial/three.png)
 
 Then open the scenario model settings:
 
-![Configure AI models](docs/tutorial/3.png)
+![Configure AI models](docs/tutorial/four.png)
 
 Note: `Memory embedding` requires an embedding model. For the best overall experience, the other scenarios should use multimodal or vision-capable models whenever possible.
 
-![Alpine environment](docs/tutorial/alpine.jpg)
+![Alpine environment](docs/tutorial/five.jpg)
 
 The app usually initializes the Alpine environment automatically on startup, and you can also manage that environment from the same settings area.
 
@@ -77,31 +77,31 @@ You can ask OmniBot to install a skill by simply sending it the repository link.
 
 Enable or disable skills from the skill repository:
 
-![Skill store](docs/tutorial/skills_store.jpg)
-![Skill example](docs/tutorial/skills_example.jpg)
+![Skill store](docs/tutorial/six.png)
+![Skill example](docs/tutorial/seven.png)
 
 ### VLM tasks
 
-![VLM task](docs/tutorial/vlm.jpg)
+![VLM task](docs/tutorial/eight.png)
 
 Before starting a task, open the chat page and grant all required permissions from the top-right corner.
 
 ### Local model inference
 
-![Local inference](docs/tutorial/local_inference.jpg)
+![Local inference](docs/tutorial/nine.png)
 
 Supports both MNN and llama backends.
 
 ### Scheduled tasks
 
-![Scheduled task](docs/tutorial/timed.jpg)
-![Timing](docs/tutorial/timing.jpg)
+![Scheduled task](docs/tutorial/ten.png)
+![Timing](docs/tutorial/eleven.png)
 
 Scheduled tasks can execute work such as VLM tasks and subagent flows. Alarms are reminder-only. A subagent can be assigned a complete task and behaves like a full agent.
 
 ### Browser
 
-![Browser](docs/tutorial/browser.jpg)
+![Browser](docs/tutorial/twelve.png)
 
 ### Workspace
 
