@@ -669,18 +669,29 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 val baseUrl = call.argument<String>("baseUrl")?.trim()
                 val isAllowedRequest =
                     (method == "GET" && routePath == "/health") ||
+                        // Function APIs (canonical + legacy)
+                        (method == "GET" && routePath == "/functions") ||
                         (method == "GET" && routePath == "/paths") ||
+                        (method == "DELETE" && Regex("^/functions/[^/]+$").matches(routePath)) ||
                         (method == "DELETE" && Regex("^/paths/[^/]+$").matches(routePath)) ||
+                        (method == "POST" && Regex("^/functions/[^/]+/distill$").matches(routePath)) ||
                         (method == "POST" && Regex("^/paths/[^/]+/distill$").matches(routePath)) ||
+                        (method == "GET" && Regex("^/functions/[^/]+/bundle$").matches(routePath)) ||
                         (method == "GET" && Regex("^/paths/[^/]+/bundle$").matches(routePath)) ||
+                        (method == "POST" && routePath == "/functions/import_bundle") ||
                         (method == "POST" && routePath == "/paths/import_bundle") ||
-                        (method == "GET" && routePath == "/run_logs") ||
-                        (method == "GET" && Regex("^/run_logs/[^/]+$").matches(routePath)) ||
-                        (method == "POST" && routePath == "/run_logs/ingest") ||
-                        (method == "POST" && routePath == "/run_logs/import") ||
+                        (method == "POST" && routePath == "/functions/execute") ||
+                        (method == "POST" && routePath == "/run_compiled_path") ||
+                        (method == "POST" && routePath == "/functions/pull") ||
+                        (method == "POST" && routePath == "/functions/push") ||
                         (method == "POST" && routePath == "/cloud_paths/download") ||
                         (method == "POST" && routePath == "/cloud_paths/upload") ||
-                        (method == "POST" && routePath == "/run_compiled_path")
+                        // Run Log APIs (canonical + legacy)
+                        (method == "GET" && routePath == "/run_logs") ||
+                        (method == "GET" && Regex("^/run_logs/[^/]+$").matches(routePath)) ||
+                        (method == "POST" && routePath == "/run_logs/import_trace") ||
+                        (method == "POST" && routePath == "/run_logs/ingest") ||
+                        (method == "POST" && routePath == "/run_logs/import")
                 if (!isAllowedRequest) {
                     throw IllegalArgumentException("unsupported_utg_debug_route")
                 }

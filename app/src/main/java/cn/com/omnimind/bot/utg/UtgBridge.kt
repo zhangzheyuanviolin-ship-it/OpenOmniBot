@@ -566,7 +566,7 @@ object UtgBridge {
 
     suspend fun runCompiledPath(request: RunCompiledPathRequest): RunCompiledPathResponse? {
         return post(
-            path = "/run_compiled_path",
+            path = "/functions/execute",
             payload = request,
             responseClass = RunCompiledPathResponse::class.java,
         )
@@ -585,7 +585,7 @@ object UtgBridge {
             )
         }
         return post(
-            path = "/run_logs/ingest",
+            path = "/run_logs/import_trace",
             payload = buildIngestPayload(payload),
             responseClass = AppendRunLogResponse::class.java,
         )
