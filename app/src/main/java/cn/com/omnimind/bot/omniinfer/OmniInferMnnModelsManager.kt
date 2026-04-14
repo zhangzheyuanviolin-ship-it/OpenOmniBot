@@ -453,7 +453,24 @@ object OmniInferMnnModelsManager {
             val dirName = modelDir.name
             val resolved = dirNameToModel[dirName]
             val activeTask = resolved?.let { activeDownloads[it.downloadId] }
-            val downloadInfo = activeTask?.info
+            val downloadInfo = activeTask?.info ?: run {
+                val hasPartFiles = modelDir.walkTopDown()
+                    .any { it.isFile && it.name.endsWith(".part") }
+                if (hasPartFiles) {
+                    val savedSize = modelDir.walkTopDown()
+                        .filter { it.isFile }
+                        .sumOf { it.length() }
+                    val total = resolved?.item?.fileSize?.takeIf { it > 0L } ?: savedSize
+                    MnnDownloadInfo(
+                        downloadState = MnnDownloadState.DOWNLOAD_PAUSED,
+                        progress = if (total > 0) savedSize.toDouble() / total else 0.0,
+                        totalSize = total,
+                        savedSize = savedSize,
+                    )
+                } else {
+                    null
+                }
+            }
 
             InstalledModelRecord(
                 id = resolved?.modelId ?: dirName,
@@ -577,12 +594,28 @@ object OmniInferMnnModelsManager {
         val activeTask = activeDownloads[model.downloadId]
         val downloadInfo: MnnDownloadInfo? = activeTask?.info
             ?: if (downloadedFile != null) {
-                MnnDownloadInfo(
-                    downloadState = MnnDownloadState.DOWNLOAD_SUCCESS,
-                    progress = 1.0,
-                    totalSize = model.item.fileSize,
-                    savedSize = model.item.fileSize,
-                )
+                val hasPartFiles = downloadedFile.walkTopDown()
+                    .any { it.isFile && it.name.endsWith(".part") }
+                if (hasPartFiles) {
+                    // Incomplete download: .part files still present
+                    val savedSize = downloadedFile.walkTopDown()
+                        .filter { it.isFile }
+                        .sumOf { it.length() }
+                    val total = if (model.item.fileSize > 0L) model.item.fileSize else savedSize
+                    MnnDownloadInfo(
+                        downloadState = MnnDownloadState.DOWNLOAD_PAUSED,
+                        progress = if (total > 0) savedSize.toDouble() / total else 0.0,
+                        totalSize = total,
+                        savedSize = savedSize,
+                    )
+                } else {
+                    MnnDownloadInfo(
+                        downloadState = MnnDownloadState.DOWNLOAD_SUCCESS,
+                        progress = 1.0,
+                        totalSize = model.item.fileSize,
+                        savedSize = model.item.fileSize,
+                    )
+                }
             } else {
                 null
             }

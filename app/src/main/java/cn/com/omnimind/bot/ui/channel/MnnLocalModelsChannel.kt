@@ -69,8 +69,11 @@ class MnnLocalModelsChannel {
         methodChannel = null
         eventChannel?.setStreamHandler(null)
         eventChannel = null
-        OmniInferModelsManager.clear()
-        OmniInferMnnModelsManager.clear()
+        // NOTE: Do NOT call OmniInferModelsManager.clear() or OmniInferMnnModelsManager.clear()
+        // here. Those methods cancel active downloads, but this clear() is called when the
+        // Flutter view is destroyed (e.g. app goes to background). Downloads should continue
+        // running. The event dispatcher is already disconnected above; it will be reconnected
+        // when the channel is re-established via setChannel().
     }
 
     private fun handleMethodCall(call: MethodCall, result: MethodChannel.Result) {
