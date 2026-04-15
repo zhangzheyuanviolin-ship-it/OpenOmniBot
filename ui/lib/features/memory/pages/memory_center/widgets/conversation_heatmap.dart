@@ -398,106 +398,107 @@ class _ConversationHeatmapState extends State<ConversationHeatmap>
           ),
         ),
         // Heatmap grid: day labels + cells
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Day of week labels
-            SizedBox(
-              width: dayLabelWidth,
-              child: Column(
-                children: [
-                  for (int day = 0; day < 7; day++)
-                    SizedBox(
-                      height: cellSize + cellGap,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: day % 2 == 0
-                            ? Text(
-                                _dayLabel(day),
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark
-                                      ? const Color(0xFF9A9488)
-                                      : const Color(0xFF98A5BB),
-                                ),
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            // Grid cells
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final availableWidth = constraints.maxWidth;
-                  final actualCellSize = totalWeeks > 0
-                      ? (availableWidth - (totalWeeks - 1) * cellGap) /
-                          totalWeeks
-                      : cellSize;
-                  final clampedCellSize = actualCellSize.clamp(4.0, 14.0);
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final gridAvailableWidth =
+                constraints.maxWidth - dayLabelWidth;
+            final actualCellSize = totalWeeks > 0
+                ? (gridAvailableWidth - (totalWeeks - 1) * cellGap) /
+                    totalWeeks
+                : cellSize;
+            final clampedCellSize = actualCellSize.clamp(4.0, 14.0);
+            final gridHeight = 7 * clampedCellSize + 6 * cellGap;
+            final rowHeight = clampedCellSize + cellGap;
 
-                  final gridHeight =
-                      7 * clampedCellSize + 6 * cellGap;
-                  return SizedBox(
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Day of week labels
+                SizedBox(
+                  width: dayLabelWidth,
+                  child: Column(
+                    children: [
+                      for (int day = 0; day < 7; day++)
+                        SizedBox(
+                          height: day < 6 ? rowHeight : clampedCellSize,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: day % 2 == 0
+                                ? Text(
+                                    _dayLabel(day),
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w500,
+                                      color: isDark
+                                          ? const Color(0xFF9A9488)
+                                          : const Color(0xFF98A5BB),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // Grid cells
+                Expanded(
+                  child: SizedBox(
                     height: gridHeight,
                     child: Wrap(
                       direction: Axis.vertical,
                       spacing: cellGap,
                       runSpacing: cellGap,
                       children: List.generate(totalWeeks * 7, (index) {
-                      final week = index ~/ 7;
-                      final dayOfWeek = index % 7;
-                      final cellDate = startDate.add(
-                        Duration(days: week * 7 + dayOfWeek),
-                      );
-
-                      // Skip future dates
-                      if (cellDate.isAfter(today)) {
-                        return SizedBox(
-                          width: clampedCellSize,
-                          height: clampedCellSize,
+                        final week = index ~/ 7;
+                        final dayOfWeek = index % 7;
+                        final cellDate = startDate.add(
+                          Duration(days: week * 7 + dayOfWeek),
                         );
-                      }
 
-                      final key = _dateKey(cellDate);
-                      final count = _activityMap[key] ?? 0;
-                      final level = _intensityLevel(count);
+                        // Skip future dates
+                        if (cellDate.isAfter(today)) {
+                          return SizedBox(
+                            width: clampedCellSize,
+                            height: clampedCellSize,
+                          );
+                        }
 
-                      return Tooltip(
-                        message: count > 0
-                            ? '$count 次对话 · ${cellDate.month}/${cellDate.day}'
-                            : '无对话 · ${cellDate.month}/${cellDate.day}',
-                        preferBelow: false,
-                        verticalOffset: 12,
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF2D3032)
-                              : const Color(0xFF353E53),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white,
-                        ),
-                        child: Container(
-                          width: clampedCellSize,
-                          height: clampedCellSize,
+                        final key = _dateKey(cellDate);
+                        final count = _activityMap[key] ?? 0;
+                        final level = _intensityLevel(count);
+
+                        return Tooltip(
+                          message: count > 0
+                              ? '$count 次对话 · ${cellDate.month}/${cellDate.day}'
+                              : '无对话 · ${cellDate.month}/${cellDate.day}',
+                          preferBelow: false,
+                          verticalOffset: 12,
                           decoration: BoxDecoration(
-                            color: _cellColor(level, isDark),
-                            borderRadius: BorderRadius.circular(2.5),
+                            color: isDark
+                                ? const Color(0xFF2D3032)
+                                : const Color(0xFF353E53),
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                        ),
-                      );
-                    }),
+                          textStyle: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                          ),
+                          child: Container(
+                            width: clampedCellSize,
+                            height: clampedCellSize,
+                            decoration: BoxDecoration(
+                              color: _cellColor(level, isDark),
+                              borderRadius: BorderRadius.circular(2.5),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
                   ),
-                  );
-                },
-              ),
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         ),
       ],
     );
