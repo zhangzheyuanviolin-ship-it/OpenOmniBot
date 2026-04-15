@@ -10,6 +10,8 @@ import UserNotifications
 final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi, @preconcurrency WorkspaceBridgeApi, @preconcurrency TerminalRuntimeBridgeApi, @preconcurrency LocalModelBridgeApi, @preconcurrency BrowserBridgeApi, @preconcurrency PermissionBridgeApi, @preconcurrency DeviceBridgeApi {
     static let shared = OmnibotBridgeRegistry()
 
+    private let conversationArchiveStore = ConversationArchiveStore.shared
+    private let agentTaskCoordinator = IOSAgentTaskCoordinator.shared
     private let modelProviderStore = ModelProviderProfileStore.shared
 
     private var specialPermissionChannel: FlutterMethodChannel?
@@ -506,6 +508,286 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
     private func handleAssistCoreCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         let arguments = (call.arguments as? [String: Any]) ?? [:]
         switch call.method {
+        case "getConversations":
+            result(conversationArchiveStore.listConversationPayloads())
+        case "createConversation":
+            let payload = conversationArchiveStore.createConversation(
+                title: arguments["title"] as? String ?? "新对话",
+                summary: arguments["summary"] as? String,
+                mode: arguments["mode"] as? String ?? "normal"
+            )
+            notifyConversationListChanged(reason: "conversation_created", conversation: payload)
+            result(payload["id"])
+        case "updateConversation":
+            do {
+                let payload = try conversationArchiveStore.updateConversation(
+                    from: stringAnyDictionary(arguments["conversation"])
+                )
+                notifyConversationListChanged(reason: "conversation_updated", conversation: payload)
+                result("SUCCESS")
+            } catch {
+                result(
+                    FlutterError(
+                        code: "UPDATE_CONVERSATION_ERROR",
+                        message: error.localizedDescription,
+                        details: nil
+                    )
+                )
+            }
+        case "deleteConversation":
+            let conversationId = integerValue(arguments["conversationId"]) ?? 0
+            guard conversationId > 0 else {
+                result(
+                    FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "conversationId is invalid",
+                        details: nil
+                    )
+                )
+                return
+            }
+            if let payload = conversationArchiveStore.deleteConversation(conversationId: conversationId) {
+                notifyConversationListChanged(reason: "conversation_deleted", conversation: payload)
+                notifyConversationMessagesChanged(
+                    conversationId: conversationId,
+                    mode: (payload["mode"] as? String) ?? "normal",
+                    reason: "conversation_deleted"
+                )
+            }
+            result("SUCCESS")
+        case "updateConversationPromptTokenThreshold":
+            let conversationId = integerValue(arguments["conversationId"]) ?? 0
+            let promptTokenThreshold = integerValue(arguments["promptTokenThreshold"]) ?? 0
+            guard conversationId > 0, promptTokenThreshold > 0 else {
+                result(
+                    FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "conversationId or promptTokenThreshold is invalid",
+                        details: nil
+                    )
+                )
+                return
+            }
+            do {
+                let payload = try conversationArchiveStore.updateConversationPromptTokenThreshold(
+                    conversationId: conversationId,
+                    promptTokenThreshold: promptTokenThreshold
+                )
+                notifyConversationListChanged(reason: "conversation_updated", conversation: payload)
+                result("SUCCESS")
+            } catch {
+                result(
+                    FlutterError(
+                        code: "UPDATE_CONVERSATION_THRESHOLD_ERROR",
+                        message: error.localizedDescription,
+                        details: nil
+                    )
+                )
+            }
+        case "updateConversationTitle":
+            let conversationId = integerValue(arguments["conversationId"]) ?? 0
+            let newTitle = arguments["newTitle"] as? String ?? ""
+            guard conversationId > 0 else {
+                result(
+                    FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "conversationId is invalid",
+                        details: nil
+                    )
+                )
+                return
+            }
+            do {
+                let payload = try conversationArchiveStore.updateConversationTitle(
+                    conversationId: conversationId,
+                    newTitle: newTitle
+                )
+                notifyConversationListChanged(reason: "conversation_updated", conversation: payload)
+                result("SUCCESS")
+            } catch {
+                result(
+                    FlutterError(
+                        code: "UPDATE_CONVERSATION_TITLE_ERROR",
+                        message: error.localizedDescription,
+                        details: nil
+                    )
+                )
+            }
+        case "generateConversationSummary":
+            result(
+                conversationArchiveStore.generateConversationSummary(
+                    from: arguments["conversationHistory"] as? String ?? ""
+                )
+            )
+        case "completeConversation":
+            let conversationId = integerValue(arguments["conversationId"]) ?? 0
+            guard conversationId > 0 else {
+                result(
+                    FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "conversationId is invalid",
+                        details: nil
+                    )
+                )
+                return
+            }
+            do {
+                let payload = try conversationArchiveStore.completeConversation(conversationId: conversationId)
+                notifyConversationListChanged(reason: "conversation_updated", conversation: payload)
+                result("SUCCESS")
+            } catch {
+                result(
+                    FlutterError(
+                        code: "COMPLETE_CONVERSATION_ERROR",
+                        message: error.localizedDescription,
+                        details: nil
+                    )
+                )
+            }
+        case "setCurrentConversationId":
+            conversationArchiveStore.setCurrentConversationId(
+                integerValue(arguments["conversationId"]),
+                mode: arguments["mode"] as? String ?? "normal"
+            )
+            result("SUCCESS")
+        case "getConversationMessages":
+            let conversationId = integerValue(arguments["conversationId"]) ?? 0
+            let mode = arguments["mode"] as? String ?? arguments["conversationMode"] as? String ?? "normal"
+            guard conversationId > 0 else {
+                result(
+                    FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "conversationId is invalid",
+                        details: nil
+                    )
+                )
+                return
+            }
+            result(
+                conversationArchiveStore.listConversationMessages(
+                    conversationId: conversationId,
+                    mode: mode
+                )
+            )
+        case "replaceConversationMessages":
+            let conversationId = integerValue(arguments["conversationId"]) ?? 0
+            let mode = arguments["mode"] as? String ?? arguments["conversationMode"] as? String ?? "normal"
+            guard conversationId > 0 else {
+                result(
+                    FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "conversationId is invalid",
+                        details: nil
+                    )
+                )
+                return
+            }
+            conversationArchiveStore.replaceConversationMessages(
+                conversationId: conversationId,
+                mode: mode,
+                messages: stringAnyDictionaryArray(arguments["messages"])
+            )
+            notifyConversationMessagesChanged(
+                conversationId: conversationId,
+                mode: mode,
+                reason: "messages_replaced"
+            )
+            if let payload = conversationPayload(for: conversationId) {
+                notifyConversationListChanged(reason: "conversation_updated", conversation: payload)
+            }
+            result("SUCCESS")
+        case "upsertConversationUiCard":
+            let conversationId = integerValue(arguments["conversationId"]) ?? 0
+            let mode = arguments["mode"] as? String ?? arguments["conversationMode"] as? String ?? "normal"
+            let entryId = (arguments["entryId"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard conversationId > 0, entryId.isEmpty == false else {
+                result(
+                    FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "conversationId or entryId is invalid",
+                        details: nil
+                    )
+                )
+                return
+            }
+            conversationArchiveStore.upsertConversationUiCard(
+                conversationId: conversationId,
+                mode: mode,
+                entryId: entryId,
+                cardData: stringAnyDictionary(arguments["cardData"]),
+                createdAt: integerValue(arguments["createdAt"]) ?? 0
+            )
+            notifyConversationMessagesChanged(
+                conversationId: conversationId,
+                mode: mode,
+                reason: "messages_replaced"
+            )
+            if let payload = conversationPayload(for: conversationId) {
+                notifyConversationListChanged(reason: "conversation_updated", conversation: payload)
+            }
+            result("SUCCESS")
+        case "clearConversationMessages":
+            let conversationId = integerValue(arguments["conversationId"]) ?? 0
+            let mode = arguments["mode"] as? String ?? arguments["conversationMode"] as? String ?? "normal"
+            guard conversationId > 0 else {
+                result(
+                    FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "conversationId is invalid",
+                        details: nil
+                    )
+                )
+                return
+            }
+            conversationArchiveStore.clearConversationMessages(conversationId: conversationId, mode: mode)
+            notifyConversationMessagesChanged(
+                conversationId: conversationId,
+                mode: mode,
+                reason: "messages_replaced"
+            )
+            if let payload = conversationPayload(for: conversationId) {
+                notifyConversationListChanged(reason: "conversation_updated", conversation: payload)
+            }
+            result("SUCCESS")
+        case "createAgentTask":
+            do {
+                try agentTaskCoordinator.createAgentTask(
+                    arguments: arguments,
+                    eventSink: { [weak self] method, payload in
+                        self?.emitAssistCoreEvent(method, arguments: payload)
+                    }
+                )
+                result("SUCCESS")
+            } catch {
+                result(
+                    FlutterError(
+                        code: "CREATE_AGENT_TASK_ERROR",
+                        message: error.localizedDescription,
+                        details: nil
+                    )
+                )
+            }
+        case "cancelChatTask":
+            agentTaskCoordinator.cancelTask(taskId: arguments["taskId"] as? String)
+            result("SUCCESS")
+        case "postLLMChat":
+            Task {
+                do {
+                    let reply = try await agentTaskCoordinator.postLLMChat(
+                        text: arguments["text"] as? String ?? "",
+                        modelScene: arguments["model"] as? String ?? "scene.dispatch.model"
+                    )
+                    result(reply)
+                } catch {
+                    result(
+                        FlutterError(
+                            code: "POST_LLM_CHAT_ERROR",
+                            message: error.localizedDescription,
+                            details: nil
+                        )
+                    )
+                }
+            }
         case "getModelProviderConfig":
             Task {
                 result(await modelProviderStore.currentConfig())
@@ -650,9 +932,76 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
             "source": "file",
             "path": "/workspace/.omnibot/provider-config.json",
         ]
+        emitAssistCoreEvent("onAgentAiConfigChanged", arguments: payload)
+    }
+
+    private func notifyConversationListChanged(reason: String, conversation: [String: Any]) {
+        emitAssistCoreEvent(
+            "onConversationListChanged",
+            arguments: [
+                "reason": reason,
+                "conversationId": conversation["id"] ?? NSNull(),
+                "mode": conversation["mode"] ?? "normal",
+                "conversation": conversation,
+            ]
+        )
+    }
+
+    private func notifyConversationMessagesChanged(
+        conversationId: Int,
+        mode: String,
+        reason: String
+    ) {
+        emitAssistCoreEvent(
+            "onConversationMessagesChanged",
+            arguments: [
+                "reason": reason,
+                "conversationId": conversationId,
+                "mode": mode,
+            ]
+        )
+    }
+
+    private func emitAssistCoreEvent(_ method: String, arguments: [String: Any]) {
         for channel in assistCoreChannels {
-            channel.invokeMethod("onAgentAiConfigChanged", arguments: payload)
+            channel.invokeMethod(method, arguments: arguments)
         }
+    }
+
+    private func conversationPayload(for conversationId: Int) -> [String: Any]? {
+        conversationArchiveStore
+            .listConversationPayloads()
+            .first(where: { integerValue($0["id"]) == conversationId })
+    }
+
+    private func integerValue(_ raw: Any?) -> Int? {
+        switch raw {
+        case let int as Int:
+            return int
+        case let number as NSNumber:
+            return number.intValue
+        case let string as String:
+            return Int(string.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            return nil
+        }
+    }
+
+    private func stringAnyDictionary(_ raw: Any?) -> [String: Any] {
+        if let dictionary = raw as? [String: Any] {
+            return dictionary
+        }
+        if let dictionary = raw as? [AnyHashable: Any] {
+            return dictionary.reduce(into: [String: Any]()) { partialResult, entry in
+                partialResult[String(describing: entry.key)] = entry.value
+            }
+        }
+        return [:]
+    }
+
+    private func stringAnyDictionaryArray(_ raw: Any?) -> [[String: Any]] {
+        guard let array = raw as? [Any] else { return [] }
+        return array.compactMap { stringAnyDictionary($0) }.filter { $0.isEmpty == false }
     }
 
     private func terminalStatusDictionary(_ status: TerminalRuntimeStatusMessage) -> [String: Any] {

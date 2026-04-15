@@ -669,6 +669,15 @@ private enum ProviderProfile {
 }
 
 extension ModelProviderProfileStore {
+    struct CompletionRequestConfig {
+        let providerProfileId: String
+        let providerProfileName: String
+        let apiBase: String
+        let apiKey: String
+        let modelId: String
+        let protocolType: String
+    }
+
     enum StoreError: LocalizedError {
         case readOnlyProfile
         case lastEditableProfile
@@ -889,6 +898,69 @@ extension ModelProviderProfileStore {
         return sceneModelOverridesPayload()
     }
 
+    func resolveCompletionRequestConfig(
+        sceneId: String,
+        modelOverride: [String: Any]?
+    ) async throws -> CompletionRequestConfig {
+        let normalizedSceneID = sceneId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackDefinition = sceneCatalogDefinitions.first(where: { $0.sceneId == normalizedSceneID })
+            ?? sceneCatalogDefinitions.first(where: { $0.sceneId == "scene.dispatch.model" })
+            ?? SceneCatalogDefinition(
+                sceneId: "scene.dispatch.model",
+                description: "Agent",
+                defaultModel: "qwen3.5-plus",
+                transport: "openai_compatible",
+                configSource: "builtin"
+            )
+
+        let profiles = await listProfiles()
+        let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+
+        if let override = sanitizedModelOverride(modelOverride, profilesByID: profilesByID) {
+            return override
+        }
+
+        let bindings = storedSceneModelBindings()
+        if let binding = bindings[normalizedSceneID],
+           let profile = profilesByID[binding.providerProfileId],
+           profile.isConfigured
+        {
+            return CompletionRequestConfig(
+                providerProfileId: profile.id,
+                providerProfileName: profile.name,
+                apiBase: profile.baseURL,
+                apiKey: profile.apiKey,
+                modelId: binding.modelId,
+                protocolType: profile.protocolType
+            )
+        }
+
+        let editing = await editingProfile()
+        if editing.isConfigured {
+            return CompletionRequestConfig(
+                providerProfileId: editing.id,
+                providerProfileName: editing.name,
+                apiBase: editing.baseURL,
+                apiKey: editing.apiKey,
+                modelId: fallbackDefinition.defaultModel,
+                protocolType: editing.protocolType
+            )
+        }
+
+        if let fallbackProfile = profiles.first(where: { $0.isConfigured }) {
+            return CompletionRequestConfig(
+                providerProfileId: fallbackProfile.id,
+                providerProfileName: fallbackProfile.name,
+                apiBase: fallbackProfile.baseURL,
+                apiKey: fallbackProfile.apiKey,
+                modelId: fallbackDefinition.defaultModel,
+                protocolType: fallbackProfile.protocolType
+            )
+        }
+
+        throw StoreError.invalidProviderProfile
+    }
+
     private func storedSceneModelBindings() -> [String: SceneModelBindingRecord] {
         if
             let data = defaults.data(forKey: sceneModelBindingsKey),
@@ -943,6 +1015,47 @@ extension ModelProviderProfileStore {
     private func isValidSceneModelName(_ value: String) -> Bool {
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized.isEmpty == false && normalized.hasPrefix("scene.") == false
+    }
+
+    private func sanitizedModelOverride(
+        _ raw: [String: Any]?,
+        profilesByID: [String: ProviderProfile]
+    ) -> CompletionRequestConfig? {
+        guard let raw else {
+            return nil
+        }
+        let providerProfileID = canonicalProfileID(
+            (raw["providerProfileId"] as? String ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        let modelID = (raw["modelId"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard providerProfileID.isEmpty == false,
+              modelID.isEmpty == false,
+              isValidSceneModelName(modelID),
+              let profile = profilesByID[providerProfileID],
+              profile.isConfigured
+        else {
+            return nil
+        }
+
+        let explicitBase = normalizeBaseURL(
+            (raw["apiBase"] as? String ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        let explicitProtocol = (raw["protocolType"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let explicitAPIKey = (raw["apiKey"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return CompletionRequestConfig(
+            providerProfileId: profile.id,
+            providerProfileName: profile.name,
+            apiBase: explicitBase ?? profile.baseURL,
+            apiKey: explicitAPIKey.isEmpty ? profile.apiKey : explicitAPIKey,
+            modelId: modelID,
+            protocolType: explicitProtocol.isEmpty ? profile.protocolType : explicitProtocol
+        )
     }
 
     private func nullable(_ value: String?) -> Any {

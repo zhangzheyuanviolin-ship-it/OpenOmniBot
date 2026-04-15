@@ -26,6 +26,8 @@
 		B10000000000000000000011 /* SpeechRecognitionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* SpeechRecognitionCoordinator.swift */; };
 		B10000000000000000000012 /* OmnibotChromeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* OmnibotChromeCoordinator.swift */; };
 		B10000000000000000000013 /* ModelProviderProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* ModelProviderProfileStore.swift */; };
+		B10000000000000000000014 /* ConversationArchiveStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* ConversationArchiveStore.swift */; };
+		B10000000000000000000015 /* IOSAgentTaskCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* IOSAgentTaskCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -68,6 +70,8 @@
 		A10000000000000000000011 /* SpeechRecognitionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Speech/SpeechRecognitionCoordinator.swift; sourceTree = "<group>"; };
 		A10000000000000000000012 /* OmnibotChromeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/OmnibotChromeCoordinator.swift; sourceTree = "<group>"; };
 		A10000000000000000000013 /* ModelProviderProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage/ModelProviderProfileStore.swift; sourceTree = "<group>"; };
+		A10000000000000000000014 /* ConversationArchiveStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage/ConversationArchiveStore.swift; sourceTree = "<group>"; };
+		A10000000000000000000015 /* IOSAgentTaskCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runtime/IOSAgentTaskCoordinator.swift; sourceTree = "<group>"; };
 		A83B47753FAF62F657D3AB7E /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		CF1271C3F54D2F4C6D761C56 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		D891000529BED7FE13ACFACA /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
@@ -150,8 +154,10 @@
 				A10000000000000000000010 /* AgentBrowserPlatformView.swift */,
 				A10000000000000000000006 /* LocalModelCoordinator.swift */,
 				A10000000000000000000007 /* TerminalRuntimeCoordinator.swift */,
+				A10000000000000000000015 /* IOSAgentTaskCoordinator.swift */,
 				A10000000000000000000008 /* OmnibotBridgeRegistry.swift */,
 				A10000000000000000000013 /* ModelProviderProfileStore.swift */,
+				A10000000000000000000014 /* ConversationArchiveStore.swift */,
 				A10000000000000000000009 /* HostBridge.g.swift */,
 				A10000000000000000000011 /* SpeechRecognitionCoordinator.swift */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
@@ -368,6 +374,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000000000000000000015 /* IOSAgentTaskCoordinator.swift in Sources */,
+				B10000000000000000000014 /* ConversationArchiveStore.swift in Sources */,
 				B10000000000000000000009 /* HostBridge.g.swift in Sources */,
 				B10000000000000000000013 /* ModelProviderProfileStore.swift in Sources */,
 				B10000000000000000000011 /* SpeechRecognitionCoordinator.swift in Sources */,
