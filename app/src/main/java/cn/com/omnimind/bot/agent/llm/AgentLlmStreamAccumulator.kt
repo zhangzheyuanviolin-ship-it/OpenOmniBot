@@ -12,6 +12,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import cn.com.omnimind.baselib.util.OmniLog
 import java.util.SortedMap
 import java.util.TreeMap
 
@@ -20,6 +21,7 @@ class AgentLlmStreamAccumulator(
     private val preferInlineThinkTags: Boolean = false
 ) {
     companion object {
+        private const val TAG = "AgentLlmStreamAccumulator"
         private const val THINK_OPEN_TAG = "<think>"
         private const val THINK_CLOSE_TAG = "</think>"
         private val INLINE_THINK_TAGS = listOf(THINK_OPEN_TAG, THINK_CLOSE_TAG)
@@ -31,14 +33,18 @@ class AgentLlmStreamAccumulator(
     private val toolCallBuilders: SortedMap<Int, MutableToolCallBuilder> = TreeMap()
     private var finishReason: String? = null
     private var usage: ChatCompletionUsage? = null
+    private var decodeTokensPerSecond: Double? = null
     private var seenChunk = false
     private var lastChunkPreview: String = ""
     private var thinkSectionOpen = false
     private var inlineThinkTagObserved = false
 
+    private var chunkIndex = 0
+
     fun consume(rawChunk: String): Boolean {
         val trimmed = rawChunk.trim()
         if (trimmed.isEmpty()) return false
+        OmniLog.d(TAG, "[stream chunk#${chunkIndex++}] raw(${trimmed.length}): ${trimmed.take(500)}")
         lastChunkPreview = trimmed.take(500)
         splitCompositeChunk(trimmed)?.let { segments ->
             var done = false
@@ -63,7 +69,12 @@ class AgentLlmStreamAccumulator(
 
     private fun consumeJsonChunk(root: JsonObject): Boolean {
         seenChunk = true
+        val prevContentLen = contentBuffer.length
+        val prevReasoningLen = reasoningBuffer.length
+        val prevToolCallCount = toolCallBuilders.size
+
         usage = decodeUsage(root["usage"]) ?: usage
+        decodeTokensPerSecond = decodeTimings(root["timings"]) ?: decodeTokensPerSecond
 
         var chunkHasPayload = false
         val choices = root["choices"] as? JsonArray
@@ -90,6 +101,23 @@ class AgentLlmStreamAccumulator(
                 appendReasoningPayload(outputObj["reasoning"])
             }
         }
+
+        // Log parsed deltas
+        val contentDelta = contentBuffer.length - prevContentLen
+        val reasoningDelta = reasoningBuffer.length - prevReasoningLen
+        val newToolCalls = toolCallBuilders.size - prevToolCallCount
+        if (contentDelta > 0 || reasoningDelta > 0 || newToolCalls > 0 || finishReason != null || usage != null) {
+            val parts = mutableListOf<String>()
+            if (contentDelta > 0) parts += "content+=$contentDelta"
+            if (reasoningDelta > 0) parts += "reasoning+=$reasoningDelta"
+            if (newToolCalls > 0) parts += "new_tool_calls=$newToolCalls"
+            finishReason?.let { parts += "finish=$it" }
+            usage?.let { u ->
+                parts += "usage(prompt=${u.promptTokens},completion=${u.completionTokens},total=${u.totalTokens})"
+            }
+            OmniLog.d(TAG, "[stream parse] ${parts.joinToString(", ")}")
+        }
+
         return false
     }
 
@@ -162,9 +190,9 @@ class AgentLlmStreamAccumulator(
         return runCatching { json.parseToJsonElement(raw) as? JsonObject }.getOrNull()
     }
 
-    fun currentReasoning(): String = reasoningBuffer.toString()
+    fun currentReasoning(): String = sanitizeUtf16ForInterop(reasoningBuffer.toString())
 
-    fun currentContent(): String = contentBuffer.toString()
+    fun currentContent(): String = sanitizeUtf16ForInterop(contentBuffer.toString())
 
     fun buildTurn(): ChatCompletionTurn {
         if (!seenChunk) {
@@ -186,7 +214,8 @@ class AgentLlmStreamAccumulator(
             )
         }
 
-        val content = contentBuffer.toString()
+        val content = sanitizeUtf16ForInterop(contentBuffer.toString())
+        val reasoning = sanitizeUtf16ForInterop(reasoningBuffer.toString())
         if (finishReasonIndicatesToolCall(finishReason) && toolCalls.isEmpty()) {
             throw IllegalStateException(
                 "finish_reason indicates tool call but no tool_calls parsed; finish_reason=${finishReason.orEmpty()}, last_chunk=$lastChunkPreview"
@@ -198,16 +227,29 @@ class AgentLlmStreamAccumulator(
             )
         }
 
-        return ChatCompletionTurn(
+        val turn = ChatCompletionTurn(
             message = ChatCompletionMessage(
                 role = "assistant",
                 content = content.ifBlank { null }?.let(::JsonPrimitive),
                 toolCalls = toolCalls.ifEmpty { null }
             ),
-            reasoning = reasoningBuffer.toString(),
+            reasoning = reasoning,
             finishReason = finishReason,
-            usage = usage
+            usage = usageWithDecodedTiming()
         )
+
+        OmniLog.i(
+            TAG,
+            "[stream done] chunks=$chunkIndex, content_len=${content.length}, " +
+                "reasoning_len=${reasoningBuffer.length}, tool_calls=${toolCalls.size}, " +
+                "finish=$finishReason" +
+                (turn.usage?.let { u ->
+                    ", usage(prompt=${u.promptTokens}, completion=${u.completionTokens}, total=${u.totalTokens}" +
+                        (u.decodeTokensPerSecond?.let { ", decode=${it}tok/s" }.orEmpty()) + ")"
+                }.orEmpty())
+        )
+
+        return turn
     }
 
     private data class MutableToolCallBuilder(
@@ -354,9 +396,38 @@ class AgentLlmStreamAccumulator(
             promptTokens = obj["prompt_tokens"]?.jsonPrimitive?.intOrNull,
             completionTokens = obj["completion_tokens"]?.jsonPrimitive?.intOrNull,
             totalTokens = obj["total_tokens"]?.jsonPrimitive?.intOrNull,
+            prefillTokensPerSecond =
+                obj["prefill_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
+            decodeTokensPerSecond =
+                obj["decode_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
             promptTokensDetails = obj["prompt_tokens_details"],
             completionTokensDetails = obj["completion_tokens_details"]
         )
+    }
+
+    private fun usageWithDecodedTiming(): ChatCompletionUsage? {
+        val decode = decodeTokensPerSecond
+        val currentUsage = usage
+        if (decode == null) {
+            return currentUsage
+        }
+        if (currentUsage?.decodeTokensPerSecond == decode) {
+            return currentUsage
+        }
+        return ChatCompletionUsage(
+            promptTokens = currentUsage?.promptTokens,
+            completionTokens = currentUsage?.completionTokens,
+            totalTokens = currentUsage?.totalTokens,
+            prefillTokensPerSecond = currentUsage?.prefillTokensPerSecond,
+            decodeTokensPerSecond = decode,
+            promptTokensDetails = currentUsage?.promptTokensDetails,
+            completionTokensDetails = currentUsage?.completionTokensDetails
+        )
+    }
+
+    private fun decodeTimings(element: JsonElement?): Double? {
+        val obj = element as? JsonObject ?: return null
+        return obj["predicted_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
     }
 
     private fun appendReasoningPayload(element: JsonElement?) {
@@ -529,5 +600,65 @@ class AgentLlmStreamAccumulator(
         return normalized == "tool_calls" ||
             normalized == "function_call" ||
             normalized == "tool_use"
+    }
+
+    private fun sanitizeUtf16ForInterop(text: String): String {
+        if (text.isEmpty()) {
+            return text
+        }
+
+        var index = 0
+        var needsSanitization = false
+        while (index < text.length) {
+            val current = text[index]
+            when {
+                Character.isHighSurrogate(current) -> {
+                    if (index + 1 < text.length && Character.isLowSurrogate(text[index + 1])) {
+                        index += 2
+                    } else {
+                        needsSanitization = true
+                        index = text.length
+                    }
+                }
+
+                Character.isLowSurrogate(current) -> {
+                    needsSanitization = true
+                    index = text.length
+                }
+
+                else -> index += 1
+            }
+        }
+
+        if (!needsSanitization) {
+            return text
+        }
+
+        val sanitized = StringBuilder(text.length)
+        index = 0
+        while (index < text.length) {
+            val current = text[index]
+            when {
+                Character.isHighSurrogate(current) -> {
+                    if (index + 1 < text.length && Character.isLowSurrogate(text[index + 1])) {
+                        sanitized.append(current)
+                        sanitized.append(text[index + 1])
+                        index += 2
+                    } else {
+                        index += 1
+                    }
+                }
+
+                Character.isLowSurrogate(current) -> {
+                    index += 1
+                }
+
+                else -> {
+                    sanitized.append(current)
+                    index += 1
+                }
+            }
+        }
+        return sanitized.toString()
     }
 }

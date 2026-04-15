@@ -31,6 +31,8 @@ data class ChatCompletionRequest(
     val functions: List<ChatCompletionFunction>? = null,
     @SerialName("function_call")
     val functionCall: JsonElement? = null,
+    @SerialName("reasoning_effort")
+    val reasoningEffort: String? = null,
     @SerialName("enable_thinking")
     val enableThinking: Boolean? = null
 )
@@ -170,6 +172,10 @@ data class ChatCompletionUsage(
     val completionTokens: Int? = null,
     @SerialName("total_tokens")
     val totalTokens: Int? = null,
+    @SerialName("prefill_tokens_per_second")
+    val prefillTokensPerSecond: Double? = null,
+    @SerialName("decode_tokens_per_second")
+    val decodeTokensPerSecond: Double? = null,
     @SerialName("prompt_tokens_details")
     val promptTokensDetails: JsonElement? = null,
     @SerialName("completion_tokens_details")

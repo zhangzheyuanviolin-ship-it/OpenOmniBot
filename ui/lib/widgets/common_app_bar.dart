@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
-import 'package:ui/theme/app_colors.dart';
+import 'package:ui/l10n/l10n.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/widgets/ai_generated_badge.dart';
 
 /// 通用 AppBar 组件
-/// 
+///
 /// 统一应用内页面的顶部导航栏样式，支持多种展示模式：
 /// - 简单返回模式：仅显示返回按钮
 /// - 标题模式：显示居中标题 + 返回按钮
@@ -40,7 +41,7 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
   final double? leadingWidth;
 
   /// 返回图标颜色
-  final Color backIconColor;
+  final Color? backIconColor;
 
   /// 标题文字样式（可选，有默认值）
   final TextStyle? titleStyle;
@@ -49,7 +50,7 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
   final double height;
 
   /// 背景色
-  final Color backgroundColor;
+  final Color? backgroundColor;
 
   /// 是否作为 Scaffold.appBar 使用
   final bool primary;
@@ -68,10 +69,10 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.showLeading = true,
     this.leading,
     this.leadingWidth,
-    this.backIconColor = AppColors.text,
+    this.backIconColor,
     this.titleStyle,
     this.height = 44,
-    this.backgroundColor = Colors.white,
+    this.backgroundColor,
     this.primary = false,
     this.centerTitle = true,
   });
@@ -81,6 +82,11 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final resolvedTitleColor = titleStyle?.color ?? palette.textPrimary;
+    final resolvedBackIconColor = backIconColor ?? resolvedTitleColor;
+    final resolvedBackgroundColor =
+        backgroundColor ?? Theme.of(context).appBarTheme.backgroundColor;
     final resolvedLeading =
         leading ??
         (showLeading
@@ -95,7 +101,7 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
                       width: 24,
                       height: 24,
                       colorFilter: ColorFilter.mode(
-                        backIconColor,
+                        resolvedBackIconColor,
                         BlendMode.srcIn,
                       ),
                     ),
@@ -110,30 +116,31 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
       primary: primary,
       automaticallyImplyLeading: false,
       toolbarHeight: height,
-      backgroundColor: backgroundColor,
+      backgroundColor: resolvedBackgroundColor,
       elevation: 0,
       scrolledUnderElevation: 0,
-      surfaceTintColor: backgroundColor,
+      surfaceTintColor: resolvedBackgroundColor,
       shadowColor: Colors.transparent,
       leadingWidth: resolvedLeading == null ? leadingWidth : leadingWidth ?? 56,
       leading: resolvedLeading,
       centerTitle: centerTitle,
-      title: titleWidget ??
+      title:
+          titleWidget ??
           (title == null
               ? null
               : Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      title!,
+                      context.trLegacy(title!),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style:
                           titleStyle ??
-                          const TextStyle(
+                          TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.text,
+                            color: palette.textPrimary,
                             fontFamily: 'SF Pro',
                           ),
                     ),

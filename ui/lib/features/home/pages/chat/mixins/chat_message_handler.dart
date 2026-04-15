@@ -89,7 +89,7 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
       isError = false;
       isSummarizing = false;
     } else {
-      final text = (payload['text'] ?? '').toString();
+      final text = extractChatTaskText(content, fallbackToRawText: false);
       currentAiMessages[taskId] = (currentAiMessages[taskId] ?? '') + text;
       messageText = currentAiMessages[taskId] ?? '';
       isError = false;

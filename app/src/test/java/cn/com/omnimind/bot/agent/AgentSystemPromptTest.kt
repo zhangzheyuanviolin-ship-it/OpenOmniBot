@@ -1,5 +1,6 @@
 package cn.com.omnimind.bot.agent
 
+import cn.com.omnimind.baselib.i18n.PromptLocale
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertTrue
@@ -24,7 +25,8 @@ class AgentSystemPromptTest {
             skillsRootShellPath = "/workspace/.omnibot/skills",
             skillsRootAndroidPath = "/data/user/0/cn.com.omnimind.bot/workspace/.omnibot/skills",
             resolvedSkills = emptyList(),
-            memoryContext = null
+            memoryContext = null,
+            locale = PromptLocale.ZH_CN
         )
 
         assertTrue(prompt.contains(".venv"))
@@ -45,5 +47,31 @@ class AgentSystemPromptTest {
             "\"ephemeral\"",
             (firstBlock["cache_control"] as JsonObject)["type"].toString()
         )
+    }
+
+    @Test
+    fun buildUsesEnglishPromptWhenLocaleIsEnglish() {
+        val prompt = AgentSystemPrompt.build(
+            workspace = AgentWorkspaceDescriptor(
+                id = "conversation-1",
+                rootPath = "/workspace",
+                androidRootPath = "/data/user/0/cn.com.omnimind.bot/workspace",
+                uriRoot = "omnibot://workspace",
+                currentCwd = "/workspace/demo",
+                androidCurrentCwd = "/data/user/0/cn.com.omnimind.bot/workspace/demo",
+                shellRootPath = "/workspace",
+                retentionPolicy = "shared_root"
+            ),
+            installedSkills = emptyList(),
+            skillsRootShellPath = "/workspace/.omnibot/skills",
+            skillsRootAndroidPath = "/data/user/0/cn.com.omnimind.bot/workspace/.omnibot/skills",
+            resolvedSkills = emptyList(),
+            memoryContext = null,
+            locale = PromptLocale.EN_US
+        )
+
+        assertTrue(prompt.contains("You are an AI Agent operating inside an Alpine workspace environment"))
+        assertTrue(prompt.contains("File and artifact rules"))
+        assertTrue(prompt.contains("Skills:"))
     }
 }

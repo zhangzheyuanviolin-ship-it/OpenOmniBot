@@ -6,6 +6,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     super.initState();
 
     WidgetsBinding.instance.addObserver(this);
+    _loadHdPadPanePreferences();
     _checkCompanionTaskState();
     AssistsMessageService.setOnTaskFinishCallback(() {
       if (!mounted || _isCompanionToggleLoading) return;
@@ -28,6 +29,16 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     AppUpdateService.statusNotifier.addListener(_handleAppUpdateStatusChanged);
     _appUpdateStatus = AppUpdateService.statusNotifier.value;
     unawaited(AppUpdateService.initialize());
+    _conversationListChangedSubscription = AssistsMessageService
+        .conversationListChangedStream
+        .listen((_) {
+          unawaited(_handleExternalConversationListChanged());
+        });
+    _conversationMessagesChangedSubscription = AssistsMessageService
+        .conversationMessagesChangedStream
+        .listen((event) {
+          unawaited(_handleExternalConversationMessagesChanged(event));
+        });
 
     _inputFocusNode.addListener(_onFocusChange);
     _messageController.addListener(_handleSlashCommandInput);
@@ -37,6 +48,16 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final mediaQuery = MediaQuery.maybeOf(context);
+    if (mediaQuery != null &&
+        _isHdPadLandscapeForMediaQuery(mediaQuery) &&
+        _activeSurfaceMode == ChatSurfaceMode.workspace) {
+      _activeSurfaceMode = ChatSurfaceMode.normal;
+      _setChatIslandDisplayLayerForMode(
+        ChatPageMode.normal,
+        ChatIslandDisplayLayer.model,
+      );
+    }
     final route = ModalRoute.of(context);
     if (route is PageRoute && route != _subscribedRoute) {
       if (_subscribedRoute != null) {
@@ -510,6 +531,8 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     unawaited(_runtimeCoordinator.flushAllPendingPersistence());
     unawaited(_persistVisibleThreadTargetIfNeeded());
     _cancelNormalSurfaceModelReveal();
+    _conversationListChangedSubscription?.cancel();
+    _conversationMessagesChangedSubscription?.cancel();
     if (_subscribedRoute != null) {
       GoRouterManager.routeObserver.unsubscribe(this);
       _subscribedRoute = null;
@@ -544,7 +567,9 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   void didPop() {}
 
   @override
-  void didPushNext() {}
+  void didPushNext() {
+    _dismissChatInputFocus();
+  }
 
   Future<void> _handleDidPopNext() async {
     await checkConversationExists();
@@ -552,6 +577,45 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     await _loadNormalChatModelContext();
     if (!mounted) return;
     await _refreshLiveBrowserSessionSnapshot(syncRuntime: true);
+  }
+
+  Future<void> _handleExternalConversationListChanged() async {
+    final conversationId = _currentConversationId;
+    await checkConversationExists();
+    if (!mounted || conversationId == null) {
+      return;
+    }
+    final runtime = _runtimeForMode(_activeMode);
+    await loadConversation(
+      conversationId,
+      preferInMemory: runtime?.hasInFlightTask == true,
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _handleExternalConversationMessagesChanged(
+    Map<String, dynamic> event,
+  ) async {
+    final conversationId = _currentConversationId;
+    if (conversationId == null) {
+      return;
+    }
+    final changedConversationId = (event['conversationId'] as num?)?.toInt();
+    final changedMode = ConversationMode.fromStorageValue(
+      event['mode'] as String?,
+    );
+    if (changedConversationId != conversationId ||
+        changedMode != activeConversationModeValue) {
+      return;
+    }
+    final runtime = _runtimeForMode(_activeMode);
+    await loadConversation(
+      conversationId,
+      preferInMemory: runtime?.hasInFlightTask == true,
+    );
+    if (!mounted) return;
+    setState(() {});
   }
 
   @override
@@ -584,14 +648,14 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
   @override
   int _pageIndexForSurface(ChatSurfaceMode mode) => switch (mode) {
-    ChatSurfaceMode.workspace => 0,
-    ChatSurfaceMode.normal => 1,
-    ChatSurfaceMode.openclaw => 1,
+    ChatSurfaceMode.normal => 0,
+    ChatSurfaceMode.workspace => 1,
+    ChatSurfaceMode.openclaw => 0,
   };
 
   @override
   ChatSurfaceMode _surfaceForPageIndex(int pageIndex) => switch (pageIndex) {
-    0 => ChatSurfaceMode.workspace,
+    1 => ChatSurfaceMode.workspace,
     _ => ChatSurfaceMode.normal,
   };
 
@@ -654,10 +718,10 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     if (resolvedTargetMode == ChatSurfaceMode.workspace) {
       _inputFocusNode.unfocus();
       final workspacePathsFuture =
-          OmnibotResourceService.ensureWorkspacePathsLoaded(forceRefresh: true);
+          _workspacePathsLoadFuture ??
+          OmnibotResourceService.ensureWorkspacePathsLoaded();
       setState(() {
         _activeSurfaceMode = ChatSurfaceMode.workspace;
-        _workspaceSurfaceSeed += 1;
         _workspacePathsLoadFuture = workspacePathsFuture;
         _messageController.clear();
         _setChatIslandDisplayLayerForMode(

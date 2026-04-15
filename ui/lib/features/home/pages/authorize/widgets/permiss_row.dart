@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:ui/widgets/primary_button.dart';
-import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 
 class PermissionRow extends StatelessWidget {
   final String iconPath;
@@ -29,6 +28,8 @@ class PermissionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return ValueListenableBuilder<bool>(
       valueListenable: isAuthorized,
       builder: (context, authorized, child) {
@@ -44,13 +45,17 @@ class PermissionRow extends StatelessWidget {
                 width: 32,
                 height: 32,
                 child: iconPath.endsWith('.svg')
-                ? SvgPicture.asset(
-                    iconPath,
-                    width: iconWidth,
-                    height: iconHeight,
-                  )
-                : Image.asset(iconPath, width: iconWidth, height: iconHeight),
-              ),     
+                    ? SvgPicture.asset(
+                        iconPath,
+                        width: iconWidth,
+                        height: iconHeight,
+                      )
+                    : Image.asset(
+                        iconPath,
+                        width: iconWidth,
+                        height: iconHeight,
+                      ),
+              ),
               const SizedBox(width: 16.0),
               Expanded(
                 child: Column(
@@ -62,7 +67,9 @@ class PermissionRow extends StatelessWidget {
                         Text(
                           permissionName,
                           style: TextStyle(
-                            color: const Color(0xFF1F2336),
+                            color: isDark
+                                ? palette.textPrimary
+                                : const Color(0xFF1F2336),
                             fontSize: 16,
                             height: 1.5,
                             fontFamily: 'PingFang SC',
@@ -73,10 +80,18 @@ class PermissionRow extends StatelessWidget {
                           GestureDetector(
                             onTap: iconClick,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.9),
+                                color: isDark
+                                    ? palette.surfaceSecondary
+                                    : Colors.white.withValues(alpha: 0.9),
                                 borderRadius: BorderRadius.circular(12),
+                                border: isDark
+                                    ? Border.all(color: palette.borderSubtle)
+                                    : null,
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -84,14 +99,18 @@ class PermissionRow extends StatelessWidget {
                                   Icon(
                                     Icons.info,
                                     size: 14,
-                                    color: const Color(0xFF00AEFF),
+                                    color: isDark
+                                        ? palette.accentPrimary
+                                        : const Color(0xFF00AEFF),
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
                                     iconInfo!,
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: const Color(0xFF00AEFF),
+                                      color: isDark
+                                          ? palette.accentPrimary
+                                          : const Color(0xFF00AEFF),
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -106,7 +125,9 @@ class PermissionRow extends StatelessWidget {
                     Text(
                       permissionDescription,
                       style: TextStyle(
-                        color: const Color(0xFF9FB0BA),
+                        color: isDark
+                            ? palette.textSecondary
+                            : const Color(0xFF9FB0BA),
                         fontSize: 12,
                         fontFamily: 'PingFang SC',
                         fontWeight: FontWeight.w400,
@@ -118,33 +139,32 @@ class PermissionRow extends StatelessWidget {
               ),
               Align(
                 alignment: Alignment.centerRight,
-                child: 
-                  authorized
-                      ? SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: Center(
-                            child: SvgPicture.asset(
-                              'assets/welcome/permission_authorized.svg',
-                              width: 24,
-                              height: 24,
-                            ),
+                child: authorized
+                    ? SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Center(
+                          child: SvgPicture.asset(
+                            'assets/welcome/permission_authorized.svg',
+                            width: 24,
+                            height: 24,
                           ),
-                        )
-                      : SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: Center(
-                            child: SvgPicture.asset(
-                              'assets/welcome/permission_go.svg',
-                              width: 20,
-                              height: 20,
-                            ),
+                        ),
+                      )
+                    : SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: Center(
+                          child: SvgPicture.asset(
+                            'assets/welcome/permission_go.svg',
+                            width: 20,
+                            height: 20,
                           ),
-                        )
+                        ),
+                      ),
               ),
             ],
-          )
+          ),
         );
       },
     );

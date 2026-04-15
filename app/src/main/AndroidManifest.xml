@@ -98,8 +98,7 @@
         <activity
             android:name=".activity.LauncherActivity"
             android:exported="true"
-            android:theme="@style/Theme.OmnibotApp.Splash"
-            android:screenOrientation="portrait">
+            android:theme="@style/Theme.OmnibotApp.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -112,8 +111,7 @@
             android:exported="true"
             android:label="@string/omni_app_name"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.OmnibotApp.Splash"
-            android:screenOrientation="portrait" />
+            android:theme="@style/Theme.OmnibotApp.Splash" />
 
         <activity
             android:name=".activity.TerminalActivity"
@@ -173,6 +171,11 @@
         </receiver>
         <service
             android:name="cn.com.omnimind.bot.agent.AgentAlarmRingingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <service
+            android:name="cn.com.omnimind.bot.agent.AgentMusicPlaybackService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />

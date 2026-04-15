@@ -98,8 +98,15 @@ String resolveAgentToolPreview(Map<String, dynamic> cardData) {
 }
 
 String resolveAgentToolStatusLabel(Map<String, dynamic> cardData) {
+  final explicitStatusLabel = (cardData['statusLabel'] ?? '').toString().trim();
+  if (explicitStatusLabel.isNotEmpty) {
+    return explicitStatusLabel;
+  }
   final status = (cardData['status'] ?? 'running').toString();
   final toolType = (cardData['toolType'] ?? 'builtin').toString();
+  if (status == 'timeout') {
+    return '超时';
+  }
   if (status == 'interrupted') {
     return '中断';
   }
@@ -118,6 +125,10 @@ String resolveAgentToolStatusLabel(Map<String, dynamic> cardData) {
 }
 
 String resolveAgentToolTypeLabel(Map<String, dynamic> cardData) {
+  final explicitTypeLabel = (cardData['toolTypeLabel'] ?? '').toString().trim();
+  if (explicitTypeLabel.isNotEmpty) {
+    return explicitTypeLabel;
+  }
   switch ((cardData['toolType'] ?? '').toString()) {
     case 'terminal':
       return '终端';

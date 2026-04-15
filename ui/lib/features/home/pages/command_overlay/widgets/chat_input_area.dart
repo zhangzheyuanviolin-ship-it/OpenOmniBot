@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:ui/services/speech_channel_service.dart';
 import 'package:ui/services/special_permission.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/widgets/image_preview_overlay.dart';
 import 'package:ui/widgets/text_input_context_menu.dart';
 
@@ -30,6 +31,30 @@ const String _kLucideMicSvg =
     '<stop offset="1" stop-color="#2DA5F0"/>'
     '</linearGradient>'
     '</defs>'
+    '</svg>';
+
+const String _kLucideMicSvgDark =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="url(#paint0_linear_mic_dark)" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-mic-icon lucide-mic">'
+    '<path d="M12 19v3"/>'
+    '<path d="M19 10v2a7 7 0 0 1-14 0v-2"/>'
+    '<rect x="9" y="2" width="6" height="13" rx="3"/>'
+    '<defs>'
+    '<linearGradient id="paint0_linear_mic_dark" x1="3.4" y1="-1.8" x2="27.6" y2="7.9" gradientUnits="userSpaceOnUse">'
+    '<stop stop-color="#8C775D"/>'
+    '<stop offset="1" stop-color="#9DAE95"/>'
+    '</linearGradient>'
+    '</defs>'
+    '</svg>';
+
+const String _kLucideCommandSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-command-icon lucide-command">'
+    '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>'
     '</svg>';
 
 enum RecordingState { idle, starting, recording, stopping, waitingServerStop }
@@ -83,6 +108,7 @@ class ChatInputArea extends StatefulWidget {
   final Future<void> Function()? onPickAttachment;
   final List<ChatInputAttachment> attachments;
   final ValueChanged<String>? onRemoveAttachment;
+  final VoidCallback? onTriggerSlashCommand;
   final String? selectedModelOverrideId;
   final VoidCallback? onClearSelectedModelOverride;
   final double? contextUsageRatio;
@@ -108,6 +134,7 @@ class ChatInputArea extends StatefulWidget {
     this.onPickAttachment,
     this.attachments = const [],
     this.onRemoveAttachment,
+    this.onTriggerSlashCommand,
     this.selectedModelOverrideId,
     this.onClearSelectedModelOverride,
     this.contextUsageRatio,
@@ -128,11 +155,25 @@ class _ContextUsageRing extends StatelessWidget {
   Widget build(BuildContext context) {
     final normalized = ratio.isFinite ? ratio : 0.0;
     final progress = normalized.clamp(0.0, 1.0).toDouble();
-    final color = normalized >= 1.0
+    final palette = context.omniPalette;
+    final color = context.isDarkTheme
+        ? normalized >= 1.0
+              ? const Color(0xFFB97862)
+              : normalized >= 0.85
+              ? const Color(0xFFB39B6B)
+              : palette.accentPrimary
+        : normalized >= 1.0
         ? const Color(0xFFD65A3A)
         : normalized >= 0.85
         ? const Color(0xFFC69234)
         : const Color(0xFF5A8DDE);
+    final trackColor = context.isDarkTheme
+        ? Color.lerp(
+            palette.surfaceElevated,
+            palette.borderStrong,
+            0.62,
+          )!.withValues(alpha: 0.92)
+        : const Color(0x18000000);
 
     return SizedBox(
       width: 18,
@@ -146,6 +187,7 @@ class _ContextUsageRing extends StatelessWidget {
             painter: _ContextUsageRingPainter(
               progress: value,
               color: color,
+              trackColor: trackColor,
             ),
           );
         },
@@ -172,14 +214,13 @@ class _ContextUsageRingButton extends StatelessWidget {
       height: 22,
       child: Center(child: _ContextUsageRing(ratio: ratio)),
     );
-    final interactiveChild =
-        onLongPress == null
-            ? child
-            : GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onLongPress: onLongPress,
-                child: child,
-              );
+    final interactiveChild = onLongPress == null
+        ? child
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPress: onLongPress,
+            child: child,
+          );
     final tooltip = tooltipMessage?.trim() ?? '';
     if (tooltip.isEmpty) {
       return interactiveChild;
@@ -213,14 +254,17 @@ class _ContextUsageRingButton extends StatelessWidget {
     );
   }
 }
+
 class _ContextUsageRingPainter extends CustomPainter {
   const _ContextUsageRingPainter({
     required this.progress,
     required this.color,
+    required this.trackColor,
   });
 
   final double progress;
   final Color color;
+  final Color trackColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -234,7 +278,7 @@ class _ContextUsageRingPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
-      ..color = const Color(0x18000000);
+      ..color = trackColor;
     final progressPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
@@ -254,7 +298,9 @@ class _ContextUsageRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ContextUsageRingPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color;
+    return oldDelegate.progress != progress ||
+        oldDelegate.color != color ||
+        oldDelegate.trackColor != trackColor;
   }
 }
 
@@ -305,7 +351,7 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
   late Widget _sendSvg;
   late Widget _pauseSvg;
   late Widget _addSvg;
-  late Widget _closeSvg;
+  late Widget _commandSvg;
 
   // 按钮动画相关
   final Duration _buttonAnimationDuration = const Duration(milliseconds: 200);
@@ -319,28 +365,11 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     widget.controller.addListener(_onTextChanged);
     widget.focusNode.addListener(_onFocusChanged);
 
-    _micSvg = SvgPicture.string(_kLucideMicSvg, width: 24, height: 24);
-    _sendSvg = SvgPicture.asset(
-      'assets/home/send_icon.svg',
-      width: 24,
-      height: 24,
-    );
-    _pauseSvg = SvgPicture.asset(
-      'assets/home/input_pause_icon.svg',
-      width: 20,
-      height: 20,
-    );
-    _addSvg = SvgPicture.asset(
-      'assets/home/input_add_icon.svg',
-      width: 20,
-      height: 20,
-    );
-    _closeSvg = SvgPicture.asset(
-      'assets/home/input_add_close_icon.svg',
-      width: 20,
-      height: 20,
-    );
-
+    _micSvg = const SizedBox.shrink();
+    _sendSvg = const SizedBox.shrink();
+    _pauseSvg = const SizedBox.shrink();
+    _addSvg = const SizedBox.shrink();
+    _commandSvg = const SizedBox.shrink();
     // 进入界面先预取 asr ws token（仅用于 WS 握手）
     _initSpeechRecognition();
     _composerFlowController = AnimationController(
@@ -348,6 +377,125 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
       duration: const Duration(milliseconds: 8000),
     )..repeat();
     _reportInputHeightAfterBuild();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final palette = context.omniPalette;
+    _micSvg = SvgPicture.string(
+      context.isDarkTheme ? _kLucideMicSvgDark : _kLucideMicSvg,
+      width: 24,
+      height: 24,
+    );
+    _sendSvg = context.isDarkTheme
+        ? _buildDarkActionButtonIcon(
+            size: 24,
+            backgroundColor: Color.lerp(
+              palette.surfaceElevated,
+              palette.accentPrimary,
+              0.34,
+            )!,
+            foreground: Icon(
+              Icons.arrow_upward_rounded,
+              size: 15,
+              color: palette.pageBackground,
+            ),
+          )
+        : _buildComposerIconAsset(
+            'assets/home/send_icon.svg',
+            width: 24,
+            height: 24,
+          );
+    _pauseSvg = context.isDarkTheme
+        ? _buildDarkActionButtonIcon(
+            size: 20,
+            backgroundColor: Color.lerp(
+              palette.surfaceElevated,
+              palette.accentPrimary,
+              0.34,
+            )!,
+            foreground: Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: palette.pageBackground,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          )
+        : _buildComposerIconAsset(
+            'assets/home/input_pause_icon.svg',
+            width: 20,
+            height: 20,
+          );
+    _addSvg = context.isDarkTheme
+        ? _buildDarkActionButtonIcon(
+            size: 20,
+            backgroundColor: palette.surfaceSecondary,
+            borderColor: palette.borderSubtle,
+            foreground: Icon(
+              Icons.add_rounded,
+              size: 14,
+              color: palette.textPrimary,
+            ),
+          )
+        : _buildComposerIconAsset(
+            'assets/home/input_add_icon.svg',
+            width: 20,
+            height: 20,
+          );
+    _commandSvg = context.isDarkTheme
+        ? _buildDarkActionButtonIcon(
+            size: 20,
+            backgroundColor: palette.surfaceSecondary,
+            borderColor: palette.borderSubtle,
+            foreground: SvgPicture.string(
+              _kLucideCommandSvg,
+              width: 12,
+              height: 12,
+              colorFilter: ColorFilter.mode(
+                palette.textPrimary,
+                BlendMode.srcIn,
+              ),
+            ),
+          )
+        : SvgPicture.string(
+            _kLucideCommandSvg,
+            width: 20,
+            height: 20,
+            colorFilter: const ColorFilter.mode(
+              Color(0xFF54627A),
+              BlendMode.srcIn,
+            ),
+          );
+  }
+
+  Widget _buildComposerIconAsset(
+    String assetPath, {
+    required double width,
+    required double height,
+  }) {
+    return SvgPicture.asset(assetPath, width: width, height: height);
+  }
+
+  Widget _buildDarkActionButtonIcon({
+    required double size,
+    required Widget foreground,
+    required Color backgroundColor,
+    Color? borderColor,
+  }) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        shape: BoxShape.circle,
+        border: borderColor == null ? null : Border.all(color: borderColor),
+      ),
+      alignment: Alignment.center,
+      child: foreground,
+    );
   }
 
   Future<void> _initSpeechRecognition() async {
@@ -416,5 +564,3 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     });
   }
 }
-
-

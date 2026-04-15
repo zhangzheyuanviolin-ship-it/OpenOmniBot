@@ -224,6 +224,13 @@
 # NanoHTTPD Web 服务器 (Debug 版本)
 -keep class fi.iki.elonen.** { *; }
 
+# OmniInfer JNI bridge
+# The native library registers methods by hard-coded class/method names in JNI_OnLoad.
+# If R8 strips or renames these private external methods, System.loadLibrary succeeds
+# but RegisterNatives fails, so the local model service cannot start in release builds.
+-keep class com.omniinfer.server.OmniInferBridge { *; }
+-keep class com.omniinfer.server.OmniInferServer { *; }
+
 # ==================== Detection 模块数据模型 ====================
 # 这些类涉及 Gson JSON 反序列化，字段名不能被混淆
 

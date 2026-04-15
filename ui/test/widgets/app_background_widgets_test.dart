@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/services/app_background_service.dart';
+import 'package:ui/theme/app_theme.dart';
+import 'package:ui/theme/omni_theme_palette.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
 
 void main() {
@@ -211,5 +213,53 @@ void main() {
       closeTo(11 * resolvedChatTextScale(config), 0.01),
     );
     expect(find.textContaining('聊天文本 · 自定义颜色'), findsOneWidget);
+  });
+
+  testWidgets('preview uses dark fallback surface in dark mode', (
+    tester,
+  ) async {
+    const config = AppBackgroundConfig(
+      enabled: false,
+      sourceType: AppBackgroundSourceType.none,
+      localImagePath: '',
+      remoteImageUrl: '',
+      blurSigma: 8,
+      frostOpacity: 0.2,
+      brightness: 1,
+      focalX: 0,
+      focalY: 0,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.dark,
+        home: const Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 280,
+              height: 420,
+              child: AppBackgroundPreview(
+                config: config,
+                kind: BackgroundPreviewKind.chat,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final fallbackSurface = tester.widget<DecoratedBox>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('app-background-preview-chat')),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
+    );
+    final decoration = fallbackSurface.decoration as BoxDecoration;
+
+    expect(decoration.color, OmniThemePalette.dark.previewFallback);
   });
 }

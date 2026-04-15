@@ -1,4 +1,6 @@
-import org.gradle.api.tasks.Exec
+import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.dsl.LibraryExtension
+import org.gradle.kotlin.dsl.configure
 
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
@@ -9,15 +11,7 @@ plugins {
 }
 
 val forcedCoroutinesVersion = libs.versions.kotlinxCoroutines.get()
-
-val prepareMnnAndroidNativeLibs by tasks.registering(Exec::class) {
-    group = "build setup"
-    description = "Prepare shared MNN Android native libraries for modules that link libMNN.so."
-    workingDir = rootProject.projectDir
-    commandLine("bash", "${rootProject.projectDir}/scripts/prepare_mnn_android_native.sh")
-    inputs.file(rootProject.file("scripts/prepare_mnn_android_native.sh"))
-    outputs.file(rootProject.file("third_party/mnn_android/project/android/build_64/lib/libMNN.so"))
-}
+val omniInferNdkVersion = providers.gradleProperty("OMNI_NDK_VERSION").getOrElse("28.2.13676358")
 
 subprojects {
     repositories {
@@ -34,5 +28,21 @@ subprojects {
             "org.jetbrains.kotlinx:kotlinx-coroutines-core:$forcedCoroutinesVersion",
             "org.jetbrains.kotlinx:kotlinx-coroutines-android:$forcedCoroutinesVersion",
         )
+    }
+
+    if (path == ":app") {
+        plugins.withId("com.android.application") {
+            extensions.configure<ApplicationExtension> {
+                ndkVersion = omniInferNdkVersion
+            }
+        }
+    }
+
+    if (path == ":omniinfer-server") {
+        plugins.withId("com.android.library") {
+            extensions.configure<LibraryExtension> {
+                ndkVersion = omniInferNdkVersion
+            }
+        }
     }
 }

@@ -28,6 +28,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
         '无障碍权限': kAccessibilityPermissionId,
         '悬浮窗权限': kOverlayPermissionId,
         '应用列表读取权限': kInstalledAppsPermissionId,
+        '公共文件访问': kPublicStoragePermissionId,
       };
 
   String? _lastAgentTaskId;
@@ -123,6 +124,9 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
   void handleAgentThinkingUpdate(String thinking) {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
     if (taskId == null) return;
+    if (_shouldIgnoreRegressiveSnapshot(deepThinkingContent, thinking)) {
+      return;
+    }
 
     if (_pendingThinkingRoundSplit) {
       if (thinking.trim().isEmpty) {
@@ -231,7 +235,12 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     _activeToolCardId = null;
   }
 
-  void handleAgentChatMessage(String message, {bool isFinal = true}) {
+  void handleAgentChatMessage(
+    String message, {
+    bool isFinal = true,
+    double? prefillTokensPerSecond,
+    double? decodeTokensPerSecond,
+  }) {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
     if (taskId == null) return;
 
@@ -247,14 +256,30 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
             id: aiTextMessageId,
             type: 1,
             user: 2,
-            content: {'text': message, 'id': aiTextMessageId},
+            content: {
+              'text': message,
+              'id': aiTextMessageId,
+              if (isFinal && prefillTokensPerSecond != null)
+                'prefillTokensPerSecond': prefillTokensPerSecond,
+              if (isFinal && decodeTokensPerSecond != null)
+                'decodeTokensPerSecond': decodeTokensPerSecond,
+            },
           ),
         );
       } else {
         final existing = messages[index];
         final content = Map<String, dynamic>.from(existing.content ?? {});
-        content['text'] = message;
-        messages[index] = existing.copyWith(content: content);
+        final currentText = (content['text'] ?? '').toString();
+        if (!_shouldIgnoreRegressiveSnapshot(currentText, message)) {
+          content['text'] = message;
+          if (isFinal && prefillTokensPerSecond != null) {
+            content['prefillTokensPerSecond'] = prefillTokensPerSecond;
+          }
+          if (isFinal && decodeTokensPerSecond != null) {
+            content['decodeTokensPerSecond'] = decodeTokensPerSecond;
+          }
+          messages[index] = existing.copyWith(content: content);
+        }
       }
       if (isFinal) {
         isAiResponding = false;
@@ -267,6 +292,13 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     if (isFinal) {
       _persistAgentConversationSafely();
     }
+  }
+
+  bool _shouldIgnoreRegressiveSnapshot(String current, String incoming) {
+    if (current.isEmpty || incoming.isEmpty) {
+      return false;
+    }
+    return incoming.length < current.length && current.startsWith(incoming);
   }
 
   void handleAgentClarifyRequired(String question, List<String> missingFields) {

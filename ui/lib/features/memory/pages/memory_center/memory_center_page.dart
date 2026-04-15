@@ -13,6 +13,7 @@ import 'package:ui/features/memory/pages/memory_center/widgets/tag_section.dart'
 import 'package:ui/features/memory/pages/memory_center/widgets/memory_card.dart';
 import 'package:ui/features/memory/services/mem0_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/widgets/selection_bottom_bar.dart';
 import 'package:ui/services/assists_core_service.dart';
@@ -864,6 +865,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     // 若selectedId对应tag为空，则显示全部
     // 清理不存在的 tag 选择
     selectedTagIds = selectedTagIds
@@ -874,7 +876,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
     final hasMem0Section = _mem0Snapshot.shouldShowSection || _isMem0Loading;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: palette.pageBackground,
       appBar: _isSelectionMode
           ? _buildSelectionAppBar(filteredCards)
           : const CommonAppBar(title: '记忆中心', primary: true),
@@ -935,7 +937,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                   // 点击遮罩层取消模糊
                   Navigator.of(context).pop();
                 },
-                child: Container(color: Colors.black.withOpacity(0.3)),
+                child: Container(color: palette.overlayScrim),
               ),
             ),
           // 被长按的卡片（不模糊，显示在遮罩层上方）
@@ -967,6 +969,8 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
     required double height,
     BorderRadius? borderRadius,
   }) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return AnimatedBuilder(
       animation: _shimmerController,
       builder: (context, child) {
@@ -978,11 +982,21 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [
-                Color(0xFF2DA5F0).withOpacity(0.1),
-                Color(0xFF1930D9).withOpacity(0.25),
-                Color(0xFF2DA5F0).withOpacity(0.1),
-              ],
+              colors: isDark
+                  ? [
+                      palette.surfaceSecondary,
+                      Color.lerp(
+                        palette.surfaceSecondary,
+                        palette.accentPrimary,
+                        0.18,
+                      )!,
+                      palette.surfaceSecondary,
+                    ]
+                  : [
+                      Color(0xFF2DA5F0).withValues(alpha: 0.1),
+                      Color(0xFF1930D9).withValues(alpha: 0.25),
+                      Color(0xFF2DA5F0).withValues(alpha: 0.1),
+                    ],
               stops: [0.0, _shimmerController.value, 1.0],
             ),
           ),
@@ -992,6 +1006,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   Widget _buildMemorySuggestion() {
+    final palette = context.omniPalette;
     // 默认文案
     final defaultText = '你好呀，\n小万会在这里收集你的记忆！';
     // 使用 LLM 生成的建议或默认文案
@@ -1025,16 +1040,26 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                 ],
               )
             else
-              GradientText(
-                suggestionText,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  height: 1.5,
-                  color: Colors.black,
-                ),
-                colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
-              ),
+              context.isDarkTheme
+                  ? Text(
+                      suggestionText,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        height: 1.5,
+                        color: palette.textPrimary,
+                      ),
+                    )
+                  : GradientText(
+                      suggestionText,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        height: 1.5,
+                        color: Colors.black,
+                      ),
+                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                    ),
           ],
         ),
       ),
@@ -1045,25 +1070,26 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   PreferredSizeWidget _buildSelectionAppBar(
     List<MemoryCardModel> filteredCards,
   ) {
+    final palette = context.omniPalette;
     final isAllSelected =
         _selectedCardIds.length == filteredCards.length &&
         filteredCards.isNotEmpty;
     return CommonAppBar(
       primary: true,
       title: '已选择${_selectedCardIds.length}项',
-      titleStyle: const TextStyle(
+      titleStyle: TextStyle(
         fontSize: 17,
         fontWeight: FontWeight.w600,
-        color: AppColors.text,
+        color: palette.textPrimary,
         fontFamily: 'SF Pro',
       ),
       leadingWidth: 64,
       leading: TextButton(
         onPressed: _exitSelectionMode,
-        child: const Text(
+        child: Text(
           '取消',
           style: TextStyle(
-            color: Color(0xFF007AFF),
+            color: palette.accentPrimary,
             fontSize: 14,
             fontWeight: FontWeight.w400,
           ),
@@ -1076,8 +1102,8 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
             onPressed: () => _toggleSelectAll(filteredCards),
             child: Text(
               isAllSelected ? '全不选' : '全选',
-              style: const TextStyle(
-                color: Color(0xFF007AFF),
+              style: TextStyle(
+                color: palette.accentPrimary,
                 fontSize: 14,
                 fontWeight: FontWeight.w400,
               ),
@@ -1103,15 +1129,17 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   Widget _buildMemoryTabSwitcher() {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
         height: 40,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? palette.segmentTrack : palette.surfacePrimary,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: AppColors.text10),
+          border: Border.all(color: palette.borderSubtle),
         ),
         child: Stack(
           children: [
@@ -1127,18 +1155,40 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                   margin: const EdgeInsets.symmetric(horizontal: 1),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x1F1930D9),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
+                    gradient: isDark
+                        ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color.lerp(
+                                palette.surfaceElevated,
+                                palette.accentPrimary,
+                                0.18,
+                              )!,
+                              Color.lerp(
+                                palette.surfaceSecondary,
+                                palette.accentPrimary,
+                                0.30,
+                              )!,
+                            ],
+                          )
+                        : const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                          ),
+                    boxShadow: isDark
+                        ? null
+                        : const [
+                            BoxShadow(
+                              color: Color(0x1F1930D9),
+                              blurRadius: 10,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                    border: isDark
+                        ? Border.all(color: palette.borderSubtle)
+                        : null,
                   ),
                 ),
               ),
@@ -1156,6 +1206,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   Widget _buildMemoryTabButton({required String label, required int tabIndex}) {
+    final palette = context.omniPalette;
     final selected = _currentMemoryTab == tabIndex;
 
     return Expanded(
@@ -1171,7 +1222,9 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
               style: TextStyle(
-                color: selected ? Colors.white : AppColors.text70,
+                color: selected
+                    ? (context.isDarkTheme ? palette.textPrimary : Colors.white)
+                    : palette.textSecondary,
                 fontSize: AppTextStyles.fontSizeMain,
                 fontWeight: selected
                     ? AppTextStyles.fontWeightSemiBold
@@ -1199,10 +1252,10 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
               child: Row(
                 children: [
-                  const Text(
+                  Text(
                     '短期记忆',
                     style: TextStyle(
-                      color: AppColors.text,
+                      color: context.omniPalette.textPrimary,
                       fontSize: AppTextStyles.fontSizeMain,
                       fontWeight: AppTextStyles.fontWeightSemiBold,
                       height: AppTextStyles.lineHeightH2,
@@ -1212,7 +1265,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                   Text(
                     '${filteredCards.length}',
                     style: TextStyle(
-                      color: AppColors.text50,
+                      color: context.omniPalette.textSecondary,
                       fontSize: AppTextStyles.fontSizeSmall,
                       height: AppTextStyles.lineHeightH2,
                     ),
@@ -1311,21 +1364,31 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   Widget _buildCloudMemoryPlaceholder() {
+    final palette = context.omniPalette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: palette.surfacePrimary,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [AppColors.boxShadow],
+        border: Border.all(color: palette.borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: palette.shadowColor.withValues(
+              alpha: context.isDarkTheme ? 0.30 : 0.08,
+            ),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
+        children: [
           Text(
             '长期记忆还未初始化',
             style: TextStyle(
-              color: AppColors.text,
+              color: palette.textPrimary,
               fontSize: AppTextStyles.fontSizeMain,
               fontWeight: AppTextStyles.fontWeightMedium,
             ),
@@ -1334,7 +1397,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
           Text(
             '记忆能力启用后，你的跨会话长期记忆会在这里持续沉淀。',
             style: TextStyle(
-              color: AppColors.text70,
+              color: palette.textSecondary,
               fontSize: AppTextStyles.fontSizeSmall,
               height: AppTextStyles.lineHeightH2,
             ),
@@ -1345,21 +1408,31 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   Widget _buildLocalMemoryPlaceholder() {
+    final palette = context.omniPalette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: palette.surfacePrimary,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [AppColors.boxShadow],
+        border: Border.all(color: palette.borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: palette.shadowColor.withValues(
+              alpha: context.isDarkTheme ? 0.30 : 0.08,
+            ),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
+        children: [
           Text(
             '还没有短期记忆',
             style: TextStyle(
-              color: AppColors.text,
+              color: palette.textPrimary,
               fontSize: AppTextStyles.fontSizeMain,
               fontWeight: AppTextStyles.fontWeightMedium,
             ),
@@ -1368,7 +1441,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
           Text(
             '会话中的过程性信息会沉淀到短期记忆，并在后续整理后转入长期记忆。',
             style: TextStyle(
-              color: AppColors.text70,
+              color: palette.textSecondary,
               fontSize: AppTextStyles.fontSizeSmall,
               height: AppTextStyles.lineHeightH2,
             ),
@@ -1380,21 +1453,31 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
 
   // ignore: unused_element
   Widget _buildLocalFilterEmptyState() {
+    final palette = context.omniPalette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: palette.surfacePrimary,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [AppColors.boxShadow],
+        border: Border.all(color: palette.borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: palette.shadowColor.withValues(
+              alpha: context.isDarkTheme ? 0.30 : 0.08,
+            ),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
+        children: [
           Text(
             '当前筛选下还没有短期记忆',
             style: TextStyle(
-              color: AppColors.text,
+              color: palette.textPrimary,
               fontSize: AppTextStyles.fontSizeMain,
               fontWeight: AppTextStyles.fontWeightMedium,
             ),
@@ -1403,7 +1486,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
           Text(
             '稍后再来看看，新的短期记忆会逐步出现。',
             style: TextStyle(
-              color: AppColors.text70,
+              color: palette.textSecondary,
               fontSize: AppTextStyles.fontSizeSmall,
               height: AppTextStyles.lineHeightH2,
             ),
@@ -1419,6 +1502,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final palette = context.omniPalette;
         final metadataEntries = item.metadata.entries
             .where((entry) => entry.key != 'categories')
             .where((entry) => entry.value != null)
@@ -1428,8 +1512,8 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(context).size.height * 0.78,
           ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
+          decoration: BoxDecoration(
+            color: palette.surfacePrimary,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -1439,7 +1523,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                 width: 42,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.text10,
+                  color: palette.borderStrong,
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -1449,10 +1533,10 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         '长期记忆',
                         style: TextStyle(
-                          color: AppColors.buttonPrimary,
+                          color: palette.accentPrimary,
                           fontSize: AppTextStyles.fontSizeSmall,
                           fontWeight: AppTextStyles.fontWeightMedium,
                         ),
@@ -1460,8 +1544,8 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                       const SizedBox(height: 10),
                       Text(
                         item.memory,
-                        style: const TextStyle(
-                          color: AppColors.text,
+                        style: TextStyle(
+                          color: palette.textPrimary,
                           fontSize: AppTextStyles.fontSizeH3,
                           fontWeight: AppTextStyles.fontWeightSemiBold,
                           height: AppTextStyles.lineHeightH2,
@@ -1541,10 +1625,10 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                         ),
                       if (metadataEntries.isNotEmpty) ...[
                         const SizedBox(height: 18),
-                        const Text(
+                        Text(
                           '附加信息',
                           style: TextStyle(
-                            color: AppColors.text,
+                            color: palette.textPrimary,
                             fontSize: AppTextStyles.fontSizeMain,
                             fontWeight: AppTextStyles.fontWeightSemiBold,
                           ),
@@ -1570,16 +1654,19 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   Widget _buildMem0DetailPill(String label) {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0x0F2C7FEB),
+        color: palette.segmentThumb.withValues(
+          alpha: context.isDarkTheme ? 0.72 : 0.9,
+        ),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          color: AppColors.buttonPrimary,
+        style: TextStyle(
+          color: palette.accentPrimary,
           fontSize: AppTextStyles.fontSizeSmall,
           fontWeight: AppTextStyles.fontWeightMedium,
         ),
@@ -1707,6 +1794,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
   }
 
   Widget _buildMem0DetailRow(String label, String value) {
+    final palette = context.omniPalette;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -1717,7 +1805,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
             child: Text(
               label,
               style: TextStyle(
-                color: AppColors.text50,
+                color: palette.textSecondary,
                 fontSize: AppTextStyles.fontSizeSmall,
                 height: AppTextStyles.lineHeightH2,
               ),
@@ -1726,8 +1814,8 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: AppColors.text,
+              style: TextStyle(
+                color: palette.textPrimary,
                 fontSize: AppTextStyles.fontSizeMain,
                 height: AppTextStyles.lineHeightH2,
               ),
@@ -1769,7 +1857,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
             style: TextStyle(
               fontSize: AppTextStyles.fontSizeMain,
               fontWeight: AppTextStyles.fontWeightRegular,
-              color: AppColors.text20,
+              color: context.omniPalette.textSecondary,
               height: AppTextStyles.lineHeightH3,
               letterSpacing: AppTextStyles.letterSpacingWide,
             ),

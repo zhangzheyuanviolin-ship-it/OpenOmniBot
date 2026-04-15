@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 import 'package:ui/features/home/pages/chat/services/chat_conversation_runtime_coordinator.dart';
+import 'package:ui/services/ai_chat_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -69,7 +70,9 @@ void main() {
     await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
       'taskId': taskId,
       'message': 'hello from agent',
-      'isFinal': false,
+      'isFinal': true,
+      'prefillTokensPerSecond': 123.4,
+      'decodeTokensPerSecond': 56.7,
     });
 
     final runtimeB = coordinator.runtimeFor(
@@ -80,6 +83,8 @@ void main() {
     expect(runtimeA.messages, hasLength(1));
     expect(runtimeA.messages.first.id, '$taskId-text');
     expect(runtimeA.messages.first.text, 'hello from agent');
+    expect(runtimeA.messages.first.content?['prefillTokensPerSecond'], 123.4);
+    expect(runtimeA.messages.first.content?['decodeTokensPerSecond'], 56.7);
     expect(runtimeB.messages, isEmpty);
   });
 
@@ -122,6 +127,452 @@ void main() {
     expect(runtimeA.messages.first.text, 'hello from openclaw');
     expect(runtimeB.messages, isEmpty);
   });
+
+  test('parses raw OpenAI chat chunks into visible assistant text', () async {
+    const conversationId = 2201;
+    const taskId = 'chat-task-openai';
+
+    coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"content":"hello from pure chat"}}]}',
+      'type': null,
+    });
+
+    final runtime = coordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    )!;
+
+    expect(runtime.messages, hasLength(1));
+    expect(runtime.messages.first.id, taskId);
+    expect(runtime.messages.first.text, 'hello from pure chat');
+  });
+
+  test('primes pure-chat thinking card immediately before streaming', () {
+    const conversationId = 2204;
+    const taskId = 'chat-task-thinking-prime';
+
+    coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    coordinator.primePureChatThinking(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    final runtime = coordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    )!;
+
+    expect(runtime.messages, hasLength(1));
+    expect(runtime.messages.first.cardData?['type'], 'deep_thinking');
+    expect(runtime.messages.first.cardData?['isLoading'], isTrue);
+    expect(runtime.messages.first.cardData?['thinkingContent'], '');
+  });
+
+  test(
+    'removes primed thinking card when no reasoning chunk arrives',
+    () async {
+      const conversationId = 2206;
+      const taskId = 'chat-task-thinking-empty';
+
+      coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      coordinator.primePureChatThinking(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":"没有思考流也要正常收尾。"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessageEnd', <String, dynamic>{
+        'taskID': taskId,
+      });
+
+      final runtime = coordinator.runtimeFor(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      )!;
+
+      expect(runtime.messages, hasLength(1));
+      expect(runtime.messages.single.id, taskId);
+      expect(runtime.messages.single.text, '没有思考流也要正常收尾。');
+    },
+  );
+
+  test('renders pure-chat reasoning as a deep thinking card', () async {
+    const conversationId = 2203;
+    const taskId = 'chat-task-thinking';
+
+    coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"reasoning_content":"先分析一下问题。"}}]}',
+      'type': null,
+    });
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"content":"这是最终回答。"}}]}',
+      'type': null,
+    });
+    await emitPlatformEvent('onChatMessageEnd', <String, dynamic>{
+      'taskID': taskId,
+    });
+
+    final runtime = coordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    )!;
+
+    expect(runtime.messages, hasLength(2));
+    expect(runtime.messages.first.id, taskId);
+    expect(runtime.messages.first.text, '这是最终回答。');
+
+    final thinkingCard = runtime.messages.last;
+    expect(thinkingCard.cardData?['type'], 'deep_thinking');
+    expect(thinkingCard.cardData?['thinkingContent'], '先分析一下问题。');
+    expect(thinkingCard.cardData?['isLoading'], isFalse);
+    expect(thinkingCard.cardData?['stage'], 4);
+  });
+
+  test(
+    'keeps the full pure-chat reasoning prefix across delta chunks',
+    () async {
+      const conversationId = 2205;
+      const taskId = 'chat-task-thinking-delta';
+
+      coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      coordinator.primePureChatThinking(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"reasoning_content":"先"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"reasoning_content":"分析"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"reasoning_content":"一下问题。"}}]}',
+        'type': null,
+      });
+
+      final runtime = coordinator.runtimeFor(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      )!;
+      final thinkingCard = runtime.messages.single;
+
+      expect(thinkingCard.cardData?['type'], 'deep_thinking');
+      expect(thinkingCard.cardData?['thinkingContent'], '先分析一下问题。');
+    },
+  );
+
+  test(
+    'preserves whitespace and punctuation in pure-chat reasoning delta chunks',
+    () async {
+      const conversationId = 2207;
+      const taskId = 'chat-task-thinking-whitespace';
+
+      coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      coordinator.primePureChatThinking(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"reasoning_content":"先想"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"reasoning_content":"："}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"reasoning_content":"\\n"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"reasoning_content":"  再做"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"reasoning_content":"。"}}]}',
+        'type': null,
+      });
+
+      final runtime = coordinator.runtimeFor(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      )!;
+      final thinkingCard = runtime.messages.single;
+
+      expect(thinkingCard.cardData?['type'], 'deep_thinking');
+      expect(thinkingCard.cardData?['thinkingContent'], '先想：\n  再做。');
+    },
+  );
+
+  test(
+    'preserves whitespace and punctuation in pure-chat content delta chunks',
+    () async {
+      const conversationId = 2208;
+      const taskId = 'chat-task-content-whitespace';
+
+      coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":"Hello"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":","}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":" "}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":"world"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":"!"}}]}',
+        'type': null,
+      });
+
+      final runtime = coordinator.runtimeFor(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      )!;
+
+      expect(runtime.messages, hasLength(1));
+      expect(runtime.messages.single.text, 'Hello, world!');
+    },
+  );
+
+  test('preserves repeated punctuation in pure-chat content chunks', () async {
+    const conversationId = 2209;
+    const taskId = 'chat-task-content-repeated-punctuation';
+
+    coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"content":"你好"}}]}',
+      'type': null,
+    });
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"content":"，"}}]}',
+      'type': null,
+    });
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"content":"世界"}}]}',
+      'type': null,
+    });
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"content":"。"}}]}',
+      'type': null,
+    });
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"content":"再见"}}]}',
+      'type': null,
+    });
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"content":"。"}}]}',
+      'type': null,
+    });
+
+    final runtime = coordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    )!;
+
+    expect(runtime.messages, hasLength(1));
+    expect(runtime.messages.single.text, '你好，世界。再见。');
+  });
+
+  test(
+    'accepts cumulative pure-chat content snapshots without duplication',
+    () async {
+      const conversationId = 2210;
+      const taskId = 'chat-task-content-cumulative';
+
+      coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":"Hello"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":"Hello,"}}]}',
+        'type': null,
+      });
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":"Hello, world!"}}]}',
+        'type': null,
+      });
+
+      final runtime = coordinator.runtimeFor(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      )!;
+
+      expect(runtime.messages, hasLength(1));
+      expect(runtime.messages.single.text, 'Hello, world!');
+    },
+  );
+
+  test(
+    'keeps chat page streaming active when overlay chat also listens',
+    () async {
+      const conversationId = 2202;
+      const taskId = 'chat-task-overlay';
+      final overlayService = AiChatService();
+      String? overlayMessage;
+      overlayService.setOnMessageCallback((taskId, content, type) {
+        overlayMessage = content;
+      });
+
+      coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onChatMessage', <String, dynamic>{
+        'taskID': taskId,
+        'content': '{"choices":[{"delta":{"content":"shared pure chat"}}]}',
+        'type': null,
+      });
+
+      final runtime = coordinator.runtimeFor(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      )!;
+
+      expect(runtime.messages, hasLength(1));
+      expect(runtime.messages.first.text, 'shared pure chat');
+      expect(
+        overlayMessage,
+        '{"choices":[{"delta":{"content":"shared pure chat"}}]}',
+      );
+
+      overlayService.dispose();
+    },
+  );
 
   test(
     'routes VLM request-input state to the bound conversation only',
@@ -476,6 +927,108 @@ void main() {
     expect(snapshot?.currentUrl, 'https://example.com/login');
     expect(snapshot?.title, 'Sign In');
     expect(snapshot?.userAgentProfile, 'desktop_safari');
+  });
+
+  test(
+    'uses cardId from tool events when completing interrupted tools',
+    () async {
+      const conversationId = 6501;
+      const taskId = 'agent-interrupted-tool-task';
+      const cardId = 'agent-interrupted-tool-task-tool-9';
+
+      final runtime = coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      runtime.currentDispatchTaskId = taskId;
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onAgentToolCallStart', <String, dynamic>{
+        'taskId': taskId,
+        'cardId': cardId,
+        'toolName': 'terminal_execute',
+        'displayName': 'terminal_execute',
+        'toolType': 'terminal',
+        'summary': '执行长命令',
+        'argsJson': jsonEncode(<String, dynamic>{'command': 'sleep 30'}),
+      });
+
+      await emitPlatformEvent('onAgentToolCallComplete', <String, dynamic>{
+        'taskId': taskId,
+        'cardId': cardId,
+        'toolName': 'terminal_execute',
+        'displayName': 'terminal_execute',
+        'toolType': 'terminal',
+        'status': 'interrupted',
+        'summary': '工具调用已被用户手动停止',
+        'success': false,
+        'interruptedBy': 'user',
+        'interruptionReason': 'manual_stop',
+      });
+
+      final toolMessage = runtime.messages.firstWhere(
+        (message) => message.id == cardId,
+      );
+
+      expect(toolMessage.cardData?['status'], 'interrupted');
+      expect(toolMessage.cardData?['interruptedBy'], 'user');
+      expect(toolMessage.cardData?['interruptionReason'], 'manual_stop');
+      expect(runtime.activeToolCardId, isNull);
+    },
+  );
+
+  test('continues assistant output after interrupted tool completes', () async {
+    const conversationId = 6502;
+    const taskId = 'agent-interrupted-continue-task';
+    const cardId = 'agent-interrupted-continue-task-tool-2';
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = taskId;
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onAgentToolCallStart', <String, dynamic>{
+      'taskId': taskId,
+      'cardId': cardId,
+      'toolName': 'browser_use',
+      'displayName': 'browser_use',
+      'toolType': 'browser',
+      'summary': '打开页面',
+    });
+
+    await emitPlatformEvent('onAgentToolCallComplete', <String, dynamic>{
+      'taskId': taskId,
+      'cardId': cardId,
+      'toolName': 'browser_use',
+      'displayName': 'browser_use',
+      'toolType': 'browser',
+      'status': 'interrupted',
+      'summary': '工具调用已被用户手动停止',
+      'success': false,
+      'interruptedBy': 'user',
+      'interruptionReason': 'manual_stop',
+    });
+
+    await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+      'taskId': taskId,
+      'message': '浏览器工具已停止，我先直接告诉你页面当前不可达。',
+      'isFinal': false,
+    });
+
+    final textMessage = runtime.messages.firstWhere(
+      (message) => message.id == '$taskId-text',
+    );
+    expect(textMessage.text, contains('浏览器工具已停止'));
   });
 
   test('applies initial island layer when a runtime is created late', () {

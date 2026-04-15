@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
+import '../../../../../theme/theme_context.dart';
 import '../../../../../widgets/streaming_text.dart';
 import 'thinking_dots_indicator.dart';
 import 'cards/card_widget_factory.dart';
@@ -54,6 +55,23 @@ class MessageBubble extends StatelessWidget {
 
   double get _chatTextSize => appearanceConfig.chatTextSize;
   double get _chatTextScale => resolvedChatTextScale(appearanceConfig);
+
+  bool _usesThemeDrivenText() {
+    return !appearanceConfig.isActive &&
+        appearanceConfig.chatTextColorMode != AppBackgroundTextColorMode.custom;
+  }
+
+  Color _resolvedAiPrimaryTextColor(BuildContext context) {
+    return _usesThemeDrivenText()
+        ? context.omniPalette.textPrimary
+        : visualProfile.primaryTextColor;
+  }
+
+  Color _resolvedAiSecondaryTextColor(BuildContext context) {
+    return _usesThemeDrivenText()
+        ? context.omniPalette.textSecondary
+        : visualProfile.secondaryTextColor;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -112,45 +130,52 @@ class MessageBubble extends StatelessWidget {
 
     if (isUserMessage) {
       // 用户消息：整块气泡长按触发快捷操作。
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPressStart: onUserMessageLongPressStart == null
-            ? null
-            : (details) => onUserMessageLongPressStart!(message, details),
-        child: Container(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          decoration: ShapeDecoration(
-            color: visualProfile.userBubbleColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final fallbackMaxWidth = MediaQuery.of(context).size.width * 0.75;
+          final availableWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : fallbackMaxWidth;
+          final maxBubbleWidth = availableWidth * 0.78;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPressStart: onUserMessageLongPressStart == null
+                ? null
+                : (details) => onUserMessageLongPressStart!(message, details),
+            child: Container(
+              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: ShapeDecoration(
+                color: visualProfile.userBubbleColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (text.isNotEmpty) _buildUserText(text),
+                  if (attachments.isNotEmpty) ...[
+                    if (text.isNotEmpty) const SizedBox(height: 8),
+                    _buildUserAttachmentList(context, attachments),
+                  ],
+                ],
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (text.isNotEmpty) _buildUserText(text),
-              if (attachments.isNotEmpty) ...[
-                if (text.isNotEmpty) const SizedBox(height: 8),
-                _buildUserAttachmentList(context, attachments),
-              ],
-            ],
-          ),
-        ),
+          );
+        },
       );
     }
 
     if (attachments.isEmpty) {
       // AI消息：简单文本样式，无背景
-      return _buildAiText(text);
+      return _buildAiTextWithSpeed(context, text);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (text.isNotEmpty) _buildAiText(text),
+        if (text.isNotEmpty) _buildAiTextWithSpeed(context, text),
         if (text.isNotEmpty) const SizedBox(height: 8),
         _buildUserAttachmentList(context, attachments),
       ],
@@ -171,8 +196,7 @@ class MessageBubble extends StatelessWidget {
     List<Map<String, dynamic>> attachments,
   ) {
     // Collect all image sources for multi-image preview
-    final imageAttachments =
-        attachments.where(_isImageAttachment).toList();
+    final imageAttachments = attachments.where(_isImageAttachment).toList();
     final imageSources = imageAttachments
         .map(_resolveImageSource)
         .whereType<ImagePreviewSource>()
@@ -189,7 +213,11 @@ class MessageBubble extends StatelessWidget {
         if (_isImageAttachment(item)) {
           final imageIndex = imageAttachments.indexOf(item);
           return _buildImageAttachmentTile(
-            context, item, imageSources, imageIndex, heroTags,
+            context,
+            item,
+            imageSources,
+            imageIndex,
+            heroTags,
           );
         }
         return _buildFileAttachmentChip(item);
@@ -228,10 +256,7 @@ class MessageBubble extends StatelessWidget {
             width: 1,
           ),
         ),
-        child: Hero(
-          tag: heroTag,
-          child: _buildAttachmentImageWidget(item),
-        ),
+        child: Hero(tag: heroTag, child: _buildAttachmentImageWidget(item)),
       ),
     );
   }
@@ -456,14 +481,14 @@ class MessageBubble extends StatelessWidget {
   }
 
   /// 构建AI文本（使用StreamingText组件）
-  Widget _buildAiText(String text) {
+  Widget _buildAiText(BuildContext context, String text) {
+    final aiPrimaryTextColor = _resolvedAiPrimaryTextColor(context);
+    final aiSecondaryTextColor = _resolvedAiSecondaryTextColor(context);
     // 如果是 loading 状态，显示浮动三个点动画（左对齐，与回复文本位置一致）
     if (message.isLoading) {
       return Align(
         alignment: Alignment.centerLeft,
-        child: ThinkingDotsIndicator(
-          dotColor: visualProfile.secondaryTextColor,
-        ),
+        child: ThinkingDotsIndicator(dotColor: aiSecondaryTextColor),
       );
     }
 
@@ -489,7 +514,7 @@ class MessageBubble extends StatelessWidget {
             selectable: true,
             style: TextStyle(
               fontSize: _chatTextSize,
-              color: visualProfile.primaryTextColor,
+              color: aiPrimaryTextColor,
               height: 1.57,
             ),
           ),
@@ -503,10 +528,40 @@ class MessageBubble extends StatelessWidget {
       selectable: true,
       style: TextStyle(
         fontSize: _chatTextSize,
-        color: visualProfile.primaryTextColor,
+        color: aiPrimaryTextColor,
         height: 1.57,
       ),
     );
+  }
+
+  /// AI text with optional inference speed label
+  Widget _buildAiTextWithSpeed(BuildContext context, String text) {
+    final aiText = _buildAiText(context, text);
+    final speed = _decodeTokensPerSecond;
+    if (speed == null) return aiText;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        aiText,
+        const SizedBox(height: 4),
+        Text(
+          '${speed.toStringAsFixed(1)} tok/s',
+          style: TextStyle(
+            fontSize: 11,
+            color: visualProfile.secondaryTextColor.withValues(alpha: 0.6),
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ],
+    );
+  }
+
+  double? get _decodeTokensPerSecond {
+    final raw = message.content?['decodeTokensPerSecond'];
+    if (raw is double) return raw;
+    if (raw is num) return raw.toDouble();
+    return null;
   }
 
   /// 构建"总结中"指示器

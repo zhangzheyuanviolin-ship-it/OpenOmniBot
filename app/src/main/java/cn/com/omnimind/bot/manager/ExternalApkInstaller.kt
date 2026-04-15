@@ -3,6 +3,7 @@ package cn.com.omnimind.bot.manager
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -107,7 +108,7 @@ object ExternalApkInstaller {
             installApk(context, apkFile)
         }
         return if (launched) {
-            notifier.showCompleted()
+            notifier.showCompleted(apkFile)
             ExternalApkInstallResult(
                 success = true,
                 status = STATUS_INSTALLER_LAUNCHED,
@@ -115,7 +116,10 @@ object ExternalApkInstaller {
                 filePath = apkFile.absolutePath
             )
         } else {
-            notifier.showFailed("$displayName 安装包已下载完成，但无法打开系统安装界面。")
+            notifier.showFailed(
+                "$displayName 安装包已下载完成，但无法打开系统安装界面。",
+                apkFile = apkFile
+            )
             ExternalApkInstallResult(
                 success = false,
                 status = STATUS_INSTALL_FAILED,
@@ -212,15 +216,8 @@ object ExternalApkInstaller {
                 OmniLog.e(TAG, "APK file does not exist: ${apkFile.absolutePath}")
                 false
             } else {
-                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    FileProvider.getUriForFile(context, fileProviderAuthority(context), apkFile)
-                } else {
-                    Uri.fromFile(apkFile)
-                }
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "application/vnd.android.package-archive")
+                val intent = buildInstallIntent(context, apkFile).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 context.startActivity(intent)
                 true
@@ -229,6 +226,31 @@ object ExternalApkInstaller {
             OmniLog.e(TAG, "Launch package installer failed", e)
             false
         }
+    }
+
+    private fun buildInstallIntent(context: Context, apkFile: File): Intent {
+        val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            FileProvider.getUriForFile(context, fileProviderAuthority(context), apkFile)
+        } else {
+            Uri.fromFile(apkFile)
+        }
+        return Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+
+    private fun buildInstallPendingIntent(context: Context, apkFile: File): PendingIntent? {
+        if (!apkFile.exists()) {
+            return null
+        }
+        val requestCode = apkFile.absolutePath.hashCode().and(Int.MAX_VALUE)
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            buildInstallIntent(context, apkFile),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private class UpdateDownloadNotifier(
@@ -284,24 +306,32 @@ object ExternalApkInstaller {
             )
         }
 
-        fun showCompleted() {
-            notify(
-                baseBuilder()
-                    .setContentText("下载完成，正在打开安装界面")
-                    .setProgress(0, 0, false)
-                    .setOngoing(false)
-                    .setAutoCancel(true)
-            )
+        fun showCompleted(apkFile: File) {
+            val pendingIntent = buildInstallPendingIntent(context, apkFile)
+            val builder = baseBuilder()
+                .setContentText("下载完成，点击继续安装")
+                .setProgress(0, 0, false)
+                .setOngoing(false)
+                .setAutoCancel(true)
+            if (pendingIntent != null) {
+                builder.setContentIntent(pendingIntent)
+                builder.addAction(R.mipmap.ic_launcher, "立即安装", pendingIntent)
+            }
+            notify(builder)
         }
 
-        fun showFailed(message: String) {
-            notify(
-                baseBuilder()
-                    .setContentText(message)
-                    .setProgress(0, 0, false)
-                    .setOngoing(false)
-                    .setAutoCancel(true)
-            )
+        fun showFailed(message: String, apkFile: File? = null) {
+            val pendingIntent = apkFile?.let { buildInstallPendingIntent(context, it) }
+            val builder = baseBuilder()
+                .setContentText(message)
+                .setProgress(0, 0, false)
+                .setOngoing(false)
+                .setAutoCancel(true)
+            if (pendingIntent != null) {
+                builder.setContentIntent(pendingIntent)
+                builder.addAction(R.mipmap.ic_launcher, "再次安装", pendingIntent)
+            }
+            notify(builder)
         }
 
         private fun baseBuilder(): NotificationCompat.Builder {

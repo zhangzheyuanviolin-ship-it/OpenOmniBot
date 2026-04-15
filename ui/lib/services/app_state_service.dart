@@ -62,6 +62,17 @@ class AppStateService {
       final result = await _channel.invokeMethod('navigateBackToChat');
       return result == true;
     } catch (e) {
+      debugPrint('⚠️ Failed to navigate back to chat: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> applyLanguagePreference() async {
+    try {
+      final result = await _channel.invokeMethod<dynamic>('applyLanguagePreference');
+      return result == true;
+    } catch (e) {
+      debugPrint('⚠️ Failed to apply language preference on native side: $e');
       return false;
     }
   }

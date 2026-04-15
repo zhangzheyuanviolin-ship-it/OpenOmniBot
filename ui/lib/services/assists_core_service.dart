@@ -44,7 +44,13 @@ typedef AgentToolCallStartCallback = void Function(AgentToolEventData event);
 typedef AgentToolCallProgressCallback = void Function(AgentToolEventData event);
 typedef AgentToolCallCompleteCallback = void Function(AgentToolEventData event);
 typedef AgentChatMessageCallback =
-    void Function(String taskId, String message, {bool isFinal});
+    void Function(
+      String taskId,
+      String message, {
+      bool isFinal,
+      double? prefillTokensPerSecond,
+      double? decodeTokensPerSecond,
+    });
 typedef AgentPromptTokenUsageCallback =
     void Function(
       String taskId,
@@ -727,6 +733,7 @@ class UtgAppendRunLogResult {
 
 class AgentToolEventData {
   final String taskId;
+  final String cardId;
   final String toolName;
   final String displayName;
   final String toolTitle;
@@ -745,12 +752,15 @@ class AgentToolEventData {
   final String? terminalSessionId;
   final String terminalStreamState;
   final String? workspaceId;
+  final String? interruptedBy;
+  final String? interruptionReason;
   final List<Map<String, dynamic>> artifacts;
   final List<Map<String, dynamic>> actions;
   final bool success;
 
   const AgentToolEventData({
     required this.taskId,
+    this.cardId = '',
     required this.toolName,
     required this.displayName,
     this.toolTitle = '',
@@ -769,6 +779,8 @@ class AgentToolEventData {
     this.terminalSessionId,
     this.terminalStreamState = '',
     this.workspaceId,
+    this.interruptedBy,
+    this.interruptionReason,
     this.artifacts = const [],
     this.actions = const [],
     this.success = true,
@@ -778,6 +790,7 @@ class AgentToolEventData {
     final raw = map ?? const {};
     return AgentToolEventData(
       taskId: (raw['taskId'] ?? '').toString(),
+      cardId: (raw['cardId'] ?? '').toString(),
       toolName: (raw['toolName'] ?? '').toString(),
       displayName: (raw['displayName'] ?? raw['toolName'] ?? '').toString(),
       toolTitle: (raw['toolTitle'] ?? '').toString(),
@@ -796,6 +809,8 @@ class AgentToolEventData {
       terminalSessionId: raw['terminalSessionId']?.toString(),
       terminalStreamState: (raw['terminalStreamState'] ?? '').toString(),
       workspaceId: raw['workspaceId']?.toString(),
+      interruptedBy: raw['interruptedBy']?.toString(),
+      interruptionReason: raw['interruptionReason']?.toString(),
       artifacts: ((raw['artifacts'] as List?) ?? const [])
           .whereType<Map>()
           .map((item) => item.map((k, v) => MapEntry(k.toString(), v)))
@@ -859,17 +874,39 @@ class AssistsMessageService {
   static final StreamController<AgentAiConfigChangedEvent>
   _agentAiConfigChangedController =
       StreamController<AgentAiConfigChangedEvent>.broadcast();
+  static final StreamController<Map<String, dynamic>>
+  _conversationListChangedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  static final StreamController<Map<String, dynamic>>
+  _conversationMessagesChangedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  static final StreamController<Map<String, dynamic>>
+  _browserSessionSnapshotChangedController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // 改为回调列表，支持多个监听器
+  static final List<ChatTaskMessageCallBack> _onChatTaskMessageCallBacks = [];
+  static final List<ChatTaskMessageEndCallBack> _onChatTaskMessageEndCallBacks =
+      [];
   static final List<VLMTaskFinishEndCallBack> _onVLMTaskFinishCallBacks = [];
   static final List<CommonTaskFinishEndCallBack> _onCommonTaskFinishCallBacks =
       [];
 
   static Stream<AgentAiConfigChangedEvent> get agentAiConfigChangedStream =>
       _agentAiConfigChangedController.stream;
+  static Stream<Map<String, dynamic>> get conversationListChangedStream =>
+      _conversationListChangedController.stream;
+  static Stream<Map<String, dynamic>> get conversationMessagesChangedStream =>
+      _conversationMessagesChangedController.stream;
+  static Stream<Map<String, dynamic>> get browserSessionSnapshotChangedStream =>
+      _browserSessionSnapshotChangedController.stream;
 
   static void initialize() {
     assistCore.setMethodCallHandler(_handleMethod);
+  }
+
+  static void dispatchAgentAiConfigChanged(AgentAiConfigChangedEvent event) {
+    _agentAiConfigChangedController.add(event);
   }
 
   static Future<dynamic> _handleMethod(MethodCall call) async {
@@ -890,8 +927,35 @@ class AssistsMessageService {
           final data = Map<String, dynamic>.from(
             (call.arguments as Map?) ?? const <String, dynamic>{},
           );
-          _agentAiConfigChangedController.add(
-            AgentAiConfigChangedEvent.fromMap(data),
+          // Defer broadcast to the next event-loop turn so listeners can
+          // safely invoke the same platform channel without re-entrancy.
+          unawaited(
+            Future<void>(() {
+              dispatchAgentAiConfigChanged(
+                AgentAiConfigChangedEvent.fromMap(data),
+              );
+            }),
+          );
+          break;
+        case 'onConversationListChanged':
+          _conversationListChangedController.add(
+            Map<String, dynamic>.from(
+              (call.arguments as Map?) ?? const <String, dynamic>{},
+            ),
+          );
+          break;
+        case 'onConversationMessagesChanged':
+          _conversationMessagesChangedController.add(
+            Map<String, dynamic>.from(
+              (call.arguments as Map?) ?? const <String, dynamic>{},
+            ),
+          );
+          break;
+        case 'onBrowserSessionSnapshotUpdated':
+          _browserSessionSnapshotChangedController.add(
+            Map<String, dynamic>.from(
+              (call.arguments as Map?) ?? const <String, dynamic>{},
+            ),
           );
           break;
         case 'onChatMessage':
@@ -906,12 +970,18 @@ class AssistsMessageService {
             data['content'],
             data['type'],
           );
+          for (final callback in _onChatTaskMessageCallBacks) {
+            callback(data['taskID'], data['content'], data['type']);
+          }
           break;
         case 'onChatMessageEnd':
           final Map<String, dynamic> data = Map<String, dynamic>.from(
             call.arguments,
           );
           _onChatTaskMessageEndCallBack?.call(data['taskID']);
+          for (final callback in _onChatTaskMessageEndCallBacks) {
+            callback(data['taskID']);
+          }
           break;
         case 'onVLMRequestUserInput':
           final Map<String, dynamic> data = Map<String, dynamic>.from(
@@ -1006,10 +1076,18 @@ class AssistsMessageService {
               : (isFinalRaw is bool
                     ? isFinalRaw
                     : isFinalRaw.toString().toLowerCase() == 'true');
+          final double? prefillTokensPerSecond = _asNullableDouble(
+            data['prefillTokensPerSecond'],
+          );
+          final double? decodeTokensPerSecond = _asNullableDouble(
+            data['decodeTokensPerSecond'],
+          );
           _onAgentChatMessageCallback?.call(
             (data['taskId'] ?? '').toString(),
             (data['message'] ?? '').toString(),
             isFinal: isFinal,
+            prefillTokensPerSecond: prefillTokensPerSecond,
+            decodeTokensPerSecond: decodeTokensPerSecond,
           );
           break;
         case 'onAgentPromptTokenUsageChanged':
@@ -1147,10 +1225,37 @@ class AssistsMessageService {
     _onChatTaskMessageCallBack = callback;
   }
 
+  static void addOnChatTaskMessageCallBack(ChatTaskMessageCallBack? callback) {
+    if (callback != null && !_onChatTaskMessageCallBacks.contains(callback)) {
+      _onChatTaskMessageCallBacks.add(callback);
+    }
+  }
+
+  static void removeOnChatTaskMessageCallBack(
+    ChatTaskMessageCallBack? callback,
+  ) {
+    _onChatTaskMessageCallBacks.remove(callback);
+  }
+
   static void setOnChatTaskMessageEndCallBack(
     ChatTaskMessageEndCallBack callback,
   ) {
     _onChatTaskMessageEndCallBack = callback;
+  }
+
+  static void addOnChatTaskMessageEndCallBack(
+    ChatTaskMessageEndCallBack? callback,
+  ) {
+    if (callback != null &&
+        !_onChatTaskMessageEndCallBacks.contains(callback)) {
+      _onChatTaskMessageEndCallBacks.add(callback);
+    }
+  }
+
+  static void removeOnChatTaskMessageEndCallBack(
+    ChatTaskMessageEndCallBack? callback,
+  ) {
+    _onChatTaskMessageEndCallBacks.remove(callback);
   }
 
   static void setOnVLMRequestUserInputCallBack(
@@ -1278,6 +1383,13 @@ class AssistsMessageService {
     return null;
   }
 
+  static double? _asNullableDouble(dynamic raw) {
+    if (raw is double) return raw;
+    if (raw is num) return raw.toDouble();
+    if (raw is String) return double.tryParse(raw.trim());
+    return null;
+  }
+
   static void setOnAgentErrorCallback(AgentErrorCallback? callback) {
     _onAgentErrorCallback = callback;
   }
@@ -1335,6 +1447,23 @@ class AssistsMessageService {
       return result == "SUCCESS";
     } on PlatformException catch (e) {
       print('取消运行中任务失败: ${e.message}');
+      return false;
+    }
+  }
+
+  /// 停止当前 Agent 正在执行的工具调用，但不终止整轮 Agent 响应
+  static Future<bool> stopAgentToolCall({
+    required String taskId,
+    required String cardId,
+  }) async {
+    try {
+      final result = await assistCore.invokeMethod(
+        'stopAgentToolCall',
+        <String, String>{'taskId': taskId, 'cardId': cardId},
+      );
+      return result == "SUCCESS";
+    } on PlatformException catch (e) {
+      print('停止工具调用失败: ${e.message}');
       return false;
     }
   }
@@ -1893,6 +2022,8 @@ class AssistsMessageService {
     List<Map<String, dynamic>> content, {
     String? provider,
     Map<String, dynamic>? openClawConfig,
+    Map<String, dynamic>? modelOverride,
+    String? reasoningEffort,
     int? conversationId,
     String? conversationMode,
     String? userMessage,
@@ -1906,6 +2037,12 @@ class AssistsMessageService {
       }
       if (openClawConfig != null) {
         args['openClawConfig'] = openClawConfig;
+      }
+      if (modelOverride != null) {
+        args['modelOverride'] = modelOverride;
+      }
+      if (reasoningEffort != null && reasoningEffort.trim().isNotEmpty) {
+        args['reasoningEffort'] = reasoningEffort.trim();
       }
       if (conversationId != null) {
         args['conversationId'] = conversationId;
@@ -2286,6 +2423,7 @@ class AssistsMessageService {
     String? scheduledTaskTitle,
     bool? scheduleNotificationEnabled,
     Map<String, dynamic>? modelOverride,
+    String? reasoningEffort,
     Map<String, String>? terminalEnvironment,
   }) async {
     try {
@@ -2321,6 +2459,9 @@ class AssistsMessageService {
       if (modelOverride != null) {
         args['modelOverride'] = modelOverride;
       }
+      if (reasoningEffort != null && reasoningEffort.trim().isNotEmpty) {
+        args['reasoningEffort'] = reasoningEffort.trim();
+      }
       if (terminalEnvironment != null && terminalEnvironment.isNotEmpty) {
         args['terminalEnvironment'] = terminalEnvironment;
       }
@@ -2331,6 +2472,32 @@ class AssistsMessageService {
     } on PlatformException catch (e) {
       print('创建 Agent 任务失败: ${e.message}');
       return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>> compactConversationContext({
+    required int conversationId,
+    required String conversationMode,
+    Map<String, dynamic>? modelOverride,
+    String? reasoningEffort,
+  }) async {
+    try {
+      final result = await assistCore
+          .invokeMethod<Map<dynamic, dynamic>>('compactConversationContext', {
+            'conversationId': conversationId,
+            'conversationMode': conversationMode,
+            if (modelOverride != null) 'modelOverride': modelOverride,
+            if (reasoningEffort != null && reasoningEffort.trim().isNotEmpty)
+              'reasoningEffort': reasoningEffort.trim(),
+          });
+      return Map<String, dynamic>.from(result ?? const {});
+    } on PlatformException catch (e) {
+      print('手动压缩上下文失败: ${e.message}');
+      return {
+        'compacted': false,
+        'reason': 'failed',
+        'message': e.message ?? '手动压缩上下文失败',
+      };
     }
   }
 

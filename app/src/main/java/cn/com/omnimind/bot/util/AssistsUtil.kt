@@ -177,11 +177,19 @@ class AssistsUtil {
             content: List<Map<String, Any>>,
             onMessagePush: OnMessagePushListener,
             provider: String? = null,
-            openClawConfig: TaskParams.OpenClawConfig? = null
+            openClawConfig: TaskParams.OpenClawConfig? = null,
+            modelOverride: TaskParams.ChatModelOverride? = null,
+            reasoningEffort: String? = null
         ) {
             AssistsCore.startTask(
                 TaskParams.ChatTaskParams(
-                    taskId, content, onMessagePush, provider, openClawConfig
+                    taskId,
+                    content,
+                    onMessagePush,
+                    provider,
+                    openClawConfig,
+                    modelOverride,
+                    reasoningEffort
                 )
             )
         }

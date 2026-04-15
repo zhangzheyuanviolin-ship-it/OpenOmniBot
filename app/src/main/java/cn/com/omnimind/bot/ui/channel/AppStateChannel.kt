@@ -1,7 +1,9 @@
 package cn.com.omnimind.bot.ui.channel
 
 import android.content.Context
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.OmniLog
+import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.activity.MainActivity
 import cn.com.omnimind.bot.share.SharedOpenDraftStore
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
@@ -89,6 +91,20 @@ class AppStateChannel {
                     OmniLog.e(TAG, "Context unavailable, cannot navigate back to chat")
                     result.error("INVALID_CONTEXT", "Context unavailable", null)
                 }
+            }
+            "applyLanguagePreference" -> {
+                val appContext = context?.applicationContext
+                if (appContext == null) {
+                    result.error("INVALID_CONTEXT", "Context is null", null)
+                    return
+                }
+                AppLocaleManager.applyAppLocale(appContext)
+                runCatching {
+                    AgentWorkspaceManager(appContext).ensureRuntimeDirectories()
+                }.onFailure {
+                    OmniLog.w(TAG, "Failed to refresh workspace defaults after language change: ${it.message}")
+                }
+                result.success(true)
             }
             else -> {
                 result.notImplemented()

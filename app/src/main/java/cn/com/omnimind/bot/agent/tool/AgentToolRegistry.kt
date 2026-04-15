@@ -1,5 +1,8 @@
 package cn.com.omnimind.bot.agent
 
+import android.content.Context
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
+import cn.com.omnimind.baselib.i18n.LocalizedText
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.RemoteMcpDiscoveredServer
 import cn.com.omnimind.bot.mcp.RemoteMcpToolDescriptor
@@ -16,6 +19,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 class AgentToolRegistry(
+    private val context: Context,
     discoveredServers: List<RemoteMcpDiscoveredServer>
 ) : AgentToolCatalog {
     data class RuntimeToolDescriptor(
@@ -32,12 +36,13 @@ class AgentToolRegistry(
     override val toolsForModel: List<ChatCompletionTool>
 
     init {
+        val locale = AppLocaleManager.resolvePromptLocale(context)
         val runtimeDefinitions = mutableListOf<JsonObject>()
-        runtimeDefinitions.addAll(AgentToolDefinitions.staticTools())
-        runtimeDefinitions.addAll(AgentToolDefinitions.memoryTools)
-        runtimeDefinitions.addAll(AgentToolDefinitions.subagentTools)
+        runtimeDefinitions.addAll(AgentToolDefinitions.staticTools(locale))
+        runtimeDefinitions.addAll(AgentToolDefinitions.memoryTools(locale))
+        runtimeDefinitions.addAll(AgentToolDefinitions.subagentTools(locale))
         discoveredServers.flatMap { it.tools }.forEach { tool ->
-            runtimeDefinitions.add(toDynamicMcpToolDefinition(tool))
+            runtimeDefinitions.add(toDynamicMcpToolDefinition(tool, locale))
         }
 
         toolsForModel = runtimeDefinitions.mapNotNull { definition ->
@@ -170,7 +175,10 @@ class AgentToolRegistry(
             .firstOrNull { it.encodedToolName == toolName }
     }
 
-    private fun toDynamicMcpToolDefinition(tool: RemoteMcpToolDescriptor): JsonObject {
+    private fun toDynamicMcpToolDefinition(
+        tool: RemoteMcpToolDescriptor,
+        locale: cn.com.omnimind.baselib.i18n.PromptLocale
+    ): JsonObject {
         return AgentToolDefinitions.decorateToolDefinition(buildJsonObject {
             put("type", JsonPrimitive("function"))
             put("function", buildJsonObject {
@@ -180,11 +188,18 @@ class AgentToolRegistry(
                 put("serverName", JsonPrimitive(tool.serverName))
                 put(
                     "description",
-                    JsonPrimitive(tool.description.ifBlank { "调用远端 MCP 工具。" })
+                    JsonPrimitive(
+                        tool.description.ifBlank {
+                            LocalizedText(
+                                zhCN = "调用远端 MCP 工具。",
+                                enUS = "Call a remote MCP tool."
+                            ).resolve(locale)
+                        }
+                    )
                 )
                 put("parameters", mapToJsonElement(tool.inputSchema))
             })
-        })
+        }, locale)
     }
 
     private fun mapToJsonElement(value: Any?): JsonElement {

@@ -6,9 +6,11 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 const String _kArrowBigDownSvg = '''
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -36,6 +38,18 @@ const double _kProviderSwitchPopupMaxHeight = 320;
 
 enum _ProviderModelSource { manual, remote }
 
+class _ProtocolTypeOption {
+  const _ProtocolTypeOption({required this.value, required this.label});
+
+  final String value;
+  final String label;
+}
+
+const List<_ProtocolTypeOption> _kProtocolTypeOptions = <_ProtocolTypeOption>[
+  _ProtocolTypeOption(value: 'openai_compatible', label: 'OpenAI'),
+  _ProtocolTypeOption(value: 'anthropic', label: 'Anthropic'),
+];
+
 class _ProviderModelItem {
   const _ProviderModelItem({required this.id, required this.source});
 
@@ -58,6 +72,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _baseUrlController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
+  final FocusNode _nameFocusNode = FocusNode();
+  final FocusNode _baseUrlFocusNode = FocusNode();
+  final FocusNode _apiKeyFocusNode = FocusNode();
 
   static const Duration _autoSaveDebounce = Duration(milliseconds: 600);
   static const double _modelDeleteExtentRatio = 0.24;
@@ -74,6 +91,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   bool _isSavingProfile = false;
   bool _saveQueued = false;
   bool _isSwitchingProfile = false;
+  String _selectedProtocolType = 'openai_compatible';
 
   Timer? _autoSaveTimer;
   StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
@@ -91,6 +109,40 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       }
     }
     return _profiles.isEmpty ? null : _profiles.first;
+  }
+
+  bool get _hasAnyProfileFieldFocus =>
+      _nameFocusNode.hasFocus ||
+      _baseUrlFocusNode.hasFocus ||
+      _apiKeyFocusNode.hasFocus;
+
+  bool get _isDarkTheme => context.isDarkTheme;
+  Color get _pageBackground =>
+      _isDarkTheme ? context.omniPalette.pageBackground : AppColors.background;
+  Color get _cardColor =>
+      _isDarkTheme ? context.omniPalette.surfacePrimary : Colors.white;
+  Color get _surfaceColor => _isDarkTheme
+      ? context.omniPalette.surfaceSecondary
+      : const Color(0xFFF8FAFC);
+  Color get _primaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textPrimary : AppColors.text;
+  Color get _secondaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textSecondary : AppColors.text70;
+  Color get _tertiaryTextColor =>
+      _isDarkTheme ? context.omniPalette.textTertiary : AppColors.text50;
+  BorderSide get _subtleBorder => BorderSide(
+    color: _isDarkTheme
+        ? context.omniPalette.borderSubtle
+        : const Color(0x1A000000),
+  );
+
+  String get _selectedProtocolLabel {
+    for (final option in _kProtocolTypeOptions) {
+      if (option.value == _selectedProtocolType) {
+        return option.label;
+      }
+    }
+    return 'OpenAI';
   }
 
   List<_ProviderModelItem> get _modelItems {
@@ -134,9 +186,15 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   void initState() {
     super.initState();
     _loadData();
-    _configChangedSubscription =
-        AssistsMessageService.agentAiConfigChangedStream.listen((event) {
+    _configChangedSubscription = AssistsMessageService
+        .agentAiConfigChangedStream
+        .listen((event) {
           if (event.source != 'file' || !mounted) {
+            return;
+          }
+          if (_hasAnyProfileFieldFocus ||
+              _isSavingProfile ||
+              _isSwitchingProfile) {
             return;
           }
           unawaited(_loadData());
@@ -144,6 +202,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     _nameController.addListener(_onProfileChanged);
     _baseUrlController.addListener(_onProfileChanged);
     _apiKeyController.addListener(_onProfileChanged);
+    _nameFocusNode.addListener(_onProfileFieldFocusChanged);
+    _baseUrlFocusNode.addListener(_onProfileFieldFocusChanged);
+    _apiKeyFocusNode.addListener(_onProfileFieldFocusChanged);
   }
 
   @override
@@ -154,17 +215,38 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       unawaited(_persistProfileDraft());
     }
     unawaited(_persistManualModelIds());
+    _nameFocusNode.removeListener(_onProfileFieldFocusChanged);
+    _baseUrlFocusNode.removeListener(_onProfileFieldFocusChanged);
+    _apiKeyFocusNode.removeListener(_onProfileFieldFocusChanged);
     _nameController.removeListener(_onProfileChanged);
     _baseUrlController.removeListener(_onProfileChanged);
     _apiKeyController.removeListener(_onProfileChanged);
     _nameController.dispose();
     _baseUrlController.dispose();
     _apiKeyController.dispose();
+    _nameFocusNode.dispose();
+    _baseUrlFocusNode.dispose();
+    _apiKeyFocusNode.dispose();
     super.dispose();
   }
 
   void _onProfileChanged() {
     if (_isSyncingControllers || _isLoading || _isSwitchingProfile) {
+      return;
+    }
+    if (_hasAnyProfileFieldFocus) {
+      _autoSaveTimer?.cancel();
+      return;
+    }
+    _scheduleAutoSave();
+  }
+
+  void _onProfileFieldFocusChanged() {
+    if (_isSyncingControllers || _isLoading || _isSwitchingProfile) {
+      return;
+    }
+    if (_hasAnyProfileFieldFocus) {
+      _autoSaveTimer?.cancel();
       return;
     }
     _scheduleAutoSave();
@@ -250,6 +332,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
           name: nextName.isEmpty ? current.name : nextName,
           baseUrl: _baseUrlController.text.trim(),
           apiKey: nextApiKey,
+          protocolType: _selectedProtocolType,
         );
         if (!mounted) return;
         setState(() {
@@ -280,10 +363,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         ModelProviderConfigService.getManualModelIds(
           profileId: editingProfile.id,
         ),
-        ModelProviderConfigService.getCachedFetchedModels(
-          profileId: editingProfile.id,
-          apiBase: editingProfile.baseUrl,
-        ),
+        _loadRemoteModelsForProfile(editingProfile),
       ]);
       if (!mounted) return;
 
@@ -325,6 +405,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       _editingProfileId = current.id;
       _manualModelIds = manualModelIds;
       _remoteModels = remoteModels;
+      _selectedProtocolType = current.protocolType;
     });
   }
 
@@ -338,6 +419,40 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       selection: TextSelection.collapsed(offset: value.length),
     );
     _isSyncingControllers = false;
+  }
+
+  Future<List<ProviderModelOption>> _loadRemoteModelsForProfile(
+    ModelProviderProfileSummary profile,
+  ) async {
+    final isBuiltinLocalProvider =
+        profile.readOnly && profile.sourceType == 'omniinfer';
+    if (isBuiltinLocalProvider) {
+      try {
+        return await ModelProviderConfigService.fetchModels(
+          profileId: profile.id,
+        );
+      } catch (_) {
+        return ModelProviderConfigService.getCachedFetchedModels(
+          profileId: profile.id,
+        );
+      }
+    }
+    return ModelProviderConfigService.getCachedFetchedModels(
+      profileId: profile.id,
+      apiBase: profile.baseUrl,
+    );
+  }
+
+  String? _buildBaseUrlHelperText(String rawValue) {
+    final input = rawValue.trim();
+    if (input.isEmpty) {
+      return null;
+    }
+
+    if (_selectedProtocolType == 'anthropic') {
+      return ModelProviderConfigService.buildAnthropicMessagesRequestUrl(input);
+    }
+    return ModelProviderConfigService.buildChatCompletionsRequestUrl(input);
   }
 
   Future<void> _switchToProfile(String profileId) async {
@@ -358,10 +473,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       );
       final storedModels = await Future.wait<dynamic>([
         ModelProviderConfigService.getManualModelIds(profileId: selected.id),
-        ModelProviderConfigService.getCachedFetchedModels(
-          profileId: selected.id,
-          apiBase: selected.baseUrl,
-        ),
+        _loadRemoteModelsForProfile(selected),
       ]);
       if (!mounted) return;
       _applyProfile(
@@ -430,6 +542,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       return;
     }
     FocusScope.of(context).unfocus();
+    _autoSaveTimer?.cancel();
+    if (_shouldAutoSaveDraft) {
+      await _persistProfileDraft();
+      if (!mounted) {
+        return;
+      }
+    }
     final name = (await AppDialog.input(
       context,
       title: '新增 Provider',
@@ -510,10 +629,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       );
       final storedModels = await Future.wait<dynamic>([
         ModelProviderConfigService.getManualModelIds(profileId: fallback.id),
-        ModelProviderConfigService.getCachedFetchedModels(
-          profileId: fallback.id,
-          apiBase: fallback.baseUrl,
-        ),
+        _loadRemoteModelsForProfile(fallback),
       ]);
       if (!mounted) return;
       _applyProfile(
@@ -616,45 +732,134 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     }
   }
 
-  Widget _buildCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [AppColors.boxShadow],
-      ),
-      child: child,
+  Future<void> _selectProtocolType(String value) async {
+    if (_selectedProtocolType == value) {
+      return;
+    }
+    final current = _currentProfile;
+    if (current == null || current.readOnly) {
+      return;
+    }
+    final previousValue = _selectedProtocolType;
+    setState(() => _selectedProtocolType = value);
+    try {
+      final saved = await ModelProviderConfigService.saveProfile(
+        id: current.id,
+        name: _nameController.text.trim().isEmpty
+            ? current.name
+            : _nameController.text.trim(),
+        baseUrl: _baseUrlController.text.trim(),
+        apiKey: _apiKeyController.text.trim(),
+        protocolType: value,
+      );
+      if (!mounted) return;
+      setState(() {
+        _profiles = _profiles.map((p) => p.id == saved.id ? saved : p).toList();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _selectedProtocolType = previousValue);
+    }
+  }
+
+  Future<void> _openProtocolTypeMenu(BuildContext anchorContext) async {
+    final current = _currentProfile;
+    if (current == null || current.readOnly) {
+      return;
+    }
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+      return;
+    }
+    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final bottomRight = anchorBox.localToGlobal(
+      anchorBox.size.bottomRight(Offset.zero),
+      ancestor: overlay,
     );
+    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
+    final popupWidth = anchorRect.width.clamp(132.0, 180.0).toDouble();
+    final estimatedHeight = (_kProtocolTypeOptions.length * 48 + 24)
+        .clamp(120.0, _kProviderSwitchPopupMaxHeight)
+        .toDouble();
+    final position = PopupMenuAnchorPosition.fromAnchorRect(
+      anchorRect: anchorRect,
+      overlaySize: overlay.size,
+      estimatedMenuHeight: estimatedHeight,
+      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
+      verticalGap: 6,
+    );
+    final selected = await showMenu<String>(
+      context: context,
+      color: _cardColor,
+      elevation: _isDarkTheme ? 0 : 8,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: _isDarkTheme
+            ? BorderSide(color: context.omniPalette.borderSubtle)
+            : BorderSide.none,
+      ),
+      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
+      position: position,
+      items: [
+        _ProtocolTypePopupEntry(
+          width: popupWidth,
+          estimatedHeight: estimatedHeight,
+          options: _kProtocolTypeOptions,
+          selectedValue: _selectedProtocolType,
+        ),
+      ],
+    );
+    if (selected == null) {
+      return;
+    }
+    await _selectProtocolType(selected);
+  }
+
+  Widget _buildCard({required Widget child}) {
+    return SizedBox(width: double.infinity, child: child);
   }
 
   InputDecoration _buildInputDecoration({
-    required String hint,
+    required String label,
+    String? hint,
     Widget? suffixIcon,
   }) {
     return InputDecoration(
+      labelText: label,
       hintText: hint,
-      hintStyle: const TextStyle(
-        color: AppColors.text50,
+      labelStyle: TextStyle(
+        color: _secondaryTextColor,
+        fontSize: 13,
+        fontFamily: 'PingFang SC',
+      ),
+      hintStyle: TextStyle(
+        color: _tertiaryTextColor,
         fontSize: 13,
         fontFamily: 'PingFang SC',
       ),
       filled: true,
-      fillColor: const Color(0xFFF8FAFC),
+      fillColor: _cardColor,
       suffixIcon: suffixIcon,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Color(0x1A000000)),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: _subtleBorder,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Color(0x1A000000)),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: _subtleBorder,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Color(0xFF2C7FEB)),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: _isDarkTheme
+              ? context.omniPalette.accentPrimary
+              : const Color(0xFF2C7FEB),
+        ),
       ),
     );
   }
@@ -668,41 +873,55 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     final isEnabled = onPressed != null;
     final useHighlightStyle = highlighted || loading;
     final backgroundColor = !isEnabled && !loading
-        ? const Color(0xFFE8ECF3)
+        ? (_isDarkTheme
+              ? context.omniPalette.surfaceElevated
+              : const Color(0xFFE8ECF3))
         : useHighlightStyle
-        ? const Color(0xFF2C7FEB)
-        : Colors.white;
+        ? (_isDarkTheme
+              ? context.omniPalette.accentPrimary
+              : const Color(0xFF2C7FEB))
+        : _cardColor;
     final iconColor = !isEnabled && !loading
-        ? AppColors.text50
+        ? _tertiaryTextColor
         : useHighlightStyle
-        ? Colors.white
-        : AppColors.text;
+        ? (_isDarkTheme
+              ? Theme.of(context).colorScheme.onPrimary
+              : Colors.white)
+        : _primaryTextColor;
 
     return Material(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onPressed,
-        child: SizedBox(
-          width: 42,
-          height: 42,
-          child: Center(
-            child: loading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: !useHighlightStyle && _isDarkTheme
+              ? Border.all(color: context.omniPalette.borderSubtle)
+              : null,
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onPressed,
+          child: SizedBox(
+            width: 42,
+            height: 42,
+            child: Center(
+              child: loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : SvgPicture.string(
+                      svg,
+                      width: 20,
+                      height: 20,
+                      colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
                     ),
-                  )
-                : SvgPicture.string(
-                    svg,
-                    width: 20,
-                    height: 20,
-                    colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-                  ),
+            ),
           ),
         ),
       ),
@@ -765,16 +984,20 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                 ),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    boxShadow: [AppColors.boxShadow],
+                    color: _surfaceColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isDarkTheme
+                          ? context.omniPalette.borderSubtle
+                          : const Color(0x14000000),
+                    ),
                   ),
                   child: Material(
                     color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(12),
                     child: InkWell(
                       onTap: () {},
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -785,10 +1008,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             Expanded(
                               child: Text(
                                 item.id,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
-                                  color: AppColors.text,
+                                  color: _primaryTextColor,
                                   fontFamily: 'PingFang SC',
                                 ),
                                 maxLines: 1,
@@ -800,7 +1023,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                               item.sourceLabel,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: AppColors.text.withValues(alpha: 0.4),
+                                color: _tertiaryTextColor,
                               ),
                             ),
                           ],
@@ -846,9 +1069,16 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     );
     final selected = await showMenu<String>(
       context: context,
-      color: Colors.white,
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: _cardColor,
+      elevation: _isDarkTheme ? 0 : 8,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: _isDarkTheme
+            ? BorderSide(color: context.omniPalette.borderSubtle)
+            : BorderSide.none,
+      ),
       constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
       position: position,
       items: [
@@ -866,13 +1096,14 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     await _switchToProfile(selected);
   }
 
-  Widget _buildProviderConfigTitle() {
+  Widget _buildProviderConfigTitle({double? maxWidth}) {
     final current = _currentProfile;
     final name = current?.name.trim();
     final displayName = (name == null || name.isEmpty) ? 'Provider' : name;
     return Builder(
       builder: (anchorContext) {
         return InkWell(
+          key: const Key('provider-config-title'),
           onTap: _profiles.isEmpty
               ? null
               : () {
@@ -885,16 +1116,20 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 190),
+                  constraints: BoxConstraints(
+                    maxWidth: maxWidth ?? double.infinity,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '$displayName 配置',
+                        displayName,
+                        key: const Key('provider-config-title-text'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.text,
+                        style: TextStyle(
+                          color: _primaryTextColor,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           fontFamily: 'PingFang SC',
@@ -907,11 +1142,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           child: Text(
                             current.statusText.isNotEmpty
                                 ? current.statusText
-                                : (current.ready ? '内置 Provider' : '内置 Provider 未就绪'),
+                                : (current.ready
+                                      ? '内置 Provider'
+                                      : '内置 Provider 未就绪'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.text50,
+                            style: TextStyle(
+                              color: _tertiaryTextColor,
                               fontSize: 11,
                               fontFamily: 'PingFang SC',
                             ),
@@ -921,21 +1158,77 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                   ),
                 ),
                 if (current?.readOnly == true)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6),
                     child: Icon(
                       Icons.lock_outline,
                       size: 14,
-                      color: AppColors.text50,
+                      color: _tertiaryTextColor,
                     ),
                   ),
                 const SizedBox(width: 2),
-                const Icon(
+                Icon(
                   Icons.keyboard_arrow_down_rounded,
                   size: 18,
-                  color: AppColors.text70,
+                  color: _secondaryTextColor,
                 ),
               ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildProtocolTypeButton() {
+    final current = _currentProfile;
+    final enabled = !(current?.readOnly ?? false);
+    return Builder(
+      builder: (anchorContext) {
+        return Opacity(
+          opacity: enabled ? 1 : 0.68,
+          child: InkWell(
+            key: const Key('provider-protocol-type-button'),
+            onTap: enabled
+                ? () {
+                    unawaited(_openProtocolTypeMenu(anchorContext));
+                  }
+                : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 88),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _selectedProtocolLabel,
+                          key: const Key('provider-protocol-type-text'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _primaryTextColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'PingFang SC',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: _secondaryTextColor,
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -948,22 +1241,53 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     final modelItems = _modelItems;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: _pageBackground,
       appBar: CommonAppBar(title: '模型提供商', primary: true),
       body: SafeArea(
         top: false,
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
                 children: [
+                  const SettingsSectionTitle(
+                    label: 'Provider 配置',
+                    subtitle: '新增、切换并维护模型服务提供商的名称、地址与密钥。',
+                  ),
                   _buildCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Expanded(child: _buildProviderConfigTitle()),
+                            Expanded(
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  const protocolButtonReservedWidth = 116.0;
+                                  const titleSpacing = 4.0;
+                                  final providerTitleMaxWidth =
+                                      (constraints.maxWidth -
+                                              protocolButtonReservedWidth -
+                                              titleSpacing)
+                                          .clamp(72.0, constraints.maxWidth)
+                                          .toDouble();
+                                  return Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _buildProviderConfigTitle(
+                                          maxWidth: providerTitleMaxWidth,
+                                        ),
+                                        const SizedBox(width: titleSpacing),
+                                        _buildProtocolTypeButton(),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             _buildModelActionButton(
                               svg: '''
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -990,34 +1314,49 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         const SizedBox(height: 12),
                         TextField(
                           controller: _nameController,
+                          focusNode: _nameFocusNode,
                           enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
-                            hint: 'Provider 名称',
+                            label: 'Provider 名称',
+                            hint: '例如：DeepSeek',
                           ),
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: _baseUrlController,
+                          focusNode: _baseUrlFocusNode,
                           enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
-                            hint: '例如：https://api.openai.com 或 https://xxx/v1',
+                            label: 'Base URL',
+                            hint: '末尾加 # 可禁用自动补全请求路径',
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          '支持直接输入根地址、/v1、/v1/chat/completions，会自动归一化。',
-                          style: TextStyle(
-                            color: AppColors.text50,
-                            fontSize: 12,
-                            fontFamily: 'PingFang SC',
-                          ),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _baseUrlController,
+                          builder: (context, value, child) {
+                            final url = _buildBaseUrlHelperText(value.text);
+                            if (url == null) {
+                              return const SizedBox.shrink();
+                            }
+                            return Text(
+                              url,
+                              style: TextStyle(
+                                color: _tertiaryTextColor,
+                                fontSize: 12,
+                                fontFamily: 'PingFang SC',
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 14),
                         TextField(
                           controller: _apiKeyController,
+                          focusNode: _apiKeyFocusNode,
                           enabled: !(_currentProfile?.readOnly ?? false),
                           obscureText: _obscureApiKey,
                           decoration: _buildInputDecoration(
+                            label: 'API Key',
                             hint: '例如：sk-xxxx',
                             suffixIcon: IconButton(
                               splashRadius: 18,
@@ -1030,17 +1369,17 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                                 _obscureApiKey
                                     ? Icons.visibility_off
                                     : Icons.visibility,
-                                color: AppColors.text50,
+                                color: _tertiaryTextColor,
                                 size: 18,
                               ),
                             ),
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           '未填写 API Key 时，会以无鉴权方式请求 Provider。',
                           style: TextStyle(
-                            color: AppColors.text50,
+                            color: _tertiaryTextColor,
                             fontSize: 12,
                             fontFamily: 'PingFang SC',
                           ),
@@ -1048,7 +1387,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 18),
+                  const SettingsSectionTitle(
+                    label: '模型列表',
+                    subtitle: '支持手动补充模型，也可从当前 Provider 拉取远端模型清单。',
+                  ),
                   _buildCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1056,34 +1399,19 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         Row(
                           children: [
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    '模型列表',
-                                    style: TextStyle(
-                                      color: AppColors.text,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: 'PingFang SC',
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '共 ${modelItems.length} 个模型',
-                                    style: const TextStyle(
-                                      color: AppColors.text70,
-                                      fontSize: 12,
-                                      fontFamily: 'PingFang SC',
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                '共 ${modelItems.length} 个模型',
+                                style: TextStyle(
+                                  color: _secondaryTextColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'PingFang SC',
+                                ),
                               ),
                             ),
                             _buildModelActionButton(
                               svg: _kPlusSvg,
-                              onPressed:
-                                  _currentProfile?.readOnly == true
+                              onPressed: _currentProfile?.readOnly == true
                                   ? null
                                   : _promptAddModel,
                             ),
@@ -1103,9 +1431,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           height: 280,
                           clipBehavior: Clip.antiAlias,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF4F7FB),
+                            color: _surfaceColor,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0x1A000000)),
+                            border: Border.all(
+                              color: _isDarkTheme
+                                  ? context.omniPalette.borderSubtle
+                                  : const Color(0x1A000000),
+                            ),
                           ),
                           child: modelItems.isEmpty
                               ? Padding(
@@ -1118,16 +1450,16 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                                           _kPackageSvg,
                                           width: 64,
                                           height: 64,
-                                          colorFilter: const ColorFilter.mode(
-                                            AppColors.text50,
+                                          colorFilter: ColorFilter.mode(
+                                            _tertiaryTextColor,
                                             BlendMode.srcIn,
                                           ),
                                         ),
                                         const SizedBox(height: 10),
-                                        const Text(
+                                        Text(
                                           '请添加模型！',
                                           style: TextStyle(
-                                            color: AppColors.text70,
+                                            color: _secondaryTextColor,
                                             fontSize: 14,
                                             fontWeight: FontWeight.w600,
                                             fontFamily: 'PingFang SC',
@@ -1183,6 +1515,7 @@ class _ProviderSwitchPopupEntry extends PopupMenuEntry<String> {
 
 class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
   Widget _buildProviderTile(ModelProviderProfileSummary profile) {
+    final palette = context.omniPalette;
     final selected = profile.id == widget.selectedProfileId;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
@@ -1194,8 +1527,17 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF3FF) : const Color(0xFFF8FAFD),
+            color: selected
+                ? (_isDarkTheme(context)
+                      ? palette.segmentThumb
+                      : const Color(0xFFEAF3FF))
+                : (_isDarkTheme(context)
+                      ? palette.surfaceSecondary
+                      : const Color(0xFFF8FAFD)),
             borderRadius: BorderRadius.circular(12),
+            border: _isDarkTheme(context)
+                ? Border.all(color: palette.borderSubtle)
+                : null,
           ),
           child: Row(
             children: [
@@ -1204,19 +1546,138 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
                   profile.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: AppColors.text,
+                    color: _isDarkTheme(context)
+                        ? palette.textPrimary
+                        : AppColors.text,
                     fontWeight: FontWeight.w500,
                     fontFamily: 'PingFang SC',
                   ),
                 ),
               ),
               if (selected)
-                const Icon(
+                Icon(
                   Icons.check_rounded,
                   size: 16,
-                  color: Color(0xFF2C7FEB),
+                  color: _isDarkTheme(context)
+                      ? palette.accentPrimary
+                      : const Color(0xFF2C7FEB),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final mediaQuery = MediaQuery.of(context);
+    final dynamicMaxHeight =
+        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
+            .clamp(120.0, widget.estimatedHeight)
+            .toDouble();
+    return SizedBox(
+      width: widget.width,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+        child: widget.profiles.isEmpty
+            ? Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '暂无 Provider',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _isDarkTheme(context)
+                        ? palette.textTertiary
+                        : const Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              )
+            : Scrollbar(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: widget.profiles.length,
+                  itemBuilder: (context, index) {
+                    return _buildProviderTile(widget.profiles[index]);
+                  },
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _ProtocolTypePopupEntry extends PopupMenuEntry<String> {
+  const _ProtocolTypePopupEntry({
+    required this.width,
+    required this.estimatedHeight,
+    required this.options,
+    required this.selectedValue,
+  });
+
+  final double width;
+  final double estimatedHeight;
+  final List<_ProtocolTypeOption> options;
+  final String selectedValue;
+
+  @override
+  double get height => estimatedHeight;
+
+  @override
+  bool represents(String? value) => false;
+
+  @override
+  State<_ProtocolTypePopupEntry> createState() =>
+      _ProtocolTypePopupEntryState();
+}
+
+class _ProtocolTypePopupEntryState extends State<_ProtocolTypePopupEntry> {
+  Widget _buildProtocolTile(_ProtocolTypeOption option) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final selected = option.value == widget.selectedValue;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: InkWell(
+        onTap: () => Navigator.of(context).pop(option.value),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected
+                ? (isDark ? palette.segmentThumb : const Color(0xFFEAF3FF))
+                : (isDark ? palette.surfaceSecondary : const Color(0xFFF8FAFD)),
+            borderRadius: BorderRadius.circular(12),
+            border: isDark ? Border.all(color: palette.borderSubtle) : null,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  option.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? palette.textPrimary : AppColors.text,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+              if (selected)
+                Icon(
+                  Icons.check_rounded,
+                  size: 16,
+                  color: isDark
+                      ? palette.accentPrimary
+                      : const Color(0xFF2C7FEB),
                 ),
             ],
           ),
@@ -1236,33 +1697,21 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
       width: widget.width,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
-        child: widget.profiles.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  '暂无 Provider',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF94A3B8),
-                    fontWeight: FontWeight.w500,
-                    fontFamily: 'PingFang SC',
-                  ),
-                ),
-              )
-            : Scrollbar(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: widget.profiles.length,
-                  itemBuilder: (context, index) {
-                    return _buildProviderTile(widget.profiles[index]);
-                  },
-                ),
-              ),
+        child: Scrollbar(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: widget.options.length,
+            itemBuilder: (context, index) {
+              return _buildProtocolTile(widget.options[index]);
+            },
+          ),
+        ),
       ),
     );
   }
 }
+
+bool _isDarkTheme(BuildContext context) => context.isDarkTheme;
 
 class _AddModelIdDialog extends StatefulWidget {
   const _AddModelIdDialog();

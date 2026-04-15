@@ -1,9 +1,12 @@
 package cn.com.omnimind.bot.mcp
 
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
+
 /**
  * MCP 工具定义
  */
 object McpToolDefinitions {
+    private fun brandName(): String = AppLocaleManager.brandName()
     
     val vlmTaskTool = mapOf(
         "name" to "vlm_task",
@@ -150,9 +153,10 @@ BEHAVIOR:
         )
     )
 
-    val fileTransferTool = mapOf(
+    val fileTransferTool
+        get() = mapOf(
         "name" to "file_transfer",
-        "description" to """Retrieve files shared to the 小万 app on the Android device.
+        "description" to """Retrieve files shared to the ${brandName()} app on the Android device.
 
 WORKFLOW:
 1. Use vlm_task to navigate to the file and choose "Open with" or "Share" -> 小万.
@@ -197,5 +201,6 @@ NOTES:
         )
     )
 
-    val allTools = listOf(vlmTaskTool, taskStatusTool, taskReplyTool, taskWaitUnlockTool, fileTransferTool)
+    val allTools
+        get() = listOf(vlmTaskTool, taskStatusTool, taskReplyTool, taskWaitUnlockTool, fileTransferTool)
 }

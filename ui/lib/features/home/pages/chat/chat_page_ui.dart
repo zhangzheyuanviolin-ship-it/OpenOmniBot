@@ -3,51 +3,245 @@ part of 'chat_page.dart';
 const int _kDefaultContextTokenThreshold = 128000;
 const int _kMinContextTokenThreshold = 10000;
 const int _kMaxContextTokenThreshold = 512000;
-
-class _ToolActivityAnchorGeometry {
-  const _ToolActivityAnchorGeometry({required this.rect, required this.bottom});
-
-  final Rect rect;
-  final double bottom;
-}
+const double _kChatMessageBottomSafeSpacing = 12.0;
+const double _kSlashCommandDrawerRadius = 18.0;
+const double _kSlashCommandDrawerHandleWidth = 36.0;
+const double _kSlashCommandDrawerHandleHeight = 4.0;
 
 enum _UserMessageQuickAction { copy, retry }
 
 mixin _ChatPageUiMixin on _ChatPageStateBase {
-  bool get _showNewConversationPullIndicator =>
-      _isNewConversationPullTracking || _newConversationPullDistance > 0;
+  ChatPaneOverlayAnchorGeometry? _lastStableToolActivityAnchorGeometry;
+  static const double _kChatInputWrapperTopPadding = 8.0;
+  static const double _kChatInputFallbackHeight = 80.0;
 
-  double _resolveNewConversationPullIndicatorTop({
-    required BuildContext layoutContext,
-    required BoxConstraints constraints,
+  double _resolveNormalSurfaceComposerInset({
     required double inputBottomPadding,
     required double keyboardSpacer,
   }) {
-    final fallbackTop =
-        constraints.maxHeight -
-        inputBottomPadding -
-        keyboardSpacer -
-        (_isInputAreaVisible ? 106 : 52);
-    final fallback = fallbackTop
-        .clamp(8.0, constraints.maxHeight - 24)
-        .toDouble();
     if (!_isInputAreaVisible) {
-      return fallback;
+      return 0.0;
     }
-    final inputContext = _inputAreaKey.currentContext;
-    final inputBox = inputContext?.findRenderObject();
-    final stackBox = layoutContext.findRenderObject();
-    if (inputBox is! RenderBox ||
-        stackBox is! RenderBox ||
-        !inputBox.hasSize ||
-        !stackBox.hasSize) {
-      return fallback;
-    }
-    final inputTop = inputBox.localToGlobal(Offset.zero, ancestor: stackBox).dy;
-    return (inputTop - 30).clamp(8.0, constraints.maxHeight - 24).toDouble();
+    final measuredComposerHeight = _inputAreaHeight > 0.5
+        ? _inputAreaHeight + _kChatInputWrapperTopPadding
+        : _kChatInputFallbackHeight;
+    return measuredComposerHeight +
+        inputBottomPadding +
+        keyboardSpacer +
+        _kChatMessageBottomSafeSpacing;
   }
 
-  _ToolActivityAnchorGeometry _resolveToolActivityAnchorGeometry({
+  void _scheduleSlashCommandPanelInsetSync(bool visible) {
+    final mode = _activeMode;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      double nextHeight = 0;
+      if (visible) {
+        final context = _openClawPanelKey.currentContext;
+        final renderBox = context?.findRenderObject() as RenderBox?;
+        if (renderBox != null && renderBox.hasSize) {
+          nextHeight = renderBox.size.height;
+        }
+      }
+      final currentHeight = _slashCommandPanelOccupiedHeightByMode[mode] ?? 0;
+      if ((currentHeight - nextHeight).abs() < 0.5) {
+        return;
+      }
+      setState(() {
+        _slashCommandPanelOccupiedHeightByMode[mode] = nextHeight;
+      });
+    });
+  }
+
+  void _scheduleSlashCommandOccupiedHeightSync(double height) {
+    final normalized = height.isFinite ? height : 0.0;
+    if ((_slashCommandPanelOccupiedHeight - normalized).abs() < 0.5) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          (_slashCommandPanelOccupiedHeight - normalized).abs() < 0.5) {
+        return;
+      }
+      setState(() {
+        _slashCommandPanelOccupiedHeightByMode[_activeMode] = normalized;
+      });
+    });
+  }
+
+  List<Map<String, dynamic>> _buildSlashCommandCards() {
+    final route = _resolveSlashCommandPanelRoute(_messageController.text);
+    if (route == _SlashCommandPanelRoute.effort &&
+        _supportsReasoningEffortCommand) {
+      final activeEffort = _activeConversationReasoningEffort;
+      final query = _slashCommandRouteQuery(route).toLowerCase();
+      final efforts = <String>['low', 'high']
+          .where((effort) {
+            return query.isEmpty || effort.contains(query);
+          })
+          .toList(growable: false);
+      return efforts
+          .map((effort) {
+            final isSelected = effort == activeEffort;
+            return <String, dynamic>{
+              'cardId': 'slash-command-effort-$effort',
+              'toolName': effort,
+              'toolTitle': effort,
+              'displayName': effort,
+              'toolType': 'command',
+              'toolTypeLabel': '思考',
+              'status': isSelected ? 'success' : 'running',
+              'statusLabel': isSelected ? '已选' : '可选',
+              'summary': isSelected ? '当前思考强度：$effort' : '将思考强度切换为 $effort',
+              'progress': '用于后续请求的 reasoning_effort 参数',
+            };
+          })
+          .toList(growable: false);
+    }
+
+    final commands = <Map<String, dynamic>>[];
+    if (_supportsManualContextCompaction) {
+      commands.add(<String, dynamic>{
+        'cardId': 'slash-command-compact',
+        'toolName': '/compact',
+        'toolTitle': '/compact',
+        'displayName': '/compact',
+        'toolType': 'command',
+        'toolTypeLabel': '上下文',
+        'status': 'running',
+        'statusLabel': '命令',
+        'summary': '手动压缩当前对话上下文',
+        'progress': '把当前会话历史压缩成 replacement summary',
+      });
+    }
+    if (_supportsReasoningEffortCommand) {
+      final activeEffort = _activeConversationReasoningEffort;
+      commands.add(<String, dynamic>{
+        'cardId': 'slash-command-effort',
+        'toolName': '/effort',
+        'toolTitle': '/effort',
+        'displayName': '/effort',
+        'toolType': 'command',
+        'toolTypeLabel': '思考',
+        'status': activeEffort == null ? 'running' : 'success',
+        'statusLabel': activeEffort ?? '命令',
+        'summary': activeEffort == null
+            ? '设置当前会话的思考强度'
+            : '当前思考强度：$activeEffort',
+        'progress': '点击后选择 low 或 high',
+      });
+    }
+    if (_isOpenClawSurface) {
+      commands.add(<String, dynamic>{
+        'cardId': 'slash-command-openclaw',
+        'toolName': '/openclaw',
+        'toolTitle': '/openclaw',
+        'displayName': '/openclaw',
+        'toolType': 'command',
+        'toolTypeLabel': '网关',
+        'status': 'running',
+        'statusLabel': '命令',
+        'summary': '手动配置远端或自定义 OpenClaw 网关',
+        'progress': '填写 Base URL、Token 与 User ID',
+      });
+    }
+    return commands;
+  }
+
+  void _handleSlashCommandCardSelected(Map<String, dynamic> cardData) {
+    final command = (cardData['toolTitle'] ?? cardData['displayName'] ?? '')
+        .toString()
+        .trim();
+    switch (command) {
+      case '/compact':
+        unawaited(_executeManualContextCompactionCommand());
+        break;
+      case '/effort':
+        _messageController.value = const TextEditingValue(
+          text: '/effort ',
+          selection: TextSelection.collapsed(offset: 8),
+        );
+        _inputFocusNode.requestFocus();
+        _handleSlashCommandInput();
+        break;
+      case 'low':
+      case 'high':
+        unawaited(_applyConversationReasoningEffort(command));
+        _messageController.clear();
+        _hideSlashCommandPanel();
+        break;
+      case '/openclaw':
+        _showOpenClawCommandPanel(expand: true);
+        break;
+      default:
+        break;
+    }
+  }
+
+  Widget _buildSlashCommandDrawerSurface({
+    required Widget child,
+    bool bodyHasOwnPadding = false,
+  }) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final surfaceColor = isDark
+        ? palette.surfacePrimary
+        : const Color(0xFFF9FCFF);
+    final handleColor = isDark
+        ? palette.borderStrong.withValues(alpha: 0.9)
+        : const Color(0x334E627D);
+    return Material(
+      color: Colors.transparent,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(_kSlashCommandDrawerRadius),
+          ),
+          border: isDark
+              ? Border.all(color: palette.borderSubtle.withValues(alpha: 0.72))
+              : Border.all(color: const Color(0x120F2034)),
+          boxShadow: [
+            BoxShadow(
+              color: isDark
+                  ? palette.shadowColor.withValues(alpha: 0.34)
+                  : const Color(0x18111B2D),
+              blurRadius: isDark ? 20 : 16,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 6),
+                child: Container(
+                  width: _kSlashCommandDrawerHandleWidth,
+                  height: _kSlashCommandDrawerHandleHeight,
+                  decoration: BoxDecoration(
+                    color: handleColor,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              bodyHasOwnPadding
+                  ? child
+                  : Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: child,
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  ChatPaneOverlayAnchorGeometry _resolveToolActivityAnchorGeometry({
     required BuildContext layoutContext,
     required BoxConstraints constraints,
     required double inputBottomPadding,
@@ -58,34 +252,39 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         ? inputAreaHeight
         : 0.0;
     final derivedWidth = math.max(0.0, constraints.maxWidth - 48);
-    if (_isInputAreaVisible && normalizedInputHeight > 0.5) {
-      final bottom =
-          (inputBottomPadding + keyboardSpacer + normalizedInputHeight)
-              .clamp(0.0, constraints.maxHeight)
-              .toDouble();
-      final top = (constraints.maxHeight - bottom)
-          .clamp(0.0, constraints.maxHeight)
-          .toDouble();
-      return _ToolActivityAnchorGeometry(
-        rect: Rect.fromLTWH(24, top, derivedWidth, normalizedInputHeight),
-        bottom: bottom,
-      );
+    if (_isSurfacePageScrolling &&
+        _lastStableToolActivityAnchorGeometry != null) {
+      return _lastStableToolActivityAnchorGeometry!;
     }
 
-    final fallbackBottom = (inputBottomPadding + keyboardSpacer + 84)
-        .clamp(0.0, constraints.maxHeight)
-        .toDouble();
-    final fallbackRect = Rect.fromLTWH(
-      24,
-      constraints.maxHeight - fallbackBottom,
-      derivedWidth,
-      0,
+    if (_isInputAreaVisible && normalizedInputHeight > 0.5) {
+      final geometry = resolveChatPaneOverlayAnchorGeometry(
+        viewportSize: constraints.biggest,
+        bottomSpacing:
+            inputBottomPadding + keyboardSpacer + normalizedInputHeight,
+        anchorHeight: normalizedInputHeight,
+      );
+      _lastStableToolActivityAnchorGeometry = geometry;
+      return geometry;
+    }
+
+    final liveGeometry = _resolveToolActivityAnchorGeometryFromInputArea(
+      layoutContext: layoutContext,
+      constraints: constraints,
+      derivedWidth: derivedWidth,
+    );
+    if (liveGeometry != null) {
+      _lastStableToolActivityAnchorGeometry = liveGeometry;
+      return liveGeometry;
+    }
+
+    final fallbackGeometry = resolveChatPaneOverlayAnchorGeometry(
+      viewportSize: constraints.biggest,
+      bottomSpacing: inputBottomPadding + keyboardSpacer + 84,
+      anchorHeight: 0,
     );
     if (!_isInputAreaVisible) {
-      return _ToolActivityAnchorGeometry(
-        rect: fallbackRect,
-        bottom: fallbackBottom,
-      );
+      return fallbackGeometry;
     }
     final inputContext = _chatInputAreaKey.currentContext;
     final inputBox = inputContext?.findRenderObject();
@@ -94,16 +293,43 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         stackBox is! RenderBox ||
         !inputBox.hasSize ||
         !stackBox.hasSize) {
-      return _ToolActivityAnchorGeometry(
-        rect: fallbackRect,
-        bottom: fallbackBottom,
-      );
+      return fallbackGeometry;
     }
     final inputOffset = inputBox.localToGlobal(Offset.zero, ancestor: stackBox);
     final rect = inputOffset & inputBox.size;
-    return _ToolActivityAnchorGeometry(
+    final geometry = ChatPaneOverlayAnchorGeometry(
       rect: rect,
       bottom: (constraints.maxHeight - rect.top)
+          .clamp(0.0, constraints.maxHeight)
+          .toDouble(),
+    );
+    _lastStableToolActivityAnchorGeometry = geometry;
+    return geometry;
+  }
+
+  ChatPaneOverlayAnchorGeometry?
+  _resolveToolActivityAnchorGeometryFromInputArea({
+    required BuildContext layoutContext,
+    required BoxConstraints constraints,
+    required double derivedWidth,
+  }) {
+    if (!_isInputAreaVisible) {
+      return null;
+    }
+    final inputContext = _chatInputAreaKey.currentContext;
+    final inputBox = inputContext?.findRenderObject();
+    final stackBox = layoutContext.findRenderObject();
+    if (inputBox is! RenderBox ||
+        stackBox is! RenderBox ||
+        !inputBox.hasSize ||
+        !stackBox.hasSize) {
+      return null;
+    }
+    final inputOffset = inputBox.localToGlobal(Offset.zero, ancestor: stackBox);
+    final top = inputOffset.dy.clamp(0.0, constraints.maxHeight).toDouble();
+    return ChatPaneOverlayAnchorGeometry(
+      rect: Rect.fromLTWH(24, top, derivedWidth, inputBox.size.height),
+      bottom: (constraints.maxHeight - top)
           .clamp(0.0, constraints.maxHeight)
           .toDouble(),
     );
@@ -149,68 +375,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     setState(() {
       _inputAreaHeightByMode[_activeMode] = normalized;
     });
-  }
-
-  Widget _buildNewConversationPullIndicator(
-    double topOffset,
-    AppBackgroundVisualProfile visualProfile,
-  ) {
-    final progress =
-        (_newConversationPullDistance /
-                _ChatPageStateBase._newConversationPullThreshold)
-            .clamp(0.0, 1.4)
-            .toDouble();
-    final eased = Curves.easeOutCubic.transform(progress.clamp(0.0, 1.0));
-    final isReady = _newConversationPullThresholdReached;
-    final opacity = (0.10 + eased * 0.90).clamp(0.0, 1.0).toDouble();
-    final offsetY = (1 - eased) * 16;
-    final textColor = isReady
-        ? (visualProfile.usesLightText
-              ? visualProfile.accentGreen
-              : const Color(0xFF197446))
-        : Color.lerp(
-            visualProfile.subtleTextColor,
-            visualProfile.primaryTextColor,
-            eased,
-          )!;
-    final hintText = isReady ? '松手即可新建对话' : '继续上滑新建对话';
-
-    return Positioned(
-      left: 24,
-      right: 24,
-      top: topOffset,
-      child: IgnorePointer(
-        child: Opacity(
-          opacity: opacity,
-          child: Transform.translate(
-            offset: Offset(0, offsetY),
-            child: Center(
-              child: Text(
-                hintText,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: textColor,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.1,
-                  shadows: [
-                    Shadow(
-                      color:
-                          (visualProfile.usesLightText
-                                  ? Colors.black
-                                  : Colors.white)
-                              .withValues(alpha: 0.22),
-                      blurRadius: 6,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildContextCompressingHint() {
@@ -268,12 +432,38 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     );
   }
 
+  Widget _buildNormalSurfaceTransition({
+    required double viewportWidth,
+    required Widget child,
+  }) {
+    return AnimatedBuilder(
+      animation: _modePageController,
+      child: child,
+      builder: (context, child) {
+        final visibility = _normalSurfaceVisibility;
+        if (child == null || visibility <= 0.001) {
+          return const SizedBox.shrink();
+        }
+        final horizontalOffset = -_surfacePageProgress * viewportWidth;
+        return IgnorePointer(
+          ignoring: visibility < 0.999,
+          child: Opacity(
+            opacity: Curves.easeOutCubic.transform(visibility),
+            child: Transform.translate(
+              offset: Offset(horizontalOffset, 0),
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget _buildSlashCommandPanel() {
-    final visible =
-        _showModelMentionPanel ||
-        (_isOpenClawSurface &&
-            (_showSlashCommandPanel || _openClawPanelExpanded));
+    final palette = context.omniPalette;
+    final visible = _showModelMentionPanel || _openClawPanelExpanded;
+    _scheduleSlashCommandPanelInsetSync(visible);
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
       transitionBuilder: (child, animation) {
@@ -290,78 +480,81 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       },
       child: !visible
           ? const SizedBox.shrink()
-          : Container(
+          : KeyedSubtree(
               key: _openClawPanelKey,
-              padding: _showModelMentionPanel
-                  ? EdgeInsets.zero
-                  : const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: _openClawPanelExpanded
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'OpenClaw 配置',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF1F2937),
+              child: _showModelMentionPanel
+                  ? Container(
+                      decoration: BoxDecoration(
+                        color: context.isDarkTheme
+                            ? palette.surfacePrimary
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: context.isDarkTheme
+                            ? Border.all(color: palette.borderSubtle)
+                            : null,
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                (context.isDarkTheme
+                                        ? palette.shadowColor
+                                        : Colors.black)
+                                    .withValues(
+                                      alpha: context.isDarkTheme ? 0.22 : 0.08,
+                                    ),
+                            blurRadius: context.isDarkTheme ? 18 : 14,
+                            offset: Offset(0, context.isDarkTheme ? 8 : 6),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _openClawBaseUrlController,
-                          decoration: const InputDecoration(
-                            labelText: 'Base URL',
-                            hintText: 'http://192.168.1.10:18789',
-                            isDense: true,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _openClawTokenController,
-                          decoration: const InputDecoration(
-                            labelText: 'Token（可选）',
-                            hintText: '为空表示无需 token',
-                            isDense: true,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _openClawUserIdController,
-                          decoration: const InputDecoration(
-                            labelText: 'User ID（可选）',
-                            isDense: true,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: _buildModelMentionPanel(),
                     )
-                  : _showModelMentionPanel
-                  ? _buildModelMentionPanel()
-                  : !_isOpenClawSurface
-                  ? const SizedBox.shrink()
-                  : Column(
-                      children: [
-                        _buildOpenClawCommandRow(
-                          icon: Icons.link_rounded,
-                          iconColor: const Color(0xFF2C7FEB),
-                          title: '/openclaw',
-                          subtitle: '手动配置远端或自定义 OpenClaw 网关',
-                          onTap: () {
-                            _showOpenClawCommandPanel(expand: true);
-                          },
-                        ),
-                      ],
+                  : _buildSlashCommandDrawerSurface(
+                      bodyHasOwnPadding: _openClawPanelExpanded,
+                      child: _openClawPanelExpanded
+                          ? Padding(
+                              padding: const EdgeInsets.fromLTRB(14, 2, 14, 14),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'OpenClaw 配置',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: palette.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: _openClawBaseUrlController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Base URL',
+                                      hintText: 'http://192.168.1.10:18789',
+                                      isDense: true,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: _openClawTokenController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Token（可选）',
+                                      hintText: '为空表示无需 token',
+                                      isDense: true,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: _openClawUserIdController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'User ID（可选）',
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : const SizedBox.shrink(),
                     ),
             ),
     );
@@ -371,15 +564,24 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   Widget _buildModeMessagePage(
     ChatPageMode mode,
     AppBackgroundConfig appearanceConfig,
-    AppBackgroundVisualProfile visualProfile,
-  ) {
+    AppBackgroundVisualProfile visualProfile, {
+    double bottomOverlayInset = 0,
+  }) {
     final runtime = _runtimeForMode(mode);
+    final resolvedMessages = runtime?.messages ?? _messagesByMode[mode]!;
+    final showToolActivityStrip =
+        mode == _activeMode &&
+        _isInputAreaVisible &&
+        !_showSlashCommandPanel &&
+        !_openClawPanelExpanded &&
+        extractAgentToolCards(resolvedMessages).isNotEmpty;
     return ChatMessageList(
-      messages: runtime?.messages ?? _messagesByMode[mode]!,
+      messages: resolvedMessages,
       scrollController: _scrollControllerForMode(mode),
-      bottomOverlayInset: mode == _activeMode && !_isWorkspaceSurface
-          ? _toolActivityOccupiedHeight
-          : 0,
+      bottomOverlayInset:
+          bottomOverlayInset +
+          (mode == _activeMode ? _slashCommandPanelOccupiedHeight : 0) +
+          (showToolActivityStrip ? _toolActivityOccupiedHeight : 0),
       onBeforeTaskExecute: handleBeforeTaskExecute,
       onCancelTask: _onCancelTaskFromCard,
       onRequestAuthorize: mode == ChatPageMode.normal
@@ -396,7 +598,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   @override
   Widget _buildWorkspaceSurfacePage() {
     final workspacePathsFuture = _workspacePathsLoadFuture ??=
-        OmnibotResourceService.ensureWorkspacePathsLoaded(forceRefresh: true);
+        OmnibotResourceService.ensureWorkspacePathsLoaded();
     return FutureBuilder<OmnibotWorkspacePaths>(
       future: workspacePathsFuture,
       builder: (context, snapshot) {
@@ -412,10 +614,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   '/data/user/0/cn.com.omnimind.bot/workspace/.omnibot',
             );
         return OmnibotWorkspaceBrowser(
-          key: ValueKey('workspace_surface_$_workspaceSurfaceSeed'),
           workspacePath: paths.rootPath,
           workspaceShellPath: paths.shellRootPath,
           translucentSurfaces: AppBackgroundService.current.isActive,
+          showBreadcrumbHeader: true,
+          showHeaderTitle: false,
           onCanGoUpChanged: (canGoUp) {
             if (_workspaceBrowserCanGoUp == canGoUp || !mounted) return;
             setState(() {
@@ -427,10 +630,574 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     );
   }
 
+  ChatIslandDisplayLayer _resolveChatPaneDisplayLayer({
+    required bool showSurfaceSwitcher,
+  }) {
+    if (!showSurfaceSwitcher) {
+      return _chatIslandDisplayLayer == ChatIslandDisplayLayer.tools
+          ? ChatIslandDisplayLayer.tools
+          : ChatIslandDisplayLayer.model;
+    }
+    return _activeSurfaceMode == ChatSurfaceMode.normal
+        ? _chatIslandDisplayLayer
+        : ChatIslandDisplayLayer.mode;
+  }
+
+  Widget _buildPaneSurface({
+    required Widget child,
+    required bool translucent,
+    required AppBackgroundVisualProfile visualProfile,
+  }) {
+    final palette = context.omniPalette;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundSurfaceColor(
+          translucent: translucent,
+          baseColor: palette.surfacePrimary,
+          opacity: translucent ? 0.72 : 1,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: translucent
+              ? visualProfile.islandBorderColor
+              : const Color(0xFFD9E6FB),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x121A2433),
+            blurRadius: 28,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(24), child: child),
+    );
+  }
+
+  Widget _buildChatPaneShell({
+    required BuildContext layoutContext,
+    required BoxConstraints constraints,
+    required AppBackgroundConfig backgroundConfig,
+    required AppBackgroundVisualProfile visualProfile,
+    required bool backgroundActive,
+    required double inputBottomPadding,
+    required double keyboardSpacer,
+    required double commandPanelBottomOffset,
+    required Widget conversationBody,
+    required bool hideWorkspaceOverlays,
+    required bool showMenuButton,
+    required bool showSurfaceSwitcher,
+    required VoidCallback onMenuTap,
+  }) {
+    final toolActivityCards = extractAgentToolCards(_messages);
+    final slashCommandCards =
+        _showSlashCommandPanel &&
+            !_showModelMentionPanel &&
+            !_openClawPanelExpanded
+        ? _buildSlashCommandCards()
+        : const <Map<String, dynamic>>[];
+    final showSlashCommandStrip =
+        _isInputAreaVisible && slashCommandCards.isNotEmpty;
+    final showToolActivityStrip =
+        _isInputAreaVisible &&
+        toolActivityCards.isNotEmpty &&
+        !_showSlashCommandPanel &&
+        !_openClawPanelExpanded;
+    final toolActivityCanExpand = toolActivityCards.length > 1;
+    final suppressToolActivitySurfaceShadow =
+        _inputFocusNode.hasFocus &&
+        (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0.0) > 0;
+    final overlayAnchor = (toolActivityCards.isEmpty && !showSlashCommandStrip)
+        ? null
+        : _resolveToolActivityAnchorGeometry(
+            layoutContext: layoutContext,
+            constraints: constraints,
+            inputBottomPadding: inputBottomPadding,
+            keyboardSpacer: keyboardSpacer,
+            inputAreaHeight: _inputAreaHeight,
+          );
+    if ((!showToolActivityStrip || toolActivityCards.isEmpty) &&
+        _toolActivityOccupiedHeight > 0) {
+      _scheduleToolActivityInsetSync(0);
+    }
+    if (!showSlashCommandStrip &&
+        !_showModelMentionPanel &&
+        !_openClawPanelExpanded &&
+        _slashCommandPanelOccupiedHeight > 0) {
+      _scheduleSlashCommandOccupiedHeightSync(0);
+    }
+    if (!toolActivityCanExpand && _isToolActivityExpanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _setToolActivityExpanded(false);
+      });
+    }
+    if (!showSlashCommandStrip && _isSlashCommandExpanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _setSlashCommandExpanded(false);
+      });
+    }
+    final showAppUpdateIndicator =
+        !hideWorkspaceOverlays &&
+        AppUpdateService.shouldShowBanner(_appUpdateStatus);
+    final appUpdateTooltip = _appUpdateStatus == null
+        ? '发现新版本'
+        : '发现新版本 ${_appUpdateStatus!.latestVersionLabel}';
+    final appBarMode = showSurfaceSwitcher
+        ? _activeSurfaceMode
+        : ChatSurfaceMode.normal;
+    final bottomRegionBackgroundColor = !backgroundActive && context.isDarkTheme
+        ? context.omniPalette.pageBackground
+        : Colors.transparent;
+    final composerBottomOffset = inputBottomPadding + keyboardSpacer;
+    final composerReservedInset = _resolveNormalSurfaceComposerInset(
+      inputBottomPadding: inputBottomPadding,
+      keyboardSpacer: keyboardSpacer,
+    );
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        Column(
+          children: [
+            ChatAppBar(
+              onMenuTap: onMenuTap,
+              onPureChatToggleTap: () {
+                unawaited(_togglePureChatConversationMode());
+              },
+              onCompanionTap: () {
+                unawaited(_toggleCompanionMode());
+              },
+              activeMode: appBarMode,
+              onModeChanged: (value) {
+                unawaited(_switchChatMode(value, syncPage: true));
+              },
+              activeModelId: appBarMode == ChatSurfaceMode.normal
+                  ? _activeNormalChatModelId
+                  : null,
+              onModelTap: appBarMode == ChatSurfaceMode.normal
+                  ? (anchorContext) {
+                      unawaited(_openConversationModelSelector(anchorContext));
+                    }
+                  : null,
+              displayLayer: _resolveChatPaneDisplayLayer(
+                showSurfaceSwitcher: showSurfaceSwitcher,
+              ),
+              onInteracted: _cancelNormalSurfaceModelReveal,
+              onDisplayLayerChanged: _handleChatIslandDisplayLayerChanged,
+              onTerminalEnvironmentTap: (anchorContext) {
+                unawaited(_openTerminalEnvironmentEditor(anchorContext));
+              },
+              onTerminalTap: _handleTerminalToolTap,
+              onBrowserTap: _handleBrowserToolTap,
+              hasTerminalEnvironment: _terminalEnvironmentVariables.isNotEmpty,
+              isBrowserEnabled: _isBrowserSessionAvailable,
+              activeToolType: _lastAgentToolType,
+              isCompanionModeEnabled: _isCompanionModeEnabled,
+              isCompanionToggleLoading: _isCompanionToggleLoading,
+              showAppUpdateIndicator: showAppUpdateIndicator,
+              appUpdateTooltip: appUpdateTooltip,
+              onAppUpdateTap: showAppUpdateIndicator
+                  ? () {
+                      unawaited(_handleAppUpdateBannerTap());
+                    }
+                  : null,
+              translucent: backgroundActive,
+              visualProfile: visualProfile,
+              showMenuButton: showMenuButton,
+              showSurfaceSwitcher: showSurfaceSwitcher,
+              showPureChatToggle: _activeMode == ChatPageMode.normal,
+              isPureChatSelected: _isPureChatSelected,
+              isPureChatToggleLocked: _isPureChatToggleLocked,
+            ),
+            if (_isCompanionModeEnabled && _showCompanionCountdown)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  '$_companionCountdown秒后自动回到桌面',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: visualProfile.secondaryTextColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            Expanded(child: conversationBody),
+          ],
+        ),
+        if (_vlmInfoQuestion != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: composerReservedInset,
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: VlmInfoPrompt(
+                question: _vlmInfoQuestion!,
+                controller: _vlmAnswerController,
+                isSubmitting: _isSubmittingVlmReply,
+                onSubmit: onSubmitVlmInfo,
+                onDismiss: dismissVlmInfo,
+              ),
+            ),
+          ),
+        if (_isInputAreaVisible)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: ColoredBox(
+                color: bottomRegionBackgroundColor,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: composerBottomOffset),
+                  child: Container(
+                    key: _inputAreaKey,
+                    child: ChatInputWrapper(
+                      inputAreaKey: _chatInputAreaKey,
+                      controller: _messageController,
+                      focusNode: _inputFocusNode,
+                      isProcessing: _isAiResponding,
+                      onSendMessage: _sendMessage,
+                      onCancelTask: _onCancelTask,
+                      onPopupVisibilityChanged: _onPopupVisibilityChanged,
+                      useLargeComposerStyle: true,
+                      useAttachmentPickerForPlus: true,
+                      onPickAttachment: _pickAttachments,
+                      onTriggerSlashCommand: _triggerSlashCommandPanel,
+                      attachments: _pendingAttachments,
+                      onRemoveAttachment: _removePendingAttachment,
+                      selectedModelOverrideId:
+                          _activeMode == ChatPageMode.normal &&
+                              _showConversationModelMentionChip
+                          ? _activeConversationModelOverrideSelection?.modelId
+                          : null,
+                      contextUsageRatio: _activeMode == ChatPageMode.normal
+                          ? _currentConversation?.contextUsageRatio
+                          : null,
+                      contextUsageTooltipMessage:
+                          _activeMode == ChatPageMode.normal
+                          ? _buildContextUsageTooltipMessage()
+                          : null,
+                      onLongPressContextUsageRing:
+                          _activeMode == ChatPageMode.normal
+                          ? _handleContextUsageRingLongPress
+                          : null,
+                      onInputHeightChanged: _handleInputAreaHeightChanged,
+                      onClearSelectedModelOverride:
+                          _activeMode == ChatPageMode.normal &&
+                              _activeConversationModelOverrideSelection != null
+                          ? () {
+                              unawaited(_clearConversationModelOverride());
+                            }
+                          : null,
+                      translucent: backgroundActive,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (!hideWorkspaceOverlays &&
+            toolActivityCanExpand &&
+            _isToolActivityExpanded)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => _setToolActivityExpanded(false),
+            ),
+          ),
+        if (showToolActivityStrip)
+          Positioned(
+            left: overlayAnchor?.rect.left ?? 24,
+            width:
+                overlayAnchor?.rect.width ??
+                math.max(0.0, constraints.maxWidth - 48),
+            bottom: overlayAnchor?.bottom ?? 0,
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: ChatToolActivityStrip(
+                messages: _messages,
+                anchorRect: overlayAnchor?.rect,
+                onOccupiedHeightChanged: _scheduleToolActivityInsetSync,
+                expanded: _isToolActivityExpanded,
+                onExpandedChanged: _setToolActivityExpanded,
+                suppressSurfaceShadow: suppressToolActivitySurfaceShadow,
+                onStopToolCall: _handleToolActivityStopRequested,
+              ),
+            ),
+          ),
+        if (showSlashCommandStrip)
+          Positioned(
+            left: overlayAnchor?.rect.left ?? 24,
+            width:
+                overlayAnchor?.rect.width ??
+                math.max(0.0, constraints.maxWidth - 48),
+            bottom: overlayAnchor?.bottom ?? 0,
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: Container(
+                key: _slashCommandStripKey,
+                child: KeyedSubtree(
+                  key: ValueKey<String>(
+                    'slash-command-${_resolveSlashCommandPanelRoute(_messageController.text).name}',
+                  ),
+                  child: ChatCommandActivityStrip(
+                    commands: slashCommandCards,
+                    anchorRect: overlayAnchor?.rect,
+                    onOccupiedHeightChanged:
+                        _scheduleSlashCommandOccupiedHeightSync,
+                    suppressSurfaceShadow: suppressToolActivitySurfaceShadow,
+                    onSelectCommand: _handleSlashCommandCardSelected,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (_showModelMentionPanel || _openClawPanelExpanded)
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: commandPanelBottomOffset,
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child: _buildSlashCommandPanel(),
+            ),
+          ),
+        if (_isPopupVisible)
+          Positioned(
+            right: 24,
+            bottom: _popupMenuBottomOffset(),
+            child: _buildNormalSurfaceTransition(
+              viewportWidth: constraints.maxWidth,
+              child:
+                  _chatInputAreaKey.currentState?.buildPopupMenu() ??
+                  const SizedBox.shrink(),
+            ),
+          ),
+        _buildBrowserOverlay(constraints),
+      ],
+    );
+  }
+
+  Widget _buildHdPadWorkspacePane({
+    required bool backgroundActive,
+    required AppBackgroundVisualProfile visualProfile,
+  }) {
+    final workspacePathsFuture = _workspacePathsLoadFuture ??=
+        OmnibotResourceService.ensureWorkspacePathsLoaded();
+    return FutureBuilder<OmnibotWorkspacePaths>(
+      future: workspacePathsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator.adaptive());
+        }
+        final paths =
+            snapshot.data ??
+            const OmnibotWorkspacePaths(
+              rootPath: '/data/user/0/cn.com.omnimind.bot/workspace',
+              shellRootPath: '/workspace',
+              internalRootPath:
+                  '/data/user/0/cn.com.omnimind.bot/workspace/.omnibot',
+            );
+        return OmnibotWorkspaceBrowser(
+          key: _hdPadWorkspaceBrowserKey,
+          workspacePath: paths.rootPath,
+          workspaceShellPath: paths.shellRootPath,
+          enableSystemBackHandler: false,
+          translucentSurfaces: backgroundActive,
+          showBreadcrumbHeader: true,
+          showHeaderTitle: false,
+          enableInlineDirectoryExpansion: false,
+          inlineFilePreview: true,
+          onCanGoUpChanged: (canGoUp) {
+            if (_workspaceBrowserCanGoUp == canGoUp || !mounted) return;
+            setState(() {
+              _workspaceBrowserCanGoUp = canGoUp;
+            });
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildHdPadLandscapeShell({
+    required AppBackgroundConfig backgroundConfig,
+    required AppBackgroundVisualProfile visualProfile,
+    required bool backgroundActive,
+    required double inputBottomPadding,
+    required double keyboardSpacer,
+    required double commandPanelBottomOffset,
+  }) {
+    const shellPadding = EdgeInsets.fromLTRB(8, 10, 8, 10);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = math
+            .max(0, constraints.maxWidth - shellPadding.horizontal)
+            .toDouble();
+        final expandedLayout = _hdPadPaneLayoutResolver.resolve(
+          availableWidth,
+          preferredLeftWidth: _hdPadLeftPaneWidth,
+          preferredRightWidth: _hdPadRightPaneWidth,
+        );
+        final layout = _hdPadPaneLayoutResolver.resolve(
+          availableWidth,
+          preferredLeftWidth: _hdPadLeftPaneWidth,
+          preferredRightWidth: _hdPadRightPaneWidth,
+          collapseLeftPane: _hdPadLeftPaneCollapsed,
+        );
+        final paneDuration = _isHdPadPaneDragging
+            ? Duration.zero
+            : const Duration(milliseconds: 280);
+        const paneCurve = Curves.easeInOutCubic;
+        return Padding(
+          padding: shellPadding,
+          child: Row(
+            children: [
+              AnimatedContainer(
+                duration: paneDuration,
+                curve: paneCurve,
+                width: layout.leftWidth,
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.centerLeft,
+                    minWidth: expandedLayout.leftWidth,
+                    maxWidth: expandedLayout.leftWidth,
+                    child: SizedBox(
+                      width: expandedLayout.leftWidth,
+                      child: IgnorePointer(
+                        ignoring: _hdPadLeftPaneCollapsed,
+                        child: AnimatedSlide(
+                          duration: const Duration(milliseconds: 280),
+                          curve: Curves.easeInOutCubic,
+                          offset: _hdPadLeftPaneCollapsed
+                              ? const Offset(-0.08, 0)
+                              : Offset.zero,
+                          child: _buildPaneSurface(
+                            translucent: backgroundActive,
+                            visualProfile: visualProfile,
+                            child: HomeDrawer(
+                              key: _drawerKey,
+                              embedded: true,
+                              closeOnNavigate: false,
+                              newConversationMode: _conversationModeForPageMode(
+                                _activeMode,
+                              ),
+                              onThreadTargetSelected:
+                                  _handleEmbeddedDrawerThreadTargetSelected,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedContainer(
+                duration: paneDuration,
+                curve: paneCurve,
+                width: _hdPadLeftPaneCollapsed
+                    ? 0
+                    : HdPadPaneLayoutResolver.dividerHitWidth,
+                child: _hdPadLeftPaneCollapsed
+                    ? const SizedBox.shrink()
+                    : _PaneResizeHandle(
+                        onDragStart: () {
+                          setState(() => _isHdPadPaneDragging = true);
+                        },
+                        onDragUpdate: (delta) {
+                          setState(() {
+                            _hdPadLeftPaneWidth = layout.leftWidth + delta;
+                          });
+                        },
+                        onDragEnd: () {
+                          setState(() => _isHdPadPaneDragging = false);
+                          _persistHdPadPanePreferences();
+                        },
+                      ),
+              ),
+              AnimatedContainer(
+                duration: paneDuration,
+                curve: paneCurve,
+                width: layout.centerWidth,
+                child: _buildPaneSurface(
+                  translucent: backgroundActive,
+                  visualProfile: visualProfile,
+                  child: Listener(
+                    behavior: HitTestBehavior.translucent,
+                    onPointerDown: _handlePagePointerDown,
+                    onPointerMove: _handlePagePointerMove,
+                    onPointerUp: _handlePagePointerUp,
+                    onPointerCancel: _handlePagePointerCancel,
+                    child: LayoutBuilder(
+                      builder: (context, paneConstraints) {
+                        return _buildChatPaneShell(
+                          layoutContext: context,
+                          constraints: paneConstraints,
+                          backgroundConfig: backgroundConfig,
+                          visualProfile: visualProfile,
+                          backgroundActive: backgroundActive,
+                          inputBottomPadding: inputBottomPadding,
+                          keyboardSpacer: keyboardSpacer,
+                          commandPanelBottomOffset: commandPanelBottomOffset,
+                          conversationBody: _buildModeMessagePage(
+                            ChatPageMode.normal,
+                            backgroundConfig,
+                            visualProfile,
+                            bottomOverlayInset:
+                                _resolveNormalSurfaceComposerInset(
+                                  inputBottomPadding: inputBottomPadding,
+                                  keyboardSpacer: keyboardSpacer,
+                                ),
+                          ),
+                          hideWorkspaceOverlays: false,
+                          showMenuButton: true,
+                          showSurfaceSwitcher: false,
+                          onMenuTap: _toggleHdPadLeftPaneCollapsed,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              _PaneResizeHandle(
+                onDragStart: () {
+                  setState(() => _isHdPadPaneDragging = true);
+                },
+                onDragUpdate: (delta) {
+                  setState(() {
+                    _hdPadRightPaneWidth = layout.rightWidth - delta;
+                  });
+                },
+                onDragEnd: () {
+                  setState(() => _isHdPadPaneDragging = false);
+                  _persistHdPadPanePreferences();
+                },
+              ),
+              AnimatedContainer(
+                duration: paneDuration,
+                curve: paneCurve,
+                width: layout.rightWidth,
+                child: _buildPaneSurface(
+                  translucent: backgroundActive,
+                  visualProfile: visualProfile,
+                  child: _buildHdPadWorkspacePane(
+                    backgroundActive: backgroundActive,
+                    visualProfile: visualProfile,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const edgeInset = 24.0;
     final mediaQuery = MediaQuery.of(context);
+    final isHdPadLandscape = _isHdPadLandscapeForMediaQuery(mediaQuery);
     final bottomInset = mediaQuery.viewInsets.bottom;
     final viewPaddingBottom = mediaQuery.viewPadding.bottom;
     final shouldLiftComposerForKeyboard = _inputFocusNode.hasFocus;
@@ -459,6 +1226,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               canPop: false,
               onPopInvokedWithResult: (didPop, _) {
                 if (didPop) return;
+                if (isHdPadLandscape && _workspaceBrowserCanGoUp) {
+                  _hdPadWorkspaceBrowserKey.currentState?.openParentDirectory();
+                  return;
+                }
                 if (_isWorkspaceSurface && _workspaceBrowserCanGoUp) {
                   return;
                 }
@@ -473,14 +1244,20 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 key: _scaffoldKey,
                 backgroundColor: Colors.transparent,
                 resizeToAvoidBottomInset: false,
-                drawer: HomeDrawer(
-                  key: _drawerKey,
-                  newConversationMode: _conversationModeForPageMode(
-                    _activeMode,
-                  ),
-                ),
+                drawer: isHdPadLandscape
+                    ? null
+                    : HomeDrawer(
+                        key: _drawerKey,
+                        newConversationMode: _conversationModeForPageMode(
+                          _activeMode,
+                        ),
+                      ),
                 onDrawerChanged: (isOpen) {
+                  if (isHdPadLandscape) {
+                    return;
+                  }
                   if (isOpen) {
+                    _dismissChatInputFocus();
                     _drawerKey.currentState?.reloadConversations();
                   } else {
                     checkAndHandleDeletedConversation();
@@ -490,325 +1267,96 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   fit: StackFit.expand,
                   children: [
                     Positioned.fill(
-                      child: AppBackgroundLayer(
-                        config: backgroundConfig,
-                        fallbackColor: const Color(0xFFF9FCFF),
-                        layerKey: const ValueKey('chat-page-background'),
-                      ),
+                      child: backgroundActive
+                          ? AppBackgroundLayer(
+                              config: backgroundConfig,
+                              fallbackColor:
+                                  context.omniPalette.previewFallback,
+                              layerKey: const ValueKey('chat-page-background'),
+                            )
+                          : ColoredBox(
+                              color: context.omniPalette.pageBackground,
+                            ),
                     ),
                     SafeArea(
                       child: ClipRect(
                         child: Listener(
                           behavior: HitTestBehavior.translucent,
                           onPointerDown: (event) {
-                            _handlePagePointerDown(event);
                             _interruptCompanionAutoHomeIfNeeded();
                             unawaited(_handleOutsideTap(event.position));
+                            if (!isHdPadLandscape) {
+                              _handlePagePointerDown(event);
+                            }
                           },
-                          onPointerMove: _handlePagePointerMove,
-                          onPointerUp: _handlePagePointerUp,
-                          onPointerCancel: _handlePagePointerCancel,
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final toolActivityCards = !_isWorkspaceSurface
-                                  ? extractAgentToolCards(_messages)
-                                  : const <Map<String, dynamic>>[];
-                              final toolActivityCanExpand =
-                                  toolActivityCards.length > 1;
-                              final newConversationPullIndicatorTopOffset =
-                                  _resolveNewConversationPullIndicatorTop(
-                                    layoutContext: context,
-                                    constraints: constraints,
-                                    inputBottomPadding: inputBottomPadding,
-                                    keyboardSpacer: keyboardSpacer,
-                                  );
-                              final toolActivityAnchor =
-                                  toolActivityCards.isEmpty
-                                  ? null
-                                  : _resolveToolActivityAnchorGeometry(
+                          onPointerMove: isHdPadLandscape
+                              ? null
+                              : _handlePagePointerMove,
+                          onPointerUp: isHdPadLandscape
+                              ? null
+                              : _handlePagePointerUp,
+                          onPointerCancel: isHdPadLandscape
+                              ? null
+                              : _handlePagePointerCancel,
+                          child: isHdPadLandscape
+                              ? _buildHdPadLandscapeShell(
+                                  backgroundConfig: backgroundConfig,
+                                  visualProfile: visualProfile,
+                                  backgroundActive: backgroundActive,
+                                  inputBottomPadding: inputBottomPadding,
+                                  keyboardSpacer: keyboardSpacer,
+                                  commandPanelBottomOffset:
+                                      commandPanelBottomOffset,
+                                )
+                              : LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    return _buildChatPaneShell(
                                       layoutContext: context,
                                       constraints: constraints,
+                                      backgroundConfig: backgroundConfig,
+                                      visualProfile: visualProfile,
+                                      backgroundActive: backgroundActive,
                                       inputBottomPadding: inputBottomPadding,
                                       keyboardSpacer: keyboardSpacer,
-                                      inputAreaHeight: _inputAreaHeight,
-                                    );
-                              if (toolActivityCards.isEmpty &&
-                                  _toolActivityOccupiedHeight > 0) {
-                                _scheduleToolActivityInsetSync(0);
-                              }
-                              if (!toolActivityCanExpand &&
-                                  _isToolActivityExpanded) {
-                                WidgetsBinding.instance.addPostFrameCallback((
-                                  _,
-                                ) {
-                                  _setToolActivityExpanded(false);
-                                });
-                              }
-                              final showAppUpdateIndicator =
-                                  !_isWorkspaceSurface &&
-                                  AppUpdateService.shouldShowBanner(
-                                    _appUpdateStatus,
-                                  );
-                              final appUpdateTooltip = _appUpdateStatus == null
-                                  ? '发现新版本'
-                                  : '发现新版本 ${_appUpdateStatus!.latestVersionLabel}';
-                              return Stack(
-                                clipBehavior: Clip.hardEdge,
-                                children: [
-                                  Column(
-                                    children: [
-                                      ChatAppBar(
-                                        onMenuTap: () => _scaffoldKey
-                                            .currentState
-                                            ?.openDrawer(),
-                                        onCompanionTap: () {
-                                          unawaited(_toggleCompanionMode());
-                                        },
-                                        activeMode: _activeSurfaceMode,
-                                        onModeChanged: (value) {
-                                          unawaited(
-                                            _switchChatMode(
-                                              value,
-                                              syncPage: true,
-                                            ),
-                                          );
-                                        },
-                                        activeModelId:
-                                            _activeSurfaceMode ==
-                                                ChatSurfaceMode.normal
-                                            ? _activeNormalChatModelId
-                                            : null,
-                                        onModelTap:
-                                            _activeSurfaceMode ==
-                                                ChatSurfaceMode.normal
-                                            ? (anchorContext) {
-                                                unawaited(
-                                                  _openConversationModelSelector(
-                                                    anchorContext,
-                                                  ),
-                                                );
-                                              }
-                                            : null,
-                                        displayLayer:
-                                            _activeSurfaceMode ==
-                                                ChatSurfaceMode.normal
-                                            ? _chatIslandDisplayLayer
-                                            : ChatIslandDisplayLayer.mode,
-                                        onInteracted:
-                                            _cancelNormalSurfaceModelReveal,
-                                        onDisplayLayerChanged:
-                                            _handleChatIslandDisplayLayerChanged,
-                                        onTerminalEnvironmentTap:
-                                            (anchorContext) {
-                                              unawaited(
-                                                _openTerminalEnvironmentEditor(
-                                                  anchorContext,
-                                                ),
-                                              );
-                                            },
-                                        onTerminalTap: _handleTerminalToolTap,
-                                        onBrowserTap: _handleBrowserToolTap,
-                                        hasTerminalEnvironment:
-                                            _terminalEnvironmentVariables
-                                                .isNotEmpty,
-                                        isBrowserEnabled:
-                                            _isBrowserSessionAvailable,
-                                        activeToolType: _lastAgentToolType,
-                                        isCompanionModeEnabled:
-                                            _isCompanionModeEnabled,
-                                        isCompanionToggleLoading:
-                                            _isCompanionToggleLoading,
-                                        showAppUpdateIndicator:
-                                            showAppUpdateIndicator,
-                                        appUpdateTooltip: appUpdateTooltip,
-                                        onAppUpdateTap: showAppUpdateIndicator
-                                            ? () {
-                                                unawaited(
-                                                  _handleAppUpdateBannerTap(),
-                                                );
-                                              }
-                                            : null,
-                                        translucent: backgroundActive,
-                                        visualProfile: visualProfile,
-                                      ),
-                                      if (_isCompanionModeEnabled &&
-                                          _showCompanionCountdown)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: 12,
-                                          ),
-                                          child: Text(
-                                            '$_companionCountdown秒后自动回到桌面',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: visualProfile
-                                                  .secondaryTextColor,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      Expanded(
-                                        child: ClipRect(
-                                          child:
-                                              NotificationListener<
-                                                ScrollNotification
-                                              >(
-                                                onNotification:
-                                                    _handleModePageScrollNotification,
-                                                child: PageView(
-                                                  controller:
-                                                      _modePageController,
-                                                  onPageChanged:
-                                                      _handleModePageChanged,
-                                                  children: [
-                                                    _buildWorkspaceSurfacePage(),
-                                                    _buildModeMessagePage(
-                                                      ChatPageMode.normal,
-                                                      backgroundConfig,
-                                                      visualProfile,
+                                      commandPanelBottomOffset:
+                                          commandPanelBottomOffset,
+                                      conversationBody: ClipRect(
+                                        child: NotificationListener<ScrollNotification>(
+                                          onNotification:
+                                              _handleModePageScrollNotification,
+                                          child: PageView(
+                                            controller: _modePageController,
+                                            onPageChanged:
+                                                _handleModePageChanged,
+                                            children: [
+                                              _buildModeMessagePage(
+                                                ChatPageMode.normal,
+                                                backgroundConfig,
+                                                visualProfile,
+                                                bottomOverlayInset:
+                                                    _resolveNormalSurfaceComposerInset(
+                                                      inputBottomPadding:
+                                                          inputBottomPadding,
+                                                      keyboardSpacer:
+                                                          keyboardSpacer,
                                                     ),
-                                                  ],
-                                                ),
                                               ),
-                                        ),
-                                      ),
-                                      if (!_isWorkspaceSurface &&
-                                          _vlmInfoQuestion != null)
-                                        VlmInfoPrompt(
-                                          question: _vlmInfoQuestion!,
-                                          controller: _vlmAnswerController,
-                                          isSubmitting: _isSubmittingVlmReply,
-                                          onSubmit: onSubmitVlmInfo,
-                                          onDismiss: dismissVlmInfo,
-                                        ),
-                                      if (_isInputAreaVisible &&
-                                          !_isWorkspaceSurface)
-                                        Container(
-                                          key: _inputAreaKey,
-                                          child: ChatInputWrapper(
-                                            inputAreaKey: _chatInputAreaKey,
-                                            controller: _messageController,
-                                            focusNode: _inputFocusNode,
-                                            isProcessing: _isAiResponding,
-                                            onSendMessage: _sendMessage,
-                                            onCancelTask: _onCancelTask,
-                                            onPopupVisibilityChanged:
-                                                _onPopupVisibilityChanged,
-                                            useLargeComposerStyle: true,
-                                            useAttachmentPickerForPlus: true,
-                                            onPickAttachment: _pickAttachments,
-                                            attachments: _pendingAttachments,
-                                            onRemoveAttachment:
-                                                _removePendingAttachment,
-                                            selectedModelOverrideId:
-                                                _activeMode ==
-                                                        ChatPageMode.normal &&
-                                                    _showConversationModelMentionChip
-                                                ? _activeConversationModelOverrideSelection
-                                                      ?.modelId
-                                                : null,
-                                            contextUsageRatio:
-                                                _activeMode ==
-                                                    ChatPageMode.normal
-                                                ? _currentConversation
-                                                      ?.contextUsageRatio
-                                                : null,
-                                            contextUsageTooltipMessage:
-                                                _activeMode ==
-                                                    ChatPageMode.normal
-                                                ? _buildContextUsageTooltipMessage()
-                                                : null,
-                                            onLongPressContextUsageRing:
-                                                _activeMode ==
-                                                    ChatPageMode.normal
-                                                ? _handleContextUsageRingLongPress
-                                                : null,
-                                            onInputHeightChanged:
-                                                _handleInputAreaHeightChanged,
-                                            onClearSelectedModelOverride:
-                                                _activeMode ==
-                                                        ChatPageMode.normal &&
-                                                    _activeConversationModelOverrideSelection !=
-                                                        null
-                                                ? () {
-                                                    unawaited(
-                                                      _clearConversationModelOverride(),
-                                                    );
-                                                  }
-                                                : null,
-                                            translucent: backgroundActive,
+                                              _buildWorkspaceSurfacePage(),
+                                            ],
                                           ),
                                         ),
-                                      SizedBox(
-                                        height:
-                                            inputBottomPadding + keyboardSpacer,
                                       ),
-                                    ],
-                                  ),
-                                  if (!_isWorkspaceSurface &&
-                                      toolActivityCanExpand &&
-                                      _isToolActivityExpanded)
-                                    Positioned.fill(
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.translucent,
-                                        onTap: () =>
-                                            _setToolActivityExpanded(false),
-                                      ),
-                                    ),
-                                  if (!_isWorkspaceSurface &&
-                                      _isInputAreaVisible &&
-                                      toolActivityCards.isNotEmpty)
-                                    Positioned(
-                                      left: toolActivityAnchor?.rect.left ?? 24,
-                                      width:
-                                          toolActivityAnchor?.rect.width ??
-                                          math.max(
-                                            0.0,
-                                            constraints.maxWidth - 48,
-                                          ),
-                                      bottom: toolActivityAnchor?.bottom ?? 0,
-                                      child: ChatToolActivityStrip(
-                                        messages: _messages,
-                                        anchorRect: toolActivityAnchor?.rect,
-                                        onOccupiedHeightChanged:
-                                            _scheduleToolActivityInsetSync,
-                                        expanded: _isToolActivityExpanded,
-                                        onExpandedChanged:
-                                            _setToolActivityExpanded,
-                                      ),
-                                    ),
-                                  if (!_isWorkspaceSurface)
-                                    Positioned(
-                                      left: 24,
-                                      right: 24,
-                                      bottom: commandPanelBottomOffset,
-                                      child: _buildSlashCommandPanel(),
-                                    ),
-                                  if (!_isWorkspaceSurface &&
-                                      _showNewConversationPullIndicator)
-                                    _buildNewConversationPullIndicator(
-                                      newConversationPullIndicatorTopOffset,
-                                      visualProfile,
-                                    ),
-                                  if (!_isWorkspaceSurface &&
-                                      _isContextCompressing)
-                                    Positioned.fill(
-                                      child: _buildContextCompressingHint(),
-                                    ),
-                                  if (_isPopupVisible && !_isWorkspaceSurface)
-                                    Positioned(
-                                      right: 24,
-                                      bottom: _popupMenuBottomOffset(),
-                                      child:
-                                          _chatInputAreaKey.currentState
-                                              ?.buildPopupMenu() ??
-                                          const SizedBox.shrink(),
-                                    ),
-                                  _buildBrowserOverlay(constraints),
-                                ],
-                              );
-                            },
-                          ),
+                                      hideWorkspaceOverlays:
+                                          _isWorkspaceSurface,
+                                      showMenuButton: true,
+                                      showSurfaceSwitcher: true,
+                                      onMenuTap: () {
+                                        _dismissChatInputFocus();
+                                        _scaffoldKey.currentState?.openDrawer();
+                                      },
+                                    );
+                                  },
+                                ),
                         ),
                       ),
                     ),
@@ -849,7 +1397,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return;
     }
 
-    final nextThreshold = await showModalBottomSheet<int>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useRootNavigator: false,
@@ -857,36 +1405,55 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       builder: (_) => _ContextThresholdSheet(
         initialThreshold: conversation.promptTokenThreshold,
         currentUsageTokens: conversation.latestPromptTokens,
+        onThresholdSaved: (nextThreshold) async {
+          final trackedConversation =
+              _currentConversationByMode[ChatPageMode.normal];
+          final activeConversation = _currentConversation;
+          final ConversationModel latestConversation;
+          if (trackedConversation?.id == conversation.id) {
+            latestConversation = trackedConversation!;
+          } else if (activeConversation?.id == conversation.id) {
+            latestConversation = activeConversation!;
+          } else {
+            latestConversation = conversation;
+          }
+          if (nextThreshold == latestConversation.promptTokenThreshold) {
+            return true;
+          }
+
+          final success =
+              await ConversationService.updateConversationPromptTokenThreshold(
+                conversationId: conversation.id,
+                promptTokenThreshold: nextThreshold,
+              );
+          if (!mounted || !success) {
+            return success;
+          }
+
+          final updatedConversation = latestConversation.copyWith(
+            promptTokenThreshold: nextThreshold,
+          );
+          setState(() {
+            if ((_currentConversationByMode[ChatPageMode.normal]?.id ?? 0) ==
+                conversation.id) {
+              _currentConversationByMode[ChatPageMode.normal] =
+                  updatedConversation;
+            }
+            if ((_currentConversation?.id ?? 0) == conversation.id) {
+              _currentConversation = updatedConversation;
+            }
+          });
+          if ((_currentConversationIdByMode[ChatPageMode.normal] ?? 0) ==
+              conversation.id) {
+            _syncRuntimeSnapshotForMode(
+              ChatPageMode.normal,
+              conversation: updatedConversation,
+            );
+          }
+          return true;
+        },
       ),
     );
-    if (!mounted || nextThreshold == null) return;
-    if (nextThreshold == conversation.promptTokenThreshold) return;
-
-    final success =
-        await ConversationService.updateConversationPromptTokenThreshold(
-          conversationId: conversation.id,
-          promptTokenThreshold: nextThreshold,
-        );
-    if (!mounted) return;
-    if (!success) {
-      _showSnackBar('更新压缩阈值失败');
-      return;
-    }
-
-    final updatedConversation = conversation.copyWith(
-      promptTokenThreshold: nextThreshold,
-    );
-    setState(() {
-      _currentConversationByMode[ChatPageMode.normal] = updatedConversation;
-      if (_activeMode == ChatPageMode.normal) {
-        _currentConversation = updatedConversation;
-      }
-    });
-    _syncRuntimeSnapshotForMode(
-      ChatPageMode.normal,
-      conversation: updatedConversation,
-    );
-    _showSnackBar('压缩阈值已更新为 ${_formatThresholdLabel(nextThreshold)}');
   }
 
   Future<void> _handleUserMessageLongPressStart(
@@ -1023,7 +1590,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     if (!mounted) return;
   }
 
-  List<Map<String, dynamic>> _extractRetryAttachments(ChatMessageModel message) {
+  List<Map<String, dynamic>> _extractRetryAttachments(
+    ChatMessageModel message,
+  ) {
     final raw = message.content?['attachments'];
     if (raw is! List) return const [];
     return raw
@@ -1157,14 +1726,51 @@ class _UserMessageQuickMenuEntryState
   }
 }
 
+class _PaneResizeHandle extends StatelessWidget {
+  const _PaneResizeHandle({
+    required this.onDragUpdate,
+    this.onDragStart,
+    this.onDragEnd,
+  });
+
+  final ValueChanged<double> onDragUpdate;
+  final VoidCallback? onDragStart;
+  final VoidCallback? onDragEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragStart: (_) => onDragStart?.call(),
+      onHorizontalDragUpdate: (details) => onDragUpdate(details.delta.dx),
+      onHorizontalDragEnd: (_) => onDragEnd?.call(),
+      onHorizontalDragCancel: () => onDragEnd?.call(),
+      child: const SizedBox(
+        width: HdPadPaneLayoutResolver.dividerHitWidth,
+        child: Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Color(0xFFD7E5FB),
+              borderRadius: BorderRadius.all(Radius.circular(999)),
+            ),
+            child: SizedBox(width: 3, height: 52),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ContextThresholdSheet extends StatefulWidget {
   const _ContextThresholdSheet({
     required this.initialThreshold,
     required this.currentUsageTokens,
+    required this.onThresholdSaved,
   });
 
   final int initialThreshold;
   final int currentUsageTokens;
+  final Future<bool> Function(int threshold) onThresholdSaved;
 
   @override
   State<_ContextThresholdSheet> createState() => _ContextThresholdSheetState();
@@ -1173,8 +1779,13 @@ class _ContextThresholdSheet extends StatefulWidget {
 class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
   late final TextEditingController _controller;
   final FocusNode _focusNode = FocusNode();
+  Timer? _autoSaveTimer;
   String? _errorText;
+  String? _saveErrorText;
   late double _draftThreshold;
+  late int _lastSavedThreshold;
+  bool _isSaving = false;
+  int? _queuedThreshold;
 
   static const List<int> _presets = <int>[32000, 64000, 128000, 256000, 512000];
 
@@ -1185,21 +1796,39 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
       text: widget.initialThreshold.toString(),
     );
     _draftThreshold = widget.initialThreshold.toDouble();
+    _lastSavedThreshold = widget.initialThreshold;
+    _focusNode.addListener(_handleFocusChange);
   }
 
   @override
   void dispose() {
+    _autoSaveTimer?.cancel();
+    _focusNode.removeListener(_handleFocusChange);
     _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
 
-  void _close([int? value]) {
-    _focusNode.unfocus();
-    Navigator.of(context).pop(value);
+  void _handleFocusChange() {
+    if (_focusNode.hasFocus) {
+      return;
+    }
+    final parsed = _parseInput(showEmptyError: false);
+    if (parsed != null) {
+      unawaited(_commitThreshold(parsed));
+    }
   }
 
-  void _updateDraftThreshold(double value, {bool updateText = true}) {
+  Future<bool> _handleWillPop() async {
+    await _flushPendingAutoSave();
+    return true;
+  }
+
+  void _updateDraftThreshold(
+    double value, {
+    bool updateText = true,
+    bool clearError = true,
+  }) {
     final normalized = value.round().clamp(
       _kMinContextTokenThreshold,
       _kMaxContextTokenThreshold,
@@ -1213,16 +1842,21 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
           selection: TextSelection.collapsed(offset: text.length),
         );
       }
-      _errorText = null;
+      if (clearError) {
+        _errorText = null;
+      }
+      _saveErrorText = null;
     });
   }
 
-  int? _parseInput() {
+  int? _parseInput({bool showEmptyError = true}) {
     final raw = _controller.text.trim();
     if (raw.isEmpty) {
-      setState(() {
-        _errorText = '请输入阈值';
-      });
+      if (showEmptyError) {
+        setState(() {
+          _errorText = '请输入阈值';
+        });
+      }
       return null;
     }
     final parsed = int.tryParse(raw);
@@ -1245,6 +1879,66 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
       _draftThreshold = parsed.toDouble();
     });
     return parsed;
+  }
+
+  void _scheduleAutoSave() {
+    _autoSaveTimer?.cancel();
+    final parsed = _parseInput(showEmptyError: false);
+    if (parsed == null || parsed == _lastSavedThreshold) {
+      return;
+    }
+    _autoSaveTimer = Timer(const Duration(milliseconds: 320), () {
+      unawaited(_commitThreshold(parsed));
+    });
+  }
+
+  Future<void> _commitThreshold([int? value]) async {
+    final parsed = value ?? _parseInput();
+    if (parsed == null || parsed == _lastSavedThreshold) {
+      return;
+    }
+    _autoSaveTimer?.cancel();
+    _queuedThreshold = parsed;
+    if (_isSaving) {
+      return;
+    }
+
+    while (_queuedThreshold != null) {
+      final target = _queuedThreshold!;
+      _queuedThreshold = null;
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isSaving = true;
+        _saveErrorText = null;
+      });
+      final success = await widget.onThresholdSaved(target);
+      if (!mounted) {
+        return;
+      }
+      if (success) {
+        setState(() {
+          _lastSavedThreshold = target;
+          _isSaving = false;
+          _saveErrorText = null;
+        });
+        continue;
+      }
+      setState(() {
+        _isSaving = false;
+        _saveErrorText = '自动保存失败，请稍后重试';
+      });
+      break;
+    }
+  }
+
+  Future<void> _flushPendingAutoSave() async {
+    _autoSaveTimer?.cancel();
+    final parsed = _parseInput(showEmptyError: false);
+    if (parsed != null && parsed != _lastSavedThreshold) {
+      await _commitThreshold(parsed);
+    }
   }
 
   String _formatThresholdLabel(int threshold) {
@@ -1277,258 +1971,303 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final draftThreshold = _draftThreshold.round();
     final usageRatio = widget.currentUsageTokens <= 0
         ? 0.0
         : widget.currentUsageTokens / draftThreshold;
+    final dividerColor = isDark
+        ? palette.borderSubtle
+        : palette.borderSubtle.withValues(alpha: 0.9);
+    final accentColor = palette.accentPrimary;
+    final warningColor = isDark
+        ? const Color(0xFFE0A06A)
+        : const Color(0xFFD65A3A);
+    final successColor = isDark
+        ? const Color(0xFF8DBB95)
+        : const Color(0xFF2F8F6B);
+    final pendingAutoSave = _autoSaveTimer?.isActive ?? false;
+    final statusText = switch ((_saveErrorText, _isSaving, pendingAutoSave)) {
+      (final String message?, _, _) => message,
+      (_, true, _) => '正在自动保存…',
+      (_, false, true) => '即将自动保存',
+      _ => draftThreshold == _lastSavedThreshold ? '已自动保存' : '修改后自动保存',
+    };
+    final statusColor = _saveErrorText != null
+        ? warningColor
+        : _isSaving || pendingAutoSave
+        ? accentColor
+        : palette.textSecondary;
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(12, 0, 12, 12 + bottomInset),
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FBFF),
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x1A16304A),
-                blurRadius: 28,
-                offset: Offset(0, 14),
+    return WillPopScope(
+      onWillPop: _handleWillPop,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.only(top: 12, bottom: bottomInset),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.surfacePrimary,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
               ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 38,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD6E0F5),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                '调整上下文阈值',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF172033),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFEDF4FF), Color(0xFFF6F9FF)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFD9E6FB)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _ThresholdMetric(
-                        label: '当前上下文',
-                        value: _formatTokenCount(widget.currentUsageTokens),
-                        accent: const Color(0xFF5A8DDE),
+              border: Border(top: BorderSide(color: dividerColor)),
+              boxShadow: isDark
+                  ? const []
+                  : [
+                      BoxShadow(
+                        color: palette.shadowColor.withValues(alpha: 0.18),
+                        blurRadius: 24,
+                        offset: const Offset(0, -8),
                       ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 38,
-                      color: const Color(0xFFD9E6FB),
-                    ),
-                    Expanded(
-                      child: _ThresholdMetric(
-                        label: '目标阈值',
-                        value: _formatTokenCount(draftThreshold),
-                        accent: const Color(0xFF1930D9),
-                      ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 38,
-                      color: const Color(0xFFD9E6FB),
-                    ),
-                    Expanded(
-                      child: _ThresholdMetric(
-                        label: '占用比例',
-                        value: _formatUsagePercent(usageRatio),
-                        accent: usageRatio >= 1
-                            ? const Color(0xFFD65A3A)
-                            : const Color(0xFF2F8F6B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: const Color(0xFF2B63F6),
-                  inactiveTrackColor: const Color(0xFFD8E3FB),
-                  thumbColor: Colors.white,
-                  overlayColor: const Color(0x1A2B63F6),
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 11,
-                  ),
-                  trackHeight: 5,
-                ),
-                child: Slider(
-                  min: _kMinContextTokenThreshold.toDouble(),
-                  max: _kMaxContextTokenThreshold.toDouble(),
-                  divisions:
-                      (_kMaxContextTokenThreshold -
-                          _kMinContextTokenThreshold) ~/
-                      1000,
-                  value: _draftThreshold.clamp(
-                    _kMinContextTokenThreshold.toDouble(),
-                    _kMaxContextTokenThreshold.toDouble(),
-                  ),
-                  onChanged: (value) => _updateDraftThreshold(value),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _presets.map((preset) {
-                  final selected = draftThreshold == preset;
-                  return GestureDetector(
-                    onTap: () => _updateDraftThreshold(preset.toDouble()),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? const Color(0xFF1F56F0)
-                            : const Color(0xFFFFFFFF),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: selected
-                              ? const Color(0xFF1F56F0)
-                              : const Color(0xFFD9E6FB),
-                        ),
-                      ),
-                      child: Text(
-                        _formatThresholdLabel(preset),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: selected
-                              ? Colors.white
-                              : const Color(0xFF54627A),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: InputDecoration(
-                  labelText: '精确阈值',
-                  hintText: _kDefaultContextTokenThreshold.toString(),
-                  helperText:
-                      '默认 $_kDefaultContextTokenThreshold，范围 $_kMinContextTokenThreshold - $_kMaxContextTokenThreshold',
-                  errorText: _errorText,
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: Color(0xFFD9E6FB)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: Color(0xFFD9E6FB)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF2B63F6),
-                      width: 1.4,
-                    ),
-                  ),
-                ),
-                onChanged: (_) {
-                  if (_errorText != null) {
-                    setState(() {
-                      _errorText = null;
-                    });
-                  }
-                  final parsed = int.tryParse(_controller.text.trim());
-                  if (parsed != null &&
-                      parsed >= _kMinContextTokenThreshold &&
-                      parsed <= _kMaxContextTokenThreshold) {
-                    setState(() {
-                      _draftThreshold = parsed.toDouble();
-                    });
-                  }
-                },
-                onSubmitted: (_) {
-                  final parsed = _parseInput();
-                  if (parsed != null) {
-                    _close(parsed);
-                  }
-                },
-              ),
-              const SizedBox(height: 18),
-              Row(
+                    ],
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _close(_kDefaultContextTokenThreshold),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        side: const BorderSide(color: Color(0xFFD9E6FB)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: palette.borderStrong,
+                        borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Text('恢复默认'),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () {
-                        final parsed = _parseInput();
-                        if (parsed != null) {
-                          _close(parsed);
-                        }
+                  const SizedBox(height: 18),
+                  Text(
+                    '调整上下文阈值',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: palette.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '修改后自动保存，新的阈值会立刻用于当前对话。',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      color: palette.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: dividerColor),
+                        bottom: BorderSide(color: dividerColor),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _ThresholdMetric(
+                            label: '当前上下文',
+                            value: _formatTokenCount(widget.currentUsageTokens),
+                            accent: palette.textPrimary,
+                          ),
+                        ),
+                        Container(width: 1, height: 38, color: dividerColor),
+                        Expanded(
+                          child: _ThresholdMetric(
+                            label: '目标阈值',
+                            value: _formatTokenCount(draftThreshold),
+                            accent: accentColor,
+                          ),
+                        ),
+                        Container(width: 1, height: 38, color: dividerColor),
+                        Expanded(
+                          child: _ThresholdMetric(
+                            label: '占用比例',
+                            value: _formatUsagePercent(usageRatio),
+                            accent: usageRatio >= 1
+                                ? warningColor
+                                : successColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: accentColor,
+                      inactiveTrackColor: palette.segmentTrack,
+                      thumbColor: palette.surfacePrimary,
+                      overlayColor: accentColor.withValues(alpha: 0.12),
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 10,
+                      ),
+                      trackHeight: 4,
+                    ),
+                    child: Slider(
+                      min: _kMinContextTokenThreshold.toDouble(),
+                      max: _kMaxContextTokenThreshold.toDouble(),
+                      divisions:
+                          (_kMaxContextTokenThreshold -
+                              _kMinContextTokenThreshold) ~/
+                          1000,
+                      value: _draftThreshold.clamp(
+                        _kMinContextTokenThreshold.toDouble(),
+                        _kMaxContextTokenThreshold.toDouble(),
+                      ),
+                      onChanged: (value) => _updateDraftThreshold(value),
+                      onChangeEnd: (value) {
+                        _updateDraftThreshold(value);
+                        unawaited(_commitThreshold(value.round()));
                       },
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        backgroundColor: const Color(0xFF1F56F0),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _presets.map((preset) {
+                      final selected = draftThreshold == preset;
+                      final chipBackground = selected
+                          ? accentColor
+                          : palette.surfaceSecondary;
+                      final chipBorder = selected ? accentColor : dividerColor;
+                      final chipTextColor = selected
+                          ? (isDark
+                                ? Theme.of(context).colorScheme.onPrimary
+                                : Colors.white)
+                          : palette.textSecondary;
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () {
+                          _updateDraftThreshold(preset.toDouble());
+                          unawaited(_commitThreshold(preset));
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: chipBackground,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: chipBorder),
+                          ),
+                          child: Text(
+                            _formatThresholdLabel(preset),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: chipTextColor,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      labelText: '精确阈值',
+                      hintText: _kDefaultContextTokenThreshold.toString(),
+                      helperText:
+                          '默认 $_kDefaultContextTokenThreshold，范围 $_kMinContextTokenThreshold - $_kMaxContextTokenThreshold',
+                      errorText: _errorText,
+                      filled: true,
+                      fillColor: palette.surfaceSecondary,
+                      labelStyle: TextStyle(color: palette.textSecondary),
+                      hintStyle: TextStyle(color: palette.textTertiary),
+                      helperStyle: TextStyle(
+                        color: palette.textTertiary,
+                        fontSize: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: dividerColor),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: dividerColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: accentColor, width: 1.4),
+                      ),
+                    ),
+                    style: TextStyle(color: palette.textPrimary),
+                    onChanged: (value) {
+                      if (value.trim().isEmpty) {
+                        _autoSaveTimer?.cancel();
+                        setState(() {
+                          _errorText = null;
+                          _saveErrorText = null;
+                        });
+                        return;
+                      }
+                      final parsed = int.tryParse(value.trim());
+                      if (parsed == null) {
+                        return;
+                      }
+                      if (parsed < _kMinContextTokenThreshold ||
+                          parsed > _kMaxContextTokenThreshold) {
+                        _autoSaveTimer?.cancel();
+                        setState(() {
+                          _errorText =
+                              '阈值范围为 $_kMinContextTokenThreshold 到 $_kMaxContextTokenThreshold';
+                        });
+                        return;
+                      }
+                      _updateDraftThreshold(
+                        parsed.toDouble(),
+                        updateText: false,
+                      );
+                      _scheduleAutoSave();
+                    },
+                    onSubmitted: (_) {
+                      final parsed = _parseInput();
+                      if (parsed != null) {
+                        unawaited(_commitThreshold(parsed));
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Icon(
+                        _saveErrorText != null
+                            ? Icons.error_outline_rounded
+                            : _isSaving || pendingAutoSave
+                            ? Icons.sync_rounded
+                            : Icons.check_circle_outline_rounded,
+                        size: 16,
+                        color: statusColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          statusText,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: statusColor,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
-                      child: const Text('保存阈值'),
-                    ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1549,6 +2288,7 @@ class _ThresholdMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
@@ -1557,10 +2297,10 @@ class _ThresholdMetric extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF6A7891),
+              color: palette.textSecondary,
             ),
           ),
           const SizedBox(height: 6),

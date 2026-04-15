@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui/models/agent_skill_item.dart';
 import 'package:ui/services/agent_skill_store_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -150,8 +151,11 @@ class _SkillStorePageState extends State<SkillStorePage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: const CommonAppBar(title: '技能仓库', primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -171,16 +175,26 @@ class _SkillStorePageState extends State<SkillStorePage> {
   }
 
   Widget _buildEmpty() {
+    final palette = context.omniPalette;
     return ListView(
       padding: const EdgeInsets.all(24),
-      children: const [
-        SizedBox(height: 120),
-        Icon(Icons.extension_outlined, size: 48, color: AppColors.text50),
-        SizedBox(height: 12),
+      children: [
+        const SizedBox(height: 120),
+        Icon(
+          Icons.extension_outlined,
+          size: 48,
+          color: context.isDarkTheme ? palette.textTertiary : AppColors.text50,
+        ),
+        const SizedBox(height: 12),
         Center(
           child: Text(
             '暂无已接入的技能',
-            style: TextStyle(fontSize: 16, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 16,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
           ),
         ),
       ],
@@ -188,6 +202,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
   }
 
   Widget _buildSkillCard(AgentSkillItem item) {
+    final palette = context.omniPalette;
     final busy = _busyIds.contains(item.id);
     final description = item.description.trim().isEmpty
         ? '暂无描述'
@@ -196,9 +211,20 @@ class _SkillStorePageState extends State<SkillStorePage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow],
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
+        boxShadow: context.isDarkTheme
+            ? [
+                BoxShadow(
+                  color: palette.shadowColor.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [AppColors.boxShadow],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,19 +238,23 @@ class _SkillStorePageState extends State<SkillStorePage> {
                   children: [
                     Text(
                       item.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.text,
+                        color: context.isDarkTheme
+                            ? palette.textPrimary
+                            : AppColors.text,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       description,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         height: 1.5,
-                        color: AppColors.text70,
+                        color: context.isDarkTheme
+                            ? palette.textSecondary
+                            : AppColors.text70,
                       ),
                     ),
                   ],
@@ -264,11 +294,13 @@ class _SkillStorePageState extends State<SkillStorePage> {
           ),
           if (!item.installed && item.isBuiltin) ...[
             const SizedBox(height: 12),
-            const Text(
+            Text(
               '该内置技能已从工作区移除，可随时重新安装。',
               style: TextStyle(
                 fontSize: 12,
-                color: AppColors.text50,
+                color: context.isDarkTheme
+                    ? palette.textTertiary
+                    : AppColors.text50,
                 height: 1.5,
               ),
             ),
@@ -282,9 +314,11 @@ class _SkillStorePageState extends State<SkillStorePage> {
                     item.shellSkillFilePath,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.text50,
+                      color: context.isDarkTheme
+                          ? palette.textTertiary
+                          : AppColors.text50,
                     ),
                   ),
                 ),
@@ -305,15 +339,24 @@ class _SkillStorePageState extends State<SkillStorePage> {
   }
 
   Widget _buildChip(String label) {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F7FD),
+        color: context.isDarkTheme
+            ? palette.surfaceSecondary
+            : const Color(0xFFF4F7FD),
         borderRadius: BorderRadius.circular(999),
+        border: context.isDarkTheme
+            ? Border.all(color: palette.borderSubtle)
+            : null,
       ),
       child: Text(
         label,
-        style: const TextStyle(fontSize: 12, color: AppColors.text70),
+        style: TextStyle(
+          fontSize: 12,
+          color: context.isDarkTheme ? palette.textSecondary : AppColors.text70,
+        ),
       ),
     );
   }

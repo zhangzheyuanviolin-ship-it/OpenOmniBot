@@ -2,12 +2,20 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:ui/l10n/app_language_mode.dart';
+import 'package:ui/l10n/app_locale_controller.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/omni_segmented_slider.dart';
+import 'package:ui/widgets/settings_section_title.dart';
+import 'package:ui/widgets/theme_mode_setting_card.dart';
 
 class _AppearanceTextColorPreset {
   final String label;
@@ -92,7 +100,9 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
     return importedPath != null && importedPath != snapshot.localImagePath;
   }
 
-  String get _autoSaveHint => _saving ? '正在自动保存…' : '更改会自动保存';
+  String get _autoSaveHint => _saving
+      ? context.l10n.appearanceAutoSaving
+      : context.l10n.appearanceAutosaveHint;
 
   String? get _remoteUrlErrorText {
     if (_draftConfig.sourceType != AppBackgroundSourceType.remote) {
@@ -100,13 +110,13 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
     }
     final raw = _remoteUrlController.text.trim();
     if (raw.isEmpty) {
-      return _draftConfig.enabled ? '请输入有效的 http(s) 图片直链' : null;
+      return _draftConfig.enabled ? context.l10n.appearanceInvalidHttpUrl : null;
     }
     final uri = Uri.tryParse(raw);
     if (uri == null ||
         !(uri.scheme == 'http' || uri.scheme == 'https') ||
         uri.host.isEmpty) {
-      return '请输入有效的 http(s) 图片直链';
+      return context.l10n.appearanceInvalidHttpUrl;
     }
     return null;
   }
@@ -118,9 +128,11 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
       return null;
     }
     if (raw.isEmpty) {
-      return '请输入 #RRGGBB 或 #AARRGGBB';
+      return context.l10n.appearanceInvalidHexColor;
     }
-    return normalizeAppBackgroundHexColor(raw) == null ? '色号格式不正确' : null;
+    return normalizeAppBackgroundHexColor(raw) == null
+        ? context.l10n.appearanceInvalidHexColorFormat
+        : null;
   }
 
   @override
@@ -274,19 +286,19 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   Future<String?> _validateConfig(AppBackgroundConfig config) async {
     if (config.sourceType == AppBackgroundSourceType.local &&
         config.localImagePath.trim().isEmpty) {
-      return '请先选择本地图片';
+      return context.l10n.appearancePickLocalImageFirst;
     }
     if (config.sourceType == AppBackgroundSourceType.local &&
         config.localImagePath.trim().isNotEmpty &&
         !await File(config.localImagePath).exists()) {
-      return '本地图片不存在，请重新选择';
+      return context.l10n.appearanceLocalImageMissing;
     }
     if (config.sourceType == AppBackgroundSourceType.remote) {
       final uri = Uri.tryParse(config.remoteImageUrl.trim());
       if (uri == null ||
           !(uri.scheme == 'http' || uri.scheme == 'https') ||
           (uri.host.isEmpty)) {
-        return '请输入有效的 http(s) 图片直链';
+        return context.l10n.appearanceInvalidHttpUrl;
       }
     }
     return null;
@@ -307,8 +319,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   ) async {
     final importedPath = _sessionImportedLocalPath;
     final validationError = await _validateConfig(snapshot);
-    if (validationError != null ||
-        _sameConfig(_savedConfig, snapshot)) {
+    if (validationError != null || _sameConfig(_savedConfig, snapshot)) {
       if (validationError == null) {
         await _cleanupUnsavedImportedImageIfNeeded(
           importedPath: importedPath,
@@ -430,9 +441,10 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const CommonAppBar(title: '外观设置', primary: true),
+      backgroundColor: palette.pageBackground,
+      appBar: CommonAppBar(title: context.l10n.appearanceTitle, primary: true),
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
@@ -443,18 +455,25 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
               Padding(
                 padding: const EdgeInsets.only(left: 4, bottom: 12),
                 child: Text(
-                  _autoSaveHint,
+                  context.trLegacy(_autoSaveHint),
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.text.withValues(alpha: 0.65),
+                    color: palette.textSecondary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
+              const ThemeModeSettingCard(),
+              const SizedBox(height: 18),
+              _buildLanguageSettingCard(),
+              const SizedBox(height: 18),
+              SettingsSectionTitle(label: context.l10n.appearanceBackgroundSource),
               _buildSourceCard(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+              SettingsSectionTitle(label: context.l10n.appearancePreview),
               _buildPreviewCard(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+              SettingsSectionTitle(label: context.l10n.appearanceAdjustments),
               _buildAdjustCard(),
             ],
           ),
@@ -468,35 +487,22 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text(
-                '效果预览',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.text,
-                ),
-              ),
-              const Spacer(),
-              Wrap(
-                spacing: 8,
-                children: BackgroundPreviewKind.values.map((kind) {
-                  final selected = _previewKind == kind;
-                  final label = kind == BackgroundPreviewKind.chat
-                      ? '聊天预览'
-                      : 'Workspace 预览';
-                  return ChoiceChip(
-                    key: ValueKey('background-preview-kind-${kind.name}'),
-                    label: Text(label),
-                    selected: selected,
-                    onSelected: (_) {
-                      setState(() => _previewKind = kind);
-                    },
-                  );
-                }).toList(),
-              ),
-            ],
+          Wrap(
+            spacing: 8,
+            children: BackgroundPreviewKind.values.map((kind) {
+              final selected = _previewKind == kind;
+              final label = kind == BackgroundPreviewKind.chat
+                  ? context.l10n.appearancePreviewChat
+                  : context.l10n.appearancePreviewWorkspace;
+              return ChoiceChip(
+                key: ValueKey('background-preview-kind-${kind.name}'),
+                label: Text(label),
+                selected: selected,
+                onSelected: (_) {
+                  setState(() => _previewKind = kind);
+                },
+              );
+            }).toList(),
           ),
           const SizedBox(height: 12),
           AppBackgroundPreview(
@@ -519,7 +525,54 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
     );
   }
 
+  Widget _buildLanguageSettingCard() {
+    return Consumer(
+      builder: (context, ref, child) {
+        final mode = ref.watch(appLanguageModeProvider);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SettingsSectionTitle(
+              label: context.l10n.languageTitle,
+              subtitle: context.l10n.languageSubtitle,
+              bottomPadding: 10,
+            ),
+            OmniSegmentedSlider<AppLanguageMode>(
+              key: const ValueKey('language-mode-slider'),
+              value: mode,
+              keyPrefix: 'language-mode-option',
+              options: [
+                OmniSegmentedOption<AppLanguageMode>(
+                  value: AppLanguageMode.system,
+                  label: context.l10n.languageFollowSystem,
+                  icon: Icons.smartphone_rounded,
+                  id: 'system',
+                ),
+                OmniSegmentedOption<AppLanguageMode>(
+                  value: AppLanguageMode.zhHans,
+                  label: context.l10n.languageZhHans,
+                  icon: Icons.translate_rounded,
+                  id: 'zhHans',
+                ),
+                OmniSegmentedOption<AppLanguageMode>(
+                  value: AppLanguageMode.en,
+                  label: context.l10n.languageEnglish,
+                  icon: Icons.language_rounded,
+                  id: 'en',
+                ),
+              ],
+              onChanged: (nextMode) {
+                ref.read(appLanguageModeProvider.notifier).setLanguageMode(nextMode);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildSourceCard() {
+    final palette = context.omniPalette;
     final localPath = _draftConfig.localImagePath.trim();
     final sourceType = _draftConfig.sourceType;
     return _buildCard(
@@ -528,17 +581,17 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
         children: [
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text(
-              '启用背景图',
+            title: Text(
+              context.l10n.appearanceEnableBackground,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppColors.text,
+                color: palette.textPrimary,
               ),
             ),
-            subtitle: const Text(
-              '同时作用于聊天页和 Workspace 页面，并自动保存',
-              style: TextStyle(fontSize: 12, color: AppColors.text70),
+            subtitle: Text(
+              context.l10n.appearanceEnableBackgroundSubtitle,
+              style: TextStyle(fontSize: 12, color: palette.textSecondary),
             ),
             value: _draftConfig.enabled,
             onChanged: (value) {
@@ -552,14 +605,14 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
             children: [
               ChoiceChip(
                 key: const ValueKey('background-source-local'),
-                label: const Text('本地图片'),
+                label: Text(context.l10n.appearanceSourceLocal),
                 selected: sourceType == AppBackgroundSourceType.local,
                 onSelected: (_) =>
                     _setSourceType(AppBackgroundSourceType.local),
               ),
               ChoiceChip(
                 key: const ValueKey('background-source-remote'),
-                label: const Text('图片直链'),
+                label: Text(context.l10n.appearanceSourceRemote),
                 selected: sourceType == AppBackgroundSourceType.remote,
                 onSelected: (_) =>
                     _setSourceType(AppBackgroundSourceType.remote),
@@ -569,17 +622,21 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
           if (sourceType == AppBackgroundSourceType.local) ...[
             const SizedBox(height: 12),
             Text(
-              localPath.isEmpty ? '尚未选择本地图片' : localPath,
+              localPath.isEmpty ? context.l10n.appearanceNoLocalImage : localPath,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: AppColors.text70),
+              style: TextStyle(fontSize: 12, color: palette.textSecondary),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
               key: const ValueKey('background-pick-local-image'),
               onPressed: _pickLocalImage,
               icon: const Icon(Icons.photo_library_outlined),
-              label: Text(localPath.isEmpty ? '选择图片' : '重新选择'),
+              label: Text(
+                localPath.isEmpty
+                    ? context.l10n.appearancePickImage
+                    : context.l10n.appearanceRepickImage,
+              ),
             ),
           ],
           if (sourceType == AppBackgroundSourceType.remote) ...[
@@ -588,8 +645,8 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
               key: const ValueKey('background-remote-url-field'),
               controller: _remoteUrlController,
               decoration: InputDecoration(
-                labelText: '图片直链',
-                hintText: 'https://example.com/background.jpg',
+                labelText: context.l10n.appearanceRemoteImageUrl,
+                hintText: context.l10n.appearanceRemoteImageUrlHint,
                 border: OutlineInputBorder(),
                 errorText: _remoteUrlErrorText,
               ),
@@ -601,22 +658,14 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   }
 
   Widget _buildAdjustCard() {
+    final palette = context.omniPalette;
     return _buildCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '效果调整',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppColors.text,
-            ),
-          ),
-          const SizedBox(height: 8),
           _buildSliderRow(
-            label: '背景柔化',
-            subtitle: '调节图片上方蒙版的柔化程度',
+            label: context.l10n.appearanceBackgroundBlur,
+            subtitle: context.l10n.appearanceBackgroundBlurSubtitle,
             value: _draftConfig.blurSigma,
             min: 0,
             max: 24,
@@ -625,8 +674,8 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
             },
           ),
           _buildSliderRow(
-            label: '蒙版强度',
-            subtitle: '增强统一蒙版，让页面元素更干净',
+            label: context.l10n.appearanceOverlayIntensity,
+            subtitle: context.l10n.appearanceOverlayIntensitySubtitle,
             value: _draftConfig.frostOpacity,
             min: 0,
             max: 0.55,
@@ -635,8 +684,8 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
             },
           ),
           _buildSliderRow(
-            label: '蒙版明暗',
-            subtitle: '提亮或压暗蒙版，不会直接修改原图',
+            label: context.l10n.appearanceOverlayBrightness,
+            subtitle: context.l10n.appearanceOverlayBrightnessSubtitle,
             value: _draftConfig.brightness,
             min: 0.5,
             max: 1.5,
@@ -645,8 +694,8 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
             },
           ),
           _buildSliderRow(
-            label: '聊天文本大小',
-            subtitle: '仅调整用户消息、AI 回复与思考区字号',
+            label: context.l10n.appearanceChatTextSize,
+            subtitle: context.l10n.appearanceChatTextSizeSubtitle,
             value: _draftConfig.chatTextSize,
             min: 12,
             max: 22,
@@ -659,11 +708,8 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
           _buildTextColorSection(),
           const SizedBox(height: 6),
           Text(
-            '图片可直接在上方预览里拖动和双指缩放，预览会尽量贴近实际效果。',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.text.withValues(alpha: 0.6),
-            ),
+            context.l10n.appearancePreviewTip,
+            style: TextStyle(fontSize: 12, color: palette.textSecondary),
           ),
         ],
       ),
@@ -679,6 +725,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
     required ValueChanged<double> onChanged,
     String Function(double value)? valueFormatter,
   }) {
+    final palette = context.omniPalette;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Column(
@@ -687,24 +734,24 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
           Row(
             children: [
               Text(
-                label,
-                style: const TextStyle(
+                context.trLegacy(label),
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.text,
+                  color: palette.textPrimary,
                 ),
               ),
               const Spacer(),
               Text(
                 valueFormatter?.call(value) ?? value.toStringAsFixed(2),
-                style: const TextStyle(fontSize: 12, color: AppColors.text70),
+                style: TextStyle(fontSize: 12, color: palette.textSecondary),
               ),
             ],
           ),
           const SizedBox(height: 2),
           Text(
-            subtitle,
-            style: const TextStyle(fontSize: 12, color: AppColors.text70),
+            context.trLegacy(subtitle),
+            style: TextStyle(fontSize: 12, color: palette.textSecondary),
           ),
           Slider(value: value, min: min, max: max, onChanged: onChanged),
         ],
@@ -713,24 +760,25 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   }
 
   Widget _buildTextColorSection() {
+    final palette = context.omniPalette;
     final selectedHex = normalizeAppBackgroundHexColor(
       _draftConfig.chatTextHexColor,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '聊天文本颜色',
+        Text(
+          context.l10n.appearanceTextColorTitle,
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: AppColors.text,
+            color: palette.textPrimary,
           ),
         ),
         const SizedBox(height: 2),
-        const Text(
-          '默认会自动跟随背景明暗，也可以改成固定颜色',
-          style: TextStyle(fontSize: 12, color: AppColors.text70),
+        Text(
+          context.l10n.appearanceTextColorSubtitle,
+          style: TextStyle(fontSize: 12, color: palette.textSecondary),
         ),
         const SizedBox(height: 10),
         Wrap(
@@ -739,7 +787,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
           children: [
             ChoiceChip(
               key: const ValueKey('appearance-text-color-auto'),
-              label: const Text('自动'),
+              label: Text(context.l10n.appearanceTextColorAuto),
               selected:
                   _draftConfig.chatTextColorMode ==
                   AppBackgroundTextColorMode.auto,
@@ -779,8 +827,10 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: selected
-                          ? AppColors.primaryBlue
-                          : const Color(0xFFD9E2EF),
+                          ? (context.isDarkTheme
+                                ? palette.accentPrimary
+                                : AppColors.primaryBlue)
+                          : palette.borderStrong,
                       width: selected ? 3 : 1.5,
                     ),
                     boxShadow: [
@@ -801,8 +851,8 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
           key: const ValueKey('appearance-text-color-field'),
           controller: _textColorController,
           decoration: InputDecoration(
-            labelText: '自定义色号',
-            hintText: '#FFFFFF 或 #FF112233',
+            labelText: context.l10n.appearanceCustomColorLabel,
+            hintText: context.l10n.appearanceCustomColorHint,
             border: const OutlineInputBorder(),
             errorText: _textColorErrorText,
           ),
@@ -812,16 +862,7 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
   }
 
   Widget _buildCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE8ECF3)),
-      ),
-      child: child,
-    );
+    return SizedBox(width: double.infinity, child: child);
   }
 
   void _scheduleDraftVisualProfileRefresh() {

@@ -23,6 +23,40 @@ fun prop(name: String): String {
     }
 }
 
+val flutterWebBuildDir = rootProject.file("ui/build/web")
+val flutterWebAssetsRootDir = layout.buildDirectory.dir("generated/omnibot_assets").get().asFile
+val flutterWebAssetsDir = File(flutterWebAssetsRootDir, "flutter_web")
+
+val buildFlutterWebBundle by tasks.registering(Exec::class) {
+    group = "flutter web"
+    description = "Build the dedicated web chat Flutter bundle."
+    workingDir = rootProject.file("ui")
+    val flutterCmd = if (org.gradle.internal.os.OperatingSystem.current().isWindows) "flutter.bat" else "flutter"
+    commandLine(
+        flutterCmd,
+        "build",
+        "web",
+        "--target",
+        "lib/web_main.dart",
+        "--base-href",
+        "/webchat/",
+        "--no-tree-shake-icons",
+        "--no-wasm-dry-run"
+    )
+    inputs.dir(rootProject.file("ui/lib"))
+    inputs.dir(rootProject.file("ui/web"))
+    inputs.file(rootProject.file("ui/pubspec.yaml"))
+    outputs.dir(flutterWebBuildDir)
+}
+
+val syncFlutterWebBundle by tasks.registering(Copy::class) {
+    group = "flutter web"
+    description = "Copy Flutter Web build output into Android assets."
+    dependsOn(buildFlutterWebBundle)
+    from(flutterWebBuildDir)
+    into(flutterWebAssetsDir)
+}
+
 android {
     namespace = "cn.com.omnimind.bot"
     compileSdk = 36
@@ -32,7 +66,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 1
-        versionName = "0.2.1"
+        versionName = "0.3.1"
 
         ndk {
             abiFilters.addAll(listOf("arm64-v8a"))
@@ -105,6 +139,9 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 
     packaging {
         jniLibs {
@@ -129,7 +166,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            assets.srcDirs("src/main/assets", "../skills")
+            assets.srcDirs("src/main/assets", "../skills", flutterWebAssetsRootDir)
         }
     }
 
@@ -140,11 +177,15 @@ android {
         abortOnError = false
     }
 }
+
+tasks.named("preBuild").configure {
+    dependsOn(syncFlutterWebBundle)
+}
 dependencies {
     implementation(project(":flutter"))
     implementation(project(":uikit"))
     implementation(project(":baselib"))
-    implementation(project(":mnn_local"))
+    implementation(project(":omniinfer-server"))
     implementation(project(":core:main"))
     implementation(project(":core:terminal-view"))
     implementation(project(":core:terminal-emulator"))
@@ -179,3 +220,4 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest )
 }
+

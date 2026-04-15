@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.mcp
 
 import android.content.Context
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.vlm.VlmToolCoordinator
 import cn.com.omnimind.bot.vlm.VlmToolOutcome
@@ -15,6 +16,7 @@ import kotlinx.coroutines.withContext
  */
 object McpToolExecutors {
     private const val TAG = "[McpToolExecutors]"
+    private fun brandName(): String = AppLocaleManager.brandName()
     
     /**
      * 执行 VLM 任务（阻塞等待完成）
@@ -83,7 +85,7 @@ object McpToolExecutors {
         // 更新状态并等待下一个状态变更
         taskState.status = TaskStatus.RUNNING
         taskState.waitingQuestion = null
-        taskState.message = "继续执行中"
+        taskState.message = if (AppLocaleManager.isEnglish()) "Resuming execution" else "继续执行中"
         taskState.addChatMessage("User replied: $reply")
         taskState.markStateChanged()
         
@@ -171,7 +173,7 @@ object McpToolExecutors {
             "latest" -> {
                 val record = McpFileInbox.latest()
                     ?: return@withContext McpResponseBuilder.buildTextResponse(
-                        "No files in inbox. Ask the user to share/open the file with 小万, then call file_transfer again."
+                        "No files in inbox. Ask the user to share or open the file with ${brandName()}, then call file_transfer again."
                     )
                 return@withContext buildFileTransferResponse(record)
             }
@@ -187,7 +189,7 @@ object McpToolExecutors {
                 val records = McpFileInbox.list(limit)
                 if (records.isEmpty()) {
                     return@withContext McpResponseBuilder.buildTextResponse(
-                        "No files in inbox. Ask the user to share/open the file with 小万, then call file_transfer again."
+                        "No files in inbox. Ask the user to share or open the file with ${brandName()}, then call file_transfer again."
                     )
                 }
                 val itemsText = records.joinToString("\n") { record ->
@@ -229,7 +231,7 @@ object McpToolExecutors {
                     kotlinx.coroutines.delay(McpTaskManager.POLL_INTERVAL_MS)
                 }
                 return@withContext McpResponseBuilder.buildTextResponse(
-                    "No file received within timeout. Ask the user to share/open the file with 小万, then call file_transfer again."
+                    "No file received within timeout. Ask the user to share or open the file with ${brandName()}, then call file_transfer again."
                 )
             }
             else -> {

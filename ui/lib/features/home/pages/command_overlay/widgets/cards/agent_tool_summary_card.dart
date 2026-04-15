@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/chat/tool_activity_utils.dart';
+import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_transcript.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 
 const Color _interruptedStatusColor = Color(0xFFFFAA2C);
@@ -60,18 +62,44 @@ class AgentToolSummaryCard extends StatelessWidget {
     final statusLabel = resolveAgentToolStatusLabel(cardData);
     final preview = resolveAgentToolPreview(cardData);
     final typeLabel = resolveAgentToolTypeLabel(cardData);
-    final statusColor = _resolvedStatusColor(status);
+    final statusColor = resolveAgentToolStatusColor(status);
     final compileStatus = (cardData['compileStatus'] ?? '').toString();
     final executionRoute = (cardData['executionRoute'] ?? '').toString();
     final routeLabel = _resolvedRouteLabel(
       executionRoute: executionRoute,
       compileStatus: compileStatus,
     );
-    final backgroundColor = _resolvedCardBackground(
+    final palette = context.omniPalette;
+    final utgBackgroundColor = _resolvedCardBackground(
       executionRoute: executionRoute,
       compileStatus: compileStatus,
       fallback: statusColor.withValues(alpha: 0.08),
     );
+    final cardBackgroundColor = context.isDarkTheme
+        ? Color.alphaBlend(
+            statusColor.withValues(alpha: status == 'running' ? 0.11 : 0.09),
+            palette.surfaceSecondary,
+          )
+        : utgBackgroundColor;
+    final cardBorderColor = context.isDarkTheme
+        ? Color.lerp(
+            palette.borderSubtle,
+            statusColor,
+            0.18,
+          )!.withValues(alpha: 0.92)
+        : Colors.transparent;
+    final statusTagBackgroundColor = context.isDarkTheme
+        ? Color.alphaBlend(
+            statusColor.withValues(alpha: 0.14),
+            palette.surfaceElevated,
+          )
+        : Colors.white.withValues(alpha: 0.78);
+    final statusTagTextColor = context.isDarkTheme
+        ? Color.lerp(palette.textSecondary, statusColor, 0.38)!
+        : statusColor;
+    final titleColor = context.isDarkTheme
+        ? palette.textPrimary
+        : visualProfile.primaryTextColor;
 
     final tooltipLines = <String>[title];
     if (preview.isNotEmpty && preview != title) {
@@ -94,8 +122,9 @@ class AgentToolSummaryCard extends StatelessWidget {
             margin: const EdgeInsets.only(top: 6, bottom: 2),
             padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
             decoration: BoxDecoration(
-              color: backgroundColor,
+              color: cardBackgroundColor,
               borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: cardBorderColor),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -108,7 +137,7 @@ class AgentToolSummaryCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: visualProfile.primaryTextColor,
+                      color: titleColor,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       height: 1.15,
@@ -150,13 +179,13 @@ class AgentToolSummaryCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.78),
+                    color: statusTagBackgroundColor,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     status == 'running' ? typeLabel : statusLabel,
                     style: TextStyle(
-                      color: statusColor,
+                      color: statusTagTextColor,
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       height: 1,
@@ -1041,14 +1070,20 @@ class _StatusIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _resolvedStatusColor(status);
+    final color = resolveAgentToolStatusColor(status);
+    final backgroundColor = context.isDarkTheme
+        ? Color.alphaBlend(
+            color.withValues(alpha: 0.14),
+            context.omniPalette.surfaceElevated,
+          )
+        : color.withValues(alpha: 0.12);
+    final iconColor = context.isDarkTheme
+        ? Color.lerp(context.omniPalette.textSecondary, color, 0.38)!
+        : color;
     return Container(
-      width: 16,
-      height: 16,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        shape: BoxShape.circle,
-      ),
+      width: 18,
+      height: 18,
+      decoration: BoxDecoration(color: backgroundColor, shape: BoxShape.circle),
       child: Center(
         child: status == 'running'
             ? SizedBox(
@@ -1056,63 +1091,15 @@ class _StatusIcon extends StatelessWidget {
                 height: 8,
                 child: CircularProgressIndicator(
                   strokeWidth: 1.4,
-                  valueColor: AlwaysStoppedAnimation<Color>(color),
+                  valueColor: AlwaysStoppedAnimation<Color>(iconColor),
                 ),
               )
             : Icon(
-                _resolvedStatusIcon(status, (toolType ?? '').toString()),
+                resolveAgentToolStatusIcon(status, (toolType ?? '').toString()),
                 size: 10,
-                color: color,
+                color: iconColor,
               ),
       ),
     );
-  }
-}
-
-IconData _resolvedStatusIcon(String status, String toolType) {
-  if (status == 'interrupted') {
-    return Icons.stop_circle_outlined;
-  }
-  if (status == 'error') {
-    return Icons.error_outline_rounded;
-  }
-  if (toolType == 'terminal') {
-    return Icons.terminal_rounded;
-  }
-  if (toolType == 'browser') {
-    return Icons.language_rounded;
-  }
-  if (toolType == 'calendar') {
-    return Icons.calendar_month_rounded;
-  }
-  if (toolType == 'alarm' || toolType == 'schedule') {
-    return Icons.alarm_rounded;
-  }
-  if (toolType == 'memory') {
-    return Icons.psychology_alt_rounded;
-  }
-  if (toolType == 'workspace') {
-    return Icons.folder_outlined;
-  }
-  if (toolType == 'subagent') {
-    return Icons.hub_outlined;
-  }
-  if (toolType == 'mcp') {
-    return Icons.extension_outlined;
-  }
-  return Icons.check_circle_outline_rounded;
-}
-
-Color _resolvedStatusColor(String status) {
-  if (status == 'interrupted') {
-    return _interruptedStatusColor;
-  }
-  switch (status) {
-    case 'success':
-      return const Color(0xFF2F8F4E);
-    case 'error':
-      return AppColors.alertRed;
-    default:
-      return AppColors.primaryBlue;
   }
 }

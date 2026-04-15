@@ -129,11 +129,7 @@ class ConversationHistoryService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_lastVisibleThreadTargetKey);
     if (raw == null || raw.trim().isEmpty) {
-      for (final mode in const <ConversationMode>[
-        ConversationMode.normal,
-        ConversationMode.openclaw,
-        ConversationMode.subagent,
-      ]) {
+      for (final mode in ConversationMode.values) {
         final target = await getCurrentConversationTarget(mode: mode);
         if (target == null) {
           continue;
@@ -200,9 +196,9 @@ class ConversationHistoryService {
       return null;
     }
     final suffix = key.substring(conversationMessagesKeyPrefix.length);
-    final parts = suffix.split('_');
-    if (parts.length == 1) {
-      final conversationId = int.tryParse(parts.first);
+    final lastUnderscoreIndex = suffix.lastIndexOf('_');
+    if (lastUnderscoreIndex < 0) {
+      final conversationId = int.tryParse(suffix);
       if (conversationId == null) {
         return null;
       }
@@ -211,17 +207,17 @@ class ConversationHistoryService {
         mode: ConversationMode.normal,
       );
     }
-    if (parts.length < 2) {
-      return null;
-    }
-    final mode = ConversationMode.fromStorageValue(parts.first);
-    final conversationId = int.tryParse(parts.sublist(1).join('_'));
-    if (conversationId == null) {
+
+    final modeStorageValue = suffix.substring(0, lastUnderscoreIndex);
+    final conversationId = int.tryParse(
+      suffix.substring(lastUnderscoreIndex + 1),
+    );
+    if (modeStorageValue.isEmpty || conversationId == null) {
       return null;
     }
     return ConversationMessageStorageKey(
       conversationId: conversationId,
-      mode: mode,
+      mode: ConversationMode.fromStorageValue(modeStorageValue),
     );
   }
 
@@ -263,6 +259,7 @@ class ConversationHistoryService {
               Map<String, dynamic>.from(json.cast<String, dynamic>()),
             ),
           )
+          .where(_shouldRetainRestoredMessage)
           .toList();
     } on PlatformException catch (e) {
       print('获取对话历史失败: ${e.message}');
@@ -271,6 +268,21 @@ class ConversationHistoryService {
       print('解析对话历史失败: $e');
       return [];
     }
+  }
+
+  static bool _shouldRetainRestoredMessage(ChatMessageModel message) {
+    if (message.type != 1 || message.user != 2) {
+      return true;
+    }
+    final text = message.text?.trim() ?? '';
+    if (text.isNotEmpty ||
+        message.isError ||
+        message.isLoading ||
+        message.isSummarizing) {
+      return true;
+    }
+    final attachments = message.content?['attachments'];
+    return attachments is List && attachments.isNotEmpty;
   }
 
   static Future<void> upsertConversationUiCard(

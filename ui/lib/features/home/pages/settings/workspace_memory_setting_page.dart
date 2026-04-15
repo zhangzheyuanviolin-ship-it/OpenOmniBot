@@ -6,8 +6,10 @@ import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class WorkspaceMemorySettingPage extends StatefulWidget {
   const WorkspaceMemorySettingPage({super.key});
@@ -20,10 +22,12 @@ class WorkspaceMemorySettingPage extends StatefulWidget {
 class _WorkspaceMemorySettingPageState
     extends State<WorkspaceMemorySettingPage> {
   final TextEditingController _soulController = TextEditingController();
+  final TextEditingController _chatController = TextEditingController();
   final TextEditingController _memoryController = TextEditingController();
 
   bool _loading = true;
   bool _savingSoul = false;
+  bool _savingChat = false;
   bool _savingMemory = false;
   bool _embeddingEnabled = true;
   bool _rollupEnabled = true;
@@ -45,6 +49,10 @@ class _WorkspaceMemorySettingPageState
             unawaited(_refreshSoulDocument());
             return;
           }
+          if (event.path.endsWith('/CHAT.md')) {
+            unawaited(_refreshChatDocument());
+            return;
+          }
           unawaited(_refreshCapabilityState());
         });
   }
@@ -53,6 +61,7 @@ class _WorkspaceMemorySettingPageState
   void dispose() {
     _configChangedSubscription?.cancel();
     _soulController.dispose();
+    _chatController.dispose();
     _memoryController.dispose();
     super.dispose();
   }
@@ -62,17 +71,20 @@ class _WorkspaceMemorySettingPageState
     try {
       final results = await Future.wait([
         WorkspaceMemoryService.getSoul(),
+        WorkspaceMemoryService.getChatPrompt(),
         WorkspaceMemoryService.getLongMemory(),
         WorkspaceMemoryService.getEmbeddingConfig(),
         WorkspaceMemoryService.getRollupStatus(),
       ]);
       if (!mounted) return;
       final soul = results[0] as String;
-      final memory = results[1] as String;
-      final embedding = results[2] as WorkspaceMemoryEmbeddingConfig;
-      final rollup = results[3] as WorkspaceMemoryRollupStatus;
+      final chatPrompt = results[1] as String;
+      final memory = results[2] as String;
+      final embedding = results[3] as WorkspaceMemoryEmbeddingConfig;
+      final rollup = results[4] as WorkspaceMemoryRollupStatus;
       setState(() {
         _soulController.text = soul;
+        _chatController.text = chatPrompt;
         _memoryController.text = memory;
         _embeddingConfig = embedding;
         _rollupStatus = rollup;
@@ -118,6 +130,16 @@ class _WorkspaceMemorySettingPageState
     }
   }
 
+  Future<void> _refreshChatDocument() async {
+    try {
+      final chatPrompt = await WorkspaceMemoryService.getChatPrompt();
+      if (!mounted) return;
+      _chatController.text = chatPrompt;
+    } catch (_) {
+      // Keep current UI state when passive refresh fails.
+    }
+  }
+
   Future<void> _saveSoul() async {
     setState(() => _savingSoul = true);
     try {
@@ -130,6 +152,24 @@ class _WorkspaceMemorySettingPageState
     } finally {
       if (mounted) {
         setState(() => _savingSoul = false);
+      }
+    }
+  }
+
+  Future<void> _saveChatPrompt() async {
+    setState(() => _savingChat = true);
+    try {
+      final saved = await WorkspaceMemoryService.saveChatPrompt(
+        _chatController.text,
+      );
+      if (!mounted) return;
+      _chatController.text = saved;
+      showToast('CHAT.md 已保存', type: ToastType.success);
+    } catch (e) {
+      showToast('CHAT.md 保存失败', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() => _savingChat = false);
       }
     }
   }
@@ -206,14 +246,18 @@ class _WorkspaceMemorySettingPageState
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: const CommonAppBar(title: 'Workspace 记忆', primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
               children: [
+                const SettingsSectionTitle(label: '记忆能力'),
                 _buildSwitchCard(
                   title: '记忆嵌入检索',
                   subtitle: _embeddingConfig?.configured == true
@@ -228,7 +272,7 @@ class _WorkspaceMemorySettingPageState
                     child: const Text('去场景模型配置记忆嵌入模型'),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const Divider(height: 24),
                 _buildSwitchCard(
                   title: '夜间记忆整理（22:00）',
                   subtitle:
@@ -243,14 +287,22 @@ class _WorkspaceMemorySettingPageState
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 18),
+                const SettingsSectionTitle(label: '文档内容'),
                 _buildEditorCard(
                   title: 'SOUL.md（Agent 灵魂）',
                   controller: _soulController,
                   saving: _savingSoul,
                   onSave: _saveSoul,
                 ),
-                const SizedBox(height: 12),
+                const Divider(height: 24),
+                _buildEditorCard(
+                  title: 'CHAT.md（纯聊天系统提示词）',
+                  controller: _chatController,
+                  saving: _savingChat,
+                  onSave: _saveChatPrompt,
+                ),
+                const Divider(height: 24),
                 _buildEditorCard(
                   title: 'MEMORY.md（长期记忆）',
                   controller: _memoryController,
@@ -269,13 +321,9 @@ class _WorkspaceMemorySettingPageState
     required ValueChanged<bool> onChanged,
     Widget? footer,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow],
-      ),
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -284,10 +332,12 @@ class _WorkspaceMemorySettingPageState
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.text,
+                    color: context.isDarkTheme
+                        ? palette.textPrimary
+                        : AppColors.text,
                   ),
                 ),
               ),
@@ -297,7 +347,12 @@ class _WorkspaceMemorySettingPageState
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 12, color: AppColors.text70),
+            style: TextStyle(
+              fontSize: 12,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
           ),
           if (footer != null) ...[const SizedBox(height: 8), footer],
         ],
@@ -311,22 +366,18 @@ class _WorkspaceMemorySettingPageState
     required bool saving,
     required Future<void> Function() onSave,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [AppColors.boxShadow],
-      ),
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: AppColors.text,
+              color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
             ),
           ),
           const SizedBox(height: 8),

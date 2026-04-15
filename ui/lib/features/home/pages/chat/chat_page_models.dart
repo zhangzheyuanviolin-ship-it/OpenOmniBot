@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:ui';
 
 enum ChatIslandDisplayLayer {
   mode('mode'),
@@ -141,4 +143,123 @@ String chatConversationWorkspaceId(int? conversationId) {
   return conversationId == null
       ? 'conversation_default'
       : 'conversation_$conversationId';
+}
+
+class HdPadPaneLayout {
+  const HdPadPaneLayout({
+    required this.leftWidth,
+    required this.centerWidth,
+    required this.rightWidth,
+  });
+
+  final double leftWidth;
+  final double centerWidth;
+  final double rightWidth;
+}
+
+class HdPadPaneLayoutResolver {
+  const HdPadPaneLayoutResolver();
+
+  static const double dividerHitWidth = 12;
+  static const double defaultLeftWidth = 260;
+  static const double minLeftWidth = 220;
+  static const double maxLeftWidth = 360;
+  static const double defaultRightWidth = 300;
+  static const double minRightWidth = 240;
+  static const double maxRightWidth = 420;
+  static const double minCenterWidth = 320;
+
+  HdPadPaneLayout resolve(
+    double totalWidth, {
+    double? preferredLeftWidth,
+    double? preferredRightWidth,
+    bool collapseLeftPane = false,
+  }) {
+    final dividerCount = collapseLeftPane ? 1 : 2;
+    final availableWidth = math.max(
+      0,
+      totalWidth - dividerHitWidth * dividerCount,
+    );
+
+    var leftWidth = collapseLeftPane
+        ? 0.0
+        : (preferredLeftWidth ?? defaultLeftWidth).clamp(
+            minLeftWidth,
+            maxLeftWidth,
+          );
+    var rightWidth = (preferredRightWidth ?? defaultRightWidth).clamp(
+      minRightWidth,
+      maxRightWidth,
+    );
+
+    if (!collapseLeftPane) {
+      final maxLeftBySpace = math.max(
+        minLeftWidth,
+        availableWidth - rightWidth - minCenterWidth,
+      );
+      leftWidth = leftWidth.clamp(minLeftWidth, maxLeftBySpace);
+    }
+
+    final maxRightBySpace = math.max(
+      minRightWidth,
+      availableWidth - leftWidth - minCenterWidth,
+    );
+    rightWidth = rightWidth.clamp(minRightWidth, maxRightBySpace);
+
+    var centerWidth = availableWidth - leftWidth - rightWidth;
+    if (centerWidth < minCenterWidth) {
+      final rightFlexible = rightWidth - minRightWidth;
+      if (rightFlexible > 0) {
+        final delta = math.min(minCenterWidth - centerWidth, rightFlexible);
+        rightWidth -= delta;
+        centerWidth += delta;
+      }
+    }
+    if (!collapseLeftPane && centerWidth < minCenterWidth) {
+      final leftFlexible = leftWidth - minLeftWidth;
+      if (leftFlexible > 0) {
+        final delta = math.min(minCenterWidth - centerWidth, leftFlexible);
+        leftWidth -= delta;
+        centerWidth += delta;
+      }
+    }
+
+    return HdPadPaneLayout(
+      leftWidth: leftWidth,
+      centerWidth: centerWidth,
+      rightWidth: centerWidth.isNegative ? 0 : rightWidth,
+    );
+  }
+}
+
+class ChatPaneOverlayAnchorGeometry {
+  const ChatPaneOverlayAnchorGeometry({
+    required this.rect,
+    required this.bottom,
+  });
+
+  final Rect rect;
+  final double bottom;
+}
+
+ChatPaneOverlayAnchorGeometry resolveChatPaneOverlayAnchorGeometry({
+  required Size viewportSize,
+  double horizontalInset = 24,
+  required double bottomSpacing,
+  required double anchorHeight,
+}) {
+  final resolvedWidth = math.max(0.0, viewportSize.width - horizontalInset * 2);
+  final resolvedBottom = bottomSpacing
+      .clamp(0.0, viewportSize.height)
+      .toDouble();
+  final resolvedHeight = anchorHeight.isFinite
+      ? math.max(0.0, anchorHeight)
+      : 0.0;
+  final top = (viewportSize.height - resolvedBottom)
+      .clamp(0.0, viewportSize.height)
+      .toDouble();
+  return ChatPaneOverlayAnchorGeometry(
+    rect: Rect.fromLTWH(horizontalInset, top, resolvedWidth, resolvedHeight),
+    bottom: resolvedBottom,
+  );
 }

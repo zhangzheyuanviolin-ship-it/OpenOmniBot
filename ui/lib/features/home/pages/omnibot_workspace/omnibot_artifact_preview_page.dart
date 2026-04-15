@@ -2,14 +2,16 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/image_preview_overlay.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
 import 'package:ui/widgets/omnibot_resource_widgets.dart';
+
+enum _ArtifactPreviewAction { openWithSystem, shareFile }
 
 class OmnibotArtifactPreviewPage extends StatefulWidget {
   final String path;
@@ -40,9 +42,6 @@ class OmnibotArtifactPreviewPage extends StatefulWidget {
 
 class _OmnibotArtifactPreviewPageState
     extends State<OmnibotArtifactPreviewPage> {
-  static const String _externalLinkIconAsset =
-      'assets/home/workspace_external_link_icon.svg';
-
   final TextEditingController _editorController = TextEditingController();
 
   StreamSubscription<AgentAiConfigChangedEvent>? _fileChangedSubscription;
@@ -250,6 +249,17 @@ class _OmnibotArtifactPreviewPageState
     }
   }
 
+  void _handleToolbarAction(_ArtifactPreviewAction action) {
+    switch (action) {
+      case _ArtifactPreviewAction.openWithSystem:
+        unawaited(_handleOpenWithSystem());
+        break;
+      case _ArtifactPreviewAction.shareFile:
+        unawaited(_handleShareFile());
+        break;
+    }
+  }
+
   Future<void> _handleBackNavigation(bool didPop) async {
     if (didPop || !_isEditing || !_isDirty) {
       return;
@@ -285,34 +295,46 @@ class _OmnibotArtifactPreviewPageState
   Widget _buildInlineResourcePreview(BuildContext context) {
     final metadata = _currentMetadata();
     final maxWidth = MediaQuery.sizeOf(context).width - 32;
+    final preview = OmnibotInlineResourceEmbed(
+      metadata: metadata,
+      maxWidth: maxWidth,
+      preferredHeight: metadata.previewKind == 'pdf'
+          ? (MediaQuery.sizeOf(context).height - 220).clamp(320.0, 960.0)
+          : null,
+    );
+    if (metadata.previewKind == 'pdf') {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(child: preview),
+      );
+    }
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: OmnibotInlineResourceEmbed(
-          metadata: metadata,
-          maxWidth: maxWidth,
-        ),
+        child: preview,
       ),
     );
   }
 
   Widget _buildEditor() {
+    final palette = context.omniPalette;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          color: const Color(0xFFF5F7FB),
+          color: palette.surfaceSecondary,
           child: Text(
             _isDirty ? '编辑中，存在未保存修改' : '编辑中，保存后会立即写回 workspace',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
+            style: TextStyle(fontSize: 12, color: palette.textSecondary),
           ),
         ),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
+              key: const ValueKey('artifact-preview-editor-field'),
               controller: _editorController,
               expands: true,
               minLines: null,
@@ -323,18 +345,24 @@ class _OmnibotArtifactPreviewPageState
                 fontFamily: _preferMonospace ? 'monospace' : null,
                 fontSize: 14,
                 height: 1.5,
+                color: palette.textPrimary,
               ),
               decoration: InputDecoration(
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: palette.surfacePrimary,
                 hintText: '输入文件内容',
                 alignLabelWithHint: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: palette.borderSubtle),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: palette.borderSubtle),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF2C7FEB)),
+                  borderSide: BorderSide(color: palette.accentPrimary),
                 ),
               ),
             ),
@@ -360,32 +388,21 @@ class _OmnibotArtifactPreviewPageState
 
     switch (widget.previewKind) {
       case 'image':
-        return InteractiveViewer(
-          child: Center(child: Image.file(File(widget.path))),
+        return OmnibotInteractiveImageView(
+          key: const ValueKey('artifact-preview-image-view'),
+          source: FileImageSource(widget.path),
+          enableFileShareOnLongPress: true,
+          previewBoundsKey: const ValueKey('artifact-preview-image-bounds'),
         );
       case 'audio':
       case 'video':
+      case 'pdf':
+      case 'html':
         return _buildInlineResourcePreview(context);
       case 'office_word':
       case 'office_sheet':
       case 'office_slide':
         return _buildInlineResourcePreview(context);
-      case 'html':
-        return Center(
-          child: FilledButton.icon(
-            onPressed: () {
-              GoRouterManager.push(
-                '/webview/webview_page',
-                extra: <String, dynamic>{
-                  'url': Uri.file(widget.path).toString(),
-                  'title': widget.title,
-                },
-              );
-            },
-            icon: const Icon(Icons.language_outlined),
-            label: const Text('在 WebView 中打开'),
-          ),
-        );
       case 'text':
       case 'code':
         if (_loadingText && _textContent == null) {
@@ -428,7 +445,7 @@ class _OmnibotArtifactPreviewPageState
                 const SizedBox(height: 8),
                 Text(
                   widget.mimeType,
-                  style: const TextStyle(color: Color(0xFF667085)),
+                  style: TextStyle(color: context.omniPalette.textSecondary),
                 ),
                 const SizedBox(height: 16),
                 FilledButton.icon(
@@ -477,35 +494,38 @@ class _OmnibotArtifactPreviewPageState
         );
       }
     }
-    actions.addAll([
-      IconButton(
-        tooltip: '系统打开',
-        onPressed: widget.exists ? _handleOpenWithSystem : null,
-        icon: SvgPicture.asset(
-          _externalLinkIconAsset,
-          width: 20,
-          height: 20,
-          colorFilter: const ColorFilter.mode(
-            Color(0xFF111827),
-            BlendMode.srcIn,
-          ),
+    if (widget.exists) {
+      actions.add(
+        PopupMenuButton<_ArtifactPreviewAction>(
+          key: const ValueKey('artifact-preview-more-actions'),
+          tooltip: '更多操作',
+          splashRadius: 18,
+          onSelected: _handleToolbarAction,
+          itemBuilder: (context) => const [
+            PopupMenuItem<_ArtifactPreviewAction>(
+              value: _ArtifactPreviewAction.openWithSystem,
+              child: Text('系统打开'),
+            ),
+            PopupMenuItem<_ArtifactPreviewAction>(
+              value: _ArtifactPreviewAction.shareFile,
+              child: Text('分享文件'),
+            ),
+          ],
+          icon: const Icon(Icons.more_horiz_rounded),
         ),
-      ),
-      IconButton(
-        tooltip: '分享文件',
-        onPressed: widget.exists ? _handleShareFile : null,
-        icon: const Icon(Icons.share_outlined),
-      ),
-    ]);
+      );
+    }
     return actions;
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return PopScope(
       canPop: _allowPop || !(_isEditing && _isDirty),
       onPopInvokedWithResult: (didPop, _) => _handleBackNavigation(didPop),
       child: Scaffold(
+        backgroundColor: palette.pageBackground,
         appBar: CommonAppBar(
           title: widget.title,
           primary: true,
@@ -515,12 +535,13 @@ class _OmnibotArtifactPreviewPageState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
+              key: const ValueKey('artifact-preview-path-bar'),
               width: double.infinity,
               padding: const EdgeInsets.all(12),
-              color: const Color(0xFFF5F7FB),
+              color: palette.surfaceSecondary,
               child: Text(
                 widget.path,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
+                style: TextStyle(fontSize: 12, color: palette.textSecondary),
               ),
             ),
             Expanded(child: _buildBody()),

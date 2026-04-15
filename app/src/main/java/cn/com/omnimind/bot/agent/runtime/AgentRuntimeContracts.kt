@@ -9,10 +9,13 @@ interface AgentExecutionEnvironment {
     val runtimeContextRepository: AgentRuntimeContextRepository
     val workspaceDescriptor: AgentWorkspaceDescriptor
     val resolvedSkills: List<ResolvedSkillContext>
+    val failureLearningSkill: ResolvedSkillContext?
     val workspaceManager: AgentWorkspaceManager
     val workspaceMemoryService: WorkspaceMemoryService
     val conversationMode: String
+    val reasoningEffort: String?
     val terminalEnvironment: Map<String, String>
+    val runControl: AgentRunControl
 }
 
 data class DefaultAgentExecutionEnvironment(
@@ -22,10 +25,13 @@ data class DefaultAgentExecutionEnvironment(
     override val runtimeContextRepository: AgentRuntimeContextRepository,
     override val workspaceDescriptor: AgentWorkspaceDescriptor,
     override val resolvedSkills: List<ResolvedSkillContext>,
+    override val failureLearningSkill: ResolvedSkillContext? = null,
     override val workspaceManager: AgentWorkspaceManager,
     override val workspaceMemoryService: WorkspaceMemoryService,
     override val conversationMode: String,
-    override val terminalEnvironment: Map<String, String> = emptyMap()
+    override val reasoningEffort: String? = null,
+    override val terminalEnvironment: Map<String, String> = emptyMap(),
+    override val runControl: AgentRunControl = NoOpAgentRunControl
 ) : AgentExecutionEnvironment
 
 interface AgentToolCatalog {
@@ -42,7 +48,8 @@ interface AgentToolExecutor {
         args: JsonObject,
         runtimeDescriptor: AgentToolRegistry.RuntimeToolDescriptor,
         env: AgentExecutionEnvironment,
-        callback: AgentCallback
+        callback: AgentCallback,
+        toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult
 
     suspend fun dispose() = Unit

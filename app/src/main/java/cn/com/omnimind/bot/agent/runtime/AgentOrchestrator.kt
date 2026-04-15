@@ -1,17 +1,24 @@
 package cn.com.omnimind.bot.agent
 
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.llm.AssistantToolCall
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionStreamOptions
 import cn.com.omnimind.baselib.llm.contentText
 import cn.com.omnimind.baselib.util.OmniLog
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class AgentOrchestrator(
     private val llmClient: AgentLlmClient,
@@ -36,6 +43,10 @@ class AgentOrchestrator(
     }
     private val tag = "AgentOrchestrator"
 
+    private fun t(zh: String, en: String): String {
+        return if (AppLocaleManager.isEnglish()) en else zh
+    }
+
     suspend fun run(input: Input): AgentResult {
         val callback = input.callback
         var messages = input.initialMessages.toMutableList()
@@ -46,6 +57,8 @@ class AgentOrchestrator(
         var lastFinishReason: String? = null
         var latestPromptTokens: Int? = null
         var latestPromptTokenThreshold: Int? = null
+        var lastPrefillTokensPerSecond: Double? = null
+        var lastDecodeTokensPerSecond: Double? = null
         var completedModelRounds = 0
         var terminated = false
 
@@ -70,6 +83,7 @@ class AgentOrchestrator(
                         maxCompletionTokens = 16384,
                         stream = true,
                         streamOptions = ChatCompletionStreamOptions(includeUsage = true),
+                        reasoningEffort = input.executionEnv.reasoningEffort,
                         tools = toolRegistry.toolsForModel,
                         toolChoice = toolChoiceForRound,
                         parallelToolCalls = false
@@ -87,6 +101,10 @@ class AgentOrchestrator(
                 )
 
                 lastFinishReason = turn.finishReason
+                lastPrefillTokensPerSecond =
+                    turn.usage?.prefillTokensPerSecond ?: lastPrefillTokensPerSecond
+                lastDecodeTokensPerSecond =
+                    turn.usage?.decodeTokensPerSecond ?: lastDecodeTokensPerSecond
                 lastAssistantContent = turn.message.contentText().trim()
                 val toolCalls = turn.message.toolCalls.orEmpty()
                 logInfo(
@@ -128,7 +146,12 @@ class AgentOrchestrator(
                     val fallbackMessage = lastAssistantContent.ifBlank {
                         "我已完成思考，但暂时无法生成回复，请重试。"
                     }
-                    callback.onChatMessage(fallbackMessage, true)
+                    callback.onChatMessage(
+                        fallbackMessage,
+                        true,
+                        lastPrefillTokensPerSecond,
+                        lastDecodeTokensPerSecond
+                    )
                     executedTools.add(ToolExecutionResult.ChatMessage(fallbackMessage))
                     outputKind = AgentOutputKind.CHAT_MESSAGE
                     hasUserFacingOutput = true
@@ -146,13 +169,21 @@ class AgentOrchestrator(
                             toolCall.function.name,
                             error.message ?: "Invalid tool arguments JSON"
                         )
+                        val failureLearning = buildFailureLearningPayload(
+                            env = input.executionEnv,
+                            toolCall = toolCall,
+                            descriptor = descriptor,
+                            argumentsJson = null,
+                            result = result
+                        )
                         executedTools.add(result)
                         callback.onToolCallComplete(toolCall.function.name, result)
                         appendToolResultMessage(
                             messages = messages,
                             toolCall = toolCall,
                             descriptor = descriptor,
-                            result = result
+                            result = result,
+                            failureLearning = failureLearning
                         )
                         hasUserFacingOutput =
                             hasUserFacingOutput || eventAdapter.hasUserVisibleOutput(result)
@@ -168,13 +199,21 @@ class AgentOrchestrator(
                             toolCall.function.name,
                             validationError.message ?: "Tool arguments validation failed"
                         )
+                        val failureLearning = buildFailureLearningPayload(
+                            env = input.executionEnv,
+                            toolCall = toolCall,
+                            descriptor = descriptor,
+                            argumentsJson = parsedArgs.toString(),
+                            result = result
+                        )
                         executedTools.add(result)
                         callback.onToolCallComplete(toolCall.function.name, result)
                         appendToolResultMessage(
                             messages = messages,
                             toolCall = toolCall,
                             descriptor = descriptor,
-                            result = result
+                            result = result,
+                            failureLearning = failureLearning
                         )
                         hasUserFacingOutput =
                             hasUserFacingOutput || eventAdapter.hasUserVisibleOutput(result)
@@ -182,22 +221,54 @@ class AgentOrchestrator(
                         break
                     }
 
-                    callback.onToolCallStart(toolCall.function.name, parsedArgs)
-                    val result = toolRouter.execute(
-                        toolCall = toolCall,
-                        args = parsedArgs,
-                        runtimeDescriptor = descriptor,
-                        env = input.executionEnv,
-                        callback = callback
+                    val toolHandle = input.executionEnv.runControl.beginToolExecution(
+                        toolName = toolCall.function.name,
+                        toolCallId = toolCall.id
                     )
+                    callback.onToolCallStart(toolCall.function.name, parsedArgs)
+                    val result = try {
+                        coroutineScope {
+                            val deferred = async {
+                                toolRouter.execute(
+                                    toolCall = toolCall,
+                                    args = parsedArgs,
+                                    runtimeDescriptor = descriptor,
+                                    env = input.executionEnv,
+                                    callback = callback,
+                                    toolHandle = toolHandle
+                                )
+                            }
+                            toolHandle.bindExecutionJob(deferred)
+                            deferred.await()
+                        }
+                    } catch (error: CancellationException) {
+                        if (toolHandle.isManualStopRequested()) {
+                            buildInterruptedToolResult(
+                                toolName = toolCall.function.name,
+                                toolHandle = toolHandle
+                            )
+                        } else {
+                            throw error
+                        }
+                    } finally {
+                        toolHandle.complete()
+                    }
 
                     executedTools.add(result)
+                    val failureLearning = buildFailureLearningPayload(
+                        env = input.executionEnv,
+                        toolCall = toolCall,
+                        descriptor = descriptor,
+                        argumentsJson = parsedArgs.toString(),
+                        result = result
+                    )
                     callback.onToolCallComplete(toolCall.function.name, result)
                     appendToolResultMessage(
                         messages = messages,
                         toolCall = toolCall,
                         descriptor = descriptor,
-                        result = result
+                        result = result,
+                        failureLearning = failureLearning
                     )
 
                     if (eventAdapter.hasUserVisibleOutput(result)) {
@@ -235,9 +306,17 @@ class AgentOrchestrator(
 
         if (!hasUserFacingOutput) {
             val fallbackMessage = lastAssistantContent.ifBlank {
-                "我已完成思考，但暂时无法生成回复，请重试。"
+                t(
+                    "我已完成思考，但暂时无法生成回复，请重试。",
+                    "I finished reasoning, but I couldn't produce a reply just now. Please try again."
+                )
             }
-            callback.onChatMessage(fallbackMessage, true)
+            callback.onChatMessage(
+                fallbackMessage,
+                true,
+                lastPrefillTokensPerSecond,
+                lastDecodeTokensPerSecond
+            )
             executedTools.add(ToolExecutionResult.ChatMessage(fallbackMessage))
             outputKind = AgentOutputKind.CHAT_MESSAGE
             hasUserFacingOutput = true
@@ -264,14 +343,119 @@ class AgentOrchestrator(
         messages: MutableList<ChatCompletionMessage>,
         toolCall: AssistantToolCall,
         descriptor: AgentToolRegistry.RuntimeToolDescriptor,
-        result: ToolExecutionResult
+        result: ToolExecutionResult,
+        failureLearning: FailureLearningHookPayload? = null
     ) {
+        val textContent = eventAdapter.toolResultContent(
+            descriptor = descriptor,
+            result = result,
+            extras = failureLearning?.toPayload() ?: emptyMap()
+        )
+        val imageDataUrl = (result as? ToolExecutionResult.ContextResult)?.imageDataUrl
+
+        val content: JsonElement = if (imageDataUrl != null) {
+            buildJsonArray {
+                add(buildJsonObject {
+                    put("type", "text")
+                    put("text", textContent)
+                })
+                add(buildJsonObject {
+                    put("type", "image_url")
+                    put("image_url", buildJsonObject {
+                        put("url", imageDataUrl)
+                    })
+                })
+            }
+        } else {
+            JsonPrimitive(textContent)
+        }
+
         messages.add(
             ChatCompletionMessage(
                 role = "tool",
                 toolCallId = toolCall.id,
-                content = JsonPrimitive(eventAdapter.toolResultContent(descriptor, result))
+                content = content
             )
+        )
+    }
+
+    private fun buildInterruptedToolResult(
+        toolName: String,
+        toolHandle: AgentToolExecutionHandle
+    ): ToolExecutionResult.Interrupted {
+        val snapshot = toolHandle.latestProgressSnapshot()
+        val interruptedSummary = t(
+            "工具调用已被用户手动停止",
+            "Tool call was stopped manually by the user."
+        )
+        val rawPayload = linkedMapOf<String, Any?>(
+            "toolName" to toolName,
+            "status" to "interrupted",
+            "summary" to interruptedSummary,
+            "interruptedBy" to "user",
+            "interruptionReason" to "manual_stop"
+        ).apply {
+            if (snapshot.summary.isNotBlank()) {
+                put("lastProgress", snapshot.summary)
+            }
+            snapshot.extras.forEach { (key, value) ->
+                put(key, value)
+            }
+        }
+        val encodedPayload = json.encodeToString(mapToJsonElement(rawPayload))
+        return ToolExecutionResult.Interrupted(
+            toolName = toolName,
+            summaryText = interruptedSummary,
+            previewJson = encodedPayload,
+            rawResultJson = encodedPayload,
+            terminalOutput = snapshot.extras["terminalOutput"]?.toString().orEmpty().ifBlank {
+                snapshot.extras["terminalOutputDelta"]?.toString().orEmpty()
+            },
+            terminalSessionId = snapshot.extras["terminalSessionId"]?.toString(),
+            terminalStreamState = snapshot.extras["terminalStreamState"]?.toString()
+                ?.takeIf { it.isNotBlank() }
+                ?: "interrupted"
+        )
+    }
+
+    private fun mapToJsonElement(value: Any?): JsonElement {
+        return when (value) {
+            null -> kotlinx.serialization.json.JsonNull
+            is JsonElement -> value
+            is Map<*, *> -> JsonObject(
+                value.entries.associate { (key, item) ->
+                    key.toString() to mapToJsonElement(item)
+                }
+            )
+            is List<*> -> JsonArray(value.map { mapToJsonElement(it) })
+            is Boolean -> JsonPrimitive(value)
+            is Number -> JsonPrimitive(value)
+            else -> JsonPrimitive(value.toString())
+        }
+    }
+
+    private fun buildFailureLearningPayload(
+        env: AgentExecutionEnvironment,
+        toolCall: AssistantToolCall,
+        descriptor: AgentToolRegistry.RuntimeToolDescriptor,
+        argumentsJson: String?,
+        result: ToolExecutionResult
+    ): FailureLearningHookPayload? {
+        if (!SelfImprovingSkillFailureHook.shouldHandle(result)) {
+            return null
+        }
+        val skill = env.failureLearningSkill ?: return null
+        val payload = SelfImprovingSkillFailureHook.capture(
+            skillsRoot = env.workspaceManager.skillsRoot(),
+            skill = skill,
+            userMessage = env.userMessage,
+            toolName = toolCall.function.name,
+            toolType = descriptor.toolType,
+            argumentsJson = argumentsJson,
+            result = result
+        ) ?: return null
+        return payload.copy(
+            logShellPath = env.workspaceManager.shellPathForAndroid(payload.logFile)
         )
     }
 

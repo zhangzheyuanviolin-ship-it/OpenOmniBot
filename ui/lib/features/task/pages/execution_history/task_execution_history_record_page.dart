@@ -28,6 +28,7 @@ import 'package:ui/widgets/image/cached_image.dart';
 import 'package:ui/widgets/selection_bottom_bar.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/theme/theme_context.dart';
 
 /// 执行总结的前三条记录ID存储key
 const String kExecutionSummaryTopThreeIdsKey =
@@ -453,14 +454,30 @@ class _TaskExecutionHistoryRecordPageState
       }).toList();
 
       // 4) 将图标数据填回 executionRecordViewModels 的 icons（避免再次 setState）
-      final defaultIcon = Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(
-          color: Colors.grey[300],
-          borderRadius: BorderRadius.circular(2),
-        ),
-        child: Icon(Icons.apps, size: 16, color: Colors.grey[600]),
+      final defaultIcon = Builder(
+        builder: (context) {
+          final palette = context.omniPalette;
+          return Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: context.isDarkTheme
+                  ? palette.surfaceElevated
+                  : Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+              border: context.isDarkTheme
+                  ? Border.all(color: palette.borderSubtle)
+                  : null,
+            ),
+            child: Icon(
+              Icons.apps,
+              size: 16,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : Colors.grey[600],
+            ),
+          );
+        },
       );
 
       final modelsWithIcons = taskExecutionInfos.map((info) {
@@ -478,14 +495,26 @@ class _TaskExecutionHistoryRecordPageState
                 height: 20,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) {
+                  final palette = context.omniPalette;
                   return Container(
                     width: 20,
                     height: 20,
                     decoration: BoxDecoration(
-                      color: Colors.grey[300],
+                      color: context.isDarkTheme
+                          ? palette.surfaceElevated
+                          : Colors.grey[300],
                       borderRadius: BorderRadius.circular(2),
+                      border: context.isDarkTheme
+                          ? Border.all(color: palette.borderSubtle)
+                          : null,
                     ),
-                    child: Icon(Icons.apps, size: 16, color: Colors.grey[600]),
+                    child: Icon(
+                      Icons.apps,
+                      size: 16,
+                      color: context.isDarkTheme
+                          ? palette.textSecondary
+                          : Colors.grey[600],
+                    ),
                   );
                 },
               ),
@@ -922,6 +951,7 @@ class _TaskExecutionHistoryRecordPageState
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     final allRecords = executionRecordViewModels;
 
     final filterRecords =
@@ -932,7 +962,9 @@ class _TaskExecutionHistoryRecordPageState
           }).toList();
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.isDarkTheme
+          ? palette.pageBackground
+          : AppColors.background,
       appBar: _isSelectionMode
           ? _buildSelectionAppBar(filterRecords)
           : const CommonAppBar(title: '任务记录', showAiBadge: true, primary: true),
@@ -1015,25 +1047,26 @@ class _TaskExecutionHistoryRecordPageState
   PreferredSizeWidget _buildSelectionAppBar(
     List<ExecutionRecordListItemData> filterRecords,
   ) {
+    final palette = context.omniPalette;
     final isAllSelected =
         _selectedRecordKeys.length == filterRecords.length &&
         filterRecords.isNotEmpty;
     return CommonAppBar(
       primary: true,
       title: '已选择${_selectedRecordKeys.length}项',
-      titleStyle: const TextStyle(
+      titleStyle: TextStyle(
         fontSize: 17,
         fontWeight: FontWeight.w600,
-        color: AppColors.text,
+        color: palette.textPrimary,
         fontFamily: 'SF Pro',
       ),
       leadingWidth: 64,
       leading: TextButton(
         onPressed: _exitSelectionMode,
-        child: const Text(
+        child: Text(
           '取消',
           style: TextStyle(
-            color: Color(0xFF007AFF),
+            color: palette.accentPrimary,
             fontSize: 14,
             fontWeight: FontWeight.w400,
           ),
@@ -1046,8 +1079,8 @@ class _TaskExecutionHistoryRecordPageState
             onPressed: () => _toggleSelectAll(filterRecords),
             child: Text(
               isAllSelected ? '全不选' : '全选',
-              style: const TextStyle(
-                color: Color(0xFF007AFF),
+              style: TextStyle(
+                color: palette.accentPrimary,
                 fontSize: 14,
                 fontWeight: FontWeight.w400,
               ),
@@ -1059,6 +1092,7 @@ class _TaskExecutionHistoryRecordPageState
   }
 
   Widget _buildEmptyState() {
+    final palette = context.omniPalette;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1069,7 +1103,9 @@ class _TaskExecutionHistoryRecordPageState
             errorBuilder: (ctx, err, stack) => Icon(
               Icons.favorite_border,
               size: 72,
-              color: Colors.grey.shade400,
+              color: context.isDarkTheme
+                  ? palette.borderStrong
+                  : Colors.grey.shade400,
             ),
           ),
           const SizedBox(height: 12),
@@ -1078,7 +1114,9 @@ class _TaskExecutionHistoryRecordPageState
             style: TextStyle(
               fontSize: AppTextStyles.fontSizeH3,
               fontWeight: AppTextStyles.fontWeightMedium,
-              color: AppColors.primaryBlue,
+              color: context.isDarkTheme
+                  ? palette.textPrimary
+                  : AppColors.primaryBlue,
               height: AppTextStyles.lineHeightH1,
               letterSpacing: AppTextStyles.letterSpacingWide,
             ),
@@ -1093,7 +1131,9 @@ class _TaskExecutionHistoryRecordPageState
               style: TextStyle(
                 fontSize: AppTextStyles.fontSizeMain,
                 fontWeight: AppTextStyles.fontWeightRegular,
-                color: AppColors.text20,
+                color: context.isDarkTheme
+                    ? palette.textSecondary
+                    : AppColors.text20,
                 height: AppTextStyles.lineHeightH2,
                 letterSpacing: AppTextStyles.letterSpacingWide,
               ),
@@ -1106,20 +1146,18 @@ class _TaskExecutionHistoryRecordPageState
 
   String _getSection(int timestamp) {
     String section = '未知日期';
-    if (timestamp != null) {
-      final today = DateTime.now();
-      final recordDate = DateTime.fromMillisecondsSinceEpoch(timestamp);
-      if (recordDate.year == today.year &&
-          recordDate.month == today.month &&
-          recordDate.day == today.day) {
-        section = '今天';
-      } else if (recordDate.year == today.year &&
-          recordDate.month == today.month &&
-          recordDate.day == today.day - 1) {
-        section = '昨天';
-      } else {
-        section = '三天前';
-      }
+    final today = DateTime.now();
+    final recordDate = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    if (recordDate.year == today.year &&
+        recordDate.month == today.month &&
+        recordDate.day == today.day) {
+      section = '今天';
+    } else if (recordDate.year == today.year &&
+        recordDate.month == today.month &&
+        recordDate.day == today.day - 1) {
+      section = '昨天';
+    } else {
+      section = '三天前';
     }
     return section;
   }

@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.agent
 
 import android.content.Context
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.bot.mcp.RemoteMcpDiscoveryRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -54,79 +55,90 @@ class OmniAgentExecutor(
         conversationId: Long?,
         conversationMode: String,
         modelOverride: AgentModelOverride?,
+        reasoningEffort: String?,
         terminalEnvironment: Map<String, String>,
-        callback: AgentCallback
+        callback: AgentCallback,
+        runControl: AgentRunControl = NoOpAgentRunControl
     ): AgentResult {
-        val agentRunId = UUID.randomUUID().toString()
-        val workspaceManager = AgentWorkspaceManager(context)
-        val memoryService = WorkspaceMemoryService(context, workspaceManager)
-        val workspaceDescriptor = workspaceManager.buildWorkspaceDescriptor(
-            conversationId = conversationId,
-            agentRunId = agentRunId
-        )
-        val historyRepository = AgentConversationHistoryRepository(context)
-        val promptMemoryContext = runCatching {
-            memoryService.buildPromptContext()
-        }.getOrNull()
-        val skillIndexService = SkillIndexService(context, workspaceManager)
-        val skillLoader = SkillLoader(workspaceManager)
-        val installedSkills = skillIndexService.listInstalledSkills()
-        val resolvedSkills = SkillTriggerMatcher.resolveMatches(
-            userMessage = userMessage,
-            entries = installedSkills
-        ).mapNotNull { match ->
-            val compatibility = SkillCompatibilityChecker.evaluate(match.entry)
-            if (!compatibility.available) {
-                null
-            } else {
-                skillLoader.load(match.entry, match.triggerReason)
-            }
-        }
-        val discoveredServers = RemoteMcpDiscoveryRegistry.discoverEnabledServers()
-        val toolRegistry = AgentToolRegistry(
-            discoveredServers = discoveredServers
-        )
-        val initialMessages = buildInitialMessages(
-            promptSeed = historyRepository.buildPromptSeed(
-                conversationId = conversationId,
-                conversationMode = conversationMode
-            ),
-            userMessage = userMessage,
-            attachments = attachments,
-            workspaceDescriptor = workspaceDescriptor,
-            installedSkills = installedSkills,
-            skillsRootShellPath = workspaceManager.shellPathForAndroid(workspaceManager.skillsRoot())
-                ?: workspaceManager.skillsRoot().absolutePath,
-            skillsRootAndroidPath = workspaceManager.skillsRoot().absolutePath,
-            resolvedSkills = resolvedSkills,
-            memoryContext = promptMemoryContext
-        )
-
-        val llmClient = HttpAgentLlmClient(
-            scope = scope,
-            json = json,
-            modelOverride = modelOverride
-        )
-        val contextCompactor = AgentConversationContextCompactor(
-            historyRepository = historyRepository,
-            json = json
-        )
-        val toolRouter = AgentToolRouter(
-            context = context,
-            scope = scope,
-            scheduleToolBridge = scheduleToolBridge,
-            workspaceManager = workspaceManager
-        )
-        val eventAdapter = AgentEventAdapter(json)
-        val orchestrator = AgentOrchestrator(
-            llmClient = llmClient,
-            toolRegistry = toolRegistry,
-            toolRouter = toolRouter,
-            eventAdapter = eventAdapter,
-            model = agentModelScene
-        )
-
+        var toolRouter: AgentToolRouter? = null
         return try {
+            val agentRunId = UUID.randomUUID().toString()
+            val workspaceManager = AgentWorkspaceManager(context)
+            val memoryService = WorkspaceMemoryService(context, workspaceManager)
+            val workspaceDescriptor = workspaceManager.buildWorkspaceDescriptor(
+                conversationId = conversationId,
+                agentRunId = agentRunId
+            )
+            val historyRepository = AgentConversationHistoryRepository(context)
+            val promptMemoryContext = runCatching {
+                memoryService.buildPromptContext()
+            }.getOrNull()
+            val skillIndexService = SkillIndexService(context, workspaceManager)
+            val skillLoader = SkillLoader(workspaceManager)
+            val installedSkills = skillIndexService.listInstalledSkills()
+            val failureLearningSkill = SelfImprovingSkillFailureHook.resolveInstalledSkill(
+                installedSkills = installedSkills,
+                skillLoader = skillLoader
+            )
+            val resolvedSkills = SkillTriggerMatcher.resolveMatches(
+                userMessage = userMessage,
+                entries = installedSkills
+            ).mapNotNull { match ->
+                val compatibility = SkillCompatibilityChecker.evaluate(match.entry)
+                if (!compatibility.available) {
+                    null
+                } else {
+                    skillLoader.load(match.entry, match.triggerReason)
+                }
+            }
+            val discoveredServers = RemoteMcpDiscoveryRegistry.discoverEnabledServers()
+            val toolRegistry = AgentToolRegistry(
+                context = context,
+                discoveredServers = discoveredServers
+            )
+            val initialMessages = buildInitialMessages(
+                promptSeed = historyRepository.buildPromptSeed(
+                    conversationId = conversationId,
+                    conversationMode = conversationMode
+                ),
+                userMessage = userMessage,
+                attachments = attachments,
+                workspaceDescriptor = workspaceDescriptor,
+                installedSkills = installedSkills,
+                skillsRootShellPath = workspaceManager.shellPathForAndroid(workspaceManager.skillsRoot())
+                    ?: workspaceManager.skillsRoot().absolutePath,
+                skillsRootAndroidPath = workspaceManager.skillsRoot().absolutePath,
+                resolvedSkills = resolvedSkills,
+                memoryContext = promptMemoryContext
+            )
+
+            val llmClient = HttpAgentLlmClient(
+                scope = scope,
+                json = json,
+                modelOverride = modelOverride
+            )
+            val contextCompactor = AgentConversationContextCompactor(
+                historyRepository = historyRepository,
+                modelScene = agentModelScene,
+                modelOverride = modelOverride,
+                reasoningEffort = reasoningEffort,
+                json = json
+            )
+            toolRouter = AgentToolRouter(
+                context = context,
+                scope = scope,
+                scheduleToolBridge = scheduleToolBridge,
+                workspaceManager = workspaceManager
+            )
+            val eventAdapter = AgentEventAdapter(json)
+            val orchestrator = AgentOrchestrator(
+                llmClient = llmClient,
+                toolRegistry = toolRegistry,
+                toolRouter = toolRouter,
+                eventAdapter = eventAdapter,
+                model = agentModelScene
+            )
+
             orchestrator.run(
                 AgentOrchestrator.Input(
                     callback = callback,
@@ -140,10 +152,13 @@ class OmniAgentExecutor(
                         runtimeContextRepository = runtimeContextRepository,
                         workspaceDescriptor = workspaceDescriptor,
                         resolvedSkills = resolvedSkills,
+                        failureLearningSkill = failureLearningSkill,
                         workspaceManager = workspaceManager,
                         workspaceMemoryService = memoryService,
                         conversationMode = conversationMode,
-                        terminalEnvironment = terminalEnvironment
+                        reasoningEffort = reasoningEffort,
+                        terminalEnvironment = terminalEnvironment,
+                        runControl = runControl
                     )
                 )
             )
@@ -153,7 +168,7 @@ class OmniAgentExecutor(
             callback.onError("Agent execution failed: ${e.message}")
             AgentResult.Error("Agent execution failed", e as? Exception)
         } finally {
-            runCatching { toolRouter.dispose() }
+            runCatching { toolRouter?.dispose() }
         }
     }
 
@@ -179,7 +194,8 @@ class OmniAgentExecutor(
             skillsRootShellPath = skillsRootShellPath,
             skillsRootAndroidPath = skillsRootAndroidPath,
             resolvedSkills = resolvedSkills,
-            memoryContext = memoryContext
+            memoryContext = memoryContext,
+            locale = AppLocaleManager.resolvePromptLocale(context)
         )
         messages.add(
             cn.com.omnimind.baselib.llm.ChatCompletionMessage(

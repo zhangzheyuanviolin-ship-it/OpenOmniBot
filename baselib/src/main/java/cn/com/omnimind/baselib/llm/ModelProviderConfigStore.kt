@@ -8,6 +8,7 @@ import com.tencent.mmkv.MMKV
 
 object ModelProviderConfigStore {
     private const val TAG = "ModelProviderConfigStore"
+    private const val DIRECT_REQUEST_URL_MARKER = "#"
 
     internal const val KEY_PROVIDER_BASE_URL = "model_provider_openai_base_url"
     internal const val KEY_PROVIDER_API_KEY = "model_provider_openai_api_key"
@@ -21,7 +22,15 @@ object ModelProviderConfigStore {
     internal const val LEGACY_DEFAULT_PROFILE_ID = "legacy-default"
 
     private const val DEFAULT_PROFILE_ID = "profile-1"
-    private const val DEFAULT_PROFILE_NAME = "DashScope"
+    private const val DEFAULT_PROFILE_NAME = "Provider 1"
+    private val canonicalEndpointSuffixes = listOf(
+        "/v1/chat/completions",
+        "/chat/completions",
+        "/v1/models",
+        "/models",
+        "/v1/messages",
+        "/messages"
+    )
 
     private val gson = Gson()
 
@@ -109,7 +118,8 @@ object ModelProviderConfigStore {
                             existingId = null
                         ),
                         baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
-                        apiKey = profile.apiKey.trim()
+                        apiKey = profile.apiKey.trim(),
+                        protocolType = profile.protocolType.trim().ifEmpty { "openai_compatible" }
                     )
                 )
             }
@@ -137,15 +147,18 @@ object ModelProviderConfigStore {
         id: String? = null,
         name: String,
         baseUrl: String,
-        apiKey: String
+        apiKey: String,
+        protocolType: String = "openai_compatible"
     ): ModelProviderProfile {
         ModelProviderMigration.ensureMigrated()
         require(!MnnLocalProviderStateStore.isBuiltinProfileId(id)) { "builtin provider is read only" }
+        val normalizedProtocolType = protocolType.trim().ifEmpty { "openai_compatible" }
         val mmkv = MMKV.defaultMMKV() ?: return ModelProviderProfile(
             id = id?.trim().orEmpty().ifEmpty { DEFAULT_PROFILE_ID },
             name = name.trim().ifEmpty { DEFAULT_PROFILE_NAME },
             baseUrl = normalizeBaseUrl(baseUrl).orEmpty(),
-            apiKey = apiKey.trim()
+            apiKey = apiKey.trim(),
+            protocolType = normalizedProtocolType
         )
 
         val current = readProfiles(mmkv).toMutableList().ifEmpty {
@@ -162,7 +175,8 @@ object ModelProviderConfigStore {
             id = normalizedId,
             name = sanitizedName,
             baseUrl = normalizeBaseUrl(baseUrl).orEmpty(),
-            apiKey = apiKey.trim()
+            apiKey = apiKey.trim(),
+            protocolType = normalizedProtocolType
         )
 
         if (currentIndex >= 0) {
@@ -223,7 +237,8 @@ object ModelProviderConfigStore {
             id = current.id,
             name = current.name,
             baseUrl = baseUrl,
-            apiKey = apiKey
+            apiKey = apiKey,
+            protocolType = current.protocolType
         )
     }
 
@@ -234,33 +249,62 @@ object ModelProviderConfigStore {
             id = current.id,
             name = current.name,
             baseUrl = "",
-            apiKey = ""
+            apiKey = "",
+            protocolType = current.protocolType
         )
     }
 
     fun isValidBaseUrl(value: String): Boolean = normalizeBaseUrl(value) != null
+
+    fun hasDirectRequestUrlMarker(value: String): Boolean {
+        return value.trim().endsWith(DIRECT_REQUEST_URL_MARKER)
+    }
+
+    fun stripDirectRequestUrlMarker(value: String): String {
+        var result = value.trim()
+        if (result.endsWith(DIRECT_REQUEST_URL_MARKER)) {
+            result = result.dropLast(DIRECT_REQUEST_URL_MARKER.length)
+        }
+        return result.replace(Regex("/+$"), "")
+    }
 
     fun normalizeBaseUrl(value: String): String? {
         val normalized = value.trim()
         if (normalized.isEmpty()) {
             return null
         }
-        val uri = runCatching { java.net.URI(normalized) }.getOrNull() ?: return null
+        val hasDirectRequestUrl = hasDirectRequestUrlMarker(normalized)
+        val candidate = if (hasDirectRequestUrl) {
+            normalized.dropLast(DIRECT_REQUEST_URL_MARKER.length).trim()
+        } else {
+            normalized
+        }
+        if (candidate.isEmpty()) {
+            return null
+        }
+        val uri = runCatching { java.net.URI(candidate) }.getOrNull() ?: return null
         if (uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) {
             return null
         }
 
-        var result = normalized.replace(Regex("/+$"), "")
-        if (result.endsWith("/v1/chat/completions", ignoreCase = true)) {
-            result = result.dropLast("/v1/chat/completions".length)
-        } else if (result.endsWith("/chat/completions", ignoreCase = true)) {
-            result = result.dropLast("/chat/completions".length)
-        } else if (result.endsWith("/v1/models", ignoreCase = true)) {
-            result = result.dropLast("/v1/models".length)
-        } else if (result.endsWith("/models", ignoreCase = true)) {
-            result = result.dropLast("/models".length)
+        var result = candidate.replace(Regex("/+$"), "")
+        if (!hasDirectRequestUrl) {
+            for (suffix in canonicalEndpointSuffixes) {
+                if (result.endsWith(suffix, ignoreCase = true)) {
+                    result = result.dropLast(suffix.length)
+                    break
+                }
+            }
         }
-        return result.replace(Regex("/+$"), "")
+        result = result.replace(Regex("/+$"), "")
+        if (result.isEmpty()) {
+            return null
+        }
+        return if (hasDirectRequestUrl) {
+            result + DIRECT_REQUEST_URL_MARKER
+        } else {
+            result
+        }
     }
 
     internal fun readConfig(mmkv: MMKV): ModelProviderConfig {
@@ -396,7 +440,8 @@ object ModelProviderConfigStore {
                     id = normalizedId,
                     name = profile.name.trim().ifEmpty { DEFAULT_PROFILE_NAME },
                     baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
-                    apiKey = profile.apiKey.trim()
+                    apiKey = profile.apiKey.trim(),
+                    protocolType = profile.protocolType.trim().ifEmpty { "openai_compatible" }
                 )
             }
         } catch (t: Throwable) {
@@ -416,7 +461,8 @@ object ModelProviderConfigStore {
                 id = id,
                 name = profile.name.trim().ifEmpty { "Provider ${index + 1}" },
                 baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
-                apiKey = profile.apiKey.trim()
+                apiKey = profile.apiKey.trim(),
+                protocolType = profile.protocolType.trim().ifEmpty { "openai_compatible" }
             )
         }
         mmkv.encode(KEY_PROVIDER_PROFILES, gson.toJson(normalized))

@@ -70,6 +70,9 @@ class AssistsCoreChannel {
                 "listModelProviderProfiles" -> {
                     assistsCoreManager!!.listModelProviderProfiles(call, result)
                 }
+                "listRecentAiRequestLogs" -> {
+                    assistsCoreManager!!.listRecentAiRequestLogs(call, result)
+                }
                 "saveModelProviderProfile" -> {
                     assistsCoreManager!!.saveModelProviderProfile(call, result)
                 }
@@ -115,8 +118,14 @@ class AssistsCoreChannel {
                 "getWorkspaceSoul" -> {
                     assistsCoreManager!!.getWorkspaceSoul(call, result)
                 }
+                "getWorkspaceChatPrompt" -> {
+                    assistsCoreManager!!.getWorkspaceChatPrompt(call, result)
+                }
                 "saveWorkspaceSoul" -> {
                     assistsCoreManager!!.saveWorkspaceSoul(call, result)
+                }
+                "saveWorkspaceChatPrompt" -> {
+                    assistsCoreManager!!.saveWorkspaceChatPrompt(call, result)
                 }
                 "getWorkspaceLongMemory" -> {
                     assistsCoreManager!!.getWorkspaceLongMemory(call, result)
@@ -167,6 +176,9 @@ class AssistsCoreChannel {
                 }
                 "cancelRunningTask" -> {
                     assistsCoreManager!!.cancelRunningTask( call, result)
+                }
+                "stopAgentToolCall" -> {
+                    assistsCoreManager!!.stopAgentToolCall(call, result)
                 }
                 "isCompanionTaskRunning" -> {
                     assistsCoreManager!!.isCompanionTaskRunning( call, result)
@@ -294,6 +306,9 @@ class AssistsCoreChannel {
                 }
                 "upsertConversationUiCard" -> {
                     assistsCoreManager!!.upsertConversationUiCard(call, result)
+                }
+                "compactConversationContext" -> {
+                    assistsCoreManager!!.compactConversationContext(call, result)
                 }
                 "clearConversationMessages" -> {
                     assistsCoreManager!!.clearConversationMessages(call, result)

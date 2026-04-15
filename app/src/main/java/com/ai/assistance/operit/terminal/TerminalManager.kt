@@ -20,6 +20,7 @@ import com.rk.terminal.runtime.EmbeddedRuntimeInstaller
 import com.termux.terminal.TerminalEmulator
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +37,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
+import java.io.InterruptedIOException
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -226,6 +229,7 @@ class TerminalManager private constructor(
         command: String,
         executorKey: String,
         timeoutMs: Long,
+        onProcessStarted: ((Process) -> Unit)? = null,
         onOutputChunk: suspend (String) -> Unit = {}
     ): HiddenExecResult {
         if (!initializeEnvironment()) {
@@ -248,48 +252,62 @@ class TerminalManager private constructor(
                     error = error.message ?: "Failed to start Alpine shell."
                 )
             }
+            onProcessStarted?.invoke(process)
 
-            val outputChannel = Channel<String>(Channel.UNLIMITED)
-            val outputBuffer = StringBuilder()
-            val reader = coroutineScope.launch {
-                process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { line ->
-                        val chunk = "$line\n"
-                        outputBuffer.append(chunk)
-                        outputChannel.trySend(chunk)
+            kotlinx.coroutines.coroutineScope {
+                val outputChannel = Channel<String>(Channel.UNLIMITED)
+                val outputBuffer = StringBuilder()
+                val reader = launch {
+                    try {
+                        process.inputStream.bufferedReader().useLines { lines ->
+                            lines.forEach { line ->
+                                val chunk = "$line\n"
+                                outputBuffer.append(chunk)
+                                outputChannel.trySend(chunk)
+                            }
+                        }
+                    } catch (error: Throwable) {
+                        if (error is CancellationException) {
+                            throw error
+                        }
+                        if (!isExpectedHiddenExecReaderTermination(error)) {
+                            Log.w(TAG, "Hidden exec reader terminated unexpectedly", error)
+                        }
+                    } finally {
+                        outputChannel.close()
                     }
                 }
-            }
 
-            val forwarder = coroutineScope.launch {
-                for (chunk in outputChannel) {
-                    onOutputChunk(chunk)
+                val forwarder = launch {
+                    for (chunk in outputChannel) {
+                        onOutputChunk(chunk)
+                    }
                 }
-            }
 
-            val finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
-            if (!finished) {
-                process.destroyForcibly()
-                reader.cancel()
-                forwarder.cancel()
-                return@withContext HiddenExecResult(
+                val finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+                if (!finished) {
+                    runCatching { process.inputStream.close() }
+                    process.destroyForcibly()
+                    reader.join()
+                    forwarder.join()
+                    return@coroutineScope HiddenExecResult(
+                        output = outputBuffer.toString(),
+                        exitCode = -1,
+                        state = HiddenExecResult.State.TIMEOUT,
+                        error = "Command timed out after ${timeoutMs}ms",
+                        rawOutputPreview = outputBuffer.toString().takeLast(4000)
+                    )
+                }
+
+                reader.join()
+                forwarder.join()
+                HiddenExecResult(
                     output = outputBuffer.toString(),
-                    exitCode = -1,
-                    state = HiddenExecResult.State.TIMEOUT,
-                    error = "Command timed out after ${timeoutMs}ms",
+                    exitCode = process.exitValue(),
+                    state = HiddenExecResult.State.OK,
                     rawOutputPreview = outputBuffer.toString().takeLast(4000)
                 )
             }
-
-            reader.join()
-            outputChannel.close()
-            forwarder.join()
-            HiddenExecResult(
-                output = outputBuffer.toString(),
-                exitCode = process.exitValue(),
-                state = HiddenExecResult.State.OK,
-                rawOutputPreview = outputBuffer.toString().takeLast(4000)
-            )
         }
     }
 
@@ -514,4 +532,26 @@ class TerminalManager private constructor(
             Log.e(tag, e.message, e)
         }
     }
+}
+
+internal fun isExpectedHiddenExecReaderTermination(error: Throwable): Boolean {
+    var current: Throwable? = error
+    while (current != null) {
+        when (current) {
+            is InterruptedIOException -> return true
+            is IOException -> {
+                val message = current.message.orEmpty().lowercase()
+                if (
+                    "interrupted by close" in message ||
+                    "stream closed" in message ||
+                    "socket closed" in message ||
+                    "read interrupted" in message
+                ) {
+                    return true
+                }
+            }
+        }
+        current = current.cause
+    }
+    return false
 }

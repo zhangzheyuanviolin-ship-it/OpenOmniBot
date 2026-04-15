@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/office_preview_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/services/pdf_preview_service.dart';
 import 'package:ui/widgets/image_preview_overlay.dart';
 import 'package:video_player/video_player.dart';
 
@@ -12,12 +15,14 @@ class OmnibotInlineResourceEmbed extends StatelessWidget {
   final OmnibotResourceMetadata metadata;
   final bool plainStyle;
   final double? maxWidth;
+  final double? preferredHeight;
 
   const OmnibotInlineResourceEmbed({
     super.key,
     required this.metadata,
     this.plainStyle = false,
     this.maxWidth,
+    this.preferredHeight,
   });
 
   @override
@@ -36,6 +41,15 @@ class OmnibotInlineResourceEmbed extends StatelessWidget {
           plainStyle: plainStyle,
         ),
         'video' => _OmnibotInlineVideoPlayer(
+          metadata: metadata,
+          plainStyle: plainStyle,
+        ),
+        'pdf' => _OmnibotInlinePdfCard(
+          metadata: metadata,
+          plainStyle: plainStyle,
+          preferredHeight: preferredHeight,
+        ),
+        'html' => _OmnibotInlineHtmlCard(
           metadata: metadata,
           plainStyle: plainStyle,
         ),
@@ -504,6 +518,545 @@ class _OmnibotInlineVideoPlayerState extends State<_OmnibotInlineVideoPlayer> {
   }
 }
 
+class _OmnibotInlinePdfCard extends StatelessWidget {
+  final OmnibotResourceMetadata metadata;
+  final bool plainStyle;
+  final double? preferredHeight;
+
+  const _OmnibotInlinePdfCard({
+    required this.metadata,
+    this.plainStyle = false,
+    this.preferredHeight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!metadata.exists) {
+      return _MissingResourceCard(
+        metadata: metadata,
+        icon: Icons.picture_as_pdf_outlined,
+        subtitle: 'PDF 不存在或暂不可读',
+        plainStyle: plainStyle,
+      );
+    }
+    return _OmnibotPdfScrollablePreview(
+      metadata: metadata,
+      plainStyle: plainStyle,
+      preferredHeight: preferredHeight,
+    );
+  }
+}
+
+class _OmnibotPdfScrollablePreview extends StatefulWidget {
+  final OmnibotResourceMetadata metadata;
+  final bool plainStyle;
+  final double? preferredHeight;
+
+  const _OmnibotPdfScrollablePreview({
+    required this.metadata,
+    this.plainStyle = false,
+    this.preferredHeight,
+  });
+
+  @override
+  State<_OmnibotPdfScrollablePreview> createState() =>
+      _OmnibotPdfScrollablePreviewState();
+}
+
+class _OmnibotPdfScrollablePreviewState
+    extends State<_OmnibotPdfScrollablePreview> {
+  late Future<OmnibotPdfDocumentInfo> _documentFuture;
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, Future<Uint8List>> _pageFutureCache =
+      <String, Future<Uint8List>>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _documentFuture = OmnibotPdfPreviewService.getDocumentInfo(
+      widget.metadata.path,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _OmnibotPdfScrollablePreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.metadata.path != widget.metadata.path) {
+      _pageFutureCache.clear();
+      _documentFuture = OmnibotPdfPreviewService.getDocumentInfo(
+        widget.metadata.path,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final targetHeight =
+        widget.preferredHeight ??
+        math.min(MediaQuery.sizeOf(context).height * 0.52, 420.0);
+    return Container(
+      decoration: BoxDecoration(
+        color: widget.plainStyle ? Colors.transparent : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: widget.plainStyle
+            ? null
+            : Border.all(color: const Color(0xFFD8E4F8)),
+        boxShadow: widget.plainStyle
+            ? null
+            : const [
+                BoxShadow(
+                  color: Color(0x12243258),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.picture_as_pdf_outlined,
+                  size: 18,
+                  color: Color(0xFFDC2626),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.metadata.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+                Text(
+                  _fileSizeLabel(widget.metadata.path),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: targetHeight,
+            child: FutureBuilder<OmnibotPdfDocumentInfo>(
+              future: _documentFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return _MissingResourceCard(
+                    metadata: widget.metadata,
+                    icon: Icons.picture_as_pdf_outlined,
+                    subtitle: 'PDF 预览失败',
+                    plainStyle: widget.plainStyle,
+                  );
+                }
+                final info = snapshot.data!;
+                return Scrollbar(
+                  controller: _scrollController,
+                  thumbVisibility: true,
+                  child: ListView.separated(
+                    controller: _scrollController,
+                    primary: false,
+                    physics: const ClampingScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    itemCount: info.pageCount,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final page = index < info.pages.length
+                          ? info.pages[index]
+                          : const OmnibotPdfPageInfo(width: 1, height: 1);
+                      return _PdfPageTile(
+                        documentPath: widget.metadata.path,
+                        pageIndex: index,
+                        pageInfo: page,
+                        futureCache: _pageFutureCache,
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PdfPageTile extends StatelessWidget {
+  final String documentPath;
+  final int pageIndex;
+  final OmnibotPdfPageInfo pageInfo;
+  final Map<String, Future<Uint8List>> futureCache;
+
+  const _PdfPageTile({
+    required this.documentPath,
+    required this.pageIndex,
+    required this.pageInfo,
+    required this.futureCache,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final targetWidthPx = _resolvePdfTargetWidthPx(context, constraints);
+        final cacheKey = '$documentPath#$pageIndex@$targetWidthPx';
+        final pageFuture = futureCache.putIfAbsent(
+          cacheKey,
+          () => OmnibotPdfPreviewService.renderPage(
+            path: documentPath,
+            pageIndex: pageIndex,
+            targetWidthPx: targetWidthPx,
+          ),
+        );
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: AspectRatio(
+              aspectRatio: pageInfo.aspectRatio,
+              child: FutureBuilder<Uint8List>(
+                future: pageFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return _PdfPagePlaceholder(pageIndex: pageIndex);
+                  }
+                  if (snapshot.hasError || !snapshot.hasData) {
+                    return _PdfPageError(pageIndex: pageIndex);
+                  }
+                  return Image.memory(
+                    snapshot.data!,
+                    fit: BoxFit.contain,
+                    gaplessPlayback: true,
+                    filterQuality: FilterQuality.medium,
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PdfPagePlaceholder extends StatelessWidget {
+  final int pageIndex;
+
+  const _PdfPagePlaceholder({required this.pageIndex});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF8FAFC),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 10),
+          Text(
+            '第 ${pageIndex + 1} 页加载中',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PdfPageError extends StatelessWidget {
+  final int pageIndex;
+
+  const _PdfPageError({required this.pageIndex});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFFFFBEB),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline_rounded, color: Color(0xFFB45309)),
+          const SizedBox(height: 8),
+          Text(
+            '第 ${pageIndex + 1} 页渲染失败',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF92400E)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OmnibotInlineHtmlCard extends StatefulWidget {
+  final OmnibotResourceMetadata metadata;
+  final bool plainStyle;
+
+  const _OmnibotInlineHtmlCard({
+    required this.metadata,
+    this.plainStyle = false,
+  });
+
+  @override
+  State<_OmnibotInlineHtmlCard> createState() => _OmnibotInlineHtmlCardState();
+}
+
+class _OmnibotInlineHtmlCardState extends State<_OmnibotInlineHtmlCard> {
+  late Future<_HtmlPreviewData> _previewFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _previewFuture = _loadPreview();
+  }
+
+  @override
+  void didUpdateWidget(covariant _OmnibotInlineHtmlCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.metadata.path != widget.metadata.path) {
+      _previewFuture = _loadPreview();
+    }
+  }
+
+  Future<_HtmlPreviewData> _loadPreview() async {
+    if (!widget.metadata.exists) {
+      return const _HtmlPreviewData(title: '', snippet: '', lineCount: 0);
+    }
+    try {
+      final raw = await File(widget.metadata.path).readAsString();
+      final titleMatch = RegExp(
+        r'<title[^>]*>(.*?)</title>',
+        caseSensitive: false,
+        dotAll: true,
+      ).firstMatch(raw);
+      final extractedTitle = _normalizeHtmlText(titleMatch?.group(1) ?? '');
+      final bodyText = _normalizeHtmlText(
+        raw
+            .replaceAll(
+              RegExp(
+                r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>',
+                caseSensitive: false,
+                dotAll: true,
+              ),
+              ' ',
+            )
+            .replaceAll(
+              RegExp(
+                r'<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>',
+                caseSensitive: false,
+                dotAll: true,
+              ),
+              ' ',
+            )
+            .replaceAll(RegExp(r'<[^>]+>'), ' '),
+      );
+      final snippet = bodyText.length <= 180
+          ? bodyText
+          : '${bodyText.substring(0, 180).trimRight()}...';
+      final lineCount = '\n'.allMatches(raw).length + 1;
+      return _HtmlPreviewData(
+        title: extractedTitle,
+        snippet: snippet,
+        lineCount: lineCount,
+      );
+    } catch (_) {
+      return const _HtmlPreviewData(title: '', snippet: '', lineCount: 0);
+    }
+  }
+
+  void _openInWebView() {
+    GoRouterManager.push(
+      '/webview/webview_page',
+      extra: <String, dynamic>{
+        'url': Uri.file(widget.metadata.path).toString(),
+        'title': widget.metadata.title,
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.metadata.exists) {
+      return _MissingResourceCard(
+        metadata: widget.metadata,
+        icon: Icons.language_outlined,
+        subtitle: 'HTML 文件不存在或暂不可读',
+        plainStyle: widget.plainStyle,
+      );
+    }
+
+    return FutureBuilder<_HtmlPreviewData>(
+      future: _previewFuture,
+      builder: (context, snapshot) {
+        final preview = snapshot.data;
+        final subtitle = <String>[
+          'HTML 页面',
+          if (preview != null && preview.lineCount > 0)
+            '${preview.lineCount} 行',
+          _fileSizeLabel(widget.metadata.path),
+        ].where((item) => item.isNotEmpty).join(' · ');
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: widget.plainStyle ? Colors.transparent : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: widget.plainStyle
+                ? null
+                : Border.all(color: const Color(0xFFD8E4F8)),
+            boxShadow: widget.plainStyle
+                ? null
+                : const [
+                    BoxShadow(
+                      color: Color(0x12243258),
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF3FF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.language_outlined,
+                      size: 22,
+                      color: Color(0xFF1F4ED8),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.metadata.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FBFF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE1EAF8)),
+                ),
+                child: snapshot.connectionState != ConnectionState.done
+                    ? const SizedBox(
+                        height: 68,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (preview != null && preview.title.isNotEmpty) ...[
+                            Text(
+                              preview.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                          ],
+                          Text(
+                            preview == null || preview.snippet.isEmpty
+                                ? '已识别为 HTML 页面，可在 WebView 中查看完整内容。'
+                                : preview.snippet,
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.45,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: _openInWebView,
+                    icon: const Icon(Icons.open_in_browser_outlined),
+                    label: const Text('WebView'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _openMetadata(widget.metadata),
+                    icon: const Icon(Icons.visibility_outlined),
+                    label: const Text('查看文件'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _OmnibotInlineOfficePreviewCard extends StatefulWidget {
   final OmnibotResourceMetadata metadata;
   final bool plainStyle;
@@ -959,11 +1512,60 @@ Future<void> _openMetadata(OmnibotResourceMetadata metadata) async {
   );
 }
 
+class _HtmlPreviewData {
+  final String title;
+  final String snippet;
+  final int lineCount;
+
+  const _HtmlPreviewData({
+    required this.title,
+    required this.snippet,
+    required this.lineCount,
+  });
+}
+
 String _formatDuration(Duration duration) {
   final totalSeconds = duration.inSeconds;
   final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
   final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
   return '$minutes:$seconds';
+}
+
+String _fileSizeLabel(String path) {
+  try {
+    final bytes = File(path).lengthSync();
+    if (bytes <= 0) return '';
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    }
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
+  } catch (_) {
+    return '';
+  }
+}
+
+String _normalizeHtmlText(String raw) {
+  if (raw.isEmpty) return '';
+  return raw
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+int _resolvePdfTargetWidthPx(BuildContext context, BoxConstraints constraints) {
+  final logicalWidth = constraints.maxWidth.isFinite
+      ? constraints.maxWidth
+      : MediaQuery.sizeOf(context).width;
+  final devicePixelRatio = MediaQuery.devicePixelRatioOf(
+    context,
+  ).clamp(1.0, 3.0);
+  return (logicalWidth * devicePixelRatio).round().clamp(240, 1800);
 }
 
 IconData _officeIconForKind(String previewKind) {

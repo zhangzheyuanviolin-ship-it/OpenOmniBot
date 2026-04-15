@@ -1,0 +1,3 @@
+[submodule "third_party/omniinfer"]
+	path = third_party/omniinfer
+	url = https://github.com/omnimind-ai/OmniInfer.git

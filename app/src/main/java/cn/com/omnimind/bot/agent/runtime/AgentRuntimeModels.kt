@@ -18,7 +18,8 @@ data class AgentModelOverride(
     val providerProfileName: String? = null,
     val modelId: String,
     val apiBase: String,
-    val apiKey: String
+    val apiKey: String,
+    val protocolType: String = "openai_compatible"
 )
 
 data class ArtifactAction(
@@ -54,6 +55,8 @@ data class ArtifactRef(
             "image" -> "image"
             "audio" -> "audio"
             "video" -> "video"
+            "pdf" -> "pdf"
+            "html" -> "html"
             "office_word", "office_sheet", "office_slide" -> "office"
             else -> "link"
         }

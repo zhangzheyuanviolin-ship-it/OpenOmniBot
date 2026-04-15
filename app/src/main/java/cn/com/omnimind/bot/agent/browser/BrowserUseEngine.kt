@@ -42,6 +42,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URI
@@ -59,7 +60,12 @@ private const val DEFAULT_BROWSER_MAX_DEPTH = 5
 private const val MAX_BROWSER_TABS = 3
 private const val NAVIGATION_TIMEOUT_MS = 30_000L
 private const val ACTION_SETTLE_DELAY_MS = 250L
-private const val LOAD_SETTLE_DELAY_MS = 350L
+private const val LOAD_SETTLE_DELAY_MS = 600L
+private const val DESKTOP_VIEWPORT_WIDTH = 1280
+private const val DESKTOP_VIEWPORT_HEIGHT = 800
+private const val SCREENSHOT_JPEG_QUALITY = 85
+private const val READ_IMAGE_JPEG_QUALITY = 75
+private const val READ_IMAGE_MAX_WIDTH = 1280
 private const val LARGE_TEXT_THRESHOLD = 12_000
 private const val FIND_ELEMENTS_LIMIT = 60
 
@@ -105,7 +111,11 @@ enum class BrowserUseAction(val wireName: String) {
     CLOSE_TAB("close_tab"),
     LIST_TABS("list_tabs"),
     GET_COOKIES("get_cookies"),
-    SCROLL_AND_COLLECT("scroll_and_collect");
+    SCROLL_AND_COLLECT("scroll_and_collect"),
+    GO_BACK("go_back"),
+    GO_FORWARD("go_forward"),
+    PRESS_KEY("press_key"),
+    WAIT_FOR_SELECTOR("wait_for_selector");
 
     companion object {
         fun fromWire(value: String?): BrowserUseAction? {
@@ -131,6 +141,9 @@ data class BrowserUseRequest(
     val tabId: Int? = null,
     val selector: String? = null,
     val fuzzy: Boolean = true,
+    val readImage: Boolean = false,
+    val key: String? = null,
+    val timeoutMs: Long = 5000L,
     val maxDepth: Int = DEFAULT_BROWSER_MAX_DEPTH,
     val scrollCount: Int = DEFAULT_BROWSER_SCROLL_COUNT
 ) {
@@ -159,6 +172,11 @@ data class BrowserUseRequest(
                 ?.coerceIn(1, MAX_BROWSER_SCROLL_COUNT)
                 ?: DEFAULT_BROWSER_SCROLL_COUNT
             val fuzzy = args["fuzzy"]?.jsonPrimitive?.booleanOrNull ?: true
+            val readImage = args["read_image"]?.jsonPrimitive?.booleanOrNull ?: false
+            val key = args["key"]?.jsonPrimitive?.contentOrNull
+            val timeoutMs = args["timeout_ms"]?.jsonPrimitive?.intOrNull
+                ?.toLong()?.coerceIn(500, 30_000)
+                ?: 5000L
 
             val request = BrowserUseRequest(
                 toolTitle = toolTitle,
@@ -178,6 +196,9 @@ data class BrowserUseRequest(
                 tabId = args["tab_id"]?.jsonPrimitive?.intOrNull,
                 selector = args["selector"]?.jsonPrimitive?.contentOrNull,
                 fuzzy = fuzzy,
+                readImage = readImage,
+                key = key,
+                timeoutMs = timeoutMs,
                 maxDepth = maxDepth,
                 scrollCount = scrollCount
             )
@@ -202,6 +223,8 @@ data class BrowserUseRequest(
             BrowserUseAction.EXECUTE_JS -> require(!script.isNullOrBlank()) { "execute_js 缺少 script" }
             BrowserUseAction.SET_USER_AGENT -> require(userAgent != null) { "set_user_agent 缺少 user_agent" }
             BrowserUseAction.FETCH -> require(!url.isNullOrBlank()) { "fetch 缺少 url" }
+            BrowserUseAction.PRESS_KEY -> require(!key.isNullOrBlank()) { "press_key 缺少 key" }
+            BrowserUseAction.WAIT_FOR_SELECTOR -> require(!selector.isNullOrBlank()) { "wait_for_selector 缺少 selector" }
             else -> Unit
         }
     }
@@ -217,7 +240,8 @@ data class BrowserUseOutcome(
     val summaryText: String,
     val payload: Map<String, Any?>,
     val artifacts: List<ArtifactRef> = emptyList(),
-    val actions: List<ArtifactAction> = emptyList()
+    val actions: List<ArtifactAction> = emptyList(),
+    val imageDataUrl: String? = null
 )
 
 object BrowserUseSupport {
@@ -293,7 +317,8 @@ class BrowserUseEngine(
         var title: String? = null,
         var lastError: String? = null,
         var isLoading: Boolean = false,
-        var loadWaiter: CompletableDeferred<LoadSnapshot>? = null
+        var loadWaiter: CompletableDeferred<LoadSnapshot>? = null,
+        var helpersInjected: Boolean = false
     )
 
     private val json = Json {
@@ -313,6 +338,134 @@ class BrowserUseEngine(
                 "userAgentProfile" to null
             )
         }
+
+        private const val JS_HELPERS_FULL = """
+                function normalizeText(value) {
+                    return String(value || '').replace(/\s+/g, ' ').trim();
+                }
+                function isVisible(node) {
+                    if (!node || !(node instanceof Element)) return false;
+                    const style = window.getComputedStyle(node);
+                    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+                    const rect = node.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0;
+                }
+                function isInteractive(node) {
+                    if (!node || !(node instanceof Element)) return false;
+                    const tag = (node.tagName || '').toLowerCase();
+                    return ['a', 'button', 'input', 'textarea', 'select', 'summary'].includes(tag) ||
+                        !!node.getAttribute('onclick') ||
+                        !!node.getAttribute('role') && ['button', 'link', 'textbox', 'tab'].includes(node.getAttribute('role'));
+                }
+                function selectorForElement(node) {
+                    if (!node || !(node instanceof Element)) return null;
+                    if (node.id) return '#' + node.id;
+                    const classes = Array.from(node.classList || []).slice(0, 2).join('.');
+                    return node.tagName.toLowerCase() + (classes ? '.' + classes : '');
+                }
+                function describeElement(node) {
+                    if (!node || !(node instanceof Element)) return null;
+                    const rect = node.getBoundingClientRect();
+                    return {
+                        tag: (node.tagName || '').toLowerCase(),
+                        id: node.id || null,
+                        classes: Array.from(node.classList || []).slice(0, 4),
+                        text: normalizeText((node.innerText || node.textContent || '').slice(0, 240)),
+                        href: node.getAttribute('href'),
+                        role: node.getAttribute('role'),
+                        visible: isVisible(node),
+                        selector: selectorForElement(node),
+                        bounds: {
+                            x: Math.round(rect.left),
+                            y: Math.round(rect.top),
+                            width: Math.round(rect.width),
+                            height: Math.round(rect.height)
+                        }
+                    };
+                }
+                function resolveTarget(selector, coordinateX, coordinateY) {
+                    if (selector) {
+                        return Array.from(document.querySelectorAll(selector)).find(isVisible) || document.querySelector(selector);
+                    }
+                    if (coordinateX !== null && coordinateY !== null) {
+                        return document.elementFromPoint(coordinateX, coordinateY);
+                    }
+                    return null;
+                }
+                function resolveScrollable(explicitNode, explicitSelector) {
+                    if (explicitNode) {
+                        if (!(explicitNode instanceof Element)) {
+                            throw new Error('Scrollable target not found: ' + explicitSelector);
+                        }
+                        return explicitNode;
+                    }
+                    const scrollingElement = document.scrollingElement || document.documentElement || document.body;
+                    const candidates = Array.from(document.querySelectorAll('*'))
+                        .filter(function(el) {
+                            const style = window.getComputedStyle(el);
+                            const overflowY = style.overflowY || '';
+                            return isVisible(el) &&
+                                el.scrollHeight > el.clientHeight + 40 &&
+                                (overflowY.includes('auto') || overflowY.includes('scroll'));
+                        })
+                        .sort(function(a, b) { return (b.scrollHeight * Math.max(b.clientWidth, 1)) - (a.scrollHeight * Math.max(a.clientWidth, 1)); });
+                    return candidates[0] || scrollingElement;
+                }
+                function scrollTopOf(target) {
+                    if (target === document.body || target === document.documentElement || target === document.scrollingElement) {
+                        return window.scrollY || 0;
+                    }
+                    return target.scrollTop || 0;
+                }
+                function scrollTarget(target, delta) {
+                    if (target === document.body || target === document.documentElement || target === document.scrollingElement) {
+                        window.scrollBy(0, delta);
+                        return;
+                    }
+                    target.scrollBy(0, delta);
+                }
+                function detectCollectionSelector() {
+                    var candidates = ['article','[role="article"]','[role="listitem"]','[data-testid]','li','.item','.card','main article','main li'];
+                    var best = null;
+                    var bestCount = 0;
+                    candidates.forEach(function(sel) {
+                        var count = Array.from(document.querySelectorAll(sel)).filter(isVisible).length;
+                        if (count > bestCount) { best = sel; bestCount = count; }
+                    });
+                    if (bestCount >= 3) return best;
+                    return 'body > *';
+                }
+                function safeSerialize(value, depth) {
+                    if (depth > 4) return '[MaxDepth]';
+                    if (value === null || value === undefined) return null;
+                    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+                    if (value instanceof Element) return describeElement(value);
+                    if (Array.isArray(value)) return value.slice(0, 80).map(function(item) { return safeSerialize(item, depth + 1); });
+                    if (typeof value === 'object') {
+                        var result = {};
+                        Object.keys(value).slice(0, 60).forEach(function(key) {
+                            try { result[key] = safeSerialize(value[key], depth + 1); } catch(_) {}
+                        });
+                        return result;
+                    }
+                    return String(value);
+                }
+                if (!window.__omni) {
+                    window.__omni = {
+                        normalizeText: normalizeText,
+                        isVisible: isVisible,
+                        isInteractive: isInteractive,
+                        selectorForElement: selectorForElement,
+                        describeElement: describeElement,
+                        resolveTarget: resolveTarget,
+                        resolveScrollable: resolveScrollable,
+                        scrollTopOf: scrollTopOf,
+                        scrollTarget: scrollTarget,
+                        detectCollectionSelector: detectCollectionSelector,
+                        safeSerialize: safeSerialize
+                    };
+                }
+        """
     }
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tabs = linkedMapOf<Int, BrowserTab>()
@@ -321,6 +474,7 @@ class BrowserUseEngine(
     private val appContext = context.applicationContext
     private val viewportWidth = appContext.resources.displayMetrics.widthPixels.coerceAtLeast(1080)
     private val viewportHeight = appContext.resources.displayMetrics.heightPixels.coerceAtLeast(1920)
+    private val density = appContext.resources.displayMetrics.density
     private var currentAgentRunId: String = agentRunId
     private var currentWorkspace: AgentWorkspaceDescriptor = workspace
 
@@ -348,6 +502,10 @@ class BrowserUseEngine(
             BrowserUseAction.SET_USER_AGENT -> executeSetUserAgent(request)
             BrowserUseAction.FETCH -> executeFetch(request)
             BrowserUseAction.GET_COOKIES -> executeGetCookies(request)
+            BrowserUseAction.GO_BACK -> executeGoBack(request)
+            BrowserUseAction.GO_FORWARD -> executeGoForward(request)
+            BrowserUseAction.PRESS_KEY -> executePressKey(request)
+            BrowserUseAction.WAIT_FOR_SELECTOR -> executeWaitForSelector(request)
         }
     }
 
@@ -373,6 +531,43 @@ class BrowserUseEngine(
             "title" to (tab.title ?: ""),
             "userAgentProfile" to tab.userAgentProfile.wireName
         )
+    }
+
+    suspend fun requestInterruptCurrentAction() {
+        withContext(Dispatchers.Main.immediate) {
+            tabs.values.forEach { tab ->
+                runCatching { tab.webView.stopLoading() }
+                tab.isLoading = false
+                tab.loadWaiter?.cancel(ManualToolStopCancellationException())
+                tab.loadWaiter = null
+            }
+        }
+    }
+
+    suspend fun captureActiveFramePng(): ByteArray? {
+        val tab = activeTabId?.let { tabs[it] } ?: tabs.values.lastOrNull() ?: return null
+        activeTabId = tab.tabId
+        val (vpWidth, vpHeight) = viewportDimensionsForProfile(tab.userAgentProfile)
+        return withContext(Dispatchers.Main.immediate) {
+            layoutWebView(tab.webView, vpWidth, vpHeight)
+            if (tab.webView.windowToken == null) {
+                tab.webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+            }
+            val bitmap = Bitmap.createBitmap(
+                vpWidth,
+                vpHeight,
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.WHITE)
+            tab.webView.draw(canvas)
+            val bytes = ByteArrayOutputStream().use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                stream.toByteArray()
+            }
+            bitmap.recycle()
+            bytes
+        }
     }
 
     fun attachActiveTabTo(
@@ -490,18 +685,27 @@ class BrowserUseEngine(
 
     private suspend fun executeScreenshot(request: BrowserUseRequest): BrowserUseOutcome {
         val tab = requirePageTab(request)
+        val (vpWidth, vpHeight) = viewportDimensionsForProfile(tab.userAgentProfile)
         val screenshotFile = workspaceManager.newBrowserFile(
             agentRunId = currentAgentRunId,
             prefix = "screenshot_tab_${tab.tabId}",
-            extension = "png"
+            extension = "jpg"
         )
+        var imageDataUrl: String? = null
         withContext(Dispatchers.Main.immediate) {
-            layoutWebView(tab.webView)
-            val bitmap = Bitmap.createBitmap(viewportWidth, viewportHeight, Bitmap.Config.ARGB_8888)
+            layoutWebView(tab.webView, vpWidth, vpHeight)
+            if (tab.webView.windowToken == null) {
+                tab.webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+            }
+            val bitmap = Bitmap.createBitmap(vpWidth, vpHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.WHITE)
             tab.webView.draw(canvas)
             FileOutputStream(screenshotFile).use { stream ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                bitmap.compress(Bitmap.CompressFormat.JPEG, SCREENSHOT_JPEG_QUALITY, stream)
+            }
+            if (request.readImage) {
+                imageDataUrl = bitmapToDataUrl(bitmap, READ_IMAGE_MAX_WIDTH, READ_IMAGE_JPEG_QUALITY)
             }
             bitmap.recycle()
         }
@@ -514,11 +718,12 @@ class BrowserUseEngine(
                 extra = mapOf(
                     "artifactUri" to artifact.uri,
                     "pageTitle" to tab.title,
-                    "imageWidth" to viewportWidth,
-                    "imageHeight" to viewportHeight
+                    "imageWidth" to vpWidth,
+                    "imageHeight" to vpHeight
                 )
             ),
-            artifacts = listOf(artifact)
+            artifacts = listOf(artifact),
+            imageDataUrl = imageDataUrl
         )
     }
 
@@ -585,7 +790,19 @@ class BrowserUseEngine(
                     if (target.isContentEditable) {
                         target.textContent = $textLiteral;
                     } else if ('value' in target) {
-                        target.value = $textLiteral;
+                        var nativeSetter = Object.getOwnPropertyDescriptor(
+                            window.HTMLInputElement.prototype, 'value'
+                        );
+                        if (!nativeSetter || !nativeSetter.set) {
+                            nativeSetter = Object.getOwnPropertyDescriptor(
+                                window.HTMLTextAreaElement.prototype, 'value'
+                            );
+                        }
+                        if (nativeSetter && nativeSetter.set) {
+                            nativeSetter.set.call(target, $textLiteral);
+                        } else {
+                            target.value = $textLiteral;
+                        }
                     } else {
                         throw new Error('Target element is not editable');
                     }
@@ -965,6 +1182,136 @@ class BrowserUseEngine(
         )
     }
 
+    private suspend fun executeGoBack(request: BrowserUseRequest): BrowserUseOutcome {
+        val tab = requirePageTab(request)
+        val canGoBack = withContext(Dispatchers.Main.immediate) { tab.webView.canGoBack() }
+        if (!canGoBack) {
+            throw IllegalStateException("当前页面无法后退")
+        }
+        val waiter = CompletableDeferred<LoadSnapshot>()
+        tab.loadWaiter = waiter
+        withContext(Dispatchers.Main.immediate) { tab.webView.goBack() }
+        withTimeout(NAVIGATION_TIMEOUT_MS) { waiter.await() }
+        return simpleOutcome(
+            request,
+            buildCommonPayload(
+                tab = tab,
+                action = request.action,
+                extra = mapOf("pageTitle" to tab.title, "currentUrl" to tab.currentUrl)
+            )
+        )
+    }
+
+    private suspend fun executeGoForward(request: BrowserUseRequest): BrowserUseOutcome {
+        val tab = requirePageTab(request)
+        val canGoForward = withContext(Dispatchers.Main.immediate) { tab.webView.canGoForward() }
+        if (!canGoForward) {
+            throw IllegalStateException("当前页面无法前进")
+        }
+        val waiter = CompletableDeferred<LoadSnapshot>()
+        tab.loadWaiter = waiter
+        withContext(Dispatchers.Main.immediate) { tab.webView.goForward() }
+        withTimeout(NAVIGATION_TIMEOUT_MS) { waiter.await() }
+        return simpleOutcome(
+            request,
+            buildCommonPayload(
+                tab = tab,
+                action = request.action,
+                extra = mapOf("pageTitle" to tab.title, "currentUrl" to tab.currentUrl)
+            )
+        )
+    }
+
+    private suspend fun executePressKey(request: BrowserUseRequest): BrowserUseOutcome {
+        val tab = requirePageTab(request)
+        val keyLiteral = JSONObject.quote(request.key)
+        evaluateValue(
+            tab,
+            """
+                const keyName = $keyLiteral;
+                const target = document.activeElement || document.body;
+                const opts = { key: keyName, code: keyName, bubbles: true, cancelable: true };
+                target.dispatchEvent(new KeyboardEvent('keydown', opts));
+                target.dispatchEvent(new KeyboardEvent('keypress', opts));
+                target.dispatchEvent(new KeyboardEvent('keyup', opts));
+                if (keyName === 'Enter') {
+                    const form = target.closest && target.closest('form');
+                    if (form) { form.requestSubmit ? form.requestSubmit() : form.submit(); }
+                }
+                return { key: keyName, targetTag: (target.tagName || '').toLowerCase() };
+            """.trimIndent()
+        )
+        waitForPostActionSettle(tab)
+        return simpleOutcome(
+            request,
+            buildCommonPayload(
+                tab = tab,
+                action = request.action,
+                extra = mapOf("key" to request.key)
+            )
+        )
+    }
+
+    private suspend fun executeWaitForSelector(request: BrowserUseRequest): BrowserUseOutcome {
+        val tab = requirePageTab(request)
+        val selectorLiteral = JSONObject.quote(request.selector)
+        val deadline = System.currentTimeMillis() + request.timeoutMs
+        val pollInterval = 250L
+        var found = false
+        var visible = false
+
+        while (System.currentTimeMillis() < deadline) {
+            val result = evaluateValue(
+                tab,
+                """
+                    const el = document.querySelector($selectorLiteral);
+                    return { found: !!el, visible: el ? isVisible(el) : false };
+                """.trimIndent()
+            ).jsonObject
+            found = result["found"]?.jsonPrimitive?.booleanOrNull == true
+            visible = result["visible"]?.jsonPrimitive?.booleanOrNull == true
+            if (found) break
+            delay(pollInterval)
+        }
+
+        return simpleOutcome(
+            request,
+            buildCommonPayload(
+                tab = tab,
+                action = request.action,
+                extra = mapOf(
+                    "selector" to request.selector,
+                    "found" to found,
+                    "visible" to visible,
+                    "timeoutMs" to request.timeoutMs
+                )
+            )
+        )
+    }
+
+    private fun bitmapToDataUrl(
+        bitmap: Bitmap,
+        maxWidth: Int,
+        quality: Int
+    ): String {
+        val finalBitmap = if (bitmap.width > maxWidth) {
+            val scale = maxWidth.toFloat() / bitmap.width
+            val scaledHeight = (bitmap.height * scale).toInt()
+            Bitmap.createScaledBitmap(bitmap, maxWidth, scaledHeight, true)
+        } else {
+            bitmap
+        }
+        val bytes = ByteArrayOutputStream().use { stream ->
+            finalBitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+            stream.toByteArray()
+        }
+        if (finalBitmap !== bitmap) {
+            finalBitmap.recycle()
+        }
+        val encoded = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        return "data:image/jpeg;base64,$encoded"
+    }
+
     private suspend fun simpleOutcome(
         request: BrowserUseRequest,
         payload: Map<String, Any?>
@@ -1153,11 +1500,10 @@ class BrowserUseEngine(
                 title = "Blank"
             )
             CookieManager.getInstance().setAcceptCookie(true)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
-            }
+            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
             webView.webViewClient = BrowserTabClient(tab)
-            layoutWebView(webView)
+            val (vpWidth, vpHeight) = viewportDimensionsForProfile(profile)
+            layoutWebView(webView, vpWidth, vpHeight)
             tabs[tabId] = tab
             activeTabId = tabId
             tab
@@ -1279,133 +1625,26 @@ class BrowserUseEngine(
         tab: BrowserTab,
         body: String?
     ): JsonElement {
+        val helpersBlock = if (tab.helpersInjected) {
+            """
+                const normalizeText = window.__omni.normalizeText;
+                const isVisible = window.__omni.isVisible;
+                const isInteractive = window.__omni.isInteractive;
+                const selectorForElement = window.__omni.selectorForElement;
+                const describeElement = window.__omni.describeElement;
+                const resolveTarget = window.__omni.resolveTarget;
+                const resolveScrollable = window.__omni.resolveScrollable;
+                const scrollTopOf = window.__omni.scrollTopOf;
+                const scrollTarget = window.__omni.scrollTarget;
+                const detectCollectionSelector = window.__omni.detectCollectionSelector;
+                const safeSerialize = window.__omni.safeSerialize;
+            """.trimIndent()
+        } else {
+            JS_HELPERS_FULL
+        }
         val wrappedScript = """
             (function() {
-                function normalizeText(value) {
-                    return String(value || '').replace(/\s+/g, ' ').trim();
-                }
-                function isVisible(node) {
-                    if (!node || !(node instanceof Element)) return false;
-                    const style = window.getComputedStyle(node);
-                    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
-                    const rect = node.getBoundingClientRect();
-                    return rect.width > 0 && rect.height > 0;
-                }
-                function isInteractive(node) {
-                    if (!node || !(node instanceof Element)) return false;
-                    const tag = (node.tagName || '').toLowerCase();
-                    return ['a', 'button', 'input', 'textarea', 'select', 'summary'].includes(tag) ||
-                        !!node.getAttribute('onclick') ||
-                        !!node.getAttribute('role') && ['button', 'link', 'textbox', 'tab'].includes(node.getAttribute('role'));
-                }
-                function selectorForElement(node) {
-                    if (!node || !(node instanceof Element)) return null;
-                    if (node.id) return '#' + node.id;
-                    const classes = Array.from(node.classList || []).slice(0, 2).join('.');
-                    return node.tagName.toLowerCase() + (classes ? '.' + classes : '');
-                }
-                function describeElement(node) {
-                    if (!node || !(node instanceof Element)) return null;
-                    const rect = node.getBoundingClientRect();
-                    return {
-                        tag: (node.tagName || '').toLowerCase(),
-                        id: node.id || null,
-                        classes: Array.from(node.classList || []).slice(0, 4),
-                        text: normalizeText((node.innerText || node.textContent || '').slice(0, 240)),
-                        href: node.getAttribute('href'),
-                        role: node.getAttribute('role'),
-                        visible: isVisible(node),
-                        selector: selectorForElement(node),
-                        bounds: {
-                            x: Math.round(rect.left),
-                            y: Math.round(rect.top),
-                            width: Math.round(rect.width),
-                            height: Math.round(rect.height)
-                        }
-                    };
-                }
-                function resolveTarget(selector, coordinateX, coordinateY) {
-                    if (selector) {
-                        return Array.from(document.querySelectorAll(selector)).find(isVisible) || document.querySelector(selector);
-                    }
-                    if (coordinateX !== null && coordinateY !== null) {
-                        return document.elementFromPoint(coordinateX, coordinateY);
-                    }
-                    return null;
-                }
-                function resolveScrollable(explicitNode, explicitSelector) {
-                    if (explicitNode) {
-                        if (!(explicitNode instanceof Element)) {
-                            throw new Error('Scrollable target not found: ' + explicitSelector);
-                        }
-                        return explicitNode;
-                    }
-                    const scrollingElement = document.scrollingElement || document.documentElement || document.body;
-                    const candidates = Array.from(document.querySelectorAll('*'))
-                        .filter(el => {
-                            const style = window.getComputedStyle(el);
-                            const overflowY = style.overflowY || '';
-                            return isVisible(el) &&
-                                el.scrollHeight > el.clientHeight + 40 &&
-                                (overflowY.includes('auto') || overflowY.includes('scroll'));
-                        })
-                        .sort((a, b) => (b.scrollHeight * Math.max(b.clientWidth, 1)) - (a.scrollHeight * Math.max(a.clientWidth, 1)));
-                    return candidates[0] || scrollingElement;
-                }
-                function scrollTopOf(target) {
-                    if (target === document.body || target === document.documentElement || target === document.scrollingElement) {
-                        return window.scrollY || 0;
-                    }
-                    return target.scrollTop || 0;
-                }
-                function scrollTarget(target, delta) {
-                    if (target === document.body || target === document.documentElement || target === document.scrollingElement) {
-                        window.scrollBy(0, delta);
-                        return;
-                    }
-                    target.scrollBy(0, delta);
-                }
-                function detectCollectionSelector() {
-                    const candidates = [
-                        'article',
-                        '[role="article"]',
-                        '[role="listitem"]',
-                        '[data-testid]',
-                        'li',
-                        '.item',
-                        '.card',
-                        'main article',
-                        'main li'
-                    ];
-                    let best = null;
-                    let bestCount = 0;
-                    candidates.forEach(selector => {
-                        const count = Array.from(document.querySelectorAll(selector)).filter(isVisible).length;
-                        if (count > bestCount) {
-                            best = selector;
-                            bestCount = count;
-                        }
-                    });
-                    if (bestCount >= 3) return best;
-                    return 'body > *';
-                }
-                function safeSerialize(value, depth) {
-                    if (depth > 4) return '[MaxDepth]';
-                    if (value === null || value === undefined) return null;
-                    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
-                    if (value instanceof Element) return describeElement(value);
-                    if (Array.isArray(value)) return value.slice(0, 80).map(item => safeSerialize(item, depth + 1));
-                    if (typeof value === 'object') {
-                        const result = {};
-                        Object.keys(value).slice(0, 60).forEach(key => {
-                            try {
-                                result[key] = safeSerialize(value[key], depth + 1);
-                            } catch (_) {}
-                        });
-                        return result;
-                    }
-                    return String(value);
-                }
+                $helpersBlock
                 try {
                     const __result = (function() {
                         ${body.orEmpty()}
@@ -1420,6 +1659,7 @@ class BrowserUseEngine(
             })();
         """.trimIndent()
         val raw = evaluateJavascriptRaw(tab, wrappedScript)
+        tab.helpersInjected = true
         val decoded = decodeJavascriptString(raw)
         val envelope = json.parseToJsonElement(decoded).jsonObject
         val ok = envelope["ok"]?.jsonPrimitive?.booleanOrNull == true
@@ -1430,12 +1670,31 @@ class BrowserUseEngine(
         return envelope["value"] ?: JsonNull
     }
 
-    private fun layoutWebView(webView: WebView) {
+    private fun viewportDimensionsForProfile(
+        profile: BrowserUserAgentProfile
+    ): Pair<Int, Int> {
+        return when (profile) {
+            BrowserUserAgentProfile.DESKTOP_SAFARI -> {
+                val w = (DESKTOP_VIEWPORT_WIDTH * density).toInt().coerceAtLeast(DESKTOP_VIEWPORT_WIDTH)
+                val h = (DESKTOP_VIEWPORT_HEIGHT * density).toInt().coerceAtLeast(DESKTOP_VIEWPORT_HEIGHT)
+                w to h
+            }
+            BrowserUserAgentProfile.MOBILE_SAFARI -> {
+                viewportWidth to viewportHeight
+            }
+        }
+    }
+
+    private fun layoutWebView(
+        webView: WebView,
+        targetWidth: Int = viewportWidth,
+        targetHeight: Int = viewportHeight
+    ) {
         val parent = webView.parent as? View
-        val measuredWidth = listOf(webView.width, parent?.width ?: 0, viewportWidth)
-            .firstOrNull { it > 0 } ?: viewportWidth
-        val measuredHeight = listOf(webView.height, parent?.height ?: 0, viewportHeight)
-            .firstOrNull { it > 0 } ?: viewportHeight
+        val measuredWidth = listOf(webView.width, parent?.width ?: 0, targetWidth)
+            .firstOrNull { it > 0 } ?: targetWidth
+        val measuredHeight = listOf(webView.height, parent?.height ?: 0, targetHeight)
+            .firstOrNull { it > 0 } ?: targetHeight
         val widthSpec = View.MeasureSpec.makeMeasureSpec(measuredWidth, View.MeasureSpec.EXACTLY)
         val heightSpec = View.MeasureSpec.makeMeasureSpec(measuredHeight, View.MeasureSpec.EXACTLY)
         webView.measure(widthSpec, heightSpec)
@@ -1590,6 +1849,7 @@ class BrowserUseEngine(
             tab.currentUrl = url
             tab.title = view?.title ?: tab.title
             tab.lastError = null
+            tab.helpersInjected = false
             if (tab.loadWaiter?.isActive != true) {
                 tab.loadWaiter = CompletableDeferred()
             }

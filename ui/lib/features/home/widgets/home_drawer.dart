@@ -2,20 +2,61 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/core/router/go_router_manager.dart';
-import 'package:ui/features/home/widgets/conversation_mode_badge.dart';
-import 'package:ui/services/agent_skill_store_service.dart';
-import 'package:ui/theme/app_colors.dart';
-import 'package:ui/utils/cache_util.dart';
-import 'package:ui/utils/ui.dart';
+import 'package:ui/features/home/widgets/conversation_slidable.dart';
+import 'package:ui/features/home/widgets/home_drawer_search_field.dart';
+import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
+import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
-import 'package:ui/features/memory/services/mem0_memory_service.dart';
+import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
+import 'package:ui/utils/cache_util.dart';
+import 'package:ui/utils/ui.dart';
+
+const String _kDrawerMemoryIconSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-brain-icon lucide-brain">'
+    '<path d="M12 18V5"/>'
+    '<path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/>'
+    '<path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"/>'
+    '<path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/>'
+    '<path d="M18 18a4 4 0 0 0 2-7.464"/>'
+    '<path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/>'
+    '<path d="M6 18a4 4 0 0 1-2-7.464"/>'
+    '<path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/>'
+    '</svg>';
+
+const String _kDrawerSkillStoreIconSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-container-icon lucide-container">'
+    '<path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 '
+    '6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0'
+    'l10.3-6c.5-.3.9-1 .9-1.5Z"/>'
+    '<path d="M10 21.9V14L2.1 9.1"/>'
+    '<path d="m10 14 11.9-6.9"/>'
+    '<path d="M14 19.8v-8.1"/>'
+    '<path d="M18 17.5V9.4"/>'
+    '</svg>';
+
+const String _kDrawerTaskHistoryIconSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-history-icon lucide-history">'
+    '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>'
+    '<path d="M3 3v5h5"/>'
+    '<path d="M12 7v5l4 2"/>'
+    '</svg>';
 
 /// 首页侧边栏
 class HomeDrawer extends ConsumerStatefulWidget {
@@ -23,10 +64,16 @@ class HomeDrawer extends ConsumerStatefulWidget {
     super.key,
     this.memoryCount,
     this.newConversationMode = ConversationMode.normal,
+    this.embedded = false,
+    this.closeOnNavigate = true,
+    this.onThreadTargetSelected,
   });
 
   final int? memoryCount;
   final ConversationMode newConversationMode;
+  final bool embedded;
+  final bool closeOnNavigate;
+  final ValueChanged<ConversationThreadTarget>? onThreadTargetSelected;
 
   @override
   ConsumerState<HomeDrawer> createState() => HomeDrawerState();
@@ -34,25 +81,30 @@ class HomeDrawer extends ConsumerStatefulWidget {
 
 class HomeDrawerState extends ConsumerState<HomeDrawer> {
   static const double _conversationActionIconSize = 18;
-  int _localMemoryCount = 0;
-  int _cloudMemoryCount = 0;
-  int _installedSkillCount = 0;
-  int _enabledSkillCount = 0;
-  List<ConversationModel> conversations = [];
-  final Set<String> _busyConversationKeys = <String>{};
-  bool isLoadingConversations = true;
+  static const Duration _searchDebounceDuration = Duration(milliseconds: 220);
   static const BorderRadius _drawerTrailingActionRadius = BorderRadius.only(
     topRight: Radius.circular(4),
     bottomRight: Radius.circular(4),
   );
 
-  int get _totalMemoryCount => _localMemoryCount + _cloudMemoryCount;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final Map<String, _ConversationSearchIndex> _conversationSearchCache =
+      <String, _ConversationSearchIndex>{};
+  final Set<String> _busyConversationKeys = <String>{};
+  List<ConversationModel> _allConversations = <ConversationModel>[];
+  List<_ConversationSearchResult> _searchResults =
+      <_ConversationSearchResult>[];
+  bool isLoadingConversations = true;
+  bool _isSearching = false;
+  int _searchGeneration = 0;
+  Timer? _searchDebounceTimer;
+  StreamSubscription<Map<String, dynamic>>?
+  _conversationListChangedSubscription;
 
-  /// 根据时间段获取问候语
   Map<String, String> _getGreetingByTime() {
     final hour = DateTime.now().hour;
 
-    // 02:00 - 06:00: 深夜未眠 / 凌晨早起
     if (hour >= 2 && hour < 6) {
       final greetings = [
         {'title': '凌晨啦', 'subtitle': '还没休息吗？'},
@@ -62,7 +114,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 06:00 - 08:00: 清晨通勤 / 准备早餐
     if (hour >= 6 && hour < 8) {
       final greetings = [
         {'title': '早安！', 'subtitle': '开启元气一天'},
@@ -71,7 +122,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 08:00 - 12:00: 工作 / 学习时段
     if (hour >= 8 && hour < 12) {
       final greetings = [
         {'title': '上午好！', 'subtitle': '再忙也别忘了活动下肩膀'},
@@ -80,7 +130,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 12:00 - 14:00: 午餐 / 午休时段
     if (hour >= 12 && hour < 14) {
       final greetings = [
         {'title': '午饭时间到！', 'subtitle': '好好吃饭，别凑合'},
@@ -90,7 +139,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 14:00 - 18:00: 下午工作 / 学习 / 接娃
     if (hour >= 14 && hour < 18) {
       final greetings = [
         {'title': '喝杯茶提提神', 'subtitle': '剩下的任务也能轻松搞定～'},
@@ -99,7 +147,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 18:00 - 20:00: 下班 / 放学 / 准备晚餐
     if (hour >= 18 && hour < 20) {
       final greetings = [
         {'title': '回家路上慢点', 'subtitle': '今晚好好放松～'},
@@ -109,7 +156,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 20:00 - 22:00: 休闲放松 / 陪伴家人
     if (hour >= 20 && hour < 22) {
       final greetings = [
         {'title': '晚上好！', 'subtitle': '享受属于自己的时光吧～'},
@@ -119,7 +165,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    // 22:00 - 02:00: 睡前放松 / 深夜未眠
     final greetings = [
       {'title': '放下手机早点睡', 'subtitle': '明天才能元气满满～'},
       {'title': '深夜了', 'subtitle': '好好和今天说晚安～'},
@@ -130,66 +175,48 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   @override
   void initState() {
     super.initState();
-    _syncMemoryCount();
+    _searchController.addListener(_handleSearchQueryChanged);
+    _searchFocusNode.addListener(_handleSearchFocusChanged);
+    _conversationListChangedSubscription = AssistsMessageService
+        .conversationListChangedStream
+        .listen((_) {
+          unawaited(_loadConversations());
+        });
     _loadConversations();
   }
 
   @override
-  void didUpdateWidget(covariant HomeDrawer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.memoryCount != oldWidget.memoryCount) {
-      if (widget.memoryCount != null) {
-        setState(() {
-          _localMemoryCount = widget.memoryCount!;
-        });
-      } else if (oldWidget.memoryCount != null) {
-        _loadMemoryCount();
-      }
-    }
+  void dispose() {
+    _searchDebounceTimer?.cancel();
+    _conversationListChangedSubscription?.cancel();
+    _searchController
+      ..removeListener(_handleSearchQueryChanged)
+      ..dispose();
+    _searchFocusNode
+      ..removeListener(_handleSearchFocusChanged)
+      ..dispose();
+    super.dispose();
   }
 
   void reloadConversations() {
     _loadConversations();
-    _syncMemoryCount();
   }
 
-  void _syncMemoryCount() {
-    if (widget.memoryCount != null) {
-      _localMemoryCount = widget.memoryCount!;
-    } else {
-      _loadMemoryCount();
-    }
-    _loadCloudMemoryCount();
-    _loadSkillCounts();
-  }
+  bool get _isSearchActive => _searchQuery.isNotEmpty;
 
-  Future<void> _loadMemoryCount() async {
-    try {
-      final favoriteRecords = await CacheUtil.getAllFavoriteRecords();
-      if (mounted) {
-        setState(() {
-          _localMemoryCount = favoriteRecords.length;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading memory count: $e');
-    }
-  }
+  String get _searchQuery => _searchController.text.trim();
 
-  Future<void> _loadCloudMemoryCount() async {
-    try {
-      final snapshot = await Mem0MemoryService.getMemories(limit: 200);
-      if (!mounted) return;
-      setState(() {
-        _cloudMemoryCount = snapshot.configured ? snapshot.items.length : 0;
-      });
-    } catch (e) {
-      debugPrint('Error loading cloud memory count: $e');
-      if (!mounted) return;
-      setState(() {
-        _cloudMemoryCount = 0;
-      });
+  List<_ConversationSearchResult> get _visibleConversationResults {
+    if (_isSearchActive) {
+      return _searchResults;
     }
+    return _allConversations
+        .where((conversation) => !conversation.isArchived)
+        .map(
+          (conversation) =>
+              _ConversationSearchResult(conversation: conversation),
+        )
+        .toList(growable: false);
   }
 
   Future<void> _loadConversations() async {
@@ -199,45 +226,80 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     });
 
     try {
-      final loadedConversations =
-          await ConversationService.getAllConversations();
+      final loadedConversations = await ConversationService.getAllConversations(
+        includeArchived: true,
+      );
       debugPrint('[HomeDrawer] 加载到 ${loadedConversations.length} 条聊天记录');
-      if (mounted) {
-        setState(() {
-          conversations = loadedConversations;
-          isLoadingConversations = false;
-        });
+      if (!mounted) return;
+      final visibleThreadKeys = loadedConversations
+          .map((conversation) => conversation.threadKey)
+          .toSet();
+      setState(() {
+        _allConversations = loadedConversations;
+        _conversationSearchCache.removeWhere(
+          (threadKey, _) => !visibleThreadKeys.contains(threadKey),
+        );
+        isLoadingConversations = false;
+      });
+      if (_isSearchActive) {
+        _scheduleConversationSearch(immediate: true);
       }
     } catch (e) {
       debugPrint('[HomeDrawer] 加载聊天记录出错: $e');
-      if (mounted) {
-        setState(() {
-          isLoadingConversations = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        isLoadingConversations = false;
+      });
     }
   }
 
-  Future<void> _loadSkillCounts() async {
-    try {
-      final skills = await AgentSkillStoreService.listSkills();
-      if (!mounted) return;
-      setState(() {
-        _installedSkillCount = skills.where((item) => item.installed).length;
-        _enabledSkillCount = skills
-            .where((item) => item.installed && item.enabled)
-            .length;
-      });
-    } catch (e) {
-      debugPrint('Error loading skill count: $e');
+  bool get _shouldCloseOnNavigate => widget.closeOnNavigate && !widget.embedded;
+
+  Color get _drawerBackgroundColor {
+    if (!context.isDarkTheme) {
+      return AppColors.background;
     }
+    return context.omniPalette.pageBackground;
+  }
+
+  Color get _drawerTextColor {
+    if (!context.isDarkTheme) {
+      return AppColors.text;
+    }
+    return context.omniPalette.textPrimary;
+  }
+
+  Color get _drawerSecondaryTextColor {
+    if (!context.isDarkTheme) {
+      return AppColors.text.withValues(alpha: 0.4);
+    }
+    return context.omniPalette.textSecondary;
+  }
+
+  void _maybeCloseDrawer() {
+    if (!_shouldCloseOnNavigate || !Navigator.of(context).canPop()) {
+      return;
+    }
+    Navigator.pop(context);
+  }
+
+  void _openThreadTarget(ConversationThreadTarget target) {
+    if (widget.embedded && widget.onThreadTargetSelected != null) {
+      widget.onThreadTargetSelected!(target);
+      return;
+    }
+    _maybeCloseDrawer();
+    GoRouterManager.pushReplacement('/home/chat', extra: target);
+  }
+
+  void _navigateTo(String route) {
+    _maybeCloseDrawer();
+    GoRouterManager.push(route);
   }
 
   void _openNewConversation() {
-    Navigator.pop(context);
-    GoRouterManager.pushReplacement(
-      '/home/chat',
-      extra: ConversationThreadTarget.newConversation(
+    _openThreadTarget(
+      ConversationThreadTarget.newConversation(
         mode: widget.newConversationMode,
         requestKey: DateTime.now().microsecondsSinceEpoch.toString(),
       ),
@@ -259,58 +321,370 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      width: MediaQuery.of(context).size.width * 0.8,
-      backgroundColor: AppColors.background,
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 13),
-            _buildUserHeader(),
+  void _handleSearchFocusChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
 
-            const SizedBox(height: 24),
+  void _handleSearchQueryChanged() {
+    if (!mounted) {
+      return;
+    }
+    _searchGeneration += 1;
+    _searchDebounceTimer?.cancel();
 
-            _buildQuickAccessCards(context),
+    if (_searchQuery.isEmpty) {
+      setState(() {
+        _searchResults = <_ConversationSearchResult>[];
+        _isSearching = false;
+      });
+      return;
+    }
 
-            const SizedBox(height: 16),
+    setState(() {});
+    _scheduleConversationSearch();
+  }
 
-            _buildMenuItem(
-              icon: 'assets/home/task_record_icon.svg',
-              title: '任务记录',
-              onTap: () => GoRouterManager.push('/task/execution_history'),
-            ),
+  void _scheduleConversationSearch({bool immediate = false}) {
+    final query = _searchQuery;
+    if (query.isEmpty) {
+      return;
+    }
 
-            _buildMenuItem(
-              icon: 'assets/common/schedule_icon.svg',
-              title: '定时',
-              onTap: () => GoRouterManager.push('/task/scheduled_tasks'),
-            ),
-            const SizedBox(height: 16),
+    final generation = _searchGeneration;
+    _searchDebounceTimer?.cancel();
+    void callback() {
+      unawaited(_performConversationSearch(query, generation: generation));
+    }
 
-            Expanded(child: _buildConversationSection()),
+    if (immediate) {
+      callback();
+      return;
+    }
+    _searchDebounceTimer = Timer(_searchDebounceDuration, callback);
+  }
 
-            const SizedBox(height: 16),
-            _buildMenuSection([
-              _DrawerMenuItem(
-                icon: 'assets/home/setting_icon.svg',
-                title: '设置',
-                onTap: () {
-                  Navigator.pop(context);
-                  GoRouterManager.push('/home/settings');
-                },
-              ),
-            ]),
-            const SizedBox(height: 16),
-          ],
+  Future<void> _performConversationSearch(
+    String query, {
+    required int generation,
+  }) async {
+    final trimmedQuery = query.trim();
+    if (trimmedQuery.isEmpty || generation != _searchGeneration) {
+      return;
+    }
+
+    final queryTokens = _tokenizeSearchQuery(trimmedQuery);
+    if (queryTokens.isEmpty) {
+      if (!mounted || generation != _searchGeneration) {
+        return;
+      }
+      setState(() {
+        _searchResults = <_ConversationSearchResult>[];
+        _isSearching = false;
+      });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSearching = true;
+      });
+    }
+
+    final snapshot = List<ConversationModel>.from(_allConversations);
+    final results = <_ConversationSearchResult>[];
+
+    for (final conversation in snapshot) {
+      if (!mounted || generation != _searchGeneration) {
+        return;
+      }
+      final result = await _matchConversationAgainstQuery(
+        conversation,
+        queryTokens,
+      );
+      if (!mounted || generation != _searchGeneration) {
+        return;
+      }
+      if (result != null) {
+        results.add(result);
+      }
+    }
+
+    if (!mounted || generation != _searchGeneration) {
+      return;
+    }
+    setState(() {
+      _searchResults = results;
+      _isSearching = false;
+    });
+  }
+
+  Future<_ConversationSearchResult?> _matchConversationAgainstQuery(
+    ConversationModel conversation,
+    List<String> queryTokens,
+  ) async {
+    final metadataCandidates = _buildConversationMetadataCandidates(
+      conversation,
+    );
+    if (_matchesSearchTokens(
+      _normalizeSearchText(metadataCandidates.join('\n')),
+      queryTokens,
+    )) {
+      return _ConversationSearchResult(
+        conversation: conversation,
+        matchedPreview: _resolveMatchedPreview(
+          candidates: metadataCandidates,
+          conversation: conversation,
+          queryTokens: queryTokens,
         ),
+      );
+    }
+
+    final searchIndex = await _ensureConversationSearchIndex(conversation);
+    if (!_matchesSearchTokens(searchIndex.searchableText, queryTokens)) {
+      return null;
+    }
+
+    return _ConversationSearchResult(
+      conversation: conversation,
+      matchedPreview: _resolveMatchedPreview(
+        candidates: searchIndex.candidates,
+        conversation: conversation,
+        queryTokens: queryTokens,
       ),
     );
   }
 
-  /// 用户头像和问候语
+  Future<_ConversationSearchIndex> _ensureConversationSearchIndex(
+    ConversationModel conversation,
+  ) async {
+    final signature = _conversationSearchSignature(conversation);
+    final cacheKey = conversation.threadKey;
+    final cached = _conversationSearchCache[cacheKey];
+    if (cached != null && cached.signature == signature) {
+      return cached;
+    }
+
+    final candidates = _buildConversationMetadataCandidates(conversation);
+    final seenCandidates = candidates
+        .map(_normalizeSearchText)
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    final messages = await ConversationHistoryService.getConversationMessages(
+      conversation.id,
+      mode: conversation.mode,
+    );
+
+    for (final message in messages) {
+      for (final fragment in _collectSearchableText(message)) {
+        _addUniqueCandidate(candidates, seenCandidates, fragment);
+      }
+    }
+
+    final searchIndex = _ConversationSearchIndex(
+      signature: signature,
+      candidates: List<String>.unmodifiable(candidates),
+      searchableText: _normalizeSearchText(candidates.join('\n')),
+    );
+    _conversationSearchCache[cacheKey] = searchIndex;
+    return searchIndex;
+  }
+
+  List<String> _buildConversationMetadataCandidates(
+    ConversationModel conversation,
+  ) {
+    final candidates = <String>[];
+    final seenCandidates = <String>{};
+    _addUniqueCandidate(
+      candidates,
+      seenCandidates,
+      _resolveConversationTitle(conversation),
+    );
+    _addUniqueCandidate(candidates, seenCandidates, conversation.summary);
+    _addUniqueCandidate(
+      candidates,
+      seenCandidates,
+      conversation.contextSummary,
+    );
+    _addUniqueCandidate(candidates, seenCandidates, conversation.lastMessage);
+    return candidates;
+  }
+
+  List<String> _collectSearchableText(ChatMessageModel message) {
+    final fragments = <String>[];
+    final seenCandidates = <String>{};
+    _collectSearchableTextFromValue(
+      message.content,
+      sink: fragments,
+      seenNormalized: seenCandidates,
+    );
+    return fragments;
+  }
+
+  void _collectSearchableTextFromValue(
+    dynamic value, {
+    required List<String> sink,
+    required Set<String> seenNormalized,
+  }) {
+    if (value == null) {
+      return;
+    }
+    if (value is String) {
+      _addUniqueCandidate(sink, seenNormalized, value);
+      return;
+    }
+    if (value is List) {
+      for (final item in value) {
+        _collectSearchableTextFromValue(
+          item,
+          sink: sink,
+          seenNormalized: seenNormalized,
+        );
+      }
+      return;
+    }
+    if (value is Map) {
+      for (final item in value.values) {
+        _collectSearchableTextFromValue(
+          item,
+          sink: sink,
+          seenNormalized: seenNormalized,
+        );
+      }
+    }
+  }
+
+  void _addUniqueCandidate(
+    List<String> candidates,
+    Set<String> seenNormalized,
+    String? rawValue,
+  ) {
+    final normalized = _normalizeSearchText(rawValue ?? '');
+    if (normalized.isEmpty || !seenNormalized.add(normalized)) {
+      return;
+    }
+    candidates.add((rawValue ?? '').replaceAll(RegExp(r'\s+'), ' ').trim());
+  }
+
+  List<String> _tokenizeSearchQuery(String value) {
+    return _normalizeSearchText(value)
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  String _normalizeSearchText(String value) {
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+  }
+
+  bool _matchesSearchTokens(String searchableText, List<String> queryTokens) {
+    if (searchableText.isEmpty || queryTokens.isEmpty) {
+      return false;
+    }
+    return queryTokens.every(searchableText.contains);
+  }
+
+  String? _resolveMatchedPreview({
+    required List<String> candidates,
+    required ConversationModel conversation,
+    required List<String> queryTokens,
+  }) {
+    final title = _resolveConversationTitle(conversation);
+    for (final candidate in candidates) {
+      final normalized = _normalizeSearchText(candidate);
+      if (_matchesSearchTokens(normalized, queryTokens) &&
+          candidate.trim() != title) {
+        return candidate.trim();
+      }
+    }
+    for (final candidate in candidates) {
+      final normalized = _normalizeSearchText(candidate);
+      if (queryTokens.any(normalized.contains) && candidate.trim() != title) {
+        return candidate.trim();
+      }
+    }
+    return null;
+  }
+
+  String _conversationSearchSignature(ConversationModel conversation) {
+    return [
+      conversation.threadKey,
+      conversation.updatedAt,
+      conversation.messageCount,
+      conversation.isArchived ? 1 : 0,
+      conversation.title,
+      conversation.summary ?? '',
+      conversation.contextSummary ?? '',
+      conversation.lastMessage ?? '',
+    ].join('|');
+  }
+
+  void _replaceConversationInState(ConversationModel updatedConversation) {
+    final allConversations = List<ConversationModel>.from(_allConversations);
+    final allIndex = allConversations.indexWhere(
+      (item) => item.threadKey == updatedConversation.threadKey,
+    );
+    if (allIndex >= 0) {
+      allConversations[allIndex] = updatedConversation;
+    }
+
+    final searchResults = List<_ConversationSearchResult>.from(_searchResults);
+    final searchIndex = searchResults.indexWhere(
+      (item) => item.conversation.threadKey == updatedConversation.threadKey,
+    );
+    if (searchIndex >= 0) {
+      searchResults[searchIndex] = searchResults[searchIndex].copyWith(
+        conversation: updatedConversation,
+      );
+    }
+
+    _conversationSearchCache.remove(updatedConversation.threadKey);
+    _allConversations = allConversations;
+    _searchResults = searchResults;
+  }
+
+  void _removeConversationFromState(ConversationModel conversation) {
+    _allConversations = List<ConversationModel>.from(_allConversations)
+      ..removeWhere((item) => item.threadKey == conversation.threadKey);
+    _searchResults = List<_ConversationSearchResult>.from(_searchResults)
+      ..removeWhere(
+        (item) => item.conversation.threadKey == conversation.threadKey,
+      );
+    _conversationSearchCache.remove(conversation.threadKey);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final backgroundColor = _drawerBackgroundColor;
+    final content = ColoredBox(
+      color: backgroundColor,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            _buildUserHeader(),
+            const SizedBox(height: 20),
+            Expanded(child: _buildConversationSection()),
+            const SizedBox(height: 12),
+            _buildFooterShortcutBar(),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (widget.embedded) {
+      return content;
+    }
+    return Drawer(
+      width: MediaQuery.of(context).size.width * 0.8,
+      backgroundColor: backgroundColor,
+      child: content,
+    );
+  }
+
   Widget _buildUserHeader() {
     final greeting = _getGreetingByTime();
 
@@ -321,19 +695,19 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         children: [
           Text(
             greeting['title'] ?? '你好！',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w400,
-              color: AppColors.text,
+              color: _drawerTextColor,
               height: 1.5,
             ),
           ),
           Text(
             greeting['subtitle'] ?? '欢迎使用小万',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w400,
-              color: AppColors.text,
+              color: _drawerTextColor,
               height: 1.5,
             ),
           ),
@@ -342,273 +716,43 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
   }
 
-  /// 快捷访问卡片
-  Widget _buildQuickAccessCards(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildQuickCard(
-              title: '记忆中心',
-              subtitle: '记忆 $_totalMemoryCount 碎片',
-              gradient: const LinearGradient(
-                begin: Alignment(-0.17, -0.47),
-                end: Alignment(1.48, 1.69),
-                colors: [Color(0xFF0056FA), Color(0xB2609CF7)],
-              ),
-              onTap: () {
-                GoRouterManager.push("/memory/memory_center_page");
-              },
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildQuickCard(
-              title: '技能仓库',
-              subtitle: '启用 $_enabledSkillCount / $_installedSkillCount 技能',
-              gradient: const LinearGradient(
-                begin: Alignment(-0.17, -0.47),
-                end: Alignment(1.48, 1.69),
-                colors: [Color(0xFF0056FA), Color(0xB2609CF7)],
-              ),
-              onTap: () {
-                GoRouterManager.push('/home/skill_store');
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 快捷卡片组件
-  Widget _buildQuickCard({
-    required String title,
-    required String subtitle,
-    required Gradient gradient,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.white,
-                fontFamily: 'PingFang SC',
-                height: 1.3,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w400,
-                color: Colors.white.withOpacity(0.8),
-                fontFamily: 'PingFang SC',
-                height: 1.2,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 单个菜单项（白色背景卡片）
-  Widget _buildMenuItem({
-    required String icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(4),
-          boxShadow: [AppColors.boxShadow],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-              child: Row(
-                children: [
-                  // Icon placeholder - 使用 Container 代替实际图标
-                  SvgPicture.asset(
-                    icon,
-                    width: 16,
-                    height: 16,
-                    color: AppColors.text,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Icon(Icons.settings, size: 16, color: AppColors.text),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.text,
-                      fontFamily: 'PingFang SC',
-                      height: 1.57,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 菜单组（白色背景卡片，包含多个菜单项）
-  Widget _buildMenuSection(List<_DrawerMenuItem> items) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(4),
-          boxShadow: [AppColors.boxShadow],
-        ),
-        child: Column(
-          children: [
-            for (int index = 0; index < items.length; index++) ...[
-              if (index > 0)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(
-                    height: 0.5,
-                    thickness: 0.5,
-                    color: AppColors.borderStandard,
-                  ),
-                ),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: items[index].onTap,
-                  borderRadius: BorderRadius.vertical(
-                    top: index == 0 ? const Radius.circular(4) : Radius.zero,
-                    bottom: index == items.length - 1
-                        ? const Radius.circular(4)
-                        : Radius.zero,
-                  ),
-                  child: Container(
-                    padding: EdgeInsets.fromLTRB(
-                      12,
-                      index == 0 ? 13 : 12,
-                      12,
-                      index == items.length - 1 ? 16 : 12,
-                    ),
-                    child: Row(
-                      children: [
-                        // Icon placeholder
-                        SvgPicture.asset(
-                          items[index].icon,
-                          width: 16,
-                          height: 16,
-                          color: AppColors.text,
-                          errorBuilder: (context, error, stackTrace) => Icon(
-                            Icons.settings,
-                            size: 16,
-                            color: AppColors.text,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          items[index].title,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.text,
-                            fontFamily: 'PingFang SC',
-                            height: 1.57,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildConversationSection() {
+    final visibleConversationResults = _visibleConversationResults;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [AppColors.boxShadow],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '聊天记录',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.text,
-                  ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: HomeDrawerSearchField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  isSearching: _isSearching,
+                  textColor: _drawerTextColor,
                 ),
-                Row(
-                  children: [
-                    _buildIconActionButton(
-                      iconPath: 'assets/home/archive_icon.svg',
-                      onTap: () {
-                        Navigator.pop(context);
-                        GoRouterManager.push('/home/archived_conversations');
-                      },
-                    ),
-                    const SizedBox(width: 12),
-                    _buildIconActionButton(
-                      iconPath: 'assets/home/chat_add_icon.svg',
-                      onTap: _openNewConversation,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              _buildSectionActionButton(
+                iconPath: 'assets/home/archive_icon.svg',
+                tooltip: '归档对话',
+                onTap: () => _navigateTo('/home/archived_conversations'),
+              ),
+              const SizedBox(width: 10),
+              _buildSectionActionButton(
+                iconPath: 'assets/home/chat_add_icon.svg',
+                tooltip: '新对话',
+                onTap: _openNewConversation,
+                isPrimary: true,
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
         Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: isLoadingConversations
                 ? Center(
                     child: SizedBox(
@@ -617,22 +761,27 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          AppColors.text,
+                          _drawerTextColor,
                         ),
                       ),
                     ),
                   )
-                : conversations.isEmpty
-                ? _buildEmptyConversation()
+                : visibleConversationResults.isEmpty
+                ? _isSearchActive
+                      ? (_isSearching
+                            ? _buildSearchingConversationState()
+                            : _buildEmptySearchResult())
+                      : _buildEmptyConversation()
                 : SlidableAutoCloseBehavior(
-                    child: ListView.builder(
+                    child: ListView(
                       padding: EdgeInsets.zero,
-                      itemCount: conversations.length,
-                      itemBuilder: (context, index) {
-                        return _buildSwipeConversationItem(
-                          conversations[index],
-                        );
-                      },
+                      children: _isSearchActive
+                          ? _buildSearchResultChildren(
+                              visibleConversationResults,
+                            )
+                          : _buildConversationTimelineChildren(
+                              visibleConversationResults,
+                            ),
                     ),
                   ),
           ),
@@ -650,10 +799,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           children: [
             Text(
               '暂无聊天记录',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.text.withOpacity(0.4),
-              ),
+              style: TextStyle(fontSize: 14, color: _drawerSecondaryTextColor),
             ),
             const SizedBox(height: 12),
             GestureDetector(
@@ -664,19 +810,15 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment(0.14, -1.09),
-                    end: Alignment(1.10, 1.26),
-                    colors: [Color(0xFF1930D9), Color(0xFF2CA5F0)],
-                  ),
+                  color: context.omniPalette.accentPrimary,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
+                child: Text(
                   '开始对话',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onPrimary,
                   ),
                 ),
               ),
@@ -687,53 +829,386 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
   }
 
-  Widget _buildIconActionButton({
-    required String iconPath,
-    required VoidCallback onTap,
-    bool isPrimary = false,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: isPrimary ? const Color(0xFF1930D9) : Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            if (!isPrimary)
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
+  Widget _buildSearchingConversationState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.2,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                context.omniPalette.accentPrimary,
               ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            '正在搜索对话内容…',
+            style: TextStyle(
+              fontSize: 14,
+              color: _drawerSecondaryTextColor,
+              fontFamily: 'PingFang SC',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptySearchResult() {
+    final palette = context.omniPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: context.isDarkTheme
+                    ? palette.surfaceSecondary
+                    : palette.previewFallback,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.search_off_rounded,
+                size: 22,
+                color: palette.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '没有找到相关对话',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: _drawerTextColor,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '试试更短的关键词，或换一种说法',
+              style: TextStyle(
+                fontSize: 12,
+                color: _drawerSecondaryTextColor,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: _searchController.clear,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: context.isDarkTheme
+                      ? palette.surfaceSecondary
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: palette.borderSubtle),
+                ),
+                child: Text(
+                  '清空搜索',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: _drawerTextColor,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+            ),
           ],
-        ),
-        padding: const EdgeInsets.all(
-          8,
-        ), // Padding to scale down the icon if needed
-        child: SvgPicture.asset(
-          iconPath,
-          width: 16,
-          height: 16,
-          color: isPrimary
-              ? Colors.white
-              : AppColors.text, // Match text color for secondary
         ),
       ),
     );
   }
 
-  /// 单个聊天记录项
+  List<Widget> _buildSearchResultChildren(
+    List<_ConversationSearchResult> results,
+  ) {
+    final palette = context.omniPalette;
+    final children = <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Row(
+          children: [
+            Icon(
+              Icons.manage_search_rounded,
+              size: 16,
+              color: palette.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '搜索结果',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.6,
+                color: palette.textTertiary,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${results.length} 条',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: palette.textTertiary,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+
+    for (int index = 0; index < results.length; index++) {
+      children.add(
+        _buildSwipeConversationItem(
+          results[index],
+          showDivider: index != results.length - 1,
+        ),
+      );
+    }
+    return children;
+  }
+
+  List<Widget> _buildConversationTimelineChildren(
+    List<_ConversationSearchResult> results,
+  ) {
+    final sections = _buildConversationSections(results);
+    final children = <Widget>[];
+    for (int sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
+      final section = sections[sectionIndex];
+      if (sectionIndex > 0) {
+        children.add(const SizedBox(height: 14));
+      }
+      children.add(_buildConversationSectionHeader(section.label));
+      children.add(const SizedBox(height: 4));
+      for (int itemIndex = 0; itemIndex < section.results.length; itemIndex++) {
+        children.add(
+          _buildSwipeConversationItem(
+            section.results[itemIndex],
+            showDivider: itemIndex != section.results.length - 1,
+          ),
+        );
+      }
+    }
+    return children;
+  }
+
+  List<_ConversationSection> _buildConversationSections(
+    List<_ConversationSearchResult> results,
+  ) {
+    final sections = <_ConversationSection>[];
+    for (final result in results) {
+      final conversation = result.conversation;
+      final label = conversation.timeDisplay;
+      if (sections.isEmpty || sections.last.label != label) {
+        sections.add(
+          _ConversationSection(
+            label: label,
+            results: <_ConversationSearchResult>[result],
+          ),
+        );
+      } else {
+        sections.last.results.add(result);
+      }
+    }
+    return sections;
+  }
+
+  Widget _buildConversationSectionHeader(String label) {
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.6,
+              color: palette.textTertiary,
+              fontFamily: 'PingFang SC',
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: palette.borderSubtle.withValues(
+                alpha: context.isDarkTheme ? 0.56 : 0.8,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionActionButton({
+    required String iconPath,
+    required String tooltip,
+    required VoidCallback onTap,
+    bool isPrimary = false,
+  }) {
+    final palette = context.omniPalette;
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: isPrimary
+                ? context.omniPalette.accentPrimary
+                : context.isDarkTheme
+                ? palette.surfaceSecondary
+                : Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              if (!isPrimary && !context.isDarkTheme)
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+            ],
+          ),
+          padding: const EdgeInsets.all(8),
+          child: SvgPicture.asset(
+            iconPath,
+            width: 16,
+            height: 16,
+            colorFilter: ColorFilter.mode(
+              isPrimary
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : _drawerTextColor,
+              BlendMode.srcIn,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFooterShortcutBar() {
+    final items = <_DrawerShortcutAction>[
+      _DrawerShortcutAction(
+        label: '设置',
+        assetPath: 'assets/home/setting_icon.svg',
+        onTap: () => _navigateTo('/home/settings'),
+      ),
+      _DrawerShortcutAction(
+        label: '记忆中心',
+        svgString: _kDrawerMemoryIconSvg,
+        onTap: () => _navigateTo('/memory/memory_center_page'),
+      ),
+      _DrawerShortcutAction(
+        label: '技能仓库',
+        svgString: _kDrawerSkillStoreIconSvg,
+        onTap: () => _navigateTo('/home/skill_store'),
+      ),
+      _DrawerShortcutAction(
+        label: '任务记录',
+        svgString: _kDrawerTaskHistoryIconSvg,
+        onTap: () => _navigateTo('/task/execution_history'),
+      ),
+      _DrawerShortcutAction(
+        label: '定时',
+        assetPath: 'assets/common/schedule_icon.svg',
+        onTap: () => _navigateTo('/task/scheduled_tasks'),
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: items
+            .map((item) => Expanded(child: _buildFooterShortcutButton(item)))
+            .toList(growable: false),
+      ),
+    );
+  }
+
+  Widget _buildFooterShortcutButton(_DrawerShortcutAction item) {
+    final palette = context.omniPalette;
+    final circleColor = context.isDarkTheme
+        ? palette.surfaceSecondary
+        : Colors.white;
+    final iconColor = context.isDarkTheme
+        ? palette.textPrimary
+        : AppColors.text;
+    final icon = item.assetPath != null
+        ? SvgPicture.asset(
+            item.assetPath!,
+            width: 18,
+            height: 18,
+            colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+          )
+        : SvgPicture.string(
+            item.svgString!,
+            width: 18,
+            height: 18,
+            colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+          );
+
+    return Tooltip(
+      message: item.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: item.onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Center(
+              child: Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: circleColor,
+                  shape: BoxShape.circle,
+                  boxShadow: context.isDarkTheme
+                      ? const []
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                ),
+                alignment: Alignment.center,
+                child: icon,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openConversationFromDrawer(ConversationModel conversation) {
     if (_busyConversationKeys.contains(conversation.threadKey)) {
       return;
     }
-
-    Navigator.pop(context);
-    GoRouterManager.pushReplacement(
-      '/home/chat',
-      extra: ConversationThreadTarget.existing(
+    _openThreadTarget(
+      ConversationThreadTarget.existing(
         conversationId: conversation.id,
         mode: conversation.mode,
       ),
@@ -745,7 +1220,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return;
     }
 
-    final originalIndex = conversations.indexWhere(
+    final originalIndex = _allConversations.indexWhere(
       (item) => item.id == conversation.id,
     );
     if (originalIndex < 0) {
@@ -754,8 +1229,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
     setState(() {
       _busyConversationKeys.add(conversation.threadKey);
-      conversations = List<ConversationModel>.from(conversations)
-        ..removeAt(originalIndex);
+      _removeConversationFromState(conversation);
     });
 
     final deleted = await ConversationService.deleteConversation(
@@ -772,16 +1246,19 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     setState(() {
       _busyConversationKeys.remove(conversation.threadKey);
       if (!deleted) {
-        final restoredIndex = originalIndex <= conversations.length
+        final restoredIndex = originalIndex <= _allConversations.length
             ? originalIndex
-            : conversations.length;
-        conversations = List<ConversationModel>.from(conversations)
+            : _allConversations.length;
+        _allConversations = List<ConversationModel>.from(_allConversations)
           ..insert(restoredIndex, conversation);
+        if (_isSearchActive) {
+          _scheduleConversationSearch(immediate: true);
+        }
       }
     });
 
     showToast(
-      deleted ? '\u5df2\u5220\u9664' : '\u5220\u9664\u5931\u8d25',
+      deleted ? '已删除' : '删除失败',
       type: deleted ? ToastType.success : ToastType.error,
     );
   }
@@ -791,20 +1268,26 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return;
     }
 
-    final originalIndex = conversations.indexWhere(
-      (item) => item.id == conversation.id,
+    final originalIndex = _allConversations.indexWhere(
+      (item) => item.threadKey == conversation.threadKey,
     );
     if (originalIndex < 0) {
       return;
     }
 
+    final originalConversation = _allConversations[originalIndex];
+    final archivedConversation = originalConversation.copyWith(
+      isArchived: true,
+    );
+
     setState(() {
       _busyConversationKeys.add(conversation.threadKey);
-      conversations = List<ConversationModel>.from(conversations)
-        ..removeAt(originalIndex);
+      _replaceConversationInState(archivedConversation);
     });
 
-    final archived = await ConversationService.archiveConversation(conversation);
+    final archived = await ConversationService.archiveConversation(
+      originalConversation,
+    );
     if (!mounted) {
       return;
     }
@@ -812,17 +1295,55 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     setState(() {
       _busyConversationKeys.remove(conversation.threadKey);
       if (!archived) {
-        final restoredIndex = originalIndex <= conversations.length
-            ? originalIndex
-            : conversations.length;
-        conversations = List<ConversationModel>.from(conversations)
-          ..insert(restoredIndex, conversation);
+        _replaceConversationInState(originalConversation);
       }
     });
 
     showToast(
       archived ? '已归档' : '归档失败',
       type: archived ? ToastType.success : ToastType.error,
+    );
+  }
+
+  Future<void> _unarchiveConversation(ConversationModel conversation) async {
+    if (_busyConversationKeys.contains(conversation.threadKey)) {
+      return;
+    }
+
+    final originalIndex = _allConversations.indexWhere(
+      (item) => item.threadKey == conversation.threadKey,
+    );
+    if (originalIndex < 0) {
+      return;
+    }
+
+    final originalConversation = _allConversations[originalIndex];
+    final restoredConversation = originalConversation.copyWith(
+      isArchived: false,
+    );
+
+    setState(() {
+      _busyConversationKeys.add(conversation.threadKey);
+      _replaceConversationInState(restoredConversation);
+    });
+
+    final restored = await ConversationService.unarchiveConversation(
+      originalConversation,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _busyConversationKeys.remove(conversation.threadKey);
+      if (!restored) {
+        _replaceConversationInState(originalConversation);
+      }
+    });
+
+    showToast(
+      restored ? '已取消归档' : '取消归档失败',
+      type: restored ? ToastType.success : ToastType.error,
     );
   }
 
@@ -838,36 +1359,60 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             'assets/memory/memory_delete.svg',
             width: _conversationActionIconSize,
             height: _conversationActionIconSize,
-            colorFilter: const ColorFilter.mode(
-              Colors.white,
-              BlendMode.srcIn,
-            ),
+            colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
           ),
         ),
       ),
       ConversationSlideAction(
-        onPressed: () => _archiveConversation(conversation),
-        backgroundColor: AppColors.buttonPrimary,
+        onPressed: () => conversation.isArchived
+            ? _unarchiveConversation(conversation)
+            : _archiveConversation(conversation),
+        backgroundColor: context.isDarkTheme
+            ? Color.lerp(
+                context.omniPalette.surfaceElevated,
+                context.omniPalette.accentPrimary,
+                0.3,
+              )!
+            : AppColors.buttonPrimary,
         borderRadius: _drawerTrailingActionRadius,
         child: Center(
-          child: SvgPicture.asset(
-            'assets/home/archive_icon.svg',
-            width: _conversationActionIconSize,
-            height: _conversationActionIconSize,
-            colorFilter: const ColorFilter.mode(
-              Colors.white,
-              BlendMode.srcIn,
-            ),
-          ),
+          child: conversation.isArchived
+              ? Icon(
+                  Icons.unarchive_outlined,
+                  size: _conversationActionIconSize,
+                  color: Colors.white,
+                )
+              : SvgPicture.asset(
+                  'assets/home/archive_icon.svg',
+                  width: _conversationActionIconSize,
+                  height: _conversationActionIconSize,
+                  colorFilter: const ColorFilter.mode(
+                    Colors.white,
+                    BlendMode.srcIn,
+                  ),
+                ),
         ),
       ),
     ];
   }
 
-  Widget _buildSwipeConversationItem(ConversationModel conversation) {
-    final isBusy = _busyConversationKeys.contains(
-      conversation.threadKey,
-    );
+  String _resolveConversationTitle(ConversationModel conversation) {
+    final title = conversation.title.trim();
+    if (title.isNotEmpty) {
+      return title;
+    }
+    final summary = (conversation.summary ?? '').trim();
+    return summary.isNotEmpty ? summary : '未命名对话';
+  }
+
+  Widget _buildSwipeConversationItem(
+    _ConversationSearchResult result, {
+    required bool showDivider,
+  }) {
+    final conversation = result.conversation;
+    final isBusy = _busyConversationKeys.contains(conversation.threadKey);
+    final title = _resolveConversationTitle(conversation);
+    final showArchivedBadge = _isSearchActive && conversation.isArchived;
 
     return ConversationSlidable(
       itemKey: conversation.threadKey,
@@ -875,154 +1420,98 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       isBusy: isBusy,
       actions: _buildDrawerActions(conversation),
       onDismissed: () => _deleteConversation(conversation),
-      onFullSwipe: () => _archiveConversation(conversation),
-      margin: const EdgeInsets.only(bottom: 6),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
-            onTap: () => _openConversationFromDrawer(conversation),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 9,
+      onFullSwipe: () => conversation.isArchived
+          ? _unarchiveConversation(conversation)
+          : _archiveConversation(conversation),
+      child: Column(
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _openConversationFromDrawer(conversation),
+              borderRadius: BorderRadius.circular(14),
+              splashColor: context.omniPalette.accentPrimary.withValues(
+                alpha: 0.08,
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Row(
+              highlightColor: Colors.transparent,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 9, 2, 9),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
                           child: Text(
-                            conversation.summary ?? conversation.title,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.text,
-                              fontFamily: 'PingFang SC',
-                            ),
+                            title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: _drawerTextColor,
+                              height: 1.35,
+                              fontFamily: 'PingFang SC',
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        ConversationModeBadge(
-                          mode: conversation.mode,
-                          compact: true,
-                        ),
+                        if (showArchivedBadge) ...[
+                          const SizedBox(width: 10),
+                          _buildArchivedBadge(),
+                        ],
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    conversation.timeDisplay,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.text.withOpacity(0.4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildConversationItem(ConversationModel conversation) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: () {
-            Navigator.pop(context);
-            // 使用 pushReplacement 替换当前页面，避免路由栈堆积
-            GoRouterManager.pushReplacement(
-              '/home/chat',
-              extra: ConversationThreadTarget.existing(
-                conversationId: conversation.id,
-                mode: conversation.mode,
-              ),
-            );
-          },
-          onLongPress: () => _showDeleteDialog(conversation),
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                    if (_isSearchActive && result.matchedPreview != null) ...[
+                      const SizedBox(height: 4),
                       Text(
-                        conversation.summary ?? conversation.title,
+                        result.matchedPreview!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.text,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: _drawerSecondaryTextColor,
+                          height: 1.4,
                           fontFamily: 'PingFang SC',
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                  ),
+                  ],
                 ),
-                SizedBox(width: 8),
-                Text(
-                  conversation.timeDisplay,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.text.withOpacity(0.4),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+          if (showDivider) const SizedBox(height: 2),
+        ],
       ),
     );
   }
 
-  void _showDeleteDialog(ConversationModel conversation) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除对话'),
-        content: Text('确定要删除这个对话吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('取消'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final success = await ConversationService.deleteConversation(
-                conversation.id,
-                mode: conversation.mode,
-              );
-              if (success) {
-                setState(() {
-                  conversations.removeWhere((c) => c.id == conversation.id);
-                });
-              }
-            },
-            child: Text('删除', style: TextStyle(color: Colors.red)),
+  Widget _buildArchivedBadge() {
+    final palette = context.omniPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: context.isDarkTheme
+            ? palette.surfaceSecondary
+            : palette.previewFallback,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.archive_outlined, size: 11, color: palette.textSecondary),
+          const SizedBox(width: 4),
+          Text(
+            '已归档',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: palette.textSecondary,
+              fontFamily: 'PingFang SC',
+            ),
           ),
         ],
       ),
@@ -1030,15 +1519,58 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 }
 
-/// 菜单项数据模型
-class _DrawerMenuItem {
-  final String icon;
-  final String title;
-  final VoidCallback onTap;
-
-  _DrawerMenuItem({
-    required this.icon,
-    required this.title,
+class _DrawerShortcutAction {
+  const _DrawerShortcutAction({
+    required this.label,
     required this.onTap,
+    this.assetPath,
+    this.svgString,
+  }) : assert(
+         assetPath != null || svgString != null,
+         'assetPath or svgString is required',
+       );
+
+  final String label;
+  final VoidCallback onTap;
+  final String? assetPath;
+  final String? svgString;
+}
+
+class _ConversationSection {
+  _ConversationSection({required this.label, required this.results});
+
+  final String label;
+  final List<_ConversationSearchResult> results;
+}
+
+class _ConversationSearchIndex {
+  const _ConversationSearchIndex({
+    required this.signature,
+    required this.candidates,
+    required this.searchableText,
   });
+
+  final String signature;
+  final List<String> candidates;
+  final String searchableText;
+}
+
+class _ConversationSearchResult {
+  const _ConversationSearchResult({
+    required this.conversation,
+    this.matchedPreview,
+  });
+
+  final ConversationModel conversation;
+  final String? matchedPreview;
+
+  _ConversationSearchResult copyWith({
+    ConversationModel? conversation,
+    String? matchedPreview,
+  }) {
+    return _ConversationSearchResult(
+      conversation: conversation ?? this.conversation,
+      matchedPreview: matchedPreview ?? this.matchedPreview,
+    );
+  }
 }

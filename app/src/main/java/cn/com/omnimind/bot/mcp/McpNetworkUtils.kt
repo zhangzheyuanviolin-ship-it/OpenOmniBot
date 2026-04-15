@@ -64,12 +64,17 @@ object McpNetworkUtils {
      */
     fun isLanAddress(host: String?): Boolean {
         if (host.isNullOrBlank()) return false
+        val normalizedHost = host.trim().lowercase()
+
+        if (normalizedHost == "localhost") return true
+        if (normalizedHost == "127.0.0.1") return true
+        if (normalizedHost == "::1" || normalizedHost == "[::1]") return true
 
         // RFC1918 私网网段
-        if (host.startsWith("192.168.")) return true
-        if (host.startsWith("10.")) return true
-        if (host.startsWith("172.")) {
-            val parts = host.split(".")
+        if (normalizedHost.startsWith("192.168.")) return true
+        if (normalizedHost.startsWith("10.")) return true
+        if (normalizedHost.startsWith("172.")) {
+            val parts = normalizedHost.split(".")
             if (parts.size >= 2) {
                 val second = parts[1].toIntOrNull()
                 if (second != null && second in 16..31) return true
@@ -77,8 +82,8 @@ object McpNetworkUtils {
         }
 
         // Tailscale / CGNAT 网段（100.64.0.0/10）
-        if (host.startsWith("100.")) {
-            val parts = host.split(".")
+        if (normalizedHost.startsWith("100.")) {
+            val parts = normalizedHost.split(".")
             if (parts.size >= 2) {
                 val second = parts[1].toIntOrNull()
                 if (second != null && second in 64..127) return true
