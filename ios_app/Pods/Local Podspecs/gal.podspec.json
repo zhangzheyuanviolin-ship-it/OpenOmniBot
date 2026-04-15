@@ -1,0 +1,28 @@
+{
+  "name": "gal",
+  "version": "1.0.0",
+  "summary": "Flutter plugin for handle native gallary apps.",
+  "homepage": "https://github.com/natsuk4ze/gal",
+  "license": {
+    "file": "../LICENSE"
+  },
+  "authors": {
+    "Midori Design Studio": "https://midoridesign.studio"
+  },
+  "source": {
+    "path": "."
+  },
+  "source_files": "Classes/**/*",
+  "dependencies": {
+    "Flutter": []
+  },
+  "platforms": {
+    "ios": "11.0"
+  },
+  "pod_target_xcconfig": {
+    "DEFINES_MODULE": "YES",
+    "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "i386"
+  },
+  "swift_versions": "5.0",
+  "swift_version": "5.0"
+}

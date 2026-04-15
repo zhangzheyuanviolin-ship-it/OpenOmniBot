@@ -933,6 +933,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.2"
+  pigeon:
+    dependency: "direct dev"
+    description:
+      name: pigeon
+      sha256: "286b64a30967eac2edc4ca292132fb662b460dd57d085fef5436ed02dd7721e7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "24.2.2"
   platform:
     dependency: transitive
     description:

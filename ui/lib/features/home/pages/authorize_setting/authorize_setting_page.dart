@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_switch/flutter_switch.dart';
+import 'package:ui/generated/host_bridge.g.dart';
 import 'package:ui/theme/app_colors.dart';
+import 'package:ui/services/host_platform_bridge.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -13,15 +17,19 @@ class AuthorizeSettingPage extends StatefulWidget {
   State<AuthorizeSettingPage> createState() => _AuthorizeSettingPageState();
 }
 
-class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with WidgetsBindingObserver {
+class _AuthorizeSettingPageState extends State<AuthorizeSettingPage>
+    with WidgetsBindingObserver {
+  final bool _isIOS = Platform.isIOS;
+
   bool notificationEnabled = true; // 接收消息通知
   bool personalizedEnabled = true; // 个性化推荐
-  
+
   // 权限状态
   bool _backgroundRunning = false;
   bool _overlayPermission = false;
   bool _installedAppsPermission = false;
   bool _accessibilityPermission = false;
+  PermissionSnapshotMessage? _iosPermissionSnapshot;
 
   @override
   void initState() {
@@ -54,17 +62,38 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
         personalizedEnabled = personalized;
       });
     } catch (e) {
-      print('Error loading settings: $e');
+      debugPrint('Error loading settings: $e');
     }
   }
 
   Future<void> _checkPermissions() async {
+    if (_isIOS) {
+      final snapshot = await HostPlatformBridge.tryGetPermissionSnapshot();
+      if (!mounted) return;
+      setState(() {
+        _iosPermissionSnapshot = snapshot;
+        _backgroundRunning = snapshot?.notificationGranted ?? false;
+        _overlayPermission = snapshot?.microphoneGranted ?? false;
+        _installedAppsPermission = snapshot?.filesAccessAvailable ?? false;
+        _accessibilityPermission = snapshot?.speechRecognitionGranted ?? false;
+      });
+      return;
+    }
     try {
-      final backgroundRunning = await spePermission.invokeMethod('isIgnoringBatteryOptimizations') ?? false;
-      final overlayPermission = await spePermission.invokeMethod('isOverlayPermission') ?? false;
-      final installedAppsPermission = await spePermission.invokeMethod('isInstalledAppsPermissionGranted') ?? false;
-      final accessibilityPermission = await spePermission.invokeMethod('isAccessibilityServiceEnabled') ?? false;
-      
+      final backgroundRunning =
+          await spePermission.invokeMethod('isIgnoringBatteryOptimizations') ??
+          false;
+      final overlayPermission =
+          await spePermission.invokeMethod('isOverlayPermission') ?? false;
+      final installedAppsPermission =
+          await spePermission.invokeMethod(
+            'isInstalledAppsPermissionGranted',
+          ) ??
+          false;
+      final accessibilityPermission =
+          await spePermission.invokeMethod('isAccessibilityServiceEnabled') ??
+          false;
+
       if (mounted) {
         setState(() {
           _backgroundRunning = backgroundRunning;
@@ -74,7 +103,7 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
         });
       }
     } catch (e) {
-      print('Error checking permissions: $e');
+      debugPrint('Error checking permissions: $e');
     }
   }
 
@@ -102,51 +131,84 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
                       notificationEnabled = val;
                     });
                   },
-                )
+                ),
               ]),
-              
+
               const SizedBox(height: 10),
-              
+
               // 权限设置组
               _buildSettingsCard([
                 _buildPermissionItem(
-                  title: '后台运行权限',
-                  subtitle: '小万可以在陪伴时更了解您的喜好',
+                  title: _isIOS ? '通知权限' : '后台运行权限',
+                  subtitle: _isIOS ? '用于任务提醒、运行反馈和恢复提示' : '小万可以在陪伴时更了解您的喜好',
                   isEnabled: _backgroundRunning,
                   isTop: true,
                   onTap: () {
-                    spePermission.invokeMethod('openBatteryOptimizationSettings');
+                    if (_isIOS) {
+                      HostPlatformBridge.openSystemSettings();
+                    } else {
+                      spePermission.invokeMethod(
+                        'openBatteryOptimizationSettings',
+                      );
+                    }
                   },
                 ),
                 _buildPermissionItem(
-                  title: '悬浮窗权限',
-                  subtitle: '小万可在屏幕中实时活动，随时给予陪伴',
+                  title: _isIOS ? '麦克风权限' : '悬浮窗权限',
+                  subtitle: _isIOS ? '用于语音输入、录音和实时对话' : '小万可在屏幕中实时活动，随时给予陪伴',
                   isEnabled: _overlayPermission,
                   onTap: () {
-                    spePermission.invokeMethod('openOverlaySettings');
+                    if (_isIOS) {
+                      HostPlatformBridge.openSystemSettings();
+                    } else {
+                      spePermission.invokeMethod('openOverlaySettings');
+                    }
                   },
                 ),
                 _buildPermissionItem(
-                  title: '应用列表读取',
-                  subtitle: '小万可以知道能帮你做什么事情',
+                  title: _isIOS ? '文件访问' : '应用列表读取',
+                  subtitle: _isIOS ? '用于导入导出工作区、模型和附件' : '小万可以知道能帮你做什么事情',
                   isEnabled: _installedAppsPermission,
                   onTap: () {
-                    spePermission.invokeMethod('openInstalledAppsSettings');
+                    if (_isIOS) {
+                      HostPlatformBridge.openSystemSettings();
+                    } else {
+                      spePermission.invokeMethod('openInstalledAppsSettings');
+                    }
                   },
                 ),
                 _buildPermissionItem(
-                  title: '无障碍辅助权限',
-                  subtitle: '小万执行任务时，需要给予我操作的权限',
+                  title: _isIOS ? '语音识别权限' : '无障碍辅助权限',
+                  subtitle: _isIOS ? '用于语音转写和语音命令理解' : '小万执行任务时，需要给予我操作的权限',
                   isEnabled: _accessibilityPermission,
                   isBottom: true,
                   onTap: () {
-                    spePermission.invokeMethod('openAccessibilitySettings');
+                    if (_isIOS) {
+                      HostPlatformBridge.openSystemSettings();
+                    } else {
+                      spePermission.invokeMethod('openAccessibilitySettings');
+                    }
                   },
                 ),
               ]),
-              
+
+              if (_isIOS && _iosPermissionSnapshot != null) ...[
+                const SizedBox(height: 10),
+                _buildSettingsCard([
+                  _buildSimpleItem(
+                    title: '打开系统设置',
+                    subtitle: '在 iOS 系统设置中管理通知、麦克风、语音识别与文件访问',
+                    isTop: true,
+                    isBottom: true,
+                    onTap: () {
+                      HostPlatformBridge.openSystemSettings();
+                    },
+                  ),
+                ]),
+              ],
+
               const SizedBox(height: 10),
-              
+
               // 清除缓存
               _buildSettingsCard([
                 _buildSimpleItem(
@@ -173,15 +235,13 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
         borderRadius: BorderRadius.circular(4),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 4,
             spreadRadius: 2,
           ),
         ],
       ),
-      child: Column(
-        children: children,
-      ),
+      child: Column(children: children),
     );
   }
 
@@ -292,7 +352,9 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
                     isEnabled ? '已开启' : '去开启',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isEnabled ? const Color(0xFF999999) : const Color(0xFF3B74FF),
+                      color: isEnabled
+                          ? const Color(0xFF999999)
+                          : const Color(0xFF3B74FF),
                       fontFamily: 'PingFang SC',
                     ),
                   ),
@@ -314,6 +376,7 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
   /// 构建简单设置项
   Widget _buildSimpleItem({
     required String title,
+    String? subtitle,
     bool? isTop,
     bool? isBottom,
     required VoidCallback onTap,
@@ -339,6 +402,17 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
                   fontFamily: 'SF Pro',
                 ),
               ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF999999),
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ],
             ],
           ),
         ),

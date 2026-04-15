@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ui/services/host_platform_bridge.dart';
 import 'package:ui/utils/ui.dart';
 
 // The channel name must match the one in MainActivity.kt
@@ -354,6 +355,23 @@ Future<EmbeddedTerminalInitSnapshot> getEmbeddedTerminalInitSnapshot() async {
 }
 
 Future<EmbeddedTerminalRuntimeStatus> getEmbeddedTerminalRuntimeStatus() async {
+  final bridgeStatus = await HostPlatformBridge.tryInspectTerminalRuntime();
+  if (bridgeStatus != null) {
+    return EmbeddedTerminalRuntimeStatus(
+      supported: bridgeStatus.supported,
+      runtimeReady: bridgeStatus.runtimeReady,
+      basePackagesReady: bridgeStatus.basePackagesReady,
+      allReady: bridgeStatus.allReady,
+      missingCommands: bridgeStatus.missingCommands,
+      message: bridgeStatus.message,
+      nodeReady: bridgeStatus.nodeReady,
+      nodeVersion: bridgeStatus.nodeVersion,
+      nodeMinMajor: bridgeStatus.nodeMinMajor,
+      pnpmReady: bridgeStatus.pnpmReady,
+      pnpmVersion: bridgeStatus.pnpmVersion,
+      workspaceAccessGranted: bridgeStatus.workspaceAccessGranted,
+    );
+  }
   final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
     'getEmbeddedTerminalRuntimeStatus',
   );
@@ -361,6 +379,12 @@ Future<EmbeddedTerminalRuntimeStatus> getEmbeddedTerminalRuntimeStatus() async {
 }
 
 Future<EmbeddedTerminalSetupStatus> getEmbeddedTerminalSetupStatus() async {
+  final packages = await HostPlatformBridge.tryListInstalledPackages();
+  if (packages != null) {
+    return EmbeddedTerminalSetupStatus(
+      packages: {for (final package in packages) package: true},
+    );
+  }
   final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
     'getEmbeddedTerminalSetupStatus',
   );
@@ -369,6 +393,18 @@ Future<EmbeddedTerminalSetupStatus> getEmbeddedTerminalSetupStatus() async {
 
 Future<EmbeddedTerminalSetupInventory>
 getEmbeddedTerminalSetupInventory() async {
+  final packages = await HostPlatformBridge.tryListInstalledPackages();
+  if (packages != null) {
+    return EmbeddedTerminalSetupInventory(
+      packages: {
+        for (final package in packages)
+          package: const EmbeddedTerminalSetupInventoryItem(
+            ready: true,
+            version: null,
+          ),
+      },
+    );
+  }
   final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
     'getEmbeddedTerminalSetupInventory',
   );
@@ -386,6 +422,14 @@ getEmbeddedTerminalSetupSessionSnapshot() async {
 Future<EmbeddedTerminalSetupResult> installEmbeddedTerminalPackages(
   List<String> packageIds,
 ) async {
+  final bridgeResult = await HostPlatformBridge.tryInstallPackages(packageIds);
+  if (bridgeResult != null) {
+    return EmbeddedTerminalSetupResult(
+      success: bridgeResult.success,
+      message: bridgeResult.message,
+      output: bridgeResult.output,
+    );
+  }
   final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
     'installEmbeddedTerminalPackages',
     {'packageIds': packageIds},

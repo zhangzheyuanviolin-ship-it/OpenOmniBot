@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/constants/storage_keys.dart';
 import 'package:ui/features/welcome/pages/welcome_page/widgets/auto_start_guide_bottom_sheet.dart';
+import 'package:ui/services/host_platform_bridge.dart';
 import 'package:ui/services/special_permission.dart';
 
 /// 权限层级枚举
@@ -13,7 +16,6 @@ enum PermissionLevel {
   /// 聊天任务执行：全量权限
   fullExecution,
 }
-
 
 /// 权限规格定义
 /// 包含权限的基础信息和操作方法名
@@ -84,10 +86,95 @@ class PermissionRegistry {
   PermissionRegistry._();
 
   /// 获取指定品牌的权限列表
-  /// 
+  ///
   /// [brand] 设备品牌，如 'huawei', 'xiaomi', 'oppo', 'vivo' 等
   /// 返回该品牌需要的权限规格列表
   static List<PermissionSpec> getPermissions({required String brand}) {
+    if (Platform.isIOS) {
+      return [
+        PermissionSpec(
+          id: 'microphone',
+          iconPath: 'assets/welcome/permission_accessibility.svg',
+          iconWidth: 30.0,
+          iconHeight: 30.0,
+          name: '麦克风权限',
+          description: '用于语音输入和录音能力',
+          openMethod: 'openAppDetailsSettings',
+          customCheckMethod: () async {
+            final snapshot =
+                await HostPlatformBridge.tryGetPermissionSnapshot();
+            return snapshot?.microphoneGranted ?? false;
+          },
+          customAuthMethod: (_) async {
+            await HostPlatformBridge.openSystemSettings();
+          },
+          applicableLevels: const {
+            PermissionLevel.companionAutomation,
+            PermissionLevel.fullExecution,
+          },
+        ),
+        PermissionSpec(
+          id: 'speech',
+          iconPath: 'assets/welcome/permission_overlay.svg',
+          iconWidth: 32.0,
+          iconHeight: 32.0,
+          name: '语音识别权限',
+          description: '用于实时语音识别和对话转写',
+          openMethod: 'openAppDetailsSettings',
+          customCheckMethod: () async {
+            final snapshot =
+                await HostPlatformBridge.tryGetPermissionSnapshot();
+            return snapshot?.speechRecognitionGranted ?? false;
+          },
+          customAuthMethod: (_) async {
+            await HostPlatformBridge.openSystemSettings();
+          },
+          applicableLevels: const {
+            PermissionLevel.companionAutomation,
+            PermissionLevel.fullExecution,
+          },
+        ),
+        PermissionSpec(
+          id: 'notifications',
+          iconPath: 'assets/welcome/permission_battery.svg',
+          iconWidth: 32.0,
+          iconHeight: 32.0,
+          name: '通知权限',
+          description: '用于计划任务提醒和运行反馈',
+          openMethod: 'openAppDetailsSettings',
+          customCheckMethod: () async {
+            final snapshot =
+                await HostPlatformBridge.tryGetPermissionSnapshot();
+            return snapshot?.notificationGranted ?? false;
+          },
+          customAuthMethod: (_) async {
+            await HostPlatformBridge.openSystemSettings();
+          },
+          applicableLevels: const {
+            PermissionLevel.companionAutomation,
+            PermissionLevel.fullExecution,
+          },
+        ),
+        PermissionSpec(
+          id: 'files',
+          iconPath: 'assets/welcome/permission_installed_apps.svg',
+          iconWidth: 32.0,
+          iconHeight: 32.0,
+          name: '文件访问',
+          description: '用于导入导出工作区文件和模型资源',
+          openMethod: 'openAppDetailsSettings',
+          customCheckMethod: () async {
+            final snapshot =
+                await HostPlatformBridge.tryGetPermissionSnapshot();
+            return snapshot?.filesAccessAvailable ?? false;
+          },
+          customAuthMethod: (_) async {
+            await HostPlatformBridge.openSystemSettings();
+          },
+          applicableLevels: const {PermissionLevel.fullExecution},
+        ),
+      ];
+    }
     // 基础权限列表（所有品牌通用）
     final basePermissions = [
       PermissionSpec(
@@ -145,7 +232,7 @@ class PermissionRegistry {
     final normalizedBrand = brand.toLowerCase();
 
     switch (normalizedBrand) {
-  /// 构建自启动权限（仅华为和荣耀机型）
+      /// 构建自启动权限（仅华为和荣耀机型）
       case 'honor':
         return [
           PermissionSpec(
@@ -161,7 +248,10 @@ class PermissionRegistry {
               PermissionLevel.fullExecution,
             },
             customCheckMethod: () async {
-              return StorageService.getBool(StorageKeys.autoStartPermissionGranted) ?? false;
+              return StorageService.getBool(
+                    StorageKeys.autoStartPermissionGranted,
+                  ) ??
+                  false;
             },
             customAuthMethod: (BuildContext context) async {
               await AutoStartGuideBottomSheet.show(
@@ -170,11 +260,14 @@ class PermissionRegistry {
                   await spePermission.invokeMethod('openAutoStartSettings');
                 },
                 onCompleted: () async {
-                  await StorageService.setBool(StorageKeys.autoStartPermissionGranted, true);
+                  await StorageService.setBool(
+                    StorageKeys.autoStartPermissionGranted,
+                    true,
+                  );
                 },
               );
             },
-          )
+          ),
         ];
       default:
         // 其他品牌无额外权限
@@ -184,12 +277,23 @@ class PermissionRegistry {
 
   /// 各权限层级对应的权限ID列表
   static const Map<PermissionLevel, List<String>> _levelPermissionIds = {
-    PermissionLevel.companionAutomation: ['overlay', 'battery', 'accessibility'],
+    PermissionLevel.companionAutomation: [
+      'overlay',
+      'battery',
+      'accessibility',
+      'microphone',
+      'speech',
+      'notifications',
+    ],
     PermissionLevel.fullExecution: [
       'overlay',
       'battery',
       'installed_apps',
       'accessibility',
+      'microphone',
+      'speech',
+      'notifications',
+      'files',
     ],
   };
 

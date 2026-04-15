@@ -33,6 +33,11 @@ class ChatBrowserOverlay extends StatelessWidget {
     final dragText = resolvedUrl.isNotEmpty
         ? '${resolvedTitle == defaultTitle ? '' : '$resolvedTitle · '}$resolvedUrl'
         : resolvedTitle;
+    final creationParams = <String, dynamic>{
+      'workspaceId': workspaceId,
+      'currentUrl': currentUrl,
+      'title': title,
+    };
     return Material(
       elevation: 18,
       color: Colors.transparent,
@@ -98,25 +103,28 @@ class ChatBrowserOverlay extends StatelessWidget {
                 Expanded(
                   child: ColoredBox(
                     color: const Color(0xFFF4F7FB),
-                    child: Platform.isAndroid
-                        ? AndroidView(
-                            viewType:
-                                AgentBrowserSessionService.platformViewType,
-                            creationParams: <String, dynamic>{
-                              'workspaceId': workspaceId,
-                            },
-                            creationParamsCodec: const StandardMessageCodec(),
-                          )
-                        : Center(
-                            child: Text(
-                              context.l10n.browserOverlayUnsupported,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF617390),
-                              ),
-                            ),
+                    child: switch (Platform.operatingSystem) {
+                      'android' => AndroidView(
+                        viewType: AgentBrowserSessionService.platformViewType,
+                        creationParams: creationParams,
+                        creationParamsCodec: const StandardMessageCodec(),
+                      ),
+                      'ios' => UiKitView(
+                        viewType: AgentBrowserSessionService.platformViewType,
+                        creationParams: creationParams,
+                        creationParamsCodec: const StandardMessageCodec(),
+                      ),
+                      _ => Center(
+                        child: Text(
+                          context.l10n.browserOverlayUnsupported,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF617390),
                           ),
+                        ),
+                      ),
+                    },
                   ),
                 ),
               ],
@@ -127,7 +135,7 @@ class ChatBrowserOverlay extends StatelessWidget {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onPanUpdate: (details) => onResizeLeftDelta(details.delta),
-                child: Container(width: 32, height: 28),
+                child: const SizedBox(width: 32, height: 28),
               ),
             ),
             Positioned(
@@ -136,7 +144,7 @@ class ChatBrowserOverlay extends StatelessWidget {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onPanUpdate: (details) => onResizeRightDelta(details.delta),
-                child: Container(width: 32, height: 28),
+                child: const SizedBox(width: 32, height: 28),
               ),
             ),
           ],

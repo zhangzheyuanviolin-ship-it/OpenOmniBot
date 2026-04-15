@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:ui/generated/host_bridge.g.dart';
+import 'package:ui/services/host_platform_bridge.dart';
 
 const String _llamaCppBackend = 'llama.cpp';
 const String _omniinferMnnBackend = 'omniinfer-mnn';
@@ -16,6 +18,24 @@ String _normalizeInferenceBackend(Object? raw) {
     default:
       return _llamaCppBackend;
   }
+}
+
+MnnLocalConfig _configFromBridgeStatus(LocalModelStatusMessage status) {
+  return MnnLocalConfig(
+    backend: _normalizeInferenceBackend(status.backend),
+    autoStartOnAppOpen: false,
+    apiRunning: status.apiRunning,
+    apiReady: status.apiReady,
+    apiState: status.apiState,
+    apiHost: status.apiHost,
+    apiPort: status.apiPort,
+    baseUrl: status.baseUrl,
+    activeModelId: status.activeModelId ?? '',
+    downloadProvider: 'OmniInfer',
+    availableSources: const <String>['bundled', 'workspace'],
+    loadedBackend: _normalizeInferenceBackend(status.loadedBackend),
+    loadedModelId: status.loadedModelId ?? '',
+  );
 }
 
 class MnnLocalDownloadInfo {
@@ -273,14 +293,12 @@ class MnnLocalModelsService {
     String marketQuery = '',
     String marketCategory = 'llm',
   }) async {
-    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-      'getOverview',
-      {
-        'installedQuery': installedQuery,
-        'marketQuery': marketQuery,
-        'marketCategory': marketCategory.trim().toLowerCase(),
-      },
-    );
+    final result = await _channel
+        .invokeMethod<Map<dynamic, dynamic>>('getOverview', {
+          'installedQuery': installedQuery,
+          'marketQuery': marketQuery,
+          'marketCategory': marketCategory.trim().toLowerCase(),
+        });
     return MnnLocalOverviewPayload.fromMap(result);
   }
 
@@ -323,6 +341,10 @@ class MnnLocalModelsService {
   }
 
   static Future<MnnLocalConfig> getConfig() async {
+    final bridgeStatus = await HostPlatformBridge.tryGetLocalModelStatus();
+    if (bridgeStatus != null) {
+      return _configFromBridgeStatus(bridgeStatus);
+    }
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'getConfig',
     );
@@ -335,20 +357,27 @@ class MnnLocalModelsService {
     String? activeModelId,
     String? downloadProvider,
   }) async {
-    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-      'saveConfig',
-      {
-        if (autoStartOnAppOpen != null)
-          'autoStartOnAppOpen': autoStartOnAppOpen,
-        if (apiPort != null) 'apiPort': apiPort,
-        if (activeModelId != null) 'activeModelId': activeModelId,
-        if (downloadProvider != null) 'downloadProvider': downloadProvider,
-      },
-    );
+    final result = await _channel
+        .invokeMethod<Map<dynamic, dynamic>>('saveConfig', {
+          if (autoStartOnAppOpen != null)
+            'autoStartOnAppOpen': autoStartOnAppOpen,
+          if (apiPort != null) 'apiPort': apiPort,
+          if (activeModelId != null) 'activeModelId': activeModelId,
+          if (downloadProvider != null) 'downloadProvider': downloadProvider,
+        });
     return MnnLocalConfig.fromMap(result);
   }
 
   static Future<MnnLocalConfig> setActiveModel(String? modelId) async {
+    if (modelId != null) {
+      final bridgeStatus = await HostPlatformBridge.tryLoadModel(
+        modelId: modelId,
+        backendId: await getBackend(),
+      );
+      if (bridgeStatus != null) {
+        return _configFromBridgeStatus(bridgeStatus);
+      }
+    }
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'setActiveModel',
       {'modelId': modelId},
@@ -357,6 +386,13 @@ class MnnLocalModelsService {
   }
 
   static Future<MnnLocalConfig> startApiService({String? modelId}) async {
+    final bridgeStatus = await HostPlatformBridge.tryLoadModel(
+      modelId: modelId ?? '',
+      backendId: await getBackend(),
+    );
+    if (bridgeStatus != null) {
+      return _configFromBridgeStatus(bridgeStatus);
+    }
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'startApiService',
       {'modelId': modelId},
@@ -365,6 +401,10 @@ class MnnLocalModelsService {
   }
 
   static Future<MnnLocalConfig> stopApiService() async {
+    final bridgeStatus = await HostPlatformBridge.tryStopModel();
+    if (bridgeStatus != null) {
+      return _configFromBridgeStatus(bridgeStatus);
+    }
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'stopApiService',
     );
@@ -389,15 +429,22 @@ class MnnLocalModelsService {
   }
 
   static Future<String> getBackend() async {
+    final bridgeStatus = await HostPlatformBridge.tryGetLocalModelStatus();
+    if (bridgeStatus != null) {
+      return _normalizeInferenceBackend(bridgeStatus.backend);
+    }
     final result = await _channel.invokeMethod<String>('getBackend');
     return _normalizeInferenceBackend(result);
   }
 
   static Future<String> setBackend(String backend) async {
-    final result = await _channel.invokeMethod<String>(
-      'setBackend',
-      {'backend': backend},
-    );
+    final bridgeStatus = await HostPlatformBridge.tryGetLocalModelStatus();
+    if (bridgeStatus != null) {
+      return _normalizeInferenceBackend(backend);
+    }
+    final result = await _channel.invokeMethod<String>('setBackend', {
+      'backend': backend,
+    });
     return _normalizeInferenceBackend(result ?? backend);
   }
 }

@@ -225,7 +225,8 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
       return;
     }
     _cancelNormalSurfaceModelReveal();
-    if (!Platform.isAndroid) {
+    final capabilities = await HostPlatformBridge.getCapabilities();
+    if (!capabilities.supportsInAppBrowserAutomation) {
       showToast('当前平台暂不支持浏览器工具视图', type: ToastType.warning);
       return;
     }

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
+import 'package:ui/services/host_platform_bridge.dart';
 import 'package:ui/services/special_permission.dart';
 
 class OmnibotResourceMetadata {
@@ -97,6 +98,15 @@ class OmnibotResourceService {
   }
 
   static Future<OmnibotWorkspacePaths> _loadWorkspacePaths() async {
+    final bridgeResult = await HostPlatformBridge.tryResolveWorkspacePaths();
+    if (bridgeResult != null) {
+      _workspacePaths = OmnibotWorkspacePaths(
+        rootPath: bridgeResult.rootPath,
+        shellRootPath: bridgeResult.shellRootPath,
+        internalRootPath: bridgeResult.internalRootPath,
+      );
+      return _workspacePaths;
+    }
     try {
       final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
         'getWorkspacePathSnapshot',

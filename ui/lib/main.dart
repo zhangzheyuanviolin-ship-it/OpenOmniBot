@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ui/l10n/app_locale_controller.dart';
 import 'package:ui/l10n/generated/app_localizations.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/app_background_service.dart';
+import 'package:ui/services/host_platform_bridge.dart';
 import 'package:ui/services/scheduled_task_scheduler_service.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/theme/app_theme_controller.dart';
@@ -47,6 +47,7 @@ void main(List<String> args) async {
   await StorageService.init();
   await AppBackgroundService.load();
   await ScheduledTaskSchedulerService.initialize();
+  await HostPlatformBridge.getCapabilities();
   await OmnibotResourceService.ensureWorkspacePathsLoaded();
   SystemChrome.setSystemUIOverlayStyle(
     AppTheme.overlayStyleForBrightness(
@@ -84,6 +85,7 @@ void subEngineMain(List<String> args) async {
   await StorageService.init();
   await AppBackgroundService.load();
   await ScheduledTaskSchedulerService.initialize();
+  await HostPlatformBridge.getCapabilities();
   await OmnibotResourceService.ensureWorkspacePathsLoaded();
   SystemChrome.setSystemUIOverlayStyle(
     AppTheme.overlayStyleForBrightness(
@@ -153,7 +155,8 @@ class _MyAppState extends ConsumerState<MyApp> {
     final themeMode = ref.watch(appThemeModeProvider).materialThemeMode;
     final resolvedLocale = ref.watch(appResolvedLocaleProvider);
     final widget = MaterialApp.router(
-      onGenerateTitle: (context) => AppLocalizations.of(context)?.appName ?? 'Omnibot',
+      onGenerateTitle: (context) =>
+          AppLocalizations.of(context)?.appName ?? 'Omnibot',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,

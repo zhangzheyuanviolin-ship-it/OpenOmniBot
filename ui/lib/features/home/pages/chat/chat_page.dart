@@ -32,6 +32,7 @@ import 'package:ui/services/conversation_model_override_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/device_service.dart';
+import 'package:ui/services/host_platform_bridge.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/permission_registry.dart';
