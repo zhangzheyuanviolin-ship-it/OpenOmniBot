@@ -141,6 +141,21 @@ List<GoRoute> homeRoutes = [
       return ChatPage(threadTarget: _parseChatThreadTarget(state));
     },
   ),
+  GoRoute(
+    path: '/home/chat_detail',
+    name: 'home/chat_detail',
+    builder: (context, state) {
+      return ChatPage(threadTarget: _parseChatThreadTarget(state));
+    },
+  ),
+  GoRoute(
+    path: '/home/conversations',
+    name: 'home/conversations',
+    builder: (context, state) => const ChatHistoryPage(
+      presentation: ChatHistoryPagePresentation.iosHome,
+      chatRoute: '/home/chat_detail',
+    ),
+  ),
 
   // 聊天归档页（保留旧路径兼容）
   GoRoute(
@@ -234,6 +249,11 @@ List<GoRoute> homeRoutes = [
   ),
 
   // 设置页
+  GoRoute(
+    path: '/home/settings_root',
+    name: 'home/settings_root',
+    builder: (context, state) => const SettingsPage(showBackButton: false),
+  ),
   GoRoute(
     path: '/home/settings',
     name: 'home/settings',

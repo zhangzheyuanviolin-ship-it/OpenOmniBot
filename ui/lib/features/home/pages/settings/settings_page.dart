@@ -19,7 +19,9 @@ import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -245,7 +247,9 @@ class _SettingsPageState extends State<SettingsPage> {
               const SizedBox(height: 8),
               Text(context.l10n.settingsMcpToken),
               SelectableText(
-                info.token.isEmpty ? context.l10n.settingsNotGenerated : info.token,
+                info.token.isEmpty
+                    ? context.l10n.settingsNotGenerated
+                    : info.token,
               ),
               const SizedBox(height: 12),
               Row(
@@ -310,7 +314,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return Scaffold(
       backgroundColor: palette.pageBackground,
-      appBar: CommonAppBar(title: context.l10n.settingsTitle, primary: true),
+      appBar: CommonAppBar(
+        title: context.l10n.settingsTitle,
+        primary: true,
+        showLeading: widget.showBackButton,
+      ),
       body: SafeArea(
         child: ListView.separated(
           padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),

@@ -24,6 +24,8 @@
 		B10000000000000000000009 /* HostBridge.g.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* HostBridge.g.swift */; };
 		B10000000000000000000010 /* AgentBrowserPlatformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* AgentBrowserPlatformView.swift */; };
 		B10000000000000000000011 /* SpeechRecognitionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* SpeechRecognitionCoordinator.swift */; };
+		B10000000000000000000012 /* OmnibotChromeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* OmnibotChromeCoordinator.swift */; };
+		B10000000000000000000013 /* ModelProviderProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* ModelProviderProfileStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -64,6 +66,8 @@
 		A10000000000000000000009 /* HostBridge.g.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Generated/HostBridge.g.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* AgentBrowserPlatformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Browser/AgentBrowserPlatformView.swift; sourceTree = "<group>"; };
 		A10000000000000000000011 /* SpeechRecognitionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Speech/SpeechRecognitionCoordinator.swift; sourceTree = "<group>"; };
+		A10000000000000000000012 /* OmnibotChromeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/OmnibotChromeCoordinator.swift; sourceTree = "<group>"; };
+		A10000000000000000000013 /* ModelProviderProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage/ModelProviderProfileStore.swift; sourceTree = "<group>"; };
 		A83B47753FAF62F657D3AB7E /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		CF1271C3F54D2F4C6D761C56 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		D891000529BED7FE13ACFACA /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
@@ -141,11 +145,13 @@
 				A10000000000000000000002 /* FlutterModuleContainerView.swift */,
 				A10000000000000000000003 /* OmnibotHostingController.swift */,
 				A10000000000000000000004 /* OmnibotRootView.swift */,
+				A10000000000000000000012 /* OmnibotChromeCoordinator.swift */,
 				A10000000000000000000005 /* BrowserSessionStore.swift */,
 				A10000000000000000000010 /* AgentBrowserPlatformView.swift */,
 				A10000000000000000000006 /* LocalModelCoordinator.swift */,
 				A10000000000000000000007 /* TerminalRuntimeCoordinator.swift */,
 				A10000000000000000000008 /* OmnibotBridgeRegistry.swift */,
+				A10000000000000000000013 /* ModelProviderProfileStore.swift */,
 				A10000000000000000000009 /* HostBridge.g.swift */,
 				A10000000000000000000011 /* SpeechRecognitionCoordinator.swift */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
@@ -363,12 +369,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				B10000000000000000000009 /* HostBridge.g.swift in Sources */,
+				B10000000000000000000013 /* ModelProviderProfileStore.swift in Sources */,
 				B10000000000000000000011 /* SpeechRecognitionCoordinator.swift in Sources */,
 				B10000000000000000000008 /* OmnibotBridgeRegistry.swift in Sources */,
 				B10000000000000000000007 /* TerminalRuntimeCoordinator.swift in Sources */,
 				B10000000000000000000006 /* LocalModelCoordinator.swift in Sources */,
 				B10000000000000000000010 /* AgentBrowserPlatformView.swift in Sources */,
 				B10000000000000000000005 /* BrowserSessionStore.swift in Sources */,
+				B10000000000000000000012 /* OmnibotChromeCoordinator.swift in Sources */,
 				B10000000000000000000004 /* OmnibotRootView.swift in Sources */,
 				B10000000000000000000003 /* OmnibotHostingController.swift in Sources */,
 				B10000000000000000000002 /* FlutterModuleContainerView.swift in Sources */,

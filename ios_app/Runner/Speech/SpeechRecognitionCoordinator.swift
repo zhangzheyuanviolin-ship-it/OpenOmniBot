@@ -86,7 +86,11 @@ final class SpeechRecognitionCoordinator: NSObject {
 
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker, .allowBluetooth])
+            try audioSession.setCategory(
+                .playAndRecord,
+                mode: .measurement,
+                options: [.duckOthers, .defaultToSpeaker, .allowBluetoothHFP]
+            )
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             emitError(
@@ -120,9 +124,12 @@ final class SpeechRecognitionCoordinator: NSObject {
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            self?.recognitionRequest?.append(buffer)
-        }
+        inputNode.installTap(
+            onBus: 0,
+            bufferSize: 1024,
+            format: recordingFormat,
+            block: makeAudioTapHandler(for: request)
+        )
 
         audioEngine.prepare()
         do {
@@ -139,37 +146,10 @@ final class SpeechRecognitionCoordinator: NSObject {
             return false
         }
 
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] recognitionResult, recognitionError in
-            Task { @MainActor in
-                guard let self else { return }
-
-                if let recognitionResult {
-                    let transcript = recognitionResult.bestTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if transcript.isEmpty == false && transcript != self.lastTranscript {
-                        self.lastTranscript = transcript
-                        self.emitEvent(transcript)
-                    }
-                    if recognitionResult.isFinal {
-                        self.finishGracefully()
-                    }
-                }
-
-                if let recognitionError {
-                    if self.isGracefullyStopping {
-                        self.finishGracefully()
-                    } else {
-                        self.emitError(
-                            FlutterError(
-                                code: "ASR_ERROR",
-                                message: recognitionError.localizedDescription,
-                                details: nil
-                            )
-                        )
-                        self.cleanupRecognition(keepEventStream: true)
-                    }
-                }
-            }
-        }
+        recognitionTask = recognizer.recognitionTask(
+            with: request,
+            resultHandler: makeRecognitionResultHandler()
+        )
 
         return true
     }
@@ -213,7 +193,7 @@ final class SpeechRecognitionCoordinator: NSObject {
         }
     }
 
-    private func requestSpeechAuthorization() async -> Bool {
+    nonisolated private func requestSpeechAuthorization() async -> Bool {
         let status = SFSpeechRecognizer.authorizationStatus()
         if status == .authorized {
             return true
@@ -225,20 +205,67 @@ final class SpeechRecognitionCoordinator: NSObject {
         }
     }
 
-    private func requestMicrophonePermission() async -> Bool {
-        switch AVAudioSession.sharedInstance().recordPermission {
+    nonisolated private func requestMicrophonePermission() async -> Bool {
+        switch AVAudioApplication.shared.recordPermission {
         case .granted:
             return true
         case .denied:
             return false
         case .undetermined:
             return await withCheckedContinuation { continuation in
-                AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                AVAudioApplication.requestRecordPermission { granted in
                     continuation.resume(returning: granted)
                 }
             }
         @unknown default:
             return false
+        }
+    }
+
+    nonisolated private func makeAudioTapHandler(
+        for request: SFSpeechAudioBufferRecognitionRequest
+    ) -> AVAudioNodeTapBlock {
+        { buffer, _ in
+            request.append(buffer)
+        }
+    }
+
+    nonisolated private func makeRecognitionResultHandler() -> (SFSpeechRecognitionResult?, Error?) -> Void {
+        { [weak self] recognitionResult, recognitionError in
+            let transcript = recognitionResult?.bestTranscription.formattedString
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let isFinal = recognitionResult?.isFinal ?? false
+            let errorDescription = recognitionError?.localizedDescription
+
+            Task { @MainActor [weak self, transcript, isFinal, errorDescription] in
+                guard let self else { return }
+
+                if let transcript, transcript.isEmpty == false {
+                    if transcript != self.lastTranscript {
+                        self.lastTranscript = transcript
+                        self.emitEvent(transcript)
+                    }
+                }
+
+                if isFinal {
+                    self.finishGracefully()
+                }
+
+                if let errorDescription {
+                    if self.isGracefullyStopping {
+                        self.finishGracefully()
+                    } else {
+                        self.emitError(
+                            FlutterError(
+                                code: "ASR_ERROR",
+                                message: errorDescription,
+                                details: nil
+                            )
+                        )
+                        self.cleanupRecognition(keepEventStream: true)
+                    }
+                }
+            }
         }
     }
 

@@ -36,15 +36,20 @@ final class TerminalRuntimeCoordinator {
         "node": "v22.11.0",
         "npm": "10.9.0",
         "pnpm": "10.0.0",
+        "py3-pip": "pip 24.3.1",
         "python3": "Python 3.12.6",
         "rg": "ripgrep 14.1.1",
+        "ssh": "OpenSSH_9.9p1",
+        "sshd": "OpenSSH_9.9p1",
+        "sshpass": "sshpass 1.10",
         "tmux": "tmux 3.4",
         "uv": "uv 0.5.5",
         "xz": "xz 5.6.3",
     ]
     private let packageWhitelist = Set([
         "bash", "curl", "git", "glib", "node", "nodejs", "npm", "pnpm", "python", "python3",
-        "py3-pip", "ripgrep", "rg", "tmux", "uv", "xz", "ca-certificates", "procps", "psmisc",
+        "py3-pip", "ripgrep", "rg", "ssh", "sshpass", "sshd", "tmux", "uv", "xz",
+        "ca-certificates", "procps", "psmisc",
     ])
 
     private var setupSnapshot = SetupSessionSnapshot()
@@ -360,15 +365,22 @@ final class TerminalRuntimeCoordinator {
     }
 
     private func normalizePackage(_ package: String) -> String {
-        switch package {
+        let normalized = package.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
         case "nodejs":
             return "node"
         case "ripgrep":
             return "rg"
         case "python":
             return "python3"
+        case "pip", "pip3":
+            return "py3-pip"
+        case "ssh_client", "openssh-client-default":
+            return "ssh"
+        case "openssh_server", "openssh-server":
+            return "sshd"
         default:
-            return package
+            return normalized
         }
     }
 
@@ -498,8 +510,18 @@ final class TerminalRuntimeCoordinator {
             return installed.contains("python3") ? packageVersions["python3"] : nil
         case "node -v", "nodejs -v":
             return installed.contains("node") ? packageVersions["node"] : nil
+        case "npm -v", "npm --version":
+            return installed.contains("npm") ? packageVersions["npm"] : nil
+        case "pip -V", "pip --version", "pip3 -V", "pip3 --version":
+            return installed.contains("py3-pip") ? packageVersions["py3-pip"] : nil
         case "git --version":
             return installed.contains("git") ? packageVersions["git"] : nil
+        case "ssh -V":
+            return installed.contains("ssh") ? packageVersions["ssh"] : nil
+        case "sshpass -V":
+            return installed.contains("sshpass") ? packageVersions["sshpass"] : nil
+        case "sshd -V":
+            return installed.contains("sshd") ? packageVersions["sshd"] : nil
         case "uv --version":
             return installed.contains("uv") ? packageVersions["uv"] : nil
         case "pnpm --version":

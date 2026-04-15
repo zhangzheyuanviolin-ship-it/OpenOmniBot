@@ -5,6 +5,8 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   void initState() {
     super.initState();
 
+    unawaited(IosChromeService.setBottomTabBarHidden(true));
+
     WidgetsBinding.instance.addObserver(this);
     _loadHdPadPanePreferences();
     _checkCompanionTaskState();
@@ -527,6 +529,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
   @override
   void dispose() {
+    unawaited(IosChromeService.setBottomTabBarHidden(false));
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_runtimeCoordinator.flushAllPendingPersistence());
     unawaited(_persistVisibleThreadTargetIfNeeded());

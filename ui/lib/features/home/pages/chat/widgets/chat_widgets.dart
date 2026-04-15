@@ -82,6 +82,7 @@ const List<ChatSurfaceMode> kVisibleChatSurfaceModes = <ChatSurfaceMode>[
 /// 聊天页面 AppBar
 class ChatAppBar extends StatelessWidget {
   final VoidCallback onMenuTap;
+  final bool showBackButton;
   final VoidCallback? onPureChatToggleTap;
   final VoidCallback onCompanionTap;
   final ChatSurfaceMode activeMode;
@@ -109,10 +110,12 @@ class ChatAppBar extends StatelessWidget {
   final bool showPureChatToggle;
   final bool isPureChatSelected;
   final bool isPureChatToggleLocked;
+  final Widget? trailingAction;
 
   const ChatAppBar({
     super.key,
     required this.onMenuTap,
+    this.showBackButton = false,
     this.onPureChatToggleTap,
     required this.onCompanionTap,
     required this.activeMode,
@@ -140,6 +143,7 @@ class ChatAppBar extends StatelessWidget {
     this.showPureChatToggle = false,
     this.isPureChatSelected = false,
     this.isPureChatToggleLocked = true,
+    this.trailingAction,
   });
 
   @override
@@ -221,9 +225,11 @@ class ChatAppBar extends StatelessWidget {
                             color: Colors.transparent,
                             padding: const EdgeInsets.all(15),
                             child: SvgPicture.asset(
-                              'assets/home/drawer_icon.svg',
-                              width: 20,
-                              height: 20,
+                              showBackButton
+                                  ? 'assets/common/chevron_left.svg'
+                                  : 'assets/home/drawer_icon.svg',
+                              width: showBackButton ? 22 : 20,
+                              height: showBackButton ? 22 : 20,
                               colorFilter: ColorFilter.mode(
                                 iconTint,
                                 BlendMode.srcIn,
@@ -309,43 +315,48 @@ class ChatAppBar extends StatelessWidget {
                               ),
                             ),
                           ),
-                        GestureDetector(
-                          onTap: isCompanionToggleLoading
-                              ? null
-                              : onCompanionTap,
-                          child: Container(
-                            color: Colors.transparent,
-                            padding: const EdgeInsets.all(15),
-                            child: isCompanionToggleLoading
-                                ? SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        isCompanionModeEnabled
-                                            ? (context.isDarkTheme
-                                                  ? palette.accentPrimary
-                                                  : const Color(0xFF1930D9))
-                                            : iconTint,
+                        trailingAction ??
+                            GestureDetector(
+                              onTap: isCompanionToggleLoading
+                                  ? null
+                                  : onCompanionTap,
+                              child: Container(
+                                color: Colors.transparent,
+                                padding: const EdgeInsets.all(15),
+                                child: isCompanionToggleLoading
+                                    ? SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                isCompanionModeEnabled
+                                                    ? (context.isDarkTheme
+                                                          ? palette
+                                                                .accentPrimary
+                                                          : const Color(
+                                                              0xFF1930D9,
+                                                            ))
+                                                    : iconTint,
+                                              ),
+                                        ),
+                                      )
+                                    : SvgPicture.asset(
+                                        'assets/home/avatar.svg',
+                                        width: 20,
+                                        height: 20,
+                                        colorFilter: ColorFilter.mode(
+                                          isCompanionModeEnabled
+                                              ? (context.isDarkTheme
+                                                    ? palette.accentPrimary
+                                                    : const Color(0xFF1930D9))
+                                              : iconTint,
+                                          BlendMode.srcIn,
+                                        ),
                                       ),
-                                    ),
-                                  )
-                                : SvgPicture.asset(
-                                    'assets/home/avatar.svg',
-                                    width: 20,
-                                    height: 20,
-                                    colorFilter: ColorFilter.mode(
-                                      isCompanionModeEnabled
-                                          ? (context.isDarkTheme
-                                                ? palette.accentPrimary
-                                                : const Color(0xFF1930D9))
-                                          : iconTint,
-                                      BlendMode.srcIn,
-                                    ),
-                                  ),
-                          ),
-                        ),
+                              ),
+                            ),
                       ],
                     ),
                   ),

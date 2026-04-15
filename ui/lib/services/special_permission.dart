@@ -382,7 +382,7 @@ Future<EmbeddedTerminalSetupStatus> getEmbeddedTerminalSetupStatus() async {
   final packages = await HostPlatformBridge.tryListInstalledPackages();
   if (packages != null) {
     return EmbeddedTerminalSetupStatus(
-      packages: {for (final package in packages) package: true},
+      packages: _embeddedTerminalSetupStatusFromInstalledPackages(packages),
     );
   }
   final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
@@ -396,13 +396,7 @@ getEmbeddedTerminalSetupInventory() async {
   final packages = await HostPlatformBridge.tryListInstalledPackages();
   if (packages != null) {
     return EmbeddedTerminalSetupInventory(
-      packages: {
-        for (final package in packages)
-          package: const EmbeddedTerminalSetupInventoryItem(
-            ready: true,
-            version: null,
-          ),
-      },
+      packages: _embeddedTerminalSetupInventoryFromInstalledPackages(packages),
     );
   }
   final result = await spePermission.invokeMethod<Map<dynamic, dynamic>>(
@@ -504,6 +498,53 @@ Future<void> openNativeTerminal({
     'openSetup': openSetup,
     'setupPackageIds': setupPackageIds,
   });
+}
+
+Map<String, bool> _embeddedTerminalSetupStatusFromInstalledPackages(
+  List<String> packages,
+) {
+  final inventory = _embeddedTerminalSetupInventoryFromInstalledPackages(
+    packages,
+  );
+  return {
+    for (final entry in inventory.entries) entry.key: entry.value.ready,
+  };
+}
+
+Map<String, EmbeddedTerminalSetupInventoryItem>
+_embeddedTerminalSetupInventoryFromInstalledPackages(List<String> packages) {
+  final installed = packages
+      .map((item) => item.trim().toLowerCase())
+      .where((item) => item.isNotEmpty)
+      .toSet();
+
+  bool containsAny(Iterable<String> candidates) {
+    for (final candidate in candidates) {
+      if (installed.contains(candidate)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  EmbeddedTerminalSetupInventoryItem itemFor(Iterable<String> aliases) {
+    return EmbeddedTerminalSetupInventoryItem(
+      ready: containsAny(aliases),
+      version: null,
+    );
+  }
+
+  return <String, EmbeddedTerminalSetupInventoryItem>{
+    'nodejs': itemFor(const <String>['node', 'nodejs']),
+    'npm': itemFor(const <String>['npm']),
+    'git': itemFor(const <String>['git']),
+    'python': itemFor(const <String>['python3', 'python']),
+    'uv': itemFor(const <String>['uv']),
+    'pip': itemFor(const <String>['py3-pip', 'pip', 'pip3']),
+    'ssh_client': itemFor(const <String>['ssh']),
+    'sshpass': itemFor(const <String>['sshpass']),
+    'openssh_server': itemFor(const <String>['sshd', 'openssh-server']),
+  };
 }
 
 /// 检查无障碍权限，如果没有权限则弹出授权对话框

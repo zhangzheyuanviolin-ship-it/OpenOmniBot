@@ -5,6 +5,8 @@ import 'package:ui/models/conversation_model.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 
+enum ChatHistoryConversationItemPresentation { card, inbox }
+
 class ChatHistoryConversationItem extends StatelessWidget {
   const ChatHistoryConversationItem({
     super.key,
@@ -15,6 +17,7 @@ class ChatHistoryConversationItem extends StatelessWidget {
     this.isBusy = false,
     this.showLeadingIcon = true,
     this.compact = false,
+    this.presentation = ChatHistoryConversationItemPresentation.card,
   });
 
   final ConversationModel conversation;
@@ -24,11 +27,19 @@ class ChatHistoryConversationItem extends StatelessWidget {
   final bool isBusy;
   final bool showLeadingIcon;
   final bool compact;
+  final ChatHistoryConversationItemPresentation presentation;
 
   static const String slidableGroupTag = 'chat-history';
 
   @override
   Widget build(BuildContext context) {
+    if (presentation == ChatHistoryConversationItemPresentation.inbox) {
+      return _buildInboxItem(context);
+    }
+    return _buildCardItem(context);
+  }
+
+  Widget _buildCardItem(BuildContext context) {
     final palette = context.omniPalette;
     final borderRadius = BorderRadius.circular(compact ? 7 : 8);
     final contentPadding = EdgeInsets.symmetric(
@@ -198,6 +209,141 @@ class ChatHistoryConversationItem extends StatelessWidget {
                       ),
                     ],
                   ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInboxItem(BuildContext context) {
+    final palette = context.omniPalette;
+    final subtitle = (conversation.summary ?? '').trim().isNotEmpty
+        ? conversation.summary!.trim()
+        : (conversation.lastMessage ?? '').trim();
+    final secondaryTextColor = context.isDarkTheme
+        ? palette.textSecondary
+        : AppColors.text.withValues(alpha: 0.56);
+    final tertiaryTextColor = context.isDarkTheme
+        ? palette.textTertiary
+        : AppColors.text.withValues(alpha: 0.38);
+    final showModeBadge = conversation.mode != ConversationMode.normal;
+
+    return ConversationSlidable(
+      itemKey: conversation.threadKey,
+      groupTag: slidableGroupTag,
+      isBusy: isBusy,
+      actions: actions,
+      onDismissed: onDelete,
+      margin: EdgeInsets.zero,
+      actionExtentRatioPerAction: 0.22,
+      child: Material(
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (showLeadingIcon) ...[
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: context.isDarkTheme
+                            ? <Color>[
+                                Color.lerp(
+                                  palette.surfaceElevated,
+                                  palette.accentPrimary,
+                                  0.22,
+                                )!,
+                                Color.lerp(
+                                  palette.surfaceSecondary,
+                                  palette.accentPrimary,
+                                  0.32,
+                                )!,
+                              ]
+                            : const <Color>[
+                                Color(0xFF2140E8),
+                                Color(0xFF4BB4FF),
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      size: 20,
+                      color: context.isDarkTheme
+                          ? palette.textPrimary
+                          : Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              conversation.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: context.isDarkTheme
+                                    ? palette.textPrimary
+                                    : AppColors.text,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            conversation.timeDisplay,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: tertiaryTextColor,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              subtitle.isEmpty ? '点击继续这段对话' : subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: secondaryTextColor,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                          if (showModeBadge) ...[
+                            const SizedBox(width: 10),
+                            ConversationModeBadge(
+                              mode: conversation.mode,
+                              compact: true,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),

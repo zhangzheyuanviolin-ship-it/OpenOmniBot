@@ -1,5 +1,4 @@
 #import "AppDelegate.h"
-
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application
@@ -11,10 +10,13 @@
     [bootstrapClass performSelector:@selector(warmUp)];
   }
 
-  Class hostingControllerClass = NSClassFromString(@"OmnibotHostingController");
   UIViewController *rootViewController = nil;
-  if (hostingControllerClass) {
-    rootViewController = [[hostingControllerClass alloc] init];
+  Class hostingBridgeClass = NSClassFromString(@"OmnibotHostingBridge");
+  SEL makeRootSelector = NSSelectorFromString(@"makeRootViewController");
+  if (hostingBridgeClass && [hostingBridgeClass respondsToSelector:makeRootSelector]) {
+    IMP implementation = [hostingBridgeClass methodForSelector:makeRootSelector];
+    UIViewController *(*factory)(id, SEL) = (void *)implementation;
+    rootViewController = factory(hostingBridgeClass, makeRootSelector);
   }
   if (rootViewController == nil) {
     rootViewController = [UIViewController new];

@@ -6,28 +6,51 @@ import FlutterPluginRegistrant
 final class OmnibotFlutterEngineCoordinator {
     static let shared = OmnibotFlutterEngineCoordinator()
 
-    let engine = FlutterEngine(name: "omnibot.main.engine")
+    private let mainEngine = FlutterEngine(name: "omnibot.main.engine")
+    private let settingsEngine = FlutterEngine(name: "omnibot.settings.engine")
 
-    private var started = false
+    private var startedRoles: Set<String> = []
 
     private init() {}
 
-    func startIfNeeded() {
-        guard started == false else { return }
-        engine.run()
+    private func engine(for role: FlutterModuleRole) -> FlutterEngine {
+        switch role {
+        case .main:
+            return mainEngine
+        case .settings:
+            return settingsEngine
+        }
+    }
+
+    @discardableResult
+    func startIfNeeded(role: FlutterModuleRole = .main, initialRoute: String? = nil) -> Bool {
+        let roleKey = "\(role)"
+        guard startedRoles.contains(roleKey) == false else { return false }
+        let engine = engine(for: role)
+        if let initialRoute, initialRoute.isEmpty == false {
+            engine.run(withEntrypoint: nil, initialRoute: initialRoute)
+        } else {
+            engine.run()
+        }
         GeneratedPluginRegistrant.register(with: engine)
         AgentBrowserPlatformViewFactory.register(with: engine)
         SpeechRecognitionCoordinator.shared.register(on: engine)
         OmnibotBridgeRegistry.shared.register(on: engine)
-        started = true
+        startedRoles.insert(roleKey)
+        return true
     }
 
-    func makeViewController(route: String? = nil) -> FlutterViewController {
-        startIfNeeded()
+    func makeViewController(route: String? = nil, role: FlutterModuleRole = .main) -> FlutterViewController {
+        let startedNow = startIfNeeded(role: role, initialRoute: route)
+        let engine = engine(for: role)
         let controller = FlutterViewController(engine: engine, nibName: nil, bundle: nil)
         controller.view.backgroundColor = .systemBackground
-        if let route, route.isEmpty == false {
-            engine.navigationChannel.invokeMethod("pushRoute", arguments: route)
+        if startedNow == false, let route, route.isEmpty == false {
+            let routerChannel = FlutterMethodChannel(
+                name: "ui_router_channel",
+                binaryMessenger: engine.binaryMessenger
+            )
+            routerChannel.invokeMethod("clearAndNavigateTo", arguments: ["route": route])
         }
         return controller
     }

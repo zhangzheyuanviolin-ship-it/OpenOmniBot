@@ -16,10 +16,19 @@ import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
+enum ChatHistoryPagePresentation { standard, iosHome }
+
 class ChatHistoryPage extends StatefulWidget {
-  const ChatHistoryPage({super.key, this.archivedOnly = false});
+  const ChatHistoryPage({
+    super.key,
+    this.archivedOnly = false,
+    this.presentation = ChatHistoryPagePresentation.standard,
+    this.chatRoute = '/home/chat',
+  });
 
   final bool archivedOnly;
+  final ChatHistoryPagePresentation presentation;
+  final String chatRoute;
 
   @override
   State<ChatHistoryPage> createState() => _ChatHistoryPageState();
@@ -194,7 +203,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       return;
     }
     GoRouterManager.push(
-      '/home/chat',
+      widget.chatRoute,
       extra: ConversationThreadTarget.existing(
         conversationId: conversation.id,
         mode: conversation.mode,
@@ -204,14 +213,22 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
 
   void _createConversation() {
     GoRouterManager.push(
-      '/home/chat',
+      widget.chatRoute,
       extra: ConversationThreadTarget.newConversation(
         requestKey: DateTime.now().microsecondsSinceEpoch.toString(),
       ),
     );
   }
 
-  String get _pageTitle => widget.archivedOnly ? '归档对话' : '聊天记录';
+  bool get _isIosHome =>
+      widget.presentation == ChatHistoryPagePresentation.iosHome;
+
+  String get _pageTitle {
+    if (_isIosHome) {
+      return '聊天';
+    }
+    return widget.archivedOnly ? '归档对话' : '聊天记录';
+  }
 
   String get _emptyTitle => widget.archivedOnly ? '暂无归档对话' : '暂无聊天记录';
 
@@ -270,8 +287,21 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
           ? palette.pageBackground
           : AppColors.background,
       appBar: CommonAppBar(
-        title: _pageTitle,
+        titleWidget: _isIosHome
+            ? Text(
+                _pageTitle,
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: palette.textPrimary,
+                ),
+              )
+            : null,
+        title: _isIosHome ? null : _pageTitle,
         primary: true,
+        showLeading: !_isIosHome,
+        centerTitle: !_isIosHome,
+        height: _isIosHome ? 52 : 44,
         trailing: widget.archivedOnly
             ? null
             : IconButton(
@@ -308,6 +338,34 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       return _buildEmptyState();
     }
 
+    if (_isIosHome) {
+      return ListView.separated(
+        padding: const EdgeInsets.only(top: 6, bottom: 24),
+        itemCount: _conversations.length,
+        separatorBuilder: (context, _) => Padding(
+          padding: const EdgeInsets.only(left: 76),
+          child: Divider(
+            height: 1,
+            thickness: 0.6,
+            color: context.isDarkTheme
+                ? palette.borderSubtle
+                : Colors.black.withValues(alpha: 0.06),
+          ),
+        ),
+        itemBuilder: (context, index) {
+          final conversation = _conversations[index];
+          return ChatHistoryConversationItem(
+            conversation: conversation,
+            actions: _buildActions(conversation),
+            isBusy: _busyKeys.contains(conversation.threadKey),
+            presentation: ChatHistoryConversationItemPresentation.inbox,
+            onTap: () => _openConversation(conversation),
+            onDelete: () => _deleteConversation(conversation),
+          );
+        },
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: _conversations.length,
@@ -319,6 +377,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
           isBusy: _busyKeys.contains(conversation.threadKey),
           compact: widget.archivedOnly,
           showLeadingIcon: !widget.archivedOnly,
+          presentation: ChatHistoryConversationItemPresentation.card,
           onTap: () => _openConversation(conversation),
           onDelete: () => _deleteConversation(conversation),
         );

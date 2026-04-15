@@ -15,6 +15,121 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   static const double _kChatInputWrapperTopPadding = 8.0;
   static const double _kChatInputFallbackHeight = 80.0;
 
+  _IosChatShortcutAction? _shortcutActionFromSpec(HomeShortcutSpec spec) {
+    return switch (spec.destination) {
+      HomeShortcutDestination.memoryCenter =>
+        _IosChatShortcutAction.memoryCenter,
+      HomeShortcutDestination.skillStore => _IosChatShortcutAction.skillStore,
+      HomeShortcutDestination.executionHistory =>
+        _IosChatShortcutAction.executionHistory,
+      HomeShortcutDestination.scheduledTasks =>
+        _IosChatShortcutAction.scheduledTasks,
+      HomeShortcutDestination.settings => null,
+    };
+  }
+
+  void _handleIosShortcutAction(_IosChatShortcutAction action) {
+    _dismissChatInputFocus();
+    switch (action) {
+      case _IosChatShortcutAction.memoryCenter:
+        GoRouterManager.push('/memory/memory_center_page');
+        return;
+      case _IosChatShortcutAction.skillStore:
+        GoRouterManager.push('/home/skill_store');
+        return;
+      case _IosChatShortcutAction.executionHistory:
+        GoRouterManager.push('/task/execution_history');
+        return;
+      case _IosChatShortcutAction.scheduledTasks:
+        GoRouterManager.push('/task/scheduled_tasks');
+        return;
+    }
+  }
+
+  Widget _buildIosShortcutMenuButton({
+    required AppBackgroundVisualProfile visualProfile,
+    required bool translucent,
+  }) {
+    final palette = context.omniPalette;
+    final iconTint = translucent
+        ? visualProfile.appBarIconColor
+        : context.isDarkTheme
+        ? palette.textPrimary
+        : Colors.grey[800]!;
+    final menuItems = buildIosChatMenuShortcutSpecs();
+    return Theme(
+      data: Theme.of(context).copyWith(
+        popupMenuTheme: PopupMenuThemeData(
+          color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: context.isDarkTheme
+                ? BorderSide(color: palette.borderSubtle)
+                : BorderSide.none,
+          ),
+        ),
+      ),
+      child: PopupMenuButton<_IosChatShortcutAction>(
+        tooltip: '更多功能',
+        padding: EdgeInsets.zero,
+        position: PopupMenuPosition.under,
+        color: context.isDarkTheme ? palette.surfacePrimary : Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.black.withValues(
+          alpha: context.isDarkTheme ? 0.28 : 0.12,
+        ),
+        elevation: 10,
+        onSelected: _handleIosShortcutAction,
+        icon: SizedBox(
+          width: 40,
+          height: 40,
+          child: Center(
+            child: Icon(Icons.more_horiz_rounded, size: 22, color: iconTint),
+          ),
+        ),
+        itemBuilder: (menuContext) {
+          return menuItems
+              .map((spec) {
+                final action = _shortcutActionFromSpec(spec);
+                if (action == null) {
+                  return null;
+                }
+                return PopupMenuItem<_IosChatShortcutAction>(
+                  value: action,
+                  height: 46,
+                  child: Row(
+                    children: [
+                      buildHomeShortcutIcon(
+                        menuContext,
+                        spec,
+                        size: 18,
+                        color: menuContext.isDarkTheme
+                            ? menuContext.omniPalette.textPrimary
+                            : AppColors.text,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        spec.label,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: menuContext.isDarkTheme
+                              ? menuContext.omniPalette.textPrimary
+                              : AppColors.text,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              })
+              .whereType<PopupMenuItem<_IosChatShortcutAction>>()
+              .toList(growable: false);
+        },
+      ),
+    );
+  }
+
   double _resolveNormalSurfaceComposerInset({
     required double inputBottomPadding,
     required double keyboardSpacer,
@@ -689,6 +804,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     required bool showSurfaceSwitcher,
     required VoidCallback onMenuTap,
   }) {
+    final canPopFromChatPage = Navigator.of(context).canPop();
+    final useIosToolbarMenu = Platform.isIOS;
     final toolActivityCards = extractAgentToolCards(_messages);
     final slashCommandCards =
         _showSlashCommandPanel &&
@@ -760,6 +877,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           children: [
             ChatAppBar(
               onMenuTap: onMenuTap,
+              showBackButton: canPopFromChatPage,
               onPureChatToggleTap: () {
                 unawaited(_togglePureChatConversationMode());
               },
@@ -807,6 +925,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               showPureChatToggle: _activeMode == ChatPageMode.normal,
               isPureChatSelected: _isPureChatSelected,
               isPureChatToggleLocked: _isPureChatToggleLocked,
+              trailingAction: useIosToolbarMenu
+                  ? _buildIosShortcutMenuButton(
+                      visualProfile: visualProfile,
+                      translucent: backgroundActive,
+                    )
+                  : null,
             ),
             if (_isCompanionModeEnabled && _showCompanionCountdown)
               Padding(
@@ -1214,6 +1338,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final commandPanelBottomOffset =
         (_popupMenuBottomOffset() + inputBottomPadding + keyboardSpacer + 6)
             .toDouble();
+    final canPopFromChatPage = Navigator.of(context).canPop();
 
     return ValueListenableBuilder<AppBackgroundConfig>(
       valueListenable: AppBackgroundService.notifier,
@@ -1244,7 +1369,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 key: _scaffoldKey,
                 backgroundColor: Colors.transparent,
                 resizeToAvoidBottomInset: false,
-                drawer: isHdPadLandscape
+                drawer:
+                    isHdPadLandscape || (Platform.isIOS && canPopFromChatPage)
                     ? null
                     : HomeDrawer(
                         key: _drawerKey,
@@ -1352,6 +1478,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                       showSurfaceSwitcher: true,
                                       onMenuTap: () {
                                         _dismissChatInputFocus();
+                                        if (canPopFromChatPage) {
+                                          GoRouterManager.pop();
+                                          return;
+                                        }
                                         _scaffoldKey.currentState?.openDrawer();
                                       },
                                     );

@@ -10,7 +10,8 @@ import UserNotifications
 final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi, @preconcurrency WorkspaceBridgeApi, @preconcurrency TerminalRuntimeBridgeApi, @preconcurrency LocalModelBridgeApi, @preconcurrency BrowserBridgeApi, @preconcurrency PermissionBridgeApi, @preconcurrency DeviceBridgeApi {
     static let shared = OmnibotBridgeRegistry()
 
-    private weak var engine: FlutterEngine?
+    private let modelProviderStore = ModelProviderProfileStore.shared
+
     private var specialPermissionChannel: FlutterMethodChannel?
     private var localModelChannel: FlutterMethodChannel?
     private var browserChannel: FlutterMethodChannel?
@@ -19,13 +20,14 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
     private var appStateChannel: FlutterMethodChannel?
     private var overlayChannel: FlutterMethodChannel?
     private var hideFromRecentsChannel: FlutterMethodChannel?
+    private var assistCoreChannels: [FlutterMethodChannel] = []
+    private var iosChromeChannels: [FlutterMethodChannel] = []
 
     private override init() {
         super.init()
     }
 
     func register(on engine: FlutterEngine) {
-        self.engine = engine
         HostCapabilitiesApiSetup.setUp(binaryMessenger: engine.binaryMessenger, api: self)
         WorkspaceBridgeApiSetup.setUp(binaryMessenger: engine.binaryMessenger, api: self)
         TerminalRuntimeBridgeApiSetup.setUp(binaryMessenger: engine.binaryMessenger, api: self)
@@ -130,9 +132,8 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
             completion(.success(false))
             return
         }
-        UIApplication.shared.open(url) { success in
-            completion(.success(success))
-        }
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        completion(.success(true))
     }
 
     func getDeviceInfo(completion: @escaping (Result<DeviceInfoMessage, Error>) -> Void) {
@@ -158,7 +159,9 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
             name: "cn.com.omnimind.bot/SpecialPermissionEvent",
             binaryMessenger: engine.binaryMessenger
         )
-        specialPermissionChannel?.setMethodCallHandler(handleSpecialPermissionCall)
+        specialPermissionChannel?.setMethodCallHandler { [weak self] call, result in
+            self?.handleSpecialPermissionCall(call, result: result, engine: engine)
+        }
 
         let specialPermissionEvents = FlutterEventChannel(
             name: "cn.com.omnimind.bot/SpecialPermissionEvents",
@@ -213,9 +216,27 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
             binaryMessenger: engine.binaryMessenger
         )
         hideFromRecentsChannel?.setMethodCallHandler(handleHideFromRecentsCall)
+
+        let assistCoreChannel = FlutterMethodChannel(
+            name: "cn.com.omnimind.bot/AssistCoreEvent",
+            binaryMessenger: engine.binaryMessenger
+        )
+        assistCoreChannel.setMethodCallHandler { [weak self] call, result in
+            self?.handleAssistCoreCall(call, result: result)
+        }
+        assistCoreChannels.append(assistCoreChannel)
+
+        let iosChromeChannel = FlutterMethodChannel(
+            name: "cn.com.omnimind.bot/ios_chrome",
+            binaryMessenger: engine.binaryMessenger
+        )
+        iosChromeChannel.setMethodCallHandler { [weak self] call, result in
+            self?.handleIOSChromeCall(call, result: result)
+        }
+        iosChromeChannels.append(iosChromeChannel)
     }
 
-    private func handleSpecialPermissionCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    private func handleSpecialPermissionCall(_ call: FlutterMethodCall, result: @escaping FlutterResult, engine: FlutterEngine) {
         switch call.method {
         case "getWorkspacePathSnapshot":
             let paths = TerminalRuntimeCoordinator.shared.resolveWorkspacePaths()
@@ -270,7 +291,38 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
         case "dismissEmbeddedTerminalSetupSession":
             result(nil)
         case "openNativeTerminal":
-            pushFlutterRoute("/home/omnibot_workspace")
+            let args = (call.arguments as? [String: Any]) ?? [:]
+            let openSetup = args["openSetup"] as? Bool ?? false
+            let setupPackageIds = (args["setupPackageIds"] as? [String]) ?? []
+            _ = TerminalRuntimeCoordinator.shared.prepareRuntime()
+            if openSetup && setupPackageIds.isEmpty == false {
+                let installResult = TerminalRuntimeCoordinator.shared.installPackages(
+                    PackageInstallRequestMessage(
+                        packageIds: setupPackageIds,
+                        allowThirdPartyRepositories: false
+                    )
+                )
+                guard installResult.success else {
+                    result(
+                        FlutterError(
+                            code: "OPEN_NATIVE_TERMINAL_SETUP_ERROR",
+                            message: installResult.message,
+                            details: nil
+                        )
+                    )
+                    return
+                }
+            }
+            let paths = TerminalRuntimeCoordinator.shared.resolveWorkspacePaths()
+            pushFlutterRoute(
+                "/home/omnibot_workspace",
+                extra: [
+                    "workspacePath": paths.rootPath,
+                    "workspaceShellPath": paths.shellRootPath,
+                    "workspaceId": NSNull(),
+                ],
+                on: engine
+            )
             result(true)
         case "isAccessibilityServiceEnabled", "isOverlayPermission", "isInstalledAppsPermissionGranted":
             result(false)
@@ -437,6 +489,172 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
         }
     }
 
+    private func handleIOSChromeCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        let arguments = (call.arguments as? [String: Any]) ?? [:]
+        switch call.method {
+        case "setBottomTabBarHidden":
+            let hidden = arguments["hidden"] as? Bool ?? false
+            OmnibotChromeCoordinator.shared.setBottomTabBarHidden(hidden)
+            result(nil)
+        case "getBottomTabBarHidden":
+            result(OmnibotChromeCoordinator.shared.isBottomTabBarHidden)
+        default:
+            result(FlutterMethodNotImplemented)
+        }
+    }
+
+    private func handleAssistCoreCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        let arguments = (call.arguments as? [String: Any]) ?? [:]
+        switch call.method {
+        case "getModelProviderConfig":
+            Task {
+                result(await modelProviderStore.currentConfig())
+            }
+        case "listModelProviderProfiles":
+            Task {
+                result(await modelProviderStore.listProfilesPayload())
+            }
+        case "saveModelProviderProfile":
+            do {
+                let saved = try modelProviderStore.saveProfile(
+                    id: arguments["id"] as? String,
+                    name: arguments["name"] as? String ?? "",
+                    baseURL: arguments["baseUrl"] as? String ?? "",
+                    apiKey: arguments["apiKey"] as? String ?? "",
+                    protocolType: arguments["protocolType"] as? String ?? "openai_compatible"
+                )
+                notifyAgentAIConfigChanged()
+                result(saved)
+            } catch {
+                result(FlutterError(code: "SAVE_MODEL_PROVIDER_PROFILE_ERROR", message: error.localizedDescription, details: nil))
+            }
+        case "deleteModelProviderProfile":
+            Task {
+                do {
+                    let payload = try await modelProviderStore.deleteProfile(
+                        profileID: arguments["profileId"] as? String ?? ""
+                    )
+                    notifyAgentAIConfigChanged()
+                    result(payload)
+                } catch {
+                    result(FlutterError(code: "DELETE_MODEL_PROVIDER_PROFILE_ERROR", message: error.localizedDescription, details: nil))
+                }
+            }
+        case "setEditingModelProviderProfile":
+            Task {
+                do {
+                    let selected = try await modelProviderStore.setEditingProfile(
+                        arguments["profileId"] as? String ?? ""
+                    )
+                    notifyAgentAIConfigChanged()
+                    result(selected)
+                } catch {
+                    result(FlutterError(code: "SET_EDITING_MODEL_PROVIDER_PROFILE_ERROR", message: error.localizedDescription, details: nil))
+                }
+            }
+        case "saveModelProviderConfig":
+            Task {
+                do {
+                    let saved = try await modelProviderStore.saveConfig(
+                        baseURL: arguments["baseUrl"] as? String ?? "",
+                        apiKey: arguments["apiKey"] as? String ?? ""
+                    )
+                    notifyAgentAIConfigChanged()
+                    result(saved)
+                } catch {
+                    result(FlutterError(code: "SAVE_MODEL_PROVIDER_CONFIG_ERROR", message: error.localizedDescription, details: nil))
+                }
+            }
+        case "clearModelProviderConfig":
+            Task {
+                do {
+                    let cleared = try await modelProviderStore.clearConfig()
+                    notifyAgentAIConfigChanged()
+                    result(cleared)
+                } catch {
+                    result(FlutterError(code: "CLEAR_MODEL_PROVIDER_CONFIG_ERROR", message: error.localizedDescription, details: nil))
+                }
+            }
+        case "fetchProviderModels":
+            Task {
+                do {
+                    let models = try await modelProviderStore.fetchProviderModels(
+                        apiBase: arguments["apiBase"] as? String ?? "",
+                        apiKey: arguments["apiKey"] as? String ?? "",
+                        profileID: arguments["profileId"] as? String
+                    )
+                    result(models)
+                } catch {
+                    result(FlutterError(code: "FETCH_PROVIDER_MODELS_ERROR", message: error.localizedDescription, details: nil))
+                }
+            }
+        case "getSceneModelCatalog":
+            Task {
+                result(await modelProviderStore.sceneModelCatalogPayload())
+            }
+        case "getSceneModelBindings":
+            result(modelProviderStore.sceneModelBindingsPayload())
+        case "saveSceneModelBinding":
+            do {
+                let bindings = try modelProviderStore.saveSceneModelBinding(
+                    sceneId: arguments["sceneId"] as? String ?? "",
+                    providerProfileId: arguments["providerProfileId"] as? String ?? "",
+                    modelId: arguments["modelId"] as? String ?? ""
+                )
+                notifyAgentAIConfigChanged()
+                result(bindings)
+            } catch {
+                result(FlutterError(code: "SAVE_SCENE_MODEL_BINDING_ERROR", message: error.localizedDescription, details: nil))
+            }
+        case "clearSceneModelBinding":
+            let bindings = modelProviderStore.clearSceneModelBinding(
+                sceneId: arguments["sceneId"] as? String ?? ""
+            )
+            notifyAgentAIConfigChanged()
+            result(bindings)
+        case "getSceneModelOverrides":
+            result(modelProviderStore.sceneModelOverridesPayload())
+        case "saveSceneModelOverride":
+            Task {
+                do {
+                    let overrides = try await modelProviderStore.saveSceneModelOverride(
+                        sceneId: arguments["sceneId"] as? String ?? "",
+                        modelId: arguments["model"] as? String ?? ""
+                    )
+                    notifyAgentAIConfigChanged()
+                    result(overrides)
+                } catch {
+                    result(FlutterError(code: "SAVE_SCENE_MODEL_OVERRIDE_ERROR", message: error.localizedDescription, details: nil))
+                }
+            }
+        case "clearSceneModelOverride":
+            let overrides = modelProviderStore.clearSceneModelOverride(
+                sceneId: arguments["sceneId"] as? String ?? ""
+            )
+            notifyAgentAIConfigChanged()
+            result(overrides)
+        case "copyToClipboard":
+            UIPasteboard.general.string = arguments["text"] as? String ?? ""
+            result("SUCCESS")
+        case "getClipboardText":
+            result(UIPasteboard.general.string ?? "")
+        case "getNanoTime":
+            result(Int64(Date().timeIntervalSince1970 * 1000))
+        default:
+            result(FlutterMethodNotImplemented)
+        }
+    }
+
+    private func notifyAgentAIConfigChanged() {
+        let payload: [String: Any] = [
+            "source": "file",
+            "path": "/workspace/.omnibot/provider-config.json",
+        ]
+        for channel in assistCoreChannels {
+            channel.invokeMethod("onAgentAiConfigChanged", arguments: payload)
+        }
+    }
+
     private func terminalStatusDictionary(_ status: TerminalRuntimeStatusMessage) -> [String: Any] {
         [
             "supported": status.supported,
@@ -483,10 +701,13 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
         ]
     }
 
-    private func pushFlutterRoute(_ route: String) {
-        guard let engine else { return }
+    private func pushFlutterRoute(_ route: String, extra: [String: Any]? = nil, on engine: FlutterEngine) {
         let routerChannel = FlutterMethodChannel(name: "ui_router_channel", binaryMessenger: engine.binaryMessenger)
-        routerChannel.invokeMethod("push", arguments: ["route": route])
+        var payload: [String: Any] = ["route": route]
+        if let extra {
+            payload["extra"] = extra
+        }
+        routerChannel.invokeMethod("push", arguments: payload)
     }
 
     private func openSettings() {
@@ -529,7 +750,7 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
         )
     }
 
-    private func notificationAuthorizationStatus() async -> UNAuthorizationStatus {
+    nonisolated private func notificationAuthorizationStatus() async -> UNAuthorizationStatus {
         await withCheckedContinuation { continuation in
             UNUserNotificationCenter.current().getNotificationSettings { settings in
                 continuation.resume(returning: settings.authorizationStatus)

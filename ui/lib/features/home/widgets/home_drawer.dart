@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/features/home/widgets/home_drawer_search_field.dart';
+import 'package:ui/features/home/widgets/home_shortcut_catalog.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
@@ -18,45 +19,6 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
-
-const String _kDrawerMemoryIconSvg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
-    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-    'stroke-linecap="round" stroke-linejoin="round" '
-    'class="lucide lucide-brain-icon lucide-brain">'
-    '<path d="M12 18V5"/>'
-    '<path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/>'
-    '<path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"/>'
-    '<path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/>'
-    '<path d="M18 18a4 4 0 0 0 2-7.464"/>'
-    '<path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/>'
-    '<path d="M6 18a4 4 0 0 1-2-7.464"/>'
-    '<path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/>'
-    '</svg>';
-
-const String _kDrawerSkillStoreIconSvg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
-    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-    'stroke-linecap="round" stroke-linejoin="round" '
-    'class="lucide lucide-container-icon lucide-container">'
-    '<path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 '
-    '6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0'
-    'l10.3-6c.5-.3.9-1 .9-1.5Z"/>'
-    '<path d="M10 21.9V14L2.1 9.1"/>'
-    '<path d="m10 14 11.9-6.9"/>'
-    '<path d="M14 19.8v-8.1"/>'
-    '<path d="M18 17.5V9.4"/>'
-    '</svg>';
-
-const String _kDrawerTaskHistoryIconSvg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
-    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-    'stroke-linecap="round" stroke-linejoin="round" '
-    'class="lucide lucide-history-icon lucide-history">'
-    '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>'
-    '<path d="M3 3v5h5"/>'
-    '<path d="M12 7v5l4 2"/>'
-    '</svg>';
 
 /// 首页侧边栏
 class HomeDrawer extends ConsumerStatefulWidget {
@@ -1107,45 +1069,17 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   }
 
   Widget _buildFooterShortcutBar() {
-    final items = <_DrawerShortcutAction>[
-      _DrawerShortcutAction(
-        label: '设置',
-        assetPath: 'assets/home/setting_icon.svg',
-        onTap: () => _navigateTo('/home/settings'),
-      ),
-      _DrawerShortcutAction(
-        label: '记忆中心',
-        svgString: _kDrawerMemoryIconSvg,
-        onTap: () => _navigateTo('/memory/memory_center_page'),
-      ),
-      _DrawerShortcutAction(
-        label: '技能仓库',
-        svgString: _kDrawerSkillStoreIconSvg,
-        onTap: () => _navigateTo('/home/skill_store'),
-      ),
-      _DrawerShortcutAction(
-        label: '任务记录',
-        svgString: _kDrawerTaskHistoryIconSvg,
-        onTap: () => _navigateTo('/task/execution_history'),
-      ),
-      _DrawerShortcutAction(
-        label: '定时',
-        assetPath: 'assets/common/schedule_icon.svg',
-        onTap: () => _navigateTo('/task/scheduled_tasks'),
-      ),
-    ];
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
-        children: items
+        children: kHomeFooterShortcutSpecs
             .map((item) => Expanded(child: _buildFooterShortcutButton(item)))
             .toList(growable: false),
       ),
     );
   }
 
-  Widget _buildFooterShortcutButton(_DrawerShortcutAction item) {
+  Widget _buildFooterShortcutButton(HomeShortcutSpec item) {
     final palette = context.omniPalette;
     final circleColor = context.isDarkTheme
         ? palette.surfaceSecondary
@@ -1153,26 +1087,19 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     final iconColor = context.isDarkTheme
         ? palette.textPrimary
         : AppColors.text;
-    final icon = item.assetPath != null
-        ? SvgPicture.asset(
-            item.assetPath!,
-            width: 18,
-            height: 18,
-            colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-          )
-        : SvgPicture.string(
-            item.svgString!,
-            width: 18,
-            height: 18,
-            colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-          );
+    final icon = buildHomeShortcutIcon(
+      context,
+      item,
+      size: 18,
+      color: iconColor,
+    );
 
     return Tooltip(
       message: item.label,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: item.onTap,
+          onTap: () => _navigateTo(item.route),
           borderRadius: BorderRadius.circular(24),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1517,23 +1444,6 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       ),
     );
   }
-}
-
-class _DrawerShortcutAction {
-  const _DrawerShortcutAction({
-    required this.label,
-    required this.onTap,
-    this.assetPath,
-    this.svgString,
-  }) : assert(
-         assetPath != null || svgString != null,
-         'assetPath or svgString is required',
-       );
-
-  final String label;
-  final VoidCallback onTap;
-  final String? assetPath;
-  final String? svgString;
 }
 
 class _ConversationSection {
