@@ -245,21 +245,25 @@ class _ConversationHeatmapState extends State<ConversationHeatmap>
     return Row(
       children: [
         // Stats pills
-        _buildStatPill(
-          icon: Icons.chat_bubble_outline_rounded,
-          value: '$_totalConversations',
-          label: '次对话',
-          palette: palette,
-          isDark: isDark,
+        Flexible(
+          child: _buildStatPill(
+            icon: Icons.chat_bubble_outline_rounded,
+            value: '$_totalConversations',
+            label: '次对话',
+            palette: palette,
+            isDark: isDark,
+          ),
         ),
         const SizedBox(width: 8),
-        _buildStatPill(
-          icon: Icons.local_fire_department_rounded,
-          value: '$_currentStreak',
-          label: '天连续',
-          palette: palette,
-          isDark: isDark,
-          highlight: _currentStreak >= 3,
+        Flexible(
+          child: _buildStatPill(
+            icon: Icons.local_fire_department_rounded,
+            value: '$_currentStreak',
+            label: '天连续',
+            palette: palette,
+            isDark: isDark,
+            highlight: _currentStreak >= 3,
+          ),
         ),
         const Spacer(),
         // Max badge
@@ -435,11 +439,15 @@ class _ConversationHeatmapState extends State<ConversationHeatmap>
                       : cellSize;
                   final clampedCellSize = actualCellSize.clamp(4.0, 14.0);
 
-                  return Wrap(
-                    direction: Axis.vertical,
-                    spacing: cellGap,
-                    runSpacing: cellGap,
-                    children: List.generate(totalWeeks * 7, (index) {
+                  final gridHeight =
+                      7 * clampedCellSize + 6 * cellGap;
+                  return SizedBox(
+                    height: gridHeight,
+                    child: Wrap(
+                      direction: Axis.vertical,
+                      spacing: cellGap,
+                      runSpacing: cellGap,
+                      children: List.generate(totalWeeks * 7, (index) {
                       final week = index ~/ 7;
                       final dayOfWeek = index % 7;
                       final cellDate = startDate.add(
@@ -484,6 +492,7 @@ class _ConversationHeatmapState extends State<ConversationHeatmap>
                         ),
                       );
                     }),
+                  ),
                   );
                 },
               ),
