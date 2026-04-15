@@ -1745,7 +1745,7 @@ class AssistsMessageService {
   }) async {
     final decoded = await _requestUtgJson(
       method: 'POST',
-      path: '/run_logs/ingest',
+      path: '/run_logs/import_trace',
       baseUrl: baseUrl,
       payload: ingestPayload,
     );
@@ -1755,7 +1755,7 @@ class AssistsMessageService {
   static Future<UtgPathsSnapshot> getUtgPaths({String? baseUrl}) async {
     final decoded = await _requestUtgJson(
       method: 'GET',
-      path: '/paths',
+      path: '/functions',
       baseUrl: baseUrl,
     );
     return UtgPathsSnapshot.fromMap(decoded);
@@ -1767,7 +1767,7 @@ class AssistsMessageService {
   }) async {
     final decoded = await _requestUtgJson(
       method: 'GET',
-      path: '/paths/$pathId/bundle',
+      path: '/functions/$pathId/bundle',
       baseUrl: baseUrl,
     );
     final normalized = jsonDecode(jsonEncode(decoded));
@@ -1786,7 +1786,7 @@ class AssistsMessageService {
   }) async {
     final decoded = await _requestUtgJson(
       method: 'DELETE',
-      path: '/paths/$pathId',
+      path: '/functions/$pathId',
       baseUrl: baseUrl,
     );
     return UtgPathMutationResult.fromMap(decoded);
@@ -1798,7 +1798,7 @@ class AssistsMessageService {
   }) async {
     final decoded = await _requestUtgJson(
       method: 'POST',
-      path: '/paths/$pathId/distill',
+      path: '/functions/$pathId/distill',
       baseUrl: baseUrl,
     );
     return UtgPathMutationResult.fromMap(decoded);
@@ -1811,7 +1811,7 @@ class AssistsMessageService {
   }) async {
     final decoded = await _requestUtgJson(
       method: 'POST',
-      path: '/cloud_paths/download',
+      path: '/functions/pull',
       baseUrl: baseUrl,
       payload: {
         'cloud_base_url': cloudBaseUrl.trim(),
@@ -1828,7 +1828,7 @@ class AssistsMessageService {
   }) async {
     final decoded = await _requestUtgJson(
       method: 'POST',
-      path: '/cloud_paths/upload',
+      path: '/functions/push',
       baseUrl: baseUrl,
       payload: {
         'cloud_base_url': cloudBaseUrl.trim(),
@@ -1850,7 +1850,7 @@ class AssistsMessageService {
     }
     final decoded = await _requestUtgJson(
       method: 'POST',
-      path: '/run_compiled_path',
+      path: '/functions/execute',
       baseUrl: baseUrl,
       payload: {
         'goal': 'manual_utg_path_run:$pathId',

@@ -2401,7 +2401,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          '本地 provider 会从另一台 OmniFlow provider 拉取单条 `/paths/{path_id}/bundle`，或在 path_id 留空时先拉 `/paths` 再全量同步。',
+                          '本地 provider 会从另一台 OmniFlow provider 拉取单条 `/functions/{id}/bundle`，或在 id 留空时先拉 `/functions` 再全量同步。',
                           style: TextStyle(
                             fontSize: 13,
                             color: AppColors.text70,
