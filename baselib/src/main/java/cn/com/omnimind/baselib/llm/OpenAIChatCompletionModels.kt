@@ -189,6 +189,30 @@ data class ChatCompletionTurn(
     val usage: ChatCompletionUsage? = null
 )
 
+fun decodeChatCompletionUsage(element: JsonElement?): ChatCompletionUsage? {
+    val obj = element as? JsonObject ?: return null
+    val performance = obj["performance"] as? JsonObject
+    return ChatCompletionUsage(
+        promptTokens = obj["prompt_tokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        completionTokens = obj["completion_tokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        totalTokens = obj["total_tokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        prefillTokensPerSecond =
+            obj["prefill_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
+                ?: performance?.get("prefill_tokens_per_second")
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?.toDoubleOrNull(),
+        decodeTokensPerSecond =
+            obj["decode_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
+                ?: performance?.get("decode_tokens_per_second")
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?.toDoubleOrNull(),
+        promptTokensDetails = obj["prompt_tokens_details"],
+        completionTokensDetails = obj["completion_tokens_details"]
+    )
+}
+
 fun ChatCompletionMessage.contentText(): String {
     return when (val value = content) {
         null -> ""
