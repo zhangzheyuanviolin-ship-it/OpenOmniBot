@@ -613,6 +613,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final isOpenClawAttachment = type == 'openclaw_attachment';
     final payload = safeDecodeMap(content);
     final payloadAttachments = _parseAttachments(payload['attachments']);
+    final prefillTokensPerSecond =
+        extractChatTaskPrefillTokensPerSecond(content);
+    final decodeTokensPerSecond = extractChatTaskDecodeTokensPerSecond(content);
+    final hasPerformanceMetrics =
+        prefillTokensPerSecond != null || decodeTokensPerSecond != null;
 
     String messageText;
     bool isError;
@@ -667,7 +672,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       isSummarizing = false;
       runtime.isContextCompressing = false;
       shouldUpdateAiMessage =
-          messageText.isNotEmpty || payloadAttachments.isNotEmpty;
+          messageText.isNotEmpty ||
+          payloadAttachments.isNotEmpty ||
+          (hasPerformanceMetrics &&
+              runtime.messages.any((message) => message.id == taskId));
     }
 
     _removeOpenClawWaitingCard(runtime, taskId);
@@ -679,6 +687,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         isError,
         isSummarizing: isSummarizing,
         attachments: payloadAttachments,
+        prefillTokensPerSecond: prefillTokensPerSecond,
+        decodeTokensPerSecond: decodeTokensPerSecond,
       );
     }
     runtime.isAiResponding = true;
@@ -1604,10 +1614,18 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     bool isError, {
     bool isSummarizing = false,
     List<Map<String, dynamic>> attachments = const [],
+    double? prefillTokensPerSecond,
+    double? decodeTokensPerSecond,
   }) {
     final index = runtime.messages.indexWhere((msg) => msg.id == taskId);
     if (index == -1) {
       final content = <String, dynamic>{'text': text, 'id': taskId};
+      if (prefillTokensPerSecond != null) {
+        content['prefillTokensPerSecond'] = prefillTokensPerSecond;
+      }
+      if (decodeTokensPerSecond != null) {
+        content['decodeTokensPerSecond'] = decodeTokensPerSecond;
+      }
       if (attachments.isNotEmpty) {
         content['attachments'] = attachments;
       }
@@ -1630,6 +1648,12 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final content = Map<String, dynamic>.from(existing.content ?? {});
     final existingText = content['text'] as String? ?? '';
     content['text'] = text.isNotEmpty ? text : existingText;
+    if (prefillTokensPerSecond != null) {
+      content['prefillTokensPerSecond'] = prefillTokensPerSecond;
+    }
+    if (decodeTokensPerSecond != null) {
+      content['decodeTokensPerSecond'] = decodeTokensPerSecond;
+    }
     final mergedAttachments = _mergeAttachments(
       _parseAttachments(content['attachments']),
       attachments,

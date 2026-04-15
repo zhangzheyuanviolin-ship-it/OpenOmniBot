@@ -945,9 +945,15 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     final isErrorMessage = type == 'error';
     final isRateLimited = type == 'rate_limited';
     final isSummaryStart = type == 'summary_start';
+    final prefillTokensPerSecond =
+        extractChatTaskPrefillTokensPerSecond(content);
+    final decodeTokensPerSecond = extractChatTaskDecodeTokensPerSecond(content);
+    final hasPerformanceMetrics =
+        prefillTokensPerSecond != null || decodeTokensPerSecond != null;
     final String messageText;
     final bool isError;
     final bool isSummarizing;
+    bool shouldUpdateAiMessage = true;
 
     // 首次收到消息时移除loading（检查是否是新的taskId）
     final isFirstChunk = !_currentAiMessages.containsKey(taskId);
@@ -973,19 +979,29 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       isSummarizing = true;
       _currentAiMessages[taskId] = '';
     } else {
-      final text = safeDecodeMap(content)['text'] ?? '';
-      _currentAiMessages[taskId] = (_currentAiMessages[taskId] ?? '') + text;
+      final text = extractChatTaskText(content, fallbackToRawText: false);
+      if (text.isNotEmpty) {
+        _currentAiMessages[taskId] = (_currentAiMessages[taskId] ?? '') + text;
+      }
       messageText = _currentAiMessages[taskId] ?? '';
       isError = false;
       isSummarizing = false;
+      shouldUpdateAiMessage =
+          messageText.isNotEmpty ||
+          (hasPerformanceMetrics &&
+              _messages.any((message) => message.id == taskId));
     }
 
-    _updateOrAddAiMessage(
-      taskId,
-      messageText,
-      isError,
-      isSummarizing: isSummarizing,
-    );
+    if (shouldUpdateAiMessage) {
+      _updateOrAddAiMessage(
+        taskId,
+        messageText,
+        isError,
+        isSummarizing: isSummarizing,
+        prefillTokensPerSecond: prefillTokensPerSecond,
+        decodeTokensPerSecond: decodeTokensPerSecond,
+      );
+    }
   }
 
   Future<void> _onSubmitVlmInfo() async {
@@ -1021,18 +1037,27 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     String text,
     bool isError, {
     bool isSummarizing = false,
+    double? prefillTokensPerSecond,
+    double? decodeTokensPerSecond,
   }) {
     final index = _messages.indexWhere((msg) => msg.id == taskId);
 
     setState(() {
       if (index == -1) {
+        final content = <String, dynamic>{'text': text, 'id': taskId};
+        if (prefillTokensPerSecond != null) {
+          content['prefillTokensPerSecond'] = prefillTokensPerSecond;
+        }
+        if (decodeTokensPerSecond != null) {
+          content['decodeTokensPerSecond'] = decodeTokensPerSecond;
+        }
         _messages.insert(
           0,
           ChatMessageModel(
             id: taskId,
             type: 1,
             user: 2,
-            content: {'text': text, 'id': taskId},
+            content: content,
             isLoading: false,
             isError: isError,
             isSummarizing: isSummarizing,
@@ -1041,7 +1066,14 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       } else {
         final existing = _messages[index];
         final content = Map<String, dynamic>.from(existing.content ?? {});
-        content['text'] = text;
+        final existingText = content['text'] as String? ?? '';
+        content['text'] = text.isNotEmpty ? text : existingText;
+        if (prefillTokensPerSecond != null) {
+          content['prefillTokensPerSecond'] = prefillTokensPerSecond;
+        }
+        if (decodeTokensPerSecond != null) {
+          content['decodeTokensPerSecond'] = decodeTokensPerSecond;
+        }
         _messages[index] = existing.copyWith(
           content: content,
           isLoading: false,

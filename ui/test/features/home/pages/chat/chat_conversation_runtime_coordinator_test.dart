@@ -158,6 +158,43 @@ void main() {
     expect(runtime.messages.first.text, 'hello from pure chat');
   });
 
+  test('parses usage performance metrics from pure-chat usage chunks', () async {
+    const conversationId = 2211;
+    const taskId = 'chat-task-usage-performance';
+
+    coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content': '{"choices":[{"delta":{"content":"hello from pure chat"}}]}',
+      'type': null,
+    });
+    await emitPlatformEvent('onChatMessage', <String, dynamic>{
+      'taskID': taskId,
+      'content':
+          '{"choices":[],"usage":{"prompt_tokens":15,"completion_tokens":100,"total_tokens":115,"performance":{"prefill_tokens_per_second":36.6,"decode_tokens_per_second":12.4}}}',
+      'type': null,
+    });
+
+    final runtime = coordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    )!;
+
+    expect(runtime.messages, hasLength(1));
+    expect(runtime.messages.first.text, 'hello from pure chat');
+    expect(runtime.messages.first.content?['prefillTokensPerSecond'], 36.6);
+    expect(runtime.messages.first.content?['decodeTokensPerSecond'], 12.4);
+  });
+
   test('primes pure-chat thinking card immediately before streaming', () {
     const conversationId = 2204;
     const taskId = 'chat-task-thinking-prime';

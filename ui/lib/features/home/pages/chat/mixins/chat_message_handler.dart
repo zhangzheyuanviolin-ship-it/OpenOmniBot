@@ -59,9 +59,15 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
     final isOpenClawAttachment = type == 'openclaw_attachment';
     final payload = safeDecodeMap(content);
     final payloadAttachments = _parseAttachments(payload['attachments']);
+    final prefillTokensPerSecond =
+        extractChatTaskPrefillTokensPerSecond(content);
+    final decodeTokensPerSecond = extractChatTaskDecodeTokensPerSecond(content);
+    final hasPerformanceMetrics =
+        prefillTokensPerSecond != null || decodeTokensPerSecond != null;
     String messageText;
     bool isError;
     bool isSummarizing;
+    bool shouldUpdateAiMessage = true;
 
     final isFirstChunk = !currentAiMessages.containsKey(taskId);
     if (isFirstChunk) {
@@ -90,19 +96,30 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
       isSummarizing = false;
     } else {
       final text = extractChatTaskText(content, fallbackToRawText: false);
-      currentAiMessages[taskId] = (currentAiMessages[taskId] ?? '') + text;
+      if (text.isNotEmpty) {
+        currentAiMessages[taskId] = (currentAiMessages[taskId] ?? '') + text;
+      }
       messageText = currentAiMessages[taskId] ?? '';
       isError = false;
       isSummarizing = false;
+      shouldUpdateAiMessage =
+          messageText.isNotEmpty ||
+          payloadAttachments.isNotEmpty ||
+          (hasPerformanceMetrics &&
+              messages.any((message) => message.id == taskId));
     }
 
-    updateOrAddAiMessage(
-      taskId,
-      messageText,
-      isError,
-      isSummarizing: isSummarizing,
-      attachments: payloadAttachments,
-    );
+    if (shouldUpdateAiMessage) {
+      updateOrAddAiMessage(
+        taskId,
+        messageText,
+        isError,
+        isSummarizing: isSummarizing,
+        attachments: payloadAttachments,
+        prefillTokensPerSecond: prefillTokensPerSecond,
+        decodeTokensPerSecond: decodeTokensPerSecond,
+      );
+    }
   }
 
   /// 更新或添加 AI 消息
@@ -112,12 +129,20 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
     bool isError, {
     bool isSummarizing = false,
     List<Map<String, dynamic>> attachments = const [],
+    double? prefillTokensPerSecond,
+    double? decodeTokensPerSecond,
   }) {
     final index = messages.indexWhere((msg) => msg.id == taskId);
 
     setState(() {
       if (index == -1) {
         final content = <String, dynamic>{'text': text, 'id': taskId};
+        if (prefillTokensPerSecond != null) {
+          content['prefillTokensPerSecond'] = prefillTokensPerSecond;
+        }
+        if (decodeTokensPerSecond != null) {
+          content['decodeTokensPerSecond'] = decodeTokensPerSecond;
+        }
         if (attachments.isNotEmpty) {
           content['attachments'] = attachments;
         }
@@ -138,6 +163,12 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
         final content = Map<String, dynamic>.from(existing.content ?? {});
         final existingText = content['text'] as String? ?? '';
         content['text'] = text.isNotEmpty ? text : existingText;
+        if (prefillTokensPerSecond != null) {
+          content['prefillTokensPerSecond'] = prefillTokensPerSecond;
+        }
+        if (decodeTokensPerSecond != null) {
+          content['decodeTokensPerSecond'] = decodeTokensPerSecond;
+        }
         final mergedAttachments = _mergeAttachments(
           _parseAttachments(content['attachments']),
           attachments,

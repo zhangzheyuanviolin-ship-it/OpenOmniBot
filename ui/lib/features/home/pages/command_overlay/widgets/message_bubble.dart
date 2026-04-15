@@ -561,6 +561,7 @@ class MessageBubble extends StatelessWidget {
     final raw = message.content?['decodeTokensPerSecond'];
     if (raw is double) return raw;
     if (raw is num) return raw.toDouble();
+    if (raw is String) return double.tryParse(raw);
     return null;
   }
 
