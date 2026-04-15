@@ -70,15 +70,15 @@ class _StreamingTextState extends State<StreamingText> {
       _isFirstBuild = false;
     }
 
-    // 如果是思考中文案，直接显示，不做动画
-    if (widget.fullText == kThinkingText) {
-      Widget child = widget.enableMarkdown
-          ? OmnibotMarkdownBody(
-              data: widget.fullText,
-              baseStyle: widget.style,
-              inlineResourcePlainStyle: true,
-            )
-          : Text(widget.fullText, style: widget.style);
+    // Markdown mode: render fullText directly without substring animation.
+    // The streaming effect comes naturally from fullText growing with each
+    // chunk, avoiding broken markdown caused by mid-syntax truncation.
+    if (widget.enableMarkdown) {
+      Widget child = OmnibotMarkdownBody(
+        data: widget.fullText,
+        baseStyle: widget.style,
+        inlineResourcePlainStyle: true,
+      );
 
       return widget.selectable
           ? SelectionArea(
@@ -93,6 +93,11 @@ class _StreamingTextState extends State<StreamingText> {
           : child;
     }
 
+    // Plain text mode: keep the character-by-character fade-in animation.
+    if (widget.fullText == kThinkingText) {
+      return Text(widget.fullText, style: widget.style);
+    }
+
     // 如果从思考中文案切换到实际内容，从0开始
     final previousLength = _previousFullText == kThinkingText
         ? 0
@@ -102,13 +107,12 @@ class _StreamingTextState extends State<StreamingText> {
     final newCharsCount = widget.fullText.length - previousLength;
 
     // 根据新增字符数动态计算动画时长：字符越多，动画越快完成
-    // 每个字符约15-30ms，确保流畅感
     final duration = Duration(
       milliseconds: (newCharsCount * 20).clamp(100, 800),
     );
 
     return TweenAnimationBuilder<double>(
-      key: ValueKey(previousLength), // 确保从"思考中..."切换时重建动画
+      key: ValueKey(previousLength),
       tween: Tween<double>(
         begin: previousLength.toDouble(),
         end: widget.fullText.length.toDouble(),
@@ -116,35 +120,12 @@ class _StreamingTextState extends State<StreamingText> {
       duration: duration,
       curve: Curves.easeOut,
       builder: (context, value, child) {
-        // 计算当前应该显示的字符数
         final displayLength = value.round();
         final displayText = widget.fullText.substring(
           0,
           displayLength.clamp(0, widget.fullText.length),
         );
 
-        // 如果启用Markdown，直接渲染Markdown内容
-        if (widget.enableMarkdown) {
-          Widget child = OmnibotMarkdownBody(
-            data: displayText,
-            baseStyle: widget.style,
-            inlineResourcePlainStyle: true,
-          );
-
-          return widget.selectable
-              ? SelectionArea(
-                  onSelectionChanged: (content) {
-                    _lastSelectedContent = content?.plainText;
-                  },
-                  contextMenuBuilder: (context, selectableRegionState) {
-                    return _buildSelectionContextMenu(selectableRegionState);
-                  },
-                  child: child,
-                )
-              : child;
-        }
-
-        // 计算动画进度（0.0 到 1.0）
         final progress = newCharsCount > 0
             ? ((value - previousLength) / newCharsCount).clamp(0.0, 1.0)
             : 1.0;
@@ -156,7 +137,6 @@ class _StreamingTextState extends State<StreamingText> {
           ),
         );
 
-        // 计算新增部分的透明度（最后几个字符渐显）
         return widget.selectable
             ? SelectionArea(
                 onSelectionChanged: (content) {
