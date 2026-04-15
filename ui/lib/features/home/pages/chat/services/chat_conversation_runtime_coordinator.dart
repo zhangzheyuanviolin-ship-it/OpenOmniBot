@@ -1107,23 +1107,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     if (current.endsWith(incoming)) {
       return current;
     }
-    final overlap = _streamingTextOverlap(current, incoming);
-    if (overlap > 0) {
-      return current + incoming.substring(overlap);
-    }
     return current + incoming;
-  }
-
-  int _streamingTextOverlap(String current, String incoming) {
-    final maxOverlap = current.length < incoming.length
-        ? current.length
-        : incoming.length;
-    for (var size = maxOverlap; size > 0; size--) {
-      if (current.endsWith(incoming.substring(0, size))) {
-        return size;
-      }
-    }
-    return 0;
   }
 
   void _handleAgentContextCompactionStateChanged(
