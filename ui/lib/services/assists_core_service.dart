@@ -167,6 +167,65 @@ class UtgBridgeConfig {
   }
 }
 
+/// Embedded Provider 状态
+class EmbeddedProviderStatus {
+  final bool installed;
+  final String? installedVersion;
+  final bool running;
+  final int port;
+  final String? binaryPath;
+  final String latestVersion;
+  final bool needsUpdate;
+
+  const EmbeddedProviderStatus({
+    required this.installed,
+    required this.installedVersion,
+    required this.running,
+    required this.port,
+    required this.binaryPath,
+    required this.latestVersion,
+    required this.needsUpdate,
+  });
+
+  factory EmbeddedProviderStatus.fromMap(Map<dynamic, dynamic>? map) {
+    final raw = map ?? const {};
+    return EmbeddedProviderStatus(
+      installed: raw['installed'] == true,
+      installedVersion: raw['installedVersion']?.toString(),
+      running: raw['running'] == true,
+      port: (raw['port'] as int?) ?? 19070,
+      binaryPath: raw['binaryPath']?.toString(),
+      latestVersion: (raw['latestVersion'] ?? '0.1.0').toString(),
+      needsUpdate: raw['needsUpdate'] == true,
+    );
+  }
+}
+
+/// Embedded Provider 安装结果
+class EmbeddedProviderInstallResult {
+  final bool success;
+  final String? version;
+  final String? binaryPath;
+  final String? error;
+
+  const EmbeddedProviderInstallResult({
+    required this.success,
+    this.version,
+    this.binaryPath,
+    this.error,
+  });
+
+  factory EmbeddedProviderInstallResult.fromMap(Map<dynamic, dynamic>? map) {
+    final raw = map ?? const {};
+    return EmbeddedProviderInstallResult(
+      success: raw['success'] == true,
+      version: raw['version']?.toString(),
+      binaryPath: raw['binaryPath']?.toString(),
+      error: raw['error']?.toString(),
+    );
+  }
+}
+
 class UtgPathSummary {
   final String pathId;
   final String description;
@@ -2779,5 +2838,43 @@ class AssistsMessageService {
       print('重新打开ChatBot失败: ${e.message}');
       return false;
     }
+  }
+
+  // ==================== Embedded Provider 管理 ====================
+
+  /// 获取 Embedded Provider 状态
+  static Future<EmbeddedProviderStatus> getEmbeddedProviderStatus() async {
+    final result = await assistCore.invokeMethod('getEmbeddedProviderStatus');
+    return EmbeddedProviderStatus.fromMap(result as Map?);
+  }
+
+  /// 安装 Embedded Provider
+  static Future<EmbeddedProviderInstallResult> installEmbeddedProvider({
+    String? downloadUrl,
+  }) async {
+    final result = await assistCore.invokeMethod('installEmbeddedProvider', {
+      if (downloadUrl != null) 'downloadUrl': downloadUrl,
+    });
+    return EmbeddedProviderInstallResult.fromMap(result as Map?);
+  }
+
+  /// 启动 Embedded Provider
+  static Future<bool> startEmbeddedProvider({int port = 19070}) async {
+    final result = await assistCore.invokeMethod('startEmbeddedProvider', {
+      'port': port,
+    });
+    return (result as Map?)?['success'] == true;
+  }
+
+  /// 停止 Embedded Provider
+  static Future<bool> stopEmbeddedProvider() async {
+    final result = await assistCore.invokeMethod('stopEmbeddedProvider');
+    return (result as Map?)?['success'] == true;
+  }
+
+  /// 卸载 Embedded Provider
+  static Future<bool> uninstallEmbeddedProvider() async {
+    final result = await assistCore.invokeMethod('uninstallEmbeddedProvider');
+    return (result as Map?)?['success'] == true;
   }
 }

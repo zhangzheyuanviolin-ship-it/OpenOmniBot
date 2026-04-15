@@ -75,6 +75,7 @@ import cn.com.omnimind.bot.agent.resolveToolExecutionStatus
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.mnnlocal.MnnLocalModelsManager
 import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
+import cn.com.omnimind.bot.utg.EmbeddedProviderManager
 import cn.com.omnimind.bot.utg.UtgBridge
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
 import cn.com.omnimind.bot.webchat.ConversationDomainService
@@ -1157,6 +1158,135 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     result.error("REQUEST_UTG_JSON_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    // ==================== Embedded Provider 管理 ====================
+
+    /**
+     * 获取 Embedded Provider 状态
+     */
+    fun getEmbeddedProviderStatus(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        mainJob.launch {
+            try {
+                val status = withContext(Dispatchers.IO) {
+                    EmbeddedProviderManager.getStatus(context)
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(mapOf(
+                        "installed" to status.installed,
+                        "installedVersion" to status.installedVersion,
+                        "running" to status.running,
+                        "port" to status.port,
+                        "binaryPath" to status.binaryPath,
+                        "latestVersion" to status.latestVersion,
+                        "needsUpdate" to status.needsUpdate
+                    ))
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("GET_EMBEDDED_PROVIDER_STATUS_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * 安装 Embedded Provider
+     */
+    fun installEmbeddedProvider(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        val downloadUrl = call.argument<String>("downloadUrl")
+        mainJob.launch {
+            try {
+                val installResult = withContext(Dispatchers.IO) {
+                    EmbeddedProviderManager.install(context, downloadUrl) { progress ->
+                        // 可以通过 EventChannel 发送进度，暂时简化处理
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(mapOf(
+                        "success" to installResult.success,
+                        "version" to installResult.version,
+                        "binaryPath" to installResult.binaryPath,
+                        "error" to installResult.error
+                    ))
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("INSTALL_EMBEDDED_PROVIDER_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * 启动 Embedded Provider
+     */
+    fun startEmbeddedProvider(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        val port = call.argument<Int>("port") ?: 19070
+        mainJob.launch {
+            try {
+                val success = withContext(Dispatchers.IO) {
+                    EmbeddedProviderManager.start(context, port)
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(mapOf("success" to success))
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("START_EMBEDDED_PROVIDER_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * 停止 Embedded Provider
+     */
+    fun stopEmbeddedProvider(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        mainJob.launch {
+            try {
+                val success = withContext(Dispatchers.IO) {
+                    EmbeddedProviderManager.stop()
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(mapOf("success" to success))
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("STOP_EMBEDDED_PROVIDER_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * 卸载 Embedded Provider
+     */
+    fun uninstallEmbeddedProvider(
+        call: MethodCall, result: MethodChannel.Result,
+    ) {
+        mainJob.launch {
+            try {
+                val success = withContext(Dispatchers.IO) {
+                    EmbeddedProviderManager.uninstall(context)
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(mapOf("success" to success))
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("UNINSTALL_EMBEDDED_PROVIDER_ERROR", e.message, null)
                 }
             }
         }

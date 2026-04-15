@@ -207,6 +207,21 @@ class AssistsCoreChannel {
                 "requestUtgJson" -> {
                     assistsCoreManager!!.requestUtgJson(call, result)
                 }
+                "getEmbeddedProviderStatus" -> {
+                    assistsCoreManager!!.getEmbeddedProviderStatus(call, result)
+                }
+                "installEmbeddedProvider" -> {
+                    assistsCoreManager!!.installEmbeddedProvider(call, result)
+                }
+                "startEmbeddedProvider" -> {
+                    assistsCoreManager!!.startEmbeddedProvider(call, result)
+                }
+                "stopEmbeddedProvider" -> {
+                    assistsCoreManager!!.stopEmbeddedProvider(call, result)
+                }
+                "uninstallEmbeddedProvider" -> {
+                    assistsCoreManager!!.uninstallEmbeddedProvider(call, result)
+                }
 
                 "getInstalledApplications" -> {
                     assistsCoreManager!!.getInstalledApplications( call, result)
