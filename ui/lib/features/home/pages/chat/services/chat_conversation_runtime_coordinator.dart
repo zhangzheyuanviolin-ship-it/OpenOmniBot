@@ -1102,21 +1102,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   }
 
   String _mergeStreamingText(String current, String incoming) {
-    if (incoming.isEmpty) {
-      return current;
-    }
-    if (current.isEmpty) {
-      return incoming;
-    }
-    if (incoming == current) {
-      return current;
-    }
-    if (incoming.startsWith(current)) {
-      return incoming;
-    }
-    if (current.endsWith(incoming)) {
-      return current;
-    }
+    if (incoming.isEmpty) return current;
+    if (current.isEmpty) return incoming;
     return current + incoming;
   }
 
