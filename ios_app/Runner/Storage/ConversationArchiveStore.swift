@@ -318,6 +318,67 @@ final class ConversationArchiveStore {
         refreshConversationStats(conversationId: conversationId, mode: normalizedMode, messages: [])
     }
 
+    func upsertUserMessage(
+        conversationId: Int,
+        conversationMode: String,
+        entryId: String,
+        text: String,
+        attachments: [[String: Any]] = [],
+        createdAtMillis: Int? = nil
+    ) {
+        upsertTextMessage(
+            conversationId: conversationId,
+            mode: conversationMode,
+            entryId: entryId,
+            user: 1,
+            text: text,
+            attachments: attachments,
+            isError: false,
+            createdAtMillis: createdAtMillis
+        )
+    }
+
+    func upsertAssistantMessage(
+        conversationId: Int,
+        conversationMode: String,
+        entryId: String,
+        text: String,
+        attachments: [[String: Any]] = [],
+        isError: Bool = false,
+        createdAtMillis: Int? = nil
+    ) {
+        upsertTextMessage(
+            conversationId: conversationId,
+            mode: conversationMode,
+            entryId: entryId,
+            user: 2,
+            text: text,
+            attachments: attachments,
+            isError: isError,
+            createdAtMillis: createdAtMillis
+        )
+    }
+
+    func updatePromptTokenUsage(
+        conversationId: Int,
+        promptTokens: Int,
+        threshold: Int
+    ) {
+        guard promptTokens >= 0, threshold > 0 else { return }
+        do {
+            _ = try updateConversation(
+                from: [
+                    "id": conversationId,
+                    "latestPromptTokens": promptTokens,
+                    "promptTokenThreshold": threshold,
+                    "latestPromptTokensUpdatedAt": timestampMillis(),
+                ]
+            )
+        } catch {
+            return
+        }
+    }
+
     func generateConversationSummary(from conversationHistory: String) -> String? {
         let normalized = conversationHistory
             .replacingOccurrences(of: "\r\n", with: "\n")
@@ -344,6 +405,82 @@ final class ConversationArchiveStore {
         conversations[existingIndex] = updated
         persistConversations(conversations)
         return updated.payload
+    }
+
+    private func upsertTextMessage(
+        conversationId: Int,
+        mode: String,
+        entryId: String,
+        user: Int,
+        text: String,
+        attachments: [[String: Any]],
+        isError: Bool,
+        createdAtMillis: Int?
+    ) {
+        let normalizedEntryID = entryId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard conversationId > 0, normalizedEntryID.isEmpty == false else { return }
+
+        let storageKey = messageStorageKey(conversationId: conversationId, mode: mode)
+        var messages = loadMessagePayloads(for: storageKey)
+        let existingIndex = messages.firstIndex(where: {
+            stringValue($0["id"]) == normalizedEntryID
+        })
+        let existing = existingIndex == nil ? nil : messages[existingIndex!]
+        let content = contentPayload(
+            entryId: normalizedEntryID,
+            text: text,
+            attachments: attachments,
+            fallback: dictionaryValue(existing?["content"])
+        )
+        let payload: [String: Any] = [
+            "id": normalizedEntryID,
+            "type": 1,
+            "user": user,
+            "content": content,
+            "isLoading": false,
+            "isFirst": false,
+            "isError": isError,
+            "isSummarizing": false,
+            "createAt": createdAtMillis
+                ?? integerValue(existing?["createAt"])
+                ?? timestampMillis(),
+        ]
+
+        if let existingIndex {
+            messages[existingIndex] = payload
+        } else {
+            messages.insert(payload, at: 0)
+        }
+
+        persistMessagePayloads(messages, for: storageKey)
+        refreshConversationStats(
+            conversationId: conversationId,
+            mode: normalizeMode(mode),
+            messages: messages
+        )
+    }
+
+    private func contentPayload(
+        entryId: String,
+        text: String,
+        attachments: [[String: Any]],
+        fallback: [String: Any]?
+    ) -> [String: Any] {
+        var content = fallback ?? [:]
+        content["id"] = entryId
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedText.isEmpty == false || content["text"] == nil {
+            content["text"] = normalizedText
+        }
+        let normalizedAttachments = attachments.compactMap {
+            sanitizeJSONValue($0) as? [String: Any]
+        }
+        if normalizedAttachments.isEmpty == false {
+            content["attachments"] = normalizedAttachments
+        } else if fallback?["attachments"] == nil {
+            content.removeValue(forKey: "attachments")
+        }
+        return content
     }
 
     private func refreshConversationStats(

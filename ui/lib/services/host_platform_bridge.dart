@@ -55,10 +55,10 @@ class HostCapabilities {
       return const HostCapabilities(
         platform: 'ios',
         appStoreDistribution: true,
-        supportsTerminal: false,
+        supportsTerminal: true,
         supportsApkInstall: false,
         supportsLocalModels: true,
-        supportsInAppBrowserAutomation: true,
+        supportsInAppBrowserAutomation: false,
         supportsExternalAppAutomation: false,
         supportsOverlay: false,
         supportsPreciseBackgroundSchedule: false,

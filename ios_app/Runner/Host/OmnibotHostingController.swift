@@ -5,19 +5,8 @@ import UIKit
 final class OmnibotHostingBridge: NSObject {
     @MainActor
     @objc static func makeRootViewController() -> UIViewController {
-        OmnibotHostingController()
-    }
-}
-
-@objc(OmnibotHostingController)
-final class OmnibotHostingController: UIHostingController<OmnibotRootView> {
-    @MainActor
-    init() {
-        super.init(rootView: OmnibotRootView())
-    }
-
-    @MainActor
-    @objc required dynamic init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder, rootView: OmnibotRootView())
+        let controller = UIHostingController(rootView: OmnibotRootView())
+        controller.view.backgroundColor = .systemBackground
+        return controller
     }
 }

@@ -11,8 +11,13 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
     static let shared = OmnibotBridgeRegistry()
 
     private let conversationArchiveStore = ConversationArchiveStore.shared
+    private let chatTaskCoordinator = IOSChatTaskCoordinator.shared
     private let agentTaskCoordinator = IOSAgentTaskCoordinator.shared
     private let modelProviderStore = ModelProviderProfileStore.shared
+    private let workspaceMemoryStore = WorkspaceMemoryStore.shared
+    private let scheduledTaskStore = WorkspaceScheduledTaskStore.shared
+    private let agentSkillStore = AgentSkillStore.shared
+    private let remoteMcpStore = RemoteMcpStore.shared
 
     private var specialPermissionChannel: FlutterMethodChannel?
     private var localModelChannel: FlutterMethodChannel?
@@ -22,6 +27,7 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
     private var appStateChannel: FlutterMethodChannel?
     private var overlayChannel: FlutterMethodChannel?
     private var hideFromRecentsChannel: FlutterMethodChannel?
+    private var remoteMcpChannels: [FlutterMethodChannel] = []
     private var assistCoreChannels: [FlutterMethodChannel] = []
     private var iosChromeChannels: [FlutterMethodChannel] = []
 
@@ -45,9 +51,9 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
             platform: "ios",
             appStoreDistribution: true,
             supportsTerminal: true,
-            supportsApkInstall: true,
+            supportsApkInstall: false,
             supportsLocalModels: true,
-            supportsInAppBrowserAutomation: true,
+            supportsInAppBrowserAutomation: false,
             supportsExternalAppAutomation: false,
             supportsOverlay: false,
             supportsPreciseBackgroundSchedule: false,
@@ -228,6 +234,15 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
         }
         assistCoreChannels.append(assistCoreChannel)
 
+        let remoteMcpChannel = FlutterMethodChannel(
+            name: "cn.com.omnimind.bot/RemoteMcpConfig",
+            binaryMessenger: engine.binaryMessenger
+        )
+        remoteMcpChannel.setMethodCallHandler { [weak self] call, result in
+            self?.handleRemoteMcpCall(call, result: result)
+        }
+        remoteMcpChannels.append(remoteMcpChannel)
+
         let iosChromeChannel = FlutterMethodChannel(
             name: "cn.com.omnimind.bot/ios_chrome",
             binaryMessenger: engine.binaryMessenger
@@ -294,38 +309,40 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
             result(nil)
         case "openNativeTerminal":
             let args = (call.arguments as? [String: Any]) ?? [:]
-            let openSetup = args["openSetup"] as? Bool ?? false
-            let setupPackageIds = (args["setupPackageIds"] as? [String]) ?? []
-            _ = TerminalRuntimeCoordinator.shared.prepareRuntime()
-            if openSetup && setupPackageIds.isEmpty == false {
-                let installResult = TerminalRuntimeCoordinator.shared.installPackages(
-                    PackageInstallRequestMessage(
-                        packageIds: setupPackageIds,
-                        allowThirdPartyRepositories: false
-                    )
-                )
-                guard installResult.success else {
-                    result(
-                        FlutterError(
-                            code: "OPEN_NATIVE_TERMINAL_SETUP_ERROR",
-                            message: installResult.message,
-                            details: nil
+            Task { @MainActor in
+                let openSetup = args["openSetup"] as? Bool ?? false
+                let setupPackageIds = (args["setupPackageIds"] as? [String]) ?? []
+                _ = TerminalRuntimeCoordinator.shared.prepareRuntime()
+                if openSetup && setupPackageIds.isEmpty == false {
+                    let installResult = TerminalRuntimeCoordinator.shared.installPackages(
+                        PackageInstallRequestMessage(
+                            packageIds: setupPackageIds,
+                            allowThirdPartyRepositories: false
                         )
                     )
-                    return
+                    guard installResult.success else {
+                        result(
+                            FlutterError(
+                                code: "OPEN_NATIVE_TERMINAL_SETUP_ERROR",
+                                message: installResult.message,
+                                details: nil
+                            )
+                        )
+                        return
+                    }
                 }
+                let paths = TerminalRuntimeCoordinator.shared.resolveWorkspacePaths()
+                pushFlutterRoute(
+                    "/home/omnibot_workspace",
+                    extra: [
+                        "workspacePath": paths.rootPath,
+                        "workspaceShellPath": paths.shellRootPath,
+                        "workspaceId": NSNull(),
+                    ],
+                    on: engine
+                )
+                result(true)
             }
-            let paths = TerminalRuntimeCoordinator.shared.resolveWorkspacePaths()
-            pushFlutterRoute(
-                "/home/omnibot_workspace",
-                extra: [
-                    "workspacePath": paths.rootPath,
-                    "workspaceShellPath": paths.shellRootPath,
-                    "workspaceId": NSNull(),
-                ],
-                on: engine
-            )
-            result(true)
         case "isAccessibilityServiceEnabled", "isOverlayPermission", "isInstalledAppsPermissionGranted":
             result(false)
         case "isIgnoringBatteryOptimizations":
@@ -749,12 +766,44 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
                 notifyConversationListChanged(reason: "conversation_updated", conversation: payload)
             }
             result("SUCCESS")
+        case "createChatTask":
+            do {
+                try chatTaskCoordinator.createChatTask(
+                    arguments: arguments,
+                    eventSink: { [weak self] method, payload in
+                        self?.emitAssistCoreEvent(method, arguments: payload)
+                    },
+                    syncConversation: { [weak self] conversationId, mode in
+                        self?.syncConversationState(
+                            conversationId: conversationId,
+                            mode: mode,
+                            reason: "conversation_updated"
+                        )
+                    }
+                )
+                result("SUCCESS")
+            } catch {
+                result(
+                    FlutterError(
+                        code: "CREATE_CHAT_TASK_ERROR",
+                        message: error.localizedDescription,
+                        details: nil
+                    )
+                )
+            }
         case "createAgentTask":
             do {
                 try agentTaskCoordinator.createAgentTask(
                     arguments: arguments,
                     eventSink: { [weak self] method, payload in
                         self?.emitAssistCoreEvent(method, arguments: payload)
+                    },
+                    syncConversation: { [weak self] conversationId, mode in
+                        self?.syncConversationState(
+                            conversationId: conversationId,
+                            mode: mode,
+                            reason: "conversation_updated"
+                        )
                     }
                 )
                 result("SUCCESS")
@@ -768,8 +817,33 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
                 )
             }
         case "cancelChatTask":
+            chatTaskCoordinator.cancelTask(taskId: arguments["taskId"] as? String)
+            result("SUCCESS")
+        case "cancelRunningTask":
+            chatTaskCoordinator.cancelTask(taskId: arguments["taskId"] as? String)
             agentTaskCoordinator.cancelTask(taskId: arguments["taskId"] as? String)
             result("SUCCESS")
+        case "stopAgentToolCall":
+            agentTaskCoordinator.stopToolCall(
+                taskId: arguments["taskId"] as? String,
+                cardId: arguments["cardId"] as? String
+            )
+            result("SUCCESS")
+        case "compactConversationContext":
+            Task {
+                do {
+                    let payload = try await compactConversationContext(arguments: arguments)
+                    result(payload)
+                } catch {
+                    result(
+                        FlutterError(
+                            code: "COMPACT_CONVERSATION_CONTEXT_ERROR",
+                            message: error.localizedDescription,
+                            details: nil
+                        )
+                    )
+                }
+            }
         case "postLLMChat":
             Task {
                 do {
@@ -922,6 +996,123 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
             result(UIPasteboard.general.string ?? "")
         case "getNanoTime":
             result(Int64(Date().timeIntervalSince1970 * 1000))
+        case "getWorkspaceSoul":
+            result(workspaceMemoryStore.getSoulPayload())
+        case "saveWorkspaceSoul":
+            result(workspaceMemoryStore.saveSoul(arguments["content"] as? String ?? ""))
+        case "getWorkspaceChatPrompt":
+            result(workspaceMemoryStore.getChatPromptPayload())
+        case "saveWorkspaceChatPrompt":
+            result(workspaceMemoryStore.saveChatPrompt(arguments["content"] as? String ?? ""))
+        case "getWorkspaceLongMemory":
+            result(workspaceMemoryStore.getLongMemoryPayload())
+        case "saveWorkspaceLongMemory":
+            result(workspaceMemoryStore.saveLongMemory(arguments["content"] as? String ?? ""))
+        case "getWorkspaceShortMemories":
+            result(
+                workspaceMemoryStore.getShortMemoriesPayload(
+                    days: integerValue(arguments["days"]) ?? 14,
+                    limit: integerValue(arguments["limit"]) ?? 240
+                )
+            )
+        case "getWorkspaceMemoryEmbeddingConfig":
+            Task {
+                result(await workspaceMemoryStore.getEmbeddingConfigPayload())
+            }
+        case "saveWorkspaceMemoryEmbeddingConfig":
+            Task {
+                result(
+                    await workspaceMemoryStore.saveEmbeddingConfigPayload(
+                        enabled: boolValue(arguments["enabled"]) ?? true,
+                        providerProfileId: arguments["providerProfileId"] as? String,
+                        modelId: arguments["modelId"] as? String
+                    )
+                )
+            }
+        case "getWorkspaceMemoryRollupStatus":
+            result(workspaceMemoryStore.getRollupStatusPayload())
+        case "saveWorkspaceMemoryRollupEnabled":
+            result(workspaceMemoryStore.saveRollupEnabledPayload(boolValue(arguments["enabled"]) ?? true))
+        case "runWorkspaceMemoryRollupNow":
+            result(workspaceMemoryStore.runRollupNowPayload())
+        case "upsertWorkspaceScheduledTask":
+            let rawTask = stringAnyDictionary(arguments["task"])
+            result(["task": scheduledTaskStore.upsertTask(rawTask)])
+        case "deleteWorkspaceScheduledTask":
+            let deleted = scheduledTaskStore.deleteTask(taskId: arguments["taskId"] as? String ?? "")
+            result(["deleted": deleted])
+        case "syncWorkspaceScheduledTasks":
+            let tasks = stringAnyDictionaryArray(arguments["tasks"])
+            result(["count": scheduledTaskStore.syncTasks(tasks)])
+        case "agentSkillList":
+            result(agentSkillStore.listSkillsPayload())
+        case "agentSkillInstall":
+            do {
+                result(try agentSkillStore.installSkill(from: arguments["sourcePath"] as? String ?? ""))
+            } catch {
+                result(FlutterError(code: "AGENT_SKILL_INSTALL_ERROR", message: error.localizedDescription, details: nil))
+            }
+        case "agentSkillSetEnabled":
+            do {
+                result(
+                    try agentSkillStore.setSkillEnabled(
+                        skillId: arguments["skillId"] as? String ?? "",
+                        enabled: boolValue(arguments["enabled"]) ?? true
+                    )
+                )
+            } catch {
+                result(FlutterError(code: "AGENT_SKILL_SET_ENABLED_ERROR", message: error.localizedDescription, details: nil))
+            }
+        case "agentSkillDelete":
+            result(["deleted": agentSkillStore.deleteSkill(skillId: arguments["skillId"] as? String ?? "")])
+        case "agentSkillInstallBuiltin":
+            do {
+                result(try agentSkillStore.installBuiltinSkill(skillId: arguments["skillId"] as? String ?? ""))
+            } catch {
+                result(FlutterError(code: "AGENT_SKILL_INSTALL_BUILTIN_ERROR", message: error.localizedDescription, details: nil))
+            }
+        case "showScheduledTaskReminder", "hideScheduledTaskReminder":
+            result("SUCCESS")
+        case "createCompanionTask", "cancelTask", "cancelCompanionGoHome", "pressHome",
+             "createVLMOperationTask", "provideUserInputToVLMTask", "notifySummarySheetReady":
+            result(
+                FlutterError(
+                    code: "UNSUPPORTED_ON_IOS",
+                    message: "\(call.method) is not supported on iOS",
+                    details: nil
+                )
+            )
+        default:
+            result(FlutterMethodNotImplemented)
+        }
+    }
+
+    private func handleRemoteMcpCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        let arguments = (call.arguments as? [String: Any]) ?? [:]
+        switch call.method {
+        case "listServers":
+            result(remoteMcpStore.listServersPayload())
+        case "upsertServer":
+            result(remoteMcpStore.upsertServer(arguments))
+        case "deleteServer":
+            remoteMcpStore.deleteServer(id: arguments["id"] as? String ?? "")
+            result(true)
+        case "setServerEnabled":
+            result(
+                remoteMcpStore.setServerEnabled(
+                    id: arguments["id"] as? String ?? "",
+                    enabled: boolValue(arguments["enabled"]) ?? true
+                )
+            )
+        case "refreshServerTools":
+            Task {
+                do {
+                    let payload = try await remoteMcpStore.refreshServerTools(id: arguments["id"] as? String ?? "")
+                    result(payload)
+                } catch {
+                    result(FlutterError(code: "REMOTE_MCP_ERROR", message: error.localizedDescription, details: nil))
+                }
+            }
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -968,6 +1159,90 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
         }
     }
 
+    private func syncConversationState(
+        conversationId: Int,
+        mode: String,
+        reason: String
+    ) {
+        notifyConversationMessagesChanged(
+            conversationId: conversationId,
+            mode: mode,
+            reason: reason
+        )
+        if let payload = conversationPayload(for: conversationId) {
+            notifyConversationListChanged(reason: reason, conversation: payload)
+        }
+    }
+
+    private func compactConversationContext(arguments: [String: Any]) async throws -> [String: Any] {
+        let conversationId = integerValue(arguments["conversationId"]) ?? 0
+        let conversationMode = arguments["conversationMode"] as? String ?? "normal"
+        guard conversationId > 0 else {
+            throw NSError(domain: "OmnibotBridgeRegistry", code: 1, userInfo: [NSLocalizedDescriptionKey: "conversationId is invalid"])
+        }
+
+        let messages = conversationArchiveStore.listConversationMessages(
+            conversationId: conversationId,
+            mode: conversationMode
+        )
+        let textMessages = messages.filter { integerValue($0["type"]) == 1 }
+        guard textMessages.count >= 4 else {
+            return [
+                "compacted": false,
+                "reason": "no_candidate",
+                "conversation": conversationPayload(for: conversationId) ?? [:],
+            ]
+        }
+
+        let cutoffIndex = min(textMessages.count / 2, max(textMessages.count - 2, 1))
+        let compactSlice = Array(textMessages.suffix(from: textMessages.count - cutoffIndex))
+        let conversationText = compactSlice.reversed().compactMap { message -> String? in
+            let content = stringAnyDictionary(message["content"])
+            guard let text = content["text"] as? String else {
+                return nil
+            }
+            let role = integerValue(message["user"]) == 1 ? "用户" : "助手"
+            let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalized.isEmpty ? nil : "\(role)：\(normalized)"
+        }.joined(separator: "\n")
+
+        guard conversationText.isEmpty == false else {
+            return [
+                "compacted": false,
+                "reason": "no_prompt_messages",
+                "conversation": conversationPayload(for: conversationId) ?? [:],
+            ]
+        }
+
+        let prompt = """
+        请把以下较早的对话上下文压缩成 6 条以内的简短摘要，保留用户目标、关键约束、已经完成的动作、未完成事项。
+        直接输出摘要正文，不要加标题。
+
+        \(conversationText)
+        """
+        let summary = try await agentTaskCoordinator.postLLMChat(
+            text: prompt,
+            modelScene: "scene.dispatch.model",
+            modelOverride: stringAnyDictionary(arguments["modelOverride"]),
+            reasoningEffort: arguments["reasoningEffort"] as? String
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let updatedConversation = try conversationArchiveStore.updateConversation(
+            from: [
+                "id": conversationId,
+                "contextSummary": summary,
+                "contextSummaryCutoffEntryDbId": cutoffIndex,
+                "contextSummaryUpdatedAt": Int(Date().timeIntervalSince1970 * 1000),
+            ]
+        )
+        notifyConversationListChanged(reason: "conversation_updated", conversation: updatedConversation)
+        return [
+            "compacted": summary.isEmpty == false,
+            "reason": summary.isEmpty ? "empty_summary" : "success",
+            "conversation": updatedConversation,
+        ]
+    }
+
     private func conversationPayload(for conversationId: Int) -> [String: Any]? {
         conversationArchiveStore
             .listConversationPayloads()
@@ -982,6 +1257,26 @@ final class OmnibotBridgeRegistry: NSObject, @preconcurrency HostCapabilitiesApi
             return number.intValue
         case let string as String:
             return Int(string.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            return nil
+        }
+    }
+
+    private func boolValue(_ raw: Any?) -> Bool? {
+        switch raw {
+        case let bool as Bool:
+            return bool
+        case let number as NSNumber:
+            return number.boolValue
+        case let string as String:
+            switch string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true", "1", "yes":
+                return true
+            case "false", "0", "no":
+                return false
+            default:
+                return nil
+            }
         default:
             return nil
         }

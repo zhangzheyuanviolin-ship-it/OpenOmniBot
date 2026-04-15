@@ -6,8 +6,11 @@
   BOOL didFinish = [super application:application didFinishLaunchingWithOptions:launchOptions];
 
   Class bootstrapClass = NSClassFromString(@"OmnibotFlutterBootstrap");
-  if (bootstrapClass && [bootstrapClass respondsToSelector:@selector(warmUp)]) {
-    [bootstrapClass performSelector:@selector(warmUp)];
+  SEL warmUpSelector = NSSelectorFromString(@"warmUp");
+  if (bootstrapClass && [bootstrapClass respondsToSelector:warmUpSelector]) {
+    IMP implementation = [bootstrapClass methodForSelector:warmUpSelector];
+    void (*warmUp)(id, SEL) = (void *)implementation;
+    warmUp(bootstrapClass, warmUpSelector);
   }
 
   UIViewController *rootViewController = nil;
