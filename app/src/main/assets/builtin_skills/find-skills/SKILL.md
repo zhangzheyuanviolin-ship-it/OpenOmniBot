@@ -82,6 +82,7 @@ Only install a skill after the user confirms.
 Use the script like this:
 
 ```bash
+sh <scriptsDir>/install_with_skills_cli.sh claude-office-skills/skills@excel-automation
 sh <scriptsDir>/install_with_skills_cli.sh vercel-labs/skills --skill find-skills
 sh <scriptsDir>/install_with_skills_cli.sh vercel-labs/agent-skills --skill frontend-design
 ```
@@ -98,6 +99,7 @@ Summary:
 
 - search: only through `terminal_execute` running `npx skills find ...`
 - install into Omnibot: use `sh <scriptsDir>/install_with_skills_cli.sh ...`
+- if you already know the exact package, prefer the one-line form like `owner/repo@skill`
 
 ## When No Good Match Exists
 

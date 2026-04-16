@@ -9,6 +9,7 @@ Usage:
 Examples:
   sh install_with_skills_cli.sh vercel-labs/skills --skill find-skills
   sh install_with_skills_cli.sh https://github.com/vercel-labs/skills --skill find-skills
+  sh install_with_skills_cli.sh claude-office-skills/skills@excel-automation
 EOF
   exit 1
 }
