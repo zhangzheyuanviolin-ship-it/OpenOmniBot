@@ -12,6 +12,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import java.util.UUID
 
 class OmniAgentExecutor(
@@ -139,12 +140,18 @@ class OmniAgentExecutor(
                 model = agentModelScene
             )
 
+            val isLocalModel = LocalModelProviderBridge.isBuiltinLocalProvider(
+                modelOverride?.providerProfileId,
+                modelOverride?.apiBase
+            )
             orchestrator.run(
                 AgentOrchestrator.Input(
                     callback = callback,
                     initialMessages = initialMessages,
                     conversationId = conversationId,
                     contextCompactor = contextCompactor,
+                    isLocalModel = isLocalModel,
+                    modelDisplayName = modelOverride?.modelId ?: agentModelScene,
                     executionEnv = DefaultAgentExecutionEnvironment(
                         agentRunId = agentRunId,
                         userMessage = userMessage,

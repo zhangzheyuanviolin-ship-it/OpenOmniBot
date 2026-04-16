@@ -19,6 +19,7 @@ import cn.com.omnimind.assists.task.scheduled.worker.ScheduledStates
 import cn.com.omnimind.assists.task.scheduled.worker.toScheduledVLMOperationTaskParamsData
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.database.Conversation
+import cn.com.omnimind.baselib.database.TokenUsageRecord
 import cn.com.omnimind.baselib.http.Http429Exception
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.i18n.PromptLocale
@@ -28,6 +29,7 @@ import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionTool
 import cn.com.omnimind.baselib.llm.AiRequestLogStore
+import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderProfile
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
@@ -284,6 +286,35 @@ internal fun extractChatTaskPromptTokens(content: String): Int? {
     }
     return Regex("\"prompt_tokens\"\\s*:\\s*(\\d+)")
         .find(normalized)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+}
+
+internal fun extractChatTaskCompletionTokens(content: String): Int? {
+    val normalized = content.trim()
+    if (normalized.isEmpty() || normalized == "[DONE]") {
+        return null
+    }
+    return Regex("\"completion_tokens\"\\s*:\\s*(\\d+)")
+        .find(normalized)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+}
+
+internal fun extractChatTaskReasoningTokens(content: String): Int? {
+    return Regex("\"reasoning_tokens\"\\s*:\\s*(\\d+)")
+        .find(content)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+}
+
+internal fun extractChatTaskTextTokens(content: String): Int? {
+    // Match text_tokens inside completion_tokens_details context
+    return Regex("\"text_tokens\"\\s*:\\s*(\\d+)")
+        .find(content)
         ?.groupValues
         ?.getOrNull(1)
         ?.toIntOrNull()
@@ -1478,6 +1509,31 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         getChatTaskPersistenceState(taskID)?.let { state ->
             val repository = conversationHistoryRepository()
             val normalizedType = type?.trim()?.lowercase().orEmpty()
+            // Record token usage when completion_tokens is present in the chunk
+            if (normalizedType != "error" && normalizedType != "rate_limited") {
+                extractChatTaskCompletionTokens(content)?.let { completionTokens ->
+                    try {
+                        val isLocal = LocalModelProviderBridge.isBuiltinLocalProvider(
+                            state.modelOverride?.providerProfileId,
+                            state.modelOverride?.apiBase
+                        )
+                        DatabaseHelper.insertTokenUsageRecord(
+                            TokenUsageRecord(
+                                conversationId = state.conversationId,
+                                isLocal = isLocal,
+                                model = state.modelOverride?.modelId ?: "",
+                                promptTokens = extractChatTaskPromptTokens(content) ?: 0,
+                                completionTokens = completionTokens,
+                                reasoningTokens = extractChatTaskReasoningTokens(content) ?: 0,
+                                textTokens = extractChatTaskTextTokens(content) ?: 0,
+                                createdAt = System.currentTimeMillis()
+                            )
+                        )
+                    } catch (e: Exception) {
+                        OmniLog.e(TAG, "Failed to insert chat task token usage: ${e.message}")
+                    }
+                }
+            }
             if (
                 state.conversationMode.equals(CHAT_ONLY_MODE, ignoreCase = true) &&
                 normalizedType != "error" &&
@@ -4070,6 +4126,33 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         )
                     }
 
+                    override suspend fun onTokenUsageRecorded(
+                        conversationId: Long?,
+                        isLocal: Boolean,
+                        model: String,
+                        promptTokens: Int,
+                        completionTokens: Int,
+                        reasoningTokens: Int,
+                        textTokens: Int
+                    ) {
+                        try {
+                            DatabaseHelper.insertTokenUsageRecord(
+                                TokenUsageRecord(
+                                    conversationId = conversationId ?: 0L,
+                                    isLocal = isLocal,
+                                    model = model,
+                                    promptTokens = promptTokens,
+                                    completionTokens = completionTokens,
+                                    reasoningTokens = reasoningTokens,
+                                    textTokens = textTokens,
+                                    createdAt = System.currentTimeMillis()
+                                )
+                            )
+                        } catch (e: Exception) {
+                            OmniLog.e(TAG, "Failed to insert token usage record: ${e.message}")
+                        }
+                    }
+
                     override suspend fun onContextCompactionStateChanged(
                         isCompacting: Boolean,
                         latestPromptTokens: Int?,
@@ -4600,6 +4683,36 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         },
                         null
                     )
+                }
+            }
+        }
+    }
+
+    fun getTokenUsageRecords(call: MethodCall, result: MethodChannel.Result) {
+        val sinceMs = call.argument<Number>("since")?.toLong() ?: 0L
+        workJob.launch {
+            try {
+                val records = DatabaseHelper.getTokenUsageRecordsSince(sinceMs)
+                val jsonList = records.map { record ->
+                    mapOf(
+                        "id" to record.id,
+                        "conversationId" to record.conversationId,
+                        "isLocal" to record.isLocal,
+                        "model" to record.model,
+                        "promptTokens" to record.promptTokens,
+                        "completionTokens" to record.completionTokens,
+                        "reasoningTokens" to record.reasoningTokens,
+                        "textTokens" to record.textTokens,
+                        "createdAt" to record.createdAt
+                    )
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(jsonList)
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Failed to get token usage records: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("GET_TOKEN_USAGE_RECORDS_ERROR", e.message, null)
                 }
             }
         }

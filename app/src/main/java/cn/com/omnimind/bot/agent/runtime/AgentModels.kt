@@ -244,6 +244,19 @@ interface AgentCallback {
     ) = Unit
 
     /**
+     * 每轮 LLM 调用后的 token 消耗记录（含 reasoning/text 明细）
+     */
+    suspend fun onTokenUsageRecorded(
+        conversationId: Long?,
+        isLocal: Boolean,
+        model: String,
+        promptTokens: Int,
+        completionTokens: Int,
+        reasoningTokens: Int,
+        textTokens: Int
+    ) = Unit
+
+    /**
      * 对话上下文压缩状态变化
      */
     suspend fun onContextCompactionStateChanged(

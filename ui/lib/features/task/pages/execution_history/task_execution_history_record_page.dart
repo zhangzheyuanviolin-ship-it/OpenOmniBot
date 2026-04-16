@@ -30,6 +30,7 @@ import 'package:ui/services/storage_service.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/features/memory/pages/memory_center/widgets/conversation_heatmap.dart';
+import 'package:ui/features/task/pages/execution_history/widgets/token_consumption_card.dart';
 
 /// 执行总结的前三条记录ID存储key
 const String kExecutionSummaryTopThreeIdsKey =
@@ -990,6 +991,8 @@ class _TaskExecutionHistoryRecordPageState
                               children: [
                                 SizedBox(height: 14),
                                 const ConversationHeatmap(),
+                                SizedBox(height: 10),
+                                const TokenConsumptionCard(),
                                 SizedBox(height: 12),
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
