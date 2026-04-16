@@ -486,6 +486,14 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           _SettingItem(
+            icon: Icons.storage_outlined,
+            title: '存储占用',
+            subtitle: '查看空间占用明细，支持分项清理',
+            onTap: () {
+              GoRouterManager.push('/home/storage_usage');
+            },
+          ),
+          _SettingItem(
             icon: Icons.info_outline,
             iconSvg: 'assets/home/about_icon.svg',
             title: context.l10n.settingsAboutTitle,
