@@ -13,6 +13,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import cn.com.omnimind.baselib.util.OmniLog
+import cn.com.omnimind.baselib.llm.decodeChatCompletionUsage
 import java.util.SortedMap
 import java.util.TreeMap
 
@@ -391,18 +392,7 @@ class AgentLlmStreamAccumulator(
     }
 
     private fun decodeUsage(element: JsonElement?): ChatCompletionUsage? {
-        val obj = element as? JsonObject ?: return null
-        return ChatCompletionUsage(
-            promptTokens = obj["prompt_tokens"]?.jsonPrimitive?.intOrNull,
-            completionTokens = obj["completion_tokens"]?.jsonPrimitive?.intOrNull,
-            totalTokens = obj["total_tokens"]?.jsonPrimitive?.intOrNull,
-            prefillTokensPerSecond =
-                obj["prefill_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
-            decodeTokensPerSecond =
-                obj["decode_tokens_per_second"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
-            promptTokensDetails = obj["prompt_tokens_details"],
-            completionTokensDetails = obj["completion_tokens_details"]
-        )
+        return decodeChatCompletionUsage(element)
     }
 
     private fun usageWithDecodedTiming(): ChatCompletionUsage? {

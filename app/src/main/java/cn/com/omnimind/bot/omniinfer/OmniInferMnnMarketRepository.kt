@@ -159,7 +159,6 @@ object OmniInferMnnMarketRepository {
     ): List<ResolvedMarketModel> {
         return payload.models.asSequence()
             .filter(::isServiceable)
-            .filter(::meetsAppVersion)
             .mapNotNull { item ->
                 val repoPath = item.sources[source]?.trim().orEmpty()
                 if (repoPath.isEmpty()) {
@@ -198,37 +197,6 @@ object OmniInferMnnMarketRepository {
             return false
         }
         return item.sources.isNotEmpty()
-    }
-
-    private fun meetsAppVersion(item: MarketItem): Boolean {
-        val requiredVersion = item.minAppVersion?.trim().orEmpty()
-        if (requiredVersion.isEmpty()) {
-            return true
-        }
-        val currentVersion = appContext
-            ?.packageManager
-            ?.getPackageInfo(appContext!!.packageName, 0)
-            ?.versionName
-            ?.trim()
-            .orEmpty()
-        if (currentVersion.isEmpty()) {
-            return true
-        }
-        return compareVersion(currentVersion, requiredVersion) >= 0
-    }
-
-    private fun compareVersion(current: String, required: String): Int {
-        val currentParts = current.split('.')
-        val requiredParts = required.split('.')
-        val count = maxOf(currentParts.size, requiredParts.size)
-        for (index in 0 until count) {
-            val left = currentParts.getOrNull(index)?.toIntOrNull() ?: 0
-            val right = requiredParts.getOrNull(index)?.toIntOrNull() ?: 0
-            if (left != right) {
-                return left.compareTo(right)
-            }
-        }
-        return 0
     }
 
     private fun cacheFile(context: Context): File {
