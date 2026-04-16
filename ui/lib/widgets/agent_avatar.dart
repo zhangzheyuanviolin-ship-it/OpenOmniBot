@@ -635,12 +635,15 @@ class _AgentAvatarCropDialogState extends State<_AgentAvatarCropDialog> {
                       offset: _offset,
                       child: Transform.scale(
                         scale: _scale,
-                        child: SizedBox(
-                          width: imageWidth,
-                          height: imageHeight,
-                          child: Image.file(
-                            File(widget.imagePath),
-                            fit: BoxFit.fill,
+                        child: OverflowBox(
+                          minWidth: 0,
+                          minHeight: 0,
+                          maxWidth: double.infinity,
+                          maxHeight: double.infinity,
+                          child: _DecodedCropImage(
+                            image: image,
+                            width: imageWidth,
+                            height: imageHeight,
                           ),
                         ),
                       ),
@@ -802,6 +805,56 @@ class _AgentAvatarCropDialogState extends State<_AgentAvatarCropDialog> {
         ),
       ),
     );
+  }
+}
+
+class _DecodedCropImage extends StatelessWidget {
+  const _DecodedCropImage({
+    required this.image,
+    required this.width,
+    required this.height,
+  });
+
+  final ui.Image image;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: CustomPaint(
+        size: Size(width, height),
+        painter: _DecodedCropImagePainter(image),
+      ),
+    );
+  }
+}
+
+class _DecodedCropImagePainter extends CustomPainter {
+  const _DecodedCropImagePainter(this.image);
+
+  final ui.Image image;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final sourceRect = Rect.fromLTWH(
+      0,
+      0,
+      image.width.toDouble(),
+      image.height.toDouble(),
+    );
+    final destinationRect = Offset.zero & size;
+    final paint = Paint()
+      ..isAntiAlias = true
+      ..filterQuality = FilterQuality.high;
+    canvas.drawImageRect(image, sourceRect, destinationRect, paint);
+  }
+
+  @override
+  bool shouldRepaint(_DecodedCropImagePainter oldDelegate) {
+    return oldDelegate.image != image;
   }
 }
 

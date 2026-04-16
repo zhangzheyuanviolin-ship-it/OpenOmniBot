@@ -8,6 +8,7 @@ class BotStatus extends StatelessWidget {
   final String? hintText;
   final String? costTime;
   final TextStyle? textStyle;
+  final bool showAvatar;
 
   const BotStatus({
     super.key,
@@ -15,6 +16,7 @@ class BotStatus extends StatelessWidget {
     this.hintText,
     this.costTime,
     this.textStyle,
+    this.showAvatar = true,
   });
 
   @override
@@ -23,10 +25,9 @@ class BotStatus extends StatelessWidget {
       case BotStatusType.completed:
         return _buildStatusRow(
           context,
-          customIcon: const AgentAvatarButton(
-            size: 22,
-            showCompletedBadge: true,
-          ),
+          customIcon: showAvatar
+              ? const AgentAvatarButton(size: 30, showCompletedBadge: true)
+              : null,
           text: '思考完成',
           timeDesc: '用时',
           costTime: costTime,
@@ -34,7 +35,7 @@ class BotStatus extends StatelessWidget {
       case BotStatusType.hint:
         return _buildStatusRow(
           context,
-          customIcon: const AgentAvatarButton(size: 22),
+          customIcon: showAvatar ? const AgentAvatarButton(size: 30) : null,
           text: hintText ?? '正在思考',
           timeDesc: costTime != null ? '用时' : null,
           costTime: costTime,
@@ -66,7 +67,7 @@ class BotStatus extends StatelessWidget {
           height: 1.50,
           letterSpacing: 0.33,
         );
-    Widget iconWidget;
+    Widget? iconWidget;
     if (customIcon != null) {
       iconWidget = customIcon;
     } else if (svgPath != null) {
@@ -85,15 +86,15 @@ class BotStatus extends StatelessWidget {
         color: resolvedTextStyle.color ?? defaultTextColor,
       );
     } else {
-      iconWidget = const SizedBox.shrink();
+      iconWidget = null;
     }
 
     return Container(
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(8.0)),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          iconWidget,
-          const SizedBox(width: 4.0),
+          if (iconWidget != null) ...[iconWidget, const SizedBox(width: 8.0)],
           Text(text, style: resolvedTextStyle),
           const SizedBox(width: 4.0),
           Text(

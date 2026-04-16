@@ -627,7 +627,8 @@ class MessageBubble extends StatelessWidget {
 
   /// 构建卡片消息
   Widget _buildCardMessage(BuildContext context) {
-    final cardData = message.cardData ?? {};
+    final cardData = Map<String, dynamic>.from(message.cardData ?? {});
+    cardData.putIfAbsent('cardId', () => message.contentId ?? message.id);
 
     // 卡片消息撑满聊天框宽度，减去头像和间距的宽度
     return SizedBox(

@@ -945,8 +945,9 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     final isErrorMessage = type == 'error';
     final isRateLimited = type == 'rate_limited';
     final isSummaryStart = type == 'summary_start';
-    final prefillTokensPerSecond =
-        extractChatTaskPrefillTokensPerSecond(content);
+    final prefillTokensPerSecond = extractChatTaskPrefillTokensPerSecond(
+      content,
+    );
     final decodeTokensPerSecond = extractChatTaskDecodeTokensPerSecond(content);
     final hasPerformanceMetrics =
         prefillTokensPerSecond != null || decodeTokensPerSecond != null;
@@ -1149,6 +1150,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       'thinkingContent': thinkingContent ?? '',
       'stage': stage ?? _currentThinkingStage,
       'taskID': taskID, // 添加taskID用于创建稳定的key
+      'cardId': thinkingCardId,
       'startTime': startTime, // 添加开始时间
       'endTime': null, // 结束时间初始为null
     };
@@ -1203,6 +1205,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         cardData['isLoading'] = isLoading ?? _isDeepThinking;
         cardData['stage'] = newStage;
         cardData['taskID'] = taskID; // 显式保留 taskID，确保 Widget key 不会变化
+        cardData['cardId'] = thinkingCardId;
         cardData['startTime'] = startTime; // 保留开始时间
         cardData['endTime'] = endTime; // 更新结束时间
 

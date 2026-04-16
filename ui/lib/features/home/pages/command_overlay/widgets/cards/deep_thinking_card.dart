@@ -41,6 +41,7 @@ class DeepThinkingCard extends StatefulWidget {
   final ScrollController? parentScrollController;
   final double textScale;
   final Color textColor;
+  final bool showStatusAvatar;
 
   const DeepThinkingCard({
     super.key,
@@ -57,6 +58,7 @@ class DeepThinkingCard extends StatefulWidget {
     this.parentScrollController,
     this.textScale = 1,
     this.textColor = const Color(0x80353E53),
+    this.showStatusAvatar = true,
   });
 
   @override
@@ -320,6 +322,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                           : BotStatusType.hint,
                       hintText: hintText,
                       costTime: _formatTime(_elapsedSeconds),
+                      showAvatar: widget.showStatusAvatar,
                       textStyle: TextStyle(
                         color: secondaryTextColor,
                         fontSize: 12 * widget.textScale,
@@ -348,6 +351,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                 : BotStatusType.hint,
             hintText: hintText,
             costTime: _formatTime(_elapsedSeconds),
+            showAvatar: widget.showStatusAvatar,
             textStyle: TextStyle(
               color: secondaryTextColor,
               fontSize: 12 * widget.textScale,
