@@ -189,7 +189,7 @@ Special thanks to these open-source projects:
 <table align="center">
   <tr>
     <td align="center">
-      <img src="docs/pic/wechat.jpg" alt="WeChat Group" width="220"/><br/>
+      <img src="docs/pic/wechat423.jpg" alt="WeChat Group" width="220"/><br/>
       <b>WeChat Group</b>
     </td>
   </tr>
