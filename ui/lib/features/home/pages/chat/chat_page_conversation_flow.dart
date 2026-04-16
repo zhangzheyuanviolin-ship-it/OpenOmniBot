@@ -140,6 +140,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       'thinkingContent': thinkingContent ?? '',
       'stage': stage ?? _currentThinkingStage,
       'taskID': taskID,
+      'cardId': thinkingCardId,
       'startTime': startTime,
       'endTime': null,
     };
@@ -192,6 +193,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       cardData['isLoading'] = isLoading ?? _isDeepThinking;
       cardData['stage'] = newStage;
       cardData['taskID'] = taskID;
+      cardData['cardId'] = thinkingCardId;
       cardData['startTime'] = startTime;
       cardData['endTime'] = endTime;
 

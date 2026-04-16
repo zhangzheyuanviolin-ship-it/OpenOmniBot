@@ -74,6 +74,9 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
   String? _vlmInfoQuestion;
 
   final Map<String, String> _currentAiMessages = {};
+  bool _autoStickMessageListToLatest = true;
+  bool _messageStickToLatestScheduled = false;
+  static const double _messageLatestEdgeTolerance = 48.0;
 
   // 流式思考内容相关状态
   String _deepThinkingContent = '';
@@ -945,8 +948,9 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     final isErrorMessage = type == 'error';
     final isRateLimited = type == 'rate_limited';
     final isSummaryStart = type == 'summary_start';
-    final prefillTokensPerSecond =
-        extractChatTaskPrefillTokensPerSecond(content);
+    final prefillTokensPerSecond = extractChatTaskPrefillTokensPerSecond(
+      content,
+    );
     final decodeTokensPerSecond = extractChatTaskDecodeTokensPerSecond(content);
     final hasPerformanceMetrics =
         prefillTokensPerSecond != null || decodeTokensPerSecond != null;
@@ -1030,6 +1034,76 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       _vlmInfoQuestion = null;
       _vlmAnswerController.clear();
     });
+  }
+
+  double _messageLatestOffset(ScrollMetrics metrics) {
+    return switch (metrics.axisDirection) {
+      AxisDirection.down || AxisDirection.right => metrics.maxScrollExtent,
+      AxisDirection.up || AxisDirection.left => metrics.minScrollExtent,
+    };
+  }
+
+  double _messageDistanceToLatest(ScrollMetrics metrics) {
+    return (metrics.pixels - _messageLatestOffset(metrics)).abs();
+  }
+
+  bool _isMessageListNearLatest([ScrollMetrics? metrics]) {
+    final resolvedMetrics = metrics;
+    if (resolvedMetrics != null) {
+      return _messageDistanceToLatest(resolvedMetrics) <=
+          _messageLatestEdgeTolerance;
+    }
+    if (!_messageScrollController.hasClients) {
+      return true;
+    }
+    return _messageDistanceToLatest(_messageScrollController.position) <=
+        _messageLatestEdgeTolerance;
+  }
+
+  void _scheduleMessageStickToLatest() {
+    if (!_autoStickMessageListToLatest || _messageStickToLatestScheduled) {
+      return;
+    }
+    _messageStickToLatestScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _messageStickToLatestScheduled = false;
+      if (!mounted || !_messageScrollController.hasClients) {
+        return;
+      }
+      final position = _messageScrollController.position;
+      final target = _messageLatestOffset(position);
+      if ((target - position.pixels).abs() < 0.5) {
+        return;
+      }
+      _messageScrollController.jumpTo(target);
+    });
+  }
+
+  void _handleStreamingTextLayoutChanged() {
+    if (_autoStickMessageListToLatest) {
+      _scheduleMessageStickToLatest();
+    }
+  }
+
+  void _handleMessageScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return;
+    }
+    final isUserDrivenUpdate =
+        (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null) ||
+        (notification is OverscrollNotification &&
+            notification.dragDetails != null);
+    if (isUserDrivenUpdate) {
+      _autoStickMessageListToLatest = _isMessageListNearLatest(
+        notification.metrics,
+      );
+      return;
+    }
+    if (notification is ScrollEndNotification &&
+        _isMessageListNearLatest(notification.metrics)) {
+      _autoStickMessageListToLatest = true;
+    }
   }
 
   void _updateOrAddAiMessage(
@@ -1149,6 +1223,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       'thinkingContent': thinkingContent ?? '',
       'stage': stage ?? _currentThinkingStage,
       'taskID': taskID, // 添加taskID用于创建稳定的key
+      'cardId': thinkingCardId,
       'startTime': startTime, // 添加开始时间
       'endTime': null, // 结束时间初始为null
     };
@@ -1203,6 +1278,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         cardData['isLoading'] = isLoading ?? _isDeepThinking;
         cardData['stage'] = newStage;
         cardData['taskID'] = taskID; // 显式保留 taskID，确保 Widget key 不会变化
+        cardData['cardId'] = thinkingCardId;
         cardData['startTime'] = startTime; // 保留开始时间
         cardData['endTime'] = endTime; // 更新结束时间
 
@@ -1748,7 +1824,10 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
                     // 消息列表 - 使用 NotificationListener 阻止滚动事件影响 sheet
                     Expanded(
                       child: NotificationListener<ScrollNotification>(
-                        onNotification: (_) => true, // 阻止滚动事件冒泡到 sheet
+                        onNotification: (notification) {
+                          _handleMessageScrollNotification(notification);
+                          return true; // 阻止滚动事件冒泡到 sheet
+                        },
                         child: _buildMessageList(),
                       ),
                     ),
@@ -1830,6 +1909,9 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       );
     }
 
+    if (_autoStickMessageListToLatest) {
+      _scheduleMessageStickToLatest();
+    }
     return Align(
       alignment: Alignment.topCenter,
       child: ListView.builder(
@@ -1860,6 +1942,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
               onBeforeTaskExecute: _handleBeforeTaskExecute,
               onCancelTask: _onCancelTaskFromCard,
               parentScrollController: _messageScrollController,
+              onStreamingTextLayoutChanged: _handleStreamingTextLayoutChanged,
             ),
           );
         },
