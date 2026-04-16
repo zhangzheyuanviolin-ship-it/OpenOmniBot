@@ -323,6 +323,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                       hintText: hintText,
                       costTime: _formatTime(_elapsedSeconds),
                       showAvatar: widget.showStatusAvatar,
+                      shimmerText: widget.stage != 4 && widget.stage != 5,
                       textStyle: TextStyle(
                         color: secondaryTextColor,
                         fontSize: 12 * widget.textScale,
@@ -352,6 +353,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
             hintText: hintText,
             costTime: _formatTime(_elapsedSeconds),
             showAvatar: widget.showStatusAvatar,
+            shimmerText: widget.stage != 4 && widget.stage != 5,
             textStyle: TextStyle(
               color: secondaryTextColor,
               fontSize: 12 * widget.textScale,

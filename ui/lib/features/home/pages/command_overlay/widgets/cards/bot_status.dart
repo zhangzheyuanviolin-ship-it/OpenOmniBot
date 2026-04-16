@@ -9,6 +9,7 @@ class BotStatus extends StatelessWidget {
   final String? costTime;
   final TextStyle? textStyle;
   final bool showAvatar;
+  final bool shimmerText;
 
   const BotStatus({
     super.key,
@@ -17,6 +18,7 @@ class BotStatus extends StatelessWidget {
     this.costTime,
     this.textStyle,
     this.showAvatar = true,
+    this.shimmerText = false,
   });
 
   @override
@@ -31,6 +33,7 @@ class BotStatus extends StatelessWidget {
           text: '思考完成',
           timeDesc: '用时',
           costTime: costTime,
+          shimmerText: false,
         );
       case BotStatusType.hint:
         return _buildStatusRow(
@@ -39,6 +42,7 @@ class BotStatus extends StatelessWidget {
           text: hintText ?? '正在思考',
           timeDesc: costTime != null ? '用时' : null,
           costTime: costTime,
+          shimmerText: shimmerText,
         );
     }
   }
@@ -52,6 +56,7 @@ class BotStatus extends StatelessWidget {
     String? timeDesc,
     String? costTime,
     String? timeDescSuffix = '',
+    bool shimmerText = false,
   }) {
     final palette = context.omniPalette;
     final defaultTextColor = context.isDarkTheme
@@ -89,20 +94,33 @@ class BotStatus extends StatelessWidget {
       iconWidget = null;
     }
 
+    final timeText = timeDesc != null
+        ? '($timeDesc${costTime ?? ''})$timeDescSuffix'
+        : '';
+    final textGroup = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(text, style: resolvedTextStyle),
+        if (timeText.isNotEmpty) ...[
+          const SizedBox(width: 4.0),
+          Text(timeText, style: resolvedTextStyle),
+        ],
+      ],
+    );
+    final statusText = shimmerText
+        ? _FlowingStatusText(
+            baseColor: resolvedTextStyle.color ?? defaultTextColor,
+            child: textGroup,
+          )
+        : textGroup;
+
     return Container(
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(8.0)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (iconWidget != null) ...[iconWidget, const SizedBox(width: 8.0)],
-          Text(text, style: resolvedTextStyle),
-          const SizedBox(width: 4.0),
-          Text(
-            timeDesc != null
-                ? '($timeDesc${costTime ?? ''})$timeDescSuffix'
-                : '',
-            style: resolvedTextStyle,
-          ),
+          statusText,
         ],
       ),
     );
@@ -110,3 +128,67 @@ class BotStatus extends StatelessWidget {
 }
 
 enum BotStatusType { completed, hint }
+
+class _FlowingStatusText extends StatefulWidget {
+  const _FlowingStatusText({required this.child, required this.baseColor});
+
+  final Widget child;
+  final Color baseColor;
+
+  @override
+  State<_FlowingStatusText> createState() => _FlowingStatusTextState();
+}
+
+class _FlowingStatusTextState extends State<_FlowingStatusText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) {
+      return widget.child;
+    }
+    final highlightColor = context.isDarkTheme
+        ? Colors.white.withValues(alpha: 0.92)
+        : Colors.white.withValues(alpha: 0.96);
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        return ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) {
+            final textWidth = bounds.width <= 0 ? 1.0 : bounds.width;
+            final shimmerWidth = (textWidth * 0.72).clamp(52.0, 180.0);
+            final travelDistance = textWidth + shimmerWidth;
+            final shimmerLeft =
+                bounds.left - shimmerWidth + travelDistance * _controller.value;
+            return LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [widget.baseColor, highlightColor, widget.baseColor],
+              stops: const [0.08, 0.5, 0.92],
+            ).createShader(
+              Rect.fromLTWH(
+                shimmerLeft,
+                bounds.top,
+                shimmerWidth,
+                bounds.height,
+              ),
+            );
+          },
+          child: child,
+        );
+      },
+    );
+  }
+}
