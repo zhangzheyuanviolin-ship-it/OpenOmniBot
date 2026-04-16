@@ -16,8 +16,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -34,9 +32,7 @@ class AgentOrchestrator(
         val initialMessages: List<ChatCompletionMessage>,
         val executionEnv: AgentExecutionEnvironment,
         val conversationId: Long? = null,
-        val contextCompactor: AgentConversationContextCompactor? = null,
-        val isLocalModel: Boolean = false,
-        val modelDisplayName: String = ""
+        val contextCompactor: AgentConversationContextCompactor? = null
     )
 
     private val json = Json {
@@ -133,27 +129,6 @@ class AgentOrchestrator(
                     callback.onPromptTokenUsageChanged(
                         latestPromptTokens = promptTokens,
                         promptTokenThreshold = latestPromptTokenThreshold
-                    )
-                }
-                // Record per-turn token usage (reasoning + text breakdown)
-                turn.usage?.let { usage ->
-                    var reasoningTokens = 0
-                    var textTokens = 0
-                    val details = usage.completionTokensDetails
-                    if (details is JsonObject) {
-                        reasoningTokens = details["reasoning_tokens"]
-                            ?.jsonPrimitive?.intOrNull ?: 0
-                        textTokens = details["text_tokens"]
-                            ?.jsonPrimitive?.intOrNull ?: 0
-                    }
-                    callback.onTokenUsageRecorded(
-                        conversationId = input.conversationId,
-                        isLocal = input.isLocalModel,
-                        model = input.modelDisplayName,
-                        promptTokens = usage.promptTokens ?: 0,
-                        completionTokens = usage.completionTokens ?: 0,
-                        reasoningTokens = reasoningTokens,
-                        textTokens = textTokens
                     )
                 }
                 input.contextCompactor?.let { compactor ->

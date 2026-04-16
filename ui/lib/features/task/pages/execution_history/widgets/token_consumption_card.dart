@@ -67,10 +67,19 @@ class _TokenConsumptionCardState extends State<TokenConsumptionCard>
       }
 
       final sinceMs = alignedStart.millisecondsSinceEpoch;
+      debugPrint('[TokenConsumptionCard] querying records since=$sinceMs (${alignedStart.toIso8601String()})');
       final records = await TokenUsageService.getRecordsSince(sinceMs);
+      debugPrint('[TokenConsumptionCard] fetched ${records.length} records from DB');
+      for (final r in records) {
+        debugPrint('[TokenConsumptionCard]   record id=${r.id}, model=${r.model}, isLocal=${r.isLocal}, '
+            'prompt=${r.promptTokens}, completion=${r.completionTokens}, '
+            'reasoning=${r.reasoningTokens}, text=${r.textTokens}, totalTokens=${r.totalTokens}, '
+            'createdAt=${DateTime.fromMillisecondsSinceEpoch(r.createdAt).toIso8601String()}');
+      }
 
-      // Build weekly buckets
-      final totalWeeks = widget.weeksToShow;
+      // Build weekly buckets — calculate actual week count from aligned start to today
+      final totalDays = today.difference(alignedStart).inDays + 1;
+      final totalWeeks = (totalDays / 7).ceil();
       final weeklyData = List.generate(
         totalWeeks,
         (i) => _WeeklyTokenData(
@@ -97,6 +106,9 @@ class _TokenConsumptionCardState extends State<TokenConsumptionCard>
           totalCloud += tokens;
         }
       }
+
+      debugPrint('[TokenConsumptionCard] aggregated: totalLocal=$totalLocal, totalCloud=$totalCloud, '
+          'total=${totalLocal + totalCloud}, weeks with data=${weeklyData.where((w) => w.totalTokens > 0).length}');
 
       if (mounted) {
         setState(() {
@@ -185,8 +197,6 @@ class _TokenConsumptionCardState extends State<TokenConsumptionCard>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildHeader(palette, isDark),
-                          const SizedBox(height: 12),
-                          _buildProportionBar(isDark),
                           const SizedBox(height: 14),
                           _buildStackedBars(isDark, palette),
                           const SizedBox(height: 10),
@@ -340,34 +350,6 @@ class _TokenConsumptionCardState extends State<TokenConsumptionCard>
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildProportionBar(bool isDark) {
-    final localFraction =
-        _total > 0 ? _totalLocal / _total : 0.0;
-    final cloudFraction =
-        _total > 0 ? _totalCloud / _total : 0.0;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(3),
-      child: SizedBox(
-        height: 6,
-        child: Row(
-          children: [
-            if (localFraction > 0)
-              Expanded(
-                flex: (localFraction * 1000).round().clamp(1, 1000),
-                child: Container(color: _localColor(isDark)),
-              ),
-            if (cloudFraction > 0)
-              Expanded(
-                flex: (cloudFraction * 1000).round().clamp(1, 1000),
-                child: Container(color: _cloudColor(isDark)),
-              ),
-          ],
-        ),
       ),
     );
   }

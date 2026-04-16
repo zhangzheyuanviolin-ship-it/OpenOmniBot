@@ -11,6 +11,8 @@ import cn.com.omnimind.baselib.llm.AiRequestLogStore
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionStreamOptions
+import cn.com.omnimind.baselib.database.DatabaseHelper
+import cn.com.omnimind.baselib.database.TokenUsageRecord
 import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
@@ -30,7 +32,9 @@ import kotlinx.serialization.json.JsonObject as KxJsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -289,6 +293,92 @@ object HttpController {
                 TAG,
                 "ignore AI request log persistence failure for ${seed.label}: ${it.message}"
             )
+        }
+        // Record token usage from every successful LLM response
+        if (success && responseJson.isNotEmpty()) {
+            runCatching { recordTokenUsageFromResponse(seed, responseJson) }
+                .onFailure {
+                    OmniLog.w(TAG, "ignore token usage recording failure: ${it.message}")
+                }
+        }
+    }
+
+    /**
+     * 从 LLM 响应中提取 usage 并写入 token_usage_records 表。
+     * 兼容流式（JSONArray of chunks）和非流式（单个 JSONObject）响应。
+     */
+    private fun recordTokenUsageFromResponse(seed: AiRequestLogSeed, responseJson: String) {
+        val normalized = responseJson.trim()
+        if (normalized.isEmpty()) return
+        OmniLog.d(TAG, "[TokenUsage] parsing response for model=${seed.model}, stream=${seed.stream}, responseLen=${normalized.length}")
+
+        // Find the usage object — streaming responses are a JSONArray, non-streaming is a JSONObject
+        val usageObj: JSONObject? = when {
+            normalized.startsWith("[") -> {
+                // Streaming: scan chunks from end to find the one with usage
+                val arr = JSONArray(normalized)
+                var found: JSONObject? = null
+                for (i in arr.length() - 1 downTo 0) {
+                    val chunk = arr.optJSONObject(i) ?: continue
+                    val u = chunk.optJSONObject("usage")
+                    if (u != null && (u.optInt("completion_tokens", -1) >= 0
+                                || u.optInt("total_tokens", -1) >= 0)) {
+                        found = u
+                        break
+                    }
+                }
+                found
+            }
+            normalized.startsWith("{") -> {
+                JSONObject(normalized).optJSONObject("usage")
+            }
+            else -> null
+        }
+
+        if (usageObj == null) {
+            OmniLog.d(TAG, "[TokenUsage] no usage object found in response for model=${seed.model}")
+            return
+        }
+
+        val promptTokens = usageObj.optInt("prompt_tokens", 0)
+        val completionTokens = usageObj.optInt("completion_tokens", 0)
+        if (promptTokens == 0 && completionTokens == 0) {
+            OmniLog.d(TAG, "[TokenUsage] usage is empty (prompt=0, completion=0) for model=${seed.model}")
+            return
+        }
+
+        // Extract detailed breakdown if available
+        val details = usageObj.optJSONObject("completion_tokens_details")
+        val reasoningTokens = details?.optInt("reasoning_tokens", 0) ?: 0
+        val textTokens = details?.optInt("text_tokens", 0) ?: 0
+
+        val isLocal = LocalModelProviderBridge.isBuiltinLocalProvider(null, seed.url)
+
+        OmniLog.i(
+            TAG,
+            "[TokenUsage] recording: model=${seed.model}, isLocal=$isLocal, " +
+                "prompt=$promptTokens, completion=$completionTokens, " +
+                "reasoning=$reasoningTokens, text=$textTokens, " +
+                "stream=${seed.stream}, url=${seed.url}"
+        )
+
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                DatabaseHelper.insertTokenUsageRecord(
+                    TokenUsageRecord(
+                        conversationId = 0L,
+                        isLocal = isLocal,
+                        model = seed.model,
+                        promptTokens = promptTokens,
+                        completionTokens = completionTokens,
+                        reasoningTokens = reasoningTokens,
+                        textTokens = textTokens,
+                        createdAt = System.currentTimeMillis()
+                    )
+                )
+            }.onFailure {
+                OmniLog.w(TAG, "Failed to insert token usage record: ${it.message}")
+            }
         }
     }
 
