@@ -37,6 +37,7 @@ class MessageBubble extends StatelessWidget {
   final OnRequestAuthorize? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
+  final VoidCallback? onStreamingTextLayoutChanged;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
 
@@ -49,6 +50,7 @@ class MessageBubble extends StatelessWidget {
     this.parentScrollController,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
+    this.onStreamingTextLayoutChanged,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
   });
@@ -512,6 +514,7 @@ class MessageBubble extends StatelessWidget {
             enableMarkdown: true,
             fullText: text,
             selectable: true,
+            onDisplayedTextChanged: onStreamingTextLayoutChanged,
             style: TextStyle(
               fontSize: _chatTextSize,
               color: aiPrimaryTextColor,
@@ -526,6 +529,7 @@ class MessageBubble extends StatelessWidget {
       enableMarkdown: true,
       fullText: text,
       selectable: true,
+      onDisplayedTextChanged: onStreamingTextLayoutChanged,
       style: TextStyle(
         fontSize: _chatTextSize,
         color: aiPrimaryTextColor,

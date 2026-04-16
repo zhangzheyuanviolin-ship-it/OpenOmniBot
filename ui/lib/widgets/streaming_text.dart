@@ -37,12 +37,16 @@ class StreamingText extends StatefulWidget {
   /// 是否可被选择
   final bool selectable;
 
+  /// 文本流式显示发生布局变化时回调
+  final VoidCallback? onDisplayedTextChanged;
+
   const StreamingText({
     super.key,
     required this.fullText,
     required this.style,
     this.enableMarkdown = false,
     this.selectable = false,
+    this.onDisplayedTextChanged,
   });
 
   @override
@@ -53,13 +57,31 @@ class _StreamingTextState extends State<StreamingText> {
   String _previousFullText = '';
   bool _isFirstBuild = true;
   String? _lastSelectedContent; // 跟踪最后选中的内容
+  int? _lastNotifiedDisplayLength;
 
   @override
   void didUpdateWidget(StreamingText oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.fullText != widget.fullText) {
       _previousFullText = oldWidget.fullText;
+      _lastNotifiedDisplayLength = null;
     }
+  }
+
+  void _notifyDisplayedTextChanged(int displayLength) {
+    if (_lastNotifiedDisplayLength == displayLength) {
+      return;
+    }
+    _lastNotifiedDisplayLength = displayLength;
+    final callback = widget.onDisplayedTextChanged;
+    if (callback == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        callback();
+      }
+    });
   }
 
   @override
@@ -122,6 +144,7 @@ class _StreamingTextState extends State<StreamingText> {
           0,
           displayLength.clamp(0, widget.fullText.length),
         );
+        _notifyDisplayedTextChanged(displayText.length);
 
         // 如果启用Markdown，直接渲染Markdown内容
         if (widget.enableMarkdown) {
