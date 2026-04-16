@@ -489,16 +489,16 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                     ),
                   ),
                   const SizedBox(width: 6),
+                  if (_isAgentScene(scene.sceneId)) ...[
+                    const AgentAvatarButton(size: 30, showEditBadge: true),
+                    const SizedBox(width: 6),
+                  ],
                   Icon(Icons.info_outline, size: 15, color: _tertiaryTextColor),
                 ],
               ),
             ),
           ),
           const SizedBox(width: 10),
-          if (_isAgentScene(scene.sceneId)) ...[
-            const AgentAvatarButton(size: 32, showEditBadge: true),
-            const SizedBox(width: 10),
-          ],
           Expanded(
             flex: 6,
             child: Builder(

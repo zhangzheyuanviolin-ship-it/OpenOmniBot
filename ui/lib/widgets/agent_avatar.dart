@@ -384,7 +384,7 @@ class _LocalAvatarPickerButton extends StatelessWidget {
         ? palette.accentPrimary
         : const Color(0xFF2C7FEB);
     return Material(
-      color: accentColor.withValues(alpha: context.isDarkTheme ? 0.14 : 0.08),
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,

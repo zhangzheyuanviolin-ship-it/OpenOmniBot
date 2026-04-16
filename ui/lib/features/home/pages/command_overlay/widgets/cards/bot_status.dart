@@ -27,9 +27,7 @@ class BotStatus extends StatelessWidget {
       case BotStatusType.completed:
         return _buildStatusRow(
           context,
-          customIcon: showAvatar
-              ? const AgentAvatarButton(size: 30, showCompletedBadge: true)
-              : null,
+          customIcon: showAvatar ? const AgentAvatarButton(size: 30) : null,
           text: '思考完成',
           timeDesc: '用时',
           costTime: costTime,
