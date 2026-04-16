@@ -27,7 +27,6 @@ class ChannelManager {
     private var remoteMcpConfigChannel: RemoteMcpConfigChannel = RemoteMcpConfigChannel()
     private var overlayChannel: OverlayChannel = OverlayChannel()
     private var browserSessionChannel: BrowserSessionChannel = BrowserSessionChannel()
-    private var storageUsageChannel: StorageUsageChannel = StorageUsageChannel()
     fun getUIRouterChannel(): UIRouterChannel {
         return uiRouterChannel
     }
@@ -54,7 +53,6 @@ class ChannelManager {
         remoteMcpConfigChannel.setChannel(flutterEngine)
         overlayChannel.setChannel(flutterEngine)
         browserSessionChannel.setChannel(flutterEngine)
-        storageUsageChannel.setChannel(flutterEngine)
     }
 
     fun onCreate(context: Context) {
@@ -70,7 +68,6 @@ class ChannelManager {
         mnnLocalModelsChannel.onCreate(context)
         mcpServerChannel.onCreate(context)
         remoteMcpConfigChannel.onCreate()
-        storageUsageChannel.onCreate(context)
     }
 
     fun clearChannel() {
@@ -91,7 +88,6 @@ class ChannelManager {
         remoteMcpConfigChannel.clear()
         overlayChannel.clear()
         browserSessionChannel.clear()
-        storageUsageChannel.clear()
     }
 
 

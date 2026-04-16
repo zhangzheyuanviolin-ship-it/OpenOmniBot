@@ -16,7 +16,6 @@ import 'pages/command_overlay/command_overlay.dart';
 import 'pages/edit_profile/edit_profile_page.dart';
 import 'pages/settings/workspace_memory_setting_page.dart';
 import 'pages/settings/background_setting_page.dart';
-import 'pages/settings/storage_usage_page.dart';
 import 'pages/omnibot_workspace/omnibot_artifact_preview_page.dart';
 import 'pages/omnibot_workspace/omnibot_workspace_page.dart';
 import 'pages/webview/webview_page.dart';
@@ -309,16 +308,6 @@ List<GoRoute> homeRoutes = [
       key: state.pageKey,
       name: 'home/background_setting',
       child: const BackgroundSettingPage(),
-    ),
-  ),
-
-  GoRoute(
-    path: '/home/storage_usage',
-    name: 'home/storage_usage',
-    pageBuilder: (context, state) => GoRouterManager.buildActivitySlidePage(
-      key: state.pageKey,
-      name: 'home/storage_usage',
-      child: const StorageUsagePage(),
     ),
   ),
 
