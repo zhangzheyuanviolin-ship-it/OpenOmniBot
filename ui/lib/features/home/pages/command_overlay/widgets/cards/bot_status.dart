@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:ui/features/home/pages/command_overlay/widgets/thinking_animation.dart';
 import 'package:ui/theme/theme_context.dart';
+import 'package:ui/widgets/agent_avatar.dart';
 
 class BotStatus extends StatelessWidget {
   final BotStatusType status;
@@ -23,7 +23,10 @@ class BotStatus extends StatelessWidget {
       case BotStatusType.completed:
         return _buildStatusRow(
           context,
-          customIcon: const ThinkingAnimation(isThinking: false),
+          customIcon: const AgentAvatarButton(
+            size: 22,
+            showCompletedBadge: true,
+          ),
           text: '思考完成',
           timeDesc: '用时',
           costTime: costTime,
@@ -31,7 +34,7 @@ class BotStatus extends StatelessWidget {
       case BotStatusType.hint:
         return _buildStatusRow(
           context,
-          customIcon: const ThinkingAnimation(isThinking: true),
+          customIcon: const AgentAvatarButton(size: 22),
           text: hintText ?? '正在思考',
           timeDesc: costTime != null ? '用时' : null,
           costTime: costTime,

@@ -65,7 +65,6 @@ const List<Color> _kDarkChatAccentGradient = <Color>[
   Color(0xFF8FA38A),
 ];
 
-const Color _kDarkChatAccentShadow = Color(0x2610110F);
 const double _kChatAppBarMenuButtonSize = 50;
 const double _kChatAppBarAccessoryButtonSize = 40;
 const double _kChatAppBarAccessoryGap = 12;
@@ -679,25 +678,11 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
           opacity: 0.78,
         ),
         borderRadius: BorderRadius.circular(999),
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(
-                    alpha: widget.translucent ? 0.18 : 0.14,
-                  ),
-                  blurRadius: widget.translucent ? 18 : 14,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(
-                    alpha: widget.translucent ? 0.2 : 0.12,
-                  ),
-                  blurRadius: widget.translucent ? 22 : 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+        border: Border.all(
+          color: widget.translucent
+              ? widget.visualProfile.islandBorderColor
+              : palette.borderSubtle.withValues(alpha: 0.72),
+        ),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
@@ -799,9 +784,6 @@ class _ChatToolSlider extends StatelessWidget {
     final activeGradient = context.isDarkTheme
         ? _kDarkChatAccentGradient
         : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
-    final activeShadowColor = context.isDarkTheme
-        ? _kDarkChatAccentShadow
-        : const Color(0x291930D9);
     return SizedBox(
       height: 32,
       child: Container(
@@ -828,13 +810,6 @@ class _ChatToolSlider extends StatelessWidget {
                       colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: activeShadowColor,
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
                   ),
                 ),
               ),
@@ -1024,9 +999,6 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
     final activeGradient = context.isDarkTheme
         ? _kDarkChatAccentGradient
         : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
-    final activeShadowColor = context.isDarkTheme
-        ? _kDarkChatAccentShadow
-        : const Color(0x291930D9);
     final alignment = _activeVisibleModeIndex == 0
         ? Alignment.centerLeft
         : Alignment.centerRight;
@@ -1076,13 +1048,6 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
                       colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: activeShadowColor,
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
                   ),
                 ),
               ),
