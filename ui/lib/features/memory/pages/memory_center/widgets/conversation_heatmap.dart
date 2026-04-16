@@ -24,7 +24,6 @@ class _ConversationHeatmapState extends State<ConversationHeatmap>
   bool _isLoading = true;
   int _totalConversations = 0;
   int _currentStreak = 0;
-  int _maxInDay = 0;
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -88,18 +87,11 @@ class _ConversationHeatmapState extends State<ConversationHeatmap>
         }
       }
 
-      // Find max in a single day
-      int maxInDay = 0;
-      for (final count in activityMap.values) {
-        if (count > maxInDay) maxInDay = count;
-      }
-
       if (mounted) {
         setState(() {
           _activityMap = activityMap;
           _totalConversations = totalInRange;
           _currentStreak = streak;
-          _maxInDay = maxInDay;
           _isLoading = false;
         });
         _fadeController.forward();
@@ -265,28 +257,6 @@ class _ConversationHeatmapState extends State<ConversationHeatmap>
             highlight: _currentStreak >= 3,
           ),
         ),
-        const Spacer(),
-        // Max badge
-        if (_maxInDay > 0)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1A3A5C)
-                  : const Color(0xFFE8F2FC),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '单日最高 $_maxInDay',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: isDark
-                    ? const Color(0xFF7BBCE6)
-                    : const Color(0xFF2C7FEB),
-              ),
-            ),
-          ),
       ],
     );
   }

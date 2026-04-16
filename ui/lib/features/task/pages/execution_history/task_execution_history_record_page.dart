@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:ui/core/mixins/page_lifecycle_mixin.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/memory/pages/memory_center/widgets/tag_section.dart';
-import 'package:ui/features/my/pages/my/widgets/memory_section.dart';
 import 'package:ui/features/task/pages/execution_history/task_execution_detail_page.dart';
 import 'package:ui/features/task/pages/scheduled_tasks/widgets/schedule_task_sheet.dart';
 import 'package:ui/models/task_execution_info.dart';
-import 'package:ui/models/title_count.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/scheduled_task_scheduler_service.dart';
 import 'package:ui/services/scheduled_task_storage_service.dart';
@@ -26,18 +24,10 @@ import 'package:ui/features/task/pages/execution_history/widgets/execution_recor
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/image/cached_image.dart';
 import 'package:ui/widgets/selection_bottom_bar.dart';
-import 'package:ui/services/storage_service.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/features/memory/pages/memory_center/widgets/conversation_heatmap.dart';
 import 'package:ui/features/task/pages/execution_history/widgets/token_consumption_card.dart';
-
-/// 执行总结的前三条记录ID存储key
-const String kExecutionSummaryTopThreeIdsKey =
-    'execution_summary_top_three_ids';
-
-/// 执行总结的存储key
-const String kExecutionSummaryKey = 'execution_summary';
 
 class TaskExecutionHistoryRecordPage extends StatefulWidget {
   const TaskExecutionHistoryRecordPage({super.key});
@@ -50,7 +40,6 @@ class TaskExecutionHistoryRecordPage extends StatefulWidget {
 class _TaskExecutionHistoryRecordPageState
     extends State<TaskExecutionHistoryRecordPage>
     with
-        SingleTickerProviderStateMixin,
         WidgetsBindingObserver,
         PageLifecycleMixin<TaskExecutionHistoryRecordPage> {
   List<AppTag> executionTags = [];
@@ -58,8 +47,6 @@ class _TaskExecutionHistoryRecordPageState
   List<TaskExecutionInfo> taskExecutionInfos = [];
 
   List<ExecutionRecordListItemData> executionRecordViewModels = [];
-
-  MemorySummary? memorySummary;
 
   bool _isLoading = true;
   bool _hasLoadedOnce = false;
@@ -73,31 +60,11 @@ class _TaskExecutionHistoryRecordPageState
   Map<String, Map<String, dynamic>> _suggestionMap = {};
   Set<String> _scheduledTaskKeys = {};
 
-  // LLM 生成的执行总结
-  bool _isSummaryLoading = false;
-  late AnimationController _shimmerController;
-  // 用于跟踪上次生成总结时的前三条执行记录ID
-  List<String> _lastTopThreeExecutionIds = [];
-
   @override
   void initState() {
     super.initState();
-
-    // 初始化shimmer动画控制器
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-
     _loadData();
-    _loadMemorySummary();
     _loadScheduledTaskKeys();
-  }
-
-  @override
-  void dispose() {
-    _shimmerController.dispose();
-    super.dispose();
   }
 
   // ✅ 应用从后台回到前台时刷新
@@ -106,7 +73,6 @@ class _TaskExecutionHistoryRecordPageState
     if (_hasLoadedOnce) {
       print('✅ ExecutionRecordPage resumed - reloading data silently');
       _loadData(silent: true);
-      _loadMemorySummary();
       _loadScheduledTaskKeys();
     }
   }
@@ -178,203 +144,6 @@ class _TaskExecutionHistoryRecordPageState
   /// 生成 Suggestion key（与执行记录匹配）
   String _getSuggestionKey(String nodeId, String suggestionId) {
     return '$nodeId|$suggestionId';
-  }
-
-  Future<void> _loadMemorySummary() async {
-    try {
-      final executionCount = await CacheUtil.getExecutionRecordCountByTitle();
-      if (executionCount.isEmpty) {
-        if (mounted) {
-          setState(() {
-            memorySummary = null;
-          });
-        }
-        return;
-      }
-      // 将数据降序排列
-      executionCount.sort((a, b) => b.count.compareTo(a.count));
-
-      // 构建 tips 字符串,取前三多的title
-      String tips = executionCount
-          .take(3)
-          .map((item) => '· ${item.title} ${item.count} 次')
-          .join('\n');
-
-      final totalCount = executionCount.fold<int>(
-        0,
-        (sum, item) => sum + item.count,
-      );
-      final title = '本月共执行 $totalCount 件事，你可以在这查看';
-
-      setState(() {
-        memorySummary = MemorySummary(title: title, tips: tips, sum: '');
-      });
-
-      // 先加载持久化的总结
-      String? savedSummary;
-      try {
-        savedSummary = StorageService.getString(kExecutionSummaryKey);
-        print('加载持久化的执行总结: $savedSummary');
-      } catch (e) {
-        print('加载执行总结失败: $e');
-      }
-
-      // 检查前三条记录是否变化，只在变化时生成总结
-      final currentTopThreeIds = executionCount
-          .take(3)
-          .map((item) => '${item.title}_${item.count}')
-          .toList();
-
-      // 加载持久化的前三条记录ID
-      await _loadLastTopThreeExecutionIds();
-
-      final hasChanged = _hasTopThreeExecutionChanged(currentTopThreeIds);
-
-      if (hasChanged) {
-        _lastTopThreeExecutionIds = currentTopThreeIds;
-        // 保存到持久化存储
-        _saveLastTopThreeExecutionIds(currentTopThreeIds);
-        // 异步生成执行总结
-        _generateExecutionSummary(executionCount, title, tips);
-      } else {
-        // 如果没有持久化数据，使用默认总结
-        if (savedSummary == null) {
-          setState(() {
-            memorySummary = MemorySummary(
-              title: title,
-              tips: tips,
-              sum: '本月你是一个惜时如金的天命人~',
-            );
-          });
-        } else {
-          setState(() {
-            memorySummary = MemorySummary(
-              title: title,
-              tips: tips,
-              sum: savedSummary!,
-            );
-          });
-        }
-      }
-    } catch (e) {
-      print('Error loading memory summary: $e');
-    }
-  }
-
-  /// 从持久化存储加载上次的前三条执行记录ID
-  Future<void> _loadLastTopThreeExecutionIds() async {
-    try {
-      final savedIds = StorageService.getJson<List<dynamic>>(
-        kExecutionSummaryTopThreeIdsKey,
-      );
-      if (savedIds != null && savedIds.isNotEmpty) {
-        _lastTopThreeExecutionIds = savedIds.map((id) => id as String).toList();
-        print('加载持久化的前三条执行记录ID: $_lastTopThreeExecutionIds');
-      }
-    } catch (e) {
-      print('加载前三条执行记录ID失败: $e');
-    }
-  }
-
-  /// 保存前三条执行记录ID到持久化存储
-  Future<void> _saveLastTopThreeExecutionIds(List<String> ids) async {
-    try {
-      await StorageService.setJson(kExecutionSummaryTopThreeIdsKey, ids);
-      print('保存前三条执行记录ID到持久化存储: $ids');
-    } catch (e) {
-      print('保存前三条执行记录ID失败: $e');
-    }
-  }
-
-  /// 检查前三条执行记录是否变化
-  bool _hasTopThreeExecutionChanged(List<String> currentTopThreeIds) {
-    // 如果是第一次加载（_lastTopThreeExecutionIds为空），返回true
-    if (_lastTopThreeExecutionIds.isEmpty) {
-      return true;
-    }
-
-    // 如果数量不同，说明有变化
-    if (currentTopThreeIds.length != _lastTopThreeExecutionIds.length) {
-      return true;
-    }
-
-    // 逐个比较ID，如果有任何不同则返回true
-    for (int i = 0; i < currentTopThreeIds.length; i++) {
-      if (currentTopThreeIds[i] != _lastTopThreeExecutionIds[i]) {
-        return true;
-      }
-    }
-
-    // 完全相同，无需更新
-    return false;
-  }
-
-  /// 使用 LLM 生成执行总结
-  Future<void> _generateExecutionSummary(
-    List<TitleCount> executionCount,
-    String title,
-    String tips,
-  ) async {
-    // 显示加载状态
-    setState(() {
-      _isSummaryLoading = true;
-    });
-    // 如果没有执行记录，不生成总结
-    if (executionCount.isEmpty) {
-      return;
-    }
-
-    try {
-      // 取前三条执行记录
-      final topRecords = executionCount
-          .take(3)
-          .map((item) => {'title': item.title, 'count': item.count})
-          .toList();
-
-      const prompt = '''你是小万，一个温暖的AI助手。根据用户本月的任务执行记录，生成一句简短、温馨的总结语。
-
-要求：
-1. 总结语要简短（不超过30个字）
-2. 结合用户执行任务的特点，体现个性化
-3. 语气温暖友好、鼓励积极
-4. 可以适当幽默风趣
-5. 只输出总结语本身，不要加引号或其他说明
-
-用户的执行记录：
-''';
-
-      final recordsJson = topRecords
-          .map((r) => '任务: ${r['title']}, 执行次数: ${r['count']}')
-          .join('\n');
-
-      final response = await AssistsMessageService.postLLMChat(
-        text: prompt + recordsJson,
-        model: 'scene.compactor.context',
-      );
-
-      if (response != null && response.isNotEmpty && mounted) {
-        final summaryText = response.trim();
-        setState(() {
-          memorySummary = MemorySummary(
-            title: title,
-            tips: tips,
-            sum: summaryText,
-          );
-          _isSummaryLoading = false;
-        });
-        // 保存到持久化存储
-        StorageService.setString(kExecutionSummaryKey, summaryText);
-      } else {
-        setState(() {
-          _isSummaryLoading = false;
-        });
-      }
-    } catch (e) {
-      print('生成执行总结失败: $e');
-      setState(() {
-        _isSummaryLoading = false;
-      });
-    }
   }
 
   // 加载执行记录信息
@@ -875,7 +644,7 @@ class _TaskExecutionHistoryRecordPageState
 
       // 重新加载标签统计
       await _loadExecutionTags();
-      _loadMemorySummary();
+
 
       // 显示删除结果
       if (successCount > 0) {
@@ -944,7 +713,7 @@ class _TaskExecutionHistoryRecordPageState
 
       // 重新加载标签统计
       await _loadExecutionTags();
-      _loadMemorySummary();
+
     } catch (e) {
       print('Error deleting card: $e');
       showToast('删除失败', type: ToastType.error);
@@ -993,17 +762,6 @@ class _TaskExecutionHistoryRecordPageState
                                 const ConversationHeatmap(),
                                 SizedBox(height: 10),
                                 const TokenConsumptionCard(),
-                                SizedBox(height: 12),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                  ),
-                                  child: MemorySection(
-                                    memorySummary: memorySummary,
-                                    isSummaryLoading: _isSummaryLoading,
-                                    animationController: _shimmerController,
-                                  ),
-                                ),
                                 SizedBox(height: 12),
                               ],
                             ),
