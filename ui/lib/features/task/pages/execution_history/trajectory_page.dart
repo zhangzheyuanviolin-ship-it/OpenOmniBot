@@ -26,22 +26,21 @@ import 'package:ui/widgets/image/cached_image.dart';
 import 'package:ui/widgets/selection_bottom_bar.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/theme/theme_context.dart';
-import 'package:ui/features/memory/pages/memory_center/widgets/conversation_heatmap.dart';
-import 'package:ui/features/task/pages/execution_history/widgets/token_consumption_card.dart';
+import 'package:ui/features/task/pages/execution_history/widgets/activity_dashboard_card.dart';
 
-class TaskExecutionHistoryRecordPage extends StatefulWidget {
-  const TaskExecutionHistoryRecordPage({super.key});
+class TrajectoryPage extends StatefulWidget {
+  const TrajectoryPage({super.key});
 
   @override
-  State<TaskExecutionHistoryRecordPage> createState() =>
-      _TaskExecutionHistoryRecordPageState();
+  State<TrajectoryPage> createState() =>
+      _TrajectoryPageState();
 }
 
-class _TaskExecutionHistoryRecordPageState
-    extends State<TaskExecutionHistoryRecordPage>
+class _TrajectoryPageState
+    extends State<TrajectoryPage>
     with
         WidgetsBindingObserver,
-        PageLifecycleMixin<TaskExecutionHistoryRecordPage> {
+        PageLifecycleMixin<TrajectoryPage> {
   List<AppTag> executionTags = [];
 
   List<TaskExecutionInfo> taskExecutionInfos = [];
@@ -738,7 +737,7 @@ class _TaskExecutionHistoryRecordPageState
           : AppColors.background,
       appBar: _isSelectionMode
           ? _buildSelectionAppBar(filterRecords)
-          : const CommonAppBar(title: '轨迹', showAiBadge: true, primary: true),
+          : const CommonAppBar(title: '轨迹', showAiBadge: false, primary: true),
       body: SafeArea(
         top: false,
         child: Column(
@@ -759,14 +758,26 @@ class _TaskExecutionHistoryRecordPageState
                             child: Column(
                               children: [
                                 SizedBox(height: 14),
-                                const ConversationHeatmap(),
-                                SizedBox(height: 10),
-                                const TokenConsumptionCard(),
+                                const ActivityDashboardCard(),
                                 SizedBox(height: 12),
                               ],
                             ),
                           ),
-                          SizedBox(height: 12),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '任务记录',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: context.omniPalette.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 10),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: TagSection(
