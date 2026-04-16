@@ -29,6 +29,7 @@ import 'package:ui/widgets/selection_bottom_bar.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/theme/theme_context.dart';
+import 'package:ui/features/memory/pages/memory_center/widgets/conversation_heatmap.dart';
 
 /// 执行总结的前三条记录ID存储key
 const String kExecutionSummaryTopThreeIdsKey =
@@ -967,7 +968,7 @@ class _TaskExecutionHistoryRecordPageState
           : AppColors.background,
       appBar: _isSelectionMode
           ? _buildSelectionAppBar(filterRecords)
-          : const CommonAppBar(title: '任务记录', showAiBadge: true, primary: true),
+          : const CommonAppBar(title: '轨迹', showAiBadge: true, primary: true),
       body: SafeArea(
         top: false,
         child: Column(
@@ -988,6 +989,8 @@ class _TaskExecutionHistoryRecordPageState
                             child: Column(
                               children: [
                                 SizedBox(height: 14),
+                                const ConversationHeatmap(),
+                                SizedBox(height: 12),
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,

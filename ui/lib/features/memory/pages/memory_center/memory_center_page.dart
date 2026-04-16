@@ -26,7 +26,6 @@ import 'package:ui/theme/app_text_styles.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/widgets/common_app_bar.dart';
-import 'package:ui/features/memory/pages/memory_center/widgets/conversation_heatmap.dart';
 
 /// 记忆建议的前三条记录ID存储key
 const String kMemorySuggestionTopThreeIdsKey =
@@ -1335,8 +1334,6 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
               : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
           child: Column(
             children: [
-              const SizedBox(height: 12),
-              const ConversationHeatmap(),
               const SizedBox(height: 12),
               _buildMemorySuggestion(),
               const SizedBox(height: 12),
