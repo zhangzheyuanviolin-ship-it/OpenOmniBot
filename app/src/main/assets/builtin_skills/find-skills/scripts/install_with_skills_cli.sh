@@ -1,10 +1,20 @@
 #!/bin/sh
+# ============================================================
+# THIS is the ONLY supported way to install skills for Omnibot.
+# NEVER use `npx skills add` — always use this script instead.
+# ============================================================
 set -eu
 
 usage() {
   cat >&2 <<'EOF'
 Usage:
-  sh install_with_skills_cli.sh <source> [skills add options...]
+  sh install_with_skills_cli.sh <source> [--skill <name>]
+
+Source formats:
+  owner/repo                         → clone entire repo, install all skills found
+  owner/repo@skill-name              → clone repo, install only skill-name
+  owner/repo --skill skill-name      → same as above
+  https://github.com/owner/repo      → full URL form
 
 Examples:
   sh install_with_skills_cli.sh vercel-labs/skills --skill find-skills
@@ -19,21 +29,61 @@ EOF
 SOURCE="$1"
 shift
 
-for arg in "$@"; do
-  case "$arg" in
-    -g|--global|-a|--agent|--all|-l|--list)
-      echo "Do not pass $arg. This wrapper controls the Omnibot install target." >&2
-      exit 2
+SKILL_FILTER=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skill|-s)
+      [ $# -ge 2 ] || { echo "--skill requires a value" >&2; exit 2; }
+      SKILL_FILTER="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
       ;;
   esac
 done
 
+# --- Parse source into REPO_URL and optional SKILL_FILTER ---
+
+# Handle owner/repo@skill format
+case "$SOURCE" in
+  *@*)
+    REPO_PART="${SOURCE%%@*}"
+    AT_SKILL="${SOURCE#*@}"
+    if [ -z "$SKILL_FILTER" ]; then
+      SKILL_FILTER="$AT_SKILL"
+    fi
+    SOURCE="$REPO_PART"
+    ;;
+esac
+
+# Convert to full GitHub URL if not already
+case "$SOURCE" in
+  https://github.com/*|git@github.com:*)
+    REPO_URL="$SOURCE"
+    ;;
+  */*)
+    REPO_URL="https://github.com/$SOURCE"
+    ;;
+  *)
+    echo "Cannot parse source: $SOURCE" >&2
+    echo "Expected owner/repo, owner/repo@skill, or a GitHub URL." >&2
+    exit 2
+    ;;
+esac
+
+# Strip trailing .git if present
+REPO_URL="${REPO_URL%.git}"
+
+# --- Set up directories ---
+
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-/workspace}"
 OMNIBOT_ROOT="${OMNIBOT_ROOT:-$WORKSPACE_ROOT/.omnibot}"
 TARGET_ROOT="${OMNIBOT_SKILLS_ROOT:-$OMNIBOT_ROOT/skills}"
-TMP_BASE="${TMPDIR:-/tmp}/omnibot-skills-cli.$$"
-STAGE_DIR="$TMP_BASE/project"
-STAGED_SKILLS_DIR="$STAGE_DIR/.agents/skills"
+TMP_BASE="${TMPDIR:-/tmp}/omnibot-skills-clone.$$"
+CLONE_DIR="$TMP_BASE/repo"
 
 cleanup() {
   rm -rf "$TMP_BASE"
@@ -41,50 +91,76 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-mkdir -p "$STAGE_DIR" "$TARGET_ROOT"
+mkdir -p "$TMP_BASE" "$TARGET_ROOT"
 
-cd "$STAGE_DIR"
-npx -y skills add "$SOURCE" -a universal --copy -y "$@"
+# --- Clone the repository ---
 
-[ -d "$STAGED_SKILLS_DIR" ] || {
-  echo "Skills CLI did not produce $STAGED_SKILLS_DIR" >&2
+echo "Cloning $REPO_URL ..."
+git clone --depth 1 "$REPO_URL" "$CLONE_DIR" 2>&1
+
+if [ ! -d "$CLONE_DIR" ]; then
+  echo "Failed to clone $REPO_URL" >&2
   exit 3
-}
+fi
 
-installed_count=0
+# --- Discover skill directories (folders containing SKILL.md) ---
 
-for skill_dir in "$STAGED_SKILLS_DIR"/*; do
-  [ -d "$skill_dir" ] || continue
-  [ -f "$skill_dir/SKILL.md" ] || continue
-  skill_id=$(basename "$skill_dir")
+found_count=0
+install_list=""
+
+# Search up to 3 levels deep for SKILL.md files
+for skill_md in $(find "$CLONE_DIR" -maxdepth 4 -name "SKILL.md" -type f 2>/dev/null); do
+  skill_dir="$(dirname "$skill_md")"
+  skill_id="$(basename "$skill_dir")"
+
+  # Skip the repo root if SKILL.md is at the top level
+  if [ "$skill_dir" = "$CLONE_DIR" ]; then
+    # Use the repo name as skill_id
+    skill_id="$(basename "$REPO_URL")"
+  fi
+
+  # Apply filter if specified
+  if [ -n "$SKILL_FILTER" ] && [ "$skill_id" != "$SKILL_FILTER" ]; then
+    continue
+  fi
+
   target_dir="$TARGET_ROOT/$skill_id"
+
   if [ -e "$target_dir" ]; then
     echo "Target skill already exists: $target_dir" >&2
     exit 4
   fi
-  installed_count=$((installed_count + 1))
+
+  found_count=$((found_count + 1))
+  install_list="$install_list $skill_dir|$skill_id"
 done
 
-[ "$installed_count" -gt 0 ] || {
-  echo "No staged skills were found under $STAGED_SKILLS_DIR" >&2
+if [ "$found_count" -eq 0 ]; then
+  if [ -n "$SKILL_FILTER" ]; then
+    echo "No skill named '$SKILL_FILTER' found in $REPO_URL" >&2
+  else
+    echo "No skills (directories with SKILL.md) found in $REPO_URL" >&2
+  fi
   exit 5
-}
+fi
+
+# --- Copy discovered skills to Omnibot ---
 
 copied_count=0
 
-for skill_dir in "$STAGED_SKILLS_DIR"/*; do
-  [ -d "$skill_dir" ] || continue
-  [ -f "$skill_dir/SKILL.md" ] || continue
-  skill_id=$(basename "$skill_dir")
+for entry in $install_list; do
+  skill_dir="${entry%%|*}"
+  skill_id="${entry##*|}"
   target_dir="$TARGET_ROOT/$skill_id"
+
   cp -R "$skill_dir" "$target_dir"
   copied_count=$((copied_count + 1))
   echo "Installed $skill_id -> $target_dir"
 done
 
-[ "$copied_count" -eq "$installed_count" ] || {
-  echo "Copied $copied_count skills, expected $installed_count" >&2
+if [ "$copied_count" -ne "$found_count" ]; then
+  echo "Copied $copied_count skills, expected $found_count" >&2
   exit 6
-}
+fi
 
 echo "Done. Re-run skills_list in Omnibot to verify the new skill entries."

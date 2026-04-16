@@ -1,9 +1,13 @@
 ---
-name: find-skills
+name: find-install-skills
 description: Find and install relevant Omnibot skills. Use when the user asks "找个 skill", "有没有这个功能的 skill", "find a skill for X", "is there a skill for X", or wants to extend the agent with an installable workflow.
 ---
 
 # Find Skills
+
+> **CRITICAL: NEVER use `npx skills add` to install skills.**
+> Always use the bundled git-clone-based installer script (`install_with_skills_cli.sh`) for installation.
+> `npx skills find` is allowed **only for searching**. Installation MUST go through the script.
 
 Use this skill to discover, compare, and install skills for Omnibot.
 
@@ -36,7 +40,7 @@ Use this skill when the user:
 
 Do not use browser search, repository browsing, or `skills.sh` as the primary search path for the phone agent. Skill discovery on phone should happen through the command line with `npx skills find`.
 
-The phone runtime usually installs `npm` and can run `npx skills`, so `npx skills find` should be the default and only search path for phone skill discovery. But raw `npx skills add` does not install into Omnibot's real skills root by default. Use the bundled installer script for the final install step.
+The phone runtime usually installs `npm` and can run `npx skills`, so `npx skills find` should be the default and only search path for phone skill discovery. Do not use `npx skills add` for installation. Use the bundled git-clone-based installer script for the final install step.
 
 ## Quality Checks
 
@@ -63,8 +67,11 @@ Keep the list short. Usually give the best 1 to 3 options.
 
 ## Installation Guidance
 
+> **NEVER use `npx skills add`.** Always use the bundled `install_with_skills_cli.sh` script.
+
 Only install a skill after the user confirms.
 
+- **Do NOT use `npx skills add` under any circumstances.** Use the bundled installer script instead.
 - If the skill is already bundled or installed, point the user to the existing skill instead of duplicating it.
 - If the user provides a GitHub skill path, install that exact skill directory into `.omnibot/skills/<skill-id>/`.
 - Preserve the full skill layout: `SKILL.md` plus any `scripts/`, `references/`, `assets/`, or `evals/`.
@@ -73,26 +80,26 @@ Only install a skill after the user confirms.
 
 ## Skills CLI 
 
-- use `terminal_execute` to run raw `npx skills find ...` first when you need to search for candidate skills
+- use `terminal_execute` to run raw `npx skills find ...` **only for searching** candidate skills
 - for the phone agent, do not use browser search or manual website browsing as the discovery path
-- do not use raw `npx skills add ...` as the final installation step
+- **NEVER use `npx skills add` for installation** — this is strictly forbidden; always use the bundled git-clone-based installer script
 - Omnibot does not read `.agents/skills` as its primary runtime skill root
-- instead, use the bundled script in `scripts/` so the CLI installs into a temporary staging directory and the resulting skill folders are copied into `.omnibot/skills`
+- the bundled script clones the GitHub repository directly and copies skill folders into `.omnibot/skills`
 
 Use the script like this:
 
 ```bash
 sh <scriptsDir>/install_with_skills_cli.sh claude-office-skills/skills@excel-automation
 sh <scriptsDir>/install_with_skills_cli.sh vercel-labs/skills --skill find-skills
-sh <scriptsDir>/install_with_skills_cli.sh vercel-labs/agent-skills --skill frontend-design
+sh <scriptsDir>/install_with_skills_cli.sh https://github.com/vercel-labs/agent-skills --skill frontend-design
 ```
 
 The script does all of the following:
 
-1. creates a temporary project workspace
-2. runs `npx -y skills add ... -a universal --copy -y`
-3. reads the staged skill folders from temporary `.agents/skills/`
-4. copies them into Omnibot's `.omnibot/skills/`
+1. parses the source into a GitHub URL and an optional skill name filter
+2. runs `git clone --depth 1` to fetch the repository into a temporary directory
+3. scans for skill directories (folders containing `SKILL.md`)
+4. copies matched skills into Omnibot's `.omnibot/skills/`
 5. fails fast if the target skill already exists
 
 Summary:
