@@ -169,6 +169,38 @@ object DatabaseHelper {
         }
     }
 
+    private val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `token_usage_records` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `conversationId` INTEGER NOT NULL,
+                    `isLocal` INTEGER NOT NULL DEFAULT 0,
+                    `model` TEXT NOT NULL DEFAULT '',
+                    `promptTokens` INTEGER NOT NULL DEFAULT 0,
+                    `completionTokens` INTEGER NOT NULL DEFAULT 0,
+                    `reasoningTokens` INTEGER NOT NULL DEFAULT 0,
+                    `textTokens` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS `index_token_usage_records_createdAt`
+                ON `token_usage_records` (`createdAt`)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS `index_token_usage_records_conversationId`
+                ON `token_usage_records` (`conversationId`)
+                """.trimIndent()
+            )
+        }
+    }
+
     internal val ALL_MIGRATIONS = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -178,7 +210,8 @@ object DatabaseHelper {
         MIGRATION_6_7,
         MIGRATION_7_8,
         MIGRATION_8_9,
-        MIGRATION_9_10
+        MIGRATION_9_10,
+        MIGRATION_10_11
     )
 
     fun init(context: Context) {
@@ -655,6 +688,15 @@ object DatabaseHelper {
     // 获取缓存的suggestion
     suspend fun getCacheSuggestion(packageName: String): List<CacheSuggestion> {
         return getDatabase().cacheSuggestionDao().getListByPackageName(packageName)
+    }
+
+    // TokenUsageRecord相关方法
+    suspend fun insertTokenUsageRecord(record: TokenUsageRecord): Long {
+        return getDatabase().tokenUsageRecordDao().insert(record)
+    }
+
+    suspend fun getTokenUsageRecordsSince(since: Long): List<TokenUsageRecord> {
+        return getDatabase().tokenUsageRecordDao().getRecordsSince(since)
     }
 
     // Conversation相关方法
