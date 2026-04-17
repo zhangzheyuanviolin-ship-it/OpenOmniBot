@@ -496,7 +496,7 @@ class MessageBubble extends StatelessWidget {
   }
 
   /// 构建AI文本（使用StreamingText组件）
-  Widget _buildAiText(BuildContext context, String text) {
+  Widget _buildAiText(BuildContext context, String text, {Widget? trailing}) {
     final aiPrimaryTextColor = _resolvedAiPrimaryTextColor(context);
     final aiSecondaryTextColor = _resolvedAiSecondaryTextColor(context);
     // 如果是 loading 状态，显示浮动三个点动画（左对齐，与回复文本位置一致）
@@ -528,6 +528,7 @@ class MessageBubble extends StatelessWidget {
             fullText: text,
             selectable: true,
             onDisplayedTextChanged: onStreamingTextLayoutChanged,
+            trailing: trailing,
             style: TextStyle(
               fontSize: _chatTextSize,
               color: aiPrimaryTextColor,
@@ -543,6 +544,7 @@ class MessageBubble extends StatelessWidget {
       fullText: text,
       selectable: true,
       onDisplayedTextChanged: onStreamingTextLayoutChanged,
+      trailing: trailing,
       style: TextStyle(
         fontSize: _chatTextSize,
         color: aiPrimaryTextColor,
@@ -553,7 +555,6 @@ class MessageBubble extends StatelessWidget {
 
   /// AI text with optional inference speed label
   Widget _buildAiTextWithSpeed(BuildContext context, String text) {
-    final aiText = _buildAiText(context, text);
     final speed = _decodeTokensPerSecond;
     final showVoiceButton = VoicePlaybackCoordinator.instance
         .shouldShowVoiceButton(
@@ -561,18 +562,16 @@ class MessageBubble extends StatelessWidget {
           type: message.type,
           text: text,
         );
+    final aiText = _buildAiText(
+      context,
+      text,
+      trailing: showVoiceButton ? _buildVoiceAction(context, text) : null,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         aiText,
-        if (showVoiceButton) ...[
-          const SizedBox(height: 2),
-          Align(
-            alignment: Alignment.centerRight,
-            child: _buildVoiceAction(context, text),
-          ),
-        ],
         if (speed != null) ...[
           const SizedBox(height: 4),
           Text(
@@ -631,6 +630,9 @@ class MessageBubble extends StatelessWidget {
         };
         return IconButton(
           visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 22, height: 22),
+          splashRadius: 12,
           tooltip: playbackState.error.isNotEmpty
               ? playbackState.error
               : (status == VoicePlaybackStatus.playing ? '暂停语音' : '播放语音'),

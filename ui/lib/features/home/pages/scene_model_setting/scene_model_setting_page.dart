@@ -82,7 +82,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   List<ModelProviderProfileSummary> _profiles = const [];
   Map<String, List<ProviderModelOption>> _providerModelsByProfileId = {};
   Set<String> _savingSceneIds = <String>{};
-  Set<String> _expandedSceneIds = <String>{'scene.dispatch.model'};
+  Set<String> _expandedSceneIds = <String>{};
   SceneVoiceConfig _voiceConfig = const SceneVoiceConfig();
   late final TextEditingController _voiceCustomStyleController;
   StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
@@ -421,6 +421,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   }
 
   void _toggleSceneExpanded(String sceneId) {
+    if (!_isVoiceScene(sceneId)) {
+      return;
+    }
     setState(() {
       if (_expandedSceneIds.contains(sceneId)) {
         _expandedSceneIds.remove(sceneId);
@@ -539,6 +542,86 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     );
     final profileName = profile.isEmpty ? 'Provider 已失效' : profile.first.name;
     return '$profileName / ${binding.modelId}';
+  }
+
+  Widget _buildSceneLabel(SceneCatalogItem scene) {
+    return Tooltip(
+      message: _sceneTooltip(scene),
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 3),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              _sceneDisplayName(scene.sceneId),
+              style: TextStyle(
+                color: _primaryTextColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'PingFang SC',
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 6),
+          if (_isAgentScene(scene.sceneId)) ...[
+            const AgentAvatarButton(size: 30, showEditBadge: true),
+            const SizedBox(width: 6),
+          ],
+          Icon(Icons.info_outline, size: 15, color: _tertiaryTextColor),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSceneSelectorField(
+    SceneCatalogItem scene, {
+    required bool isSaving,
+  }) {
+    return Builder(
+      builder: (fieldContext) {
+        return InkWell(
+          onTap: isSaving
+              ? null
+              : () => _openSceneSelector(scene, fieldContext),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+            decoration: BoxDecoration(
+              color: _cardColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _isDarkTheme
+                    ? context.omniPalette.borderSubtle
+                    : const Color(0x1A000000),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _selectionLabel(scene),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _primaryTextColor,
+                      fontSize: 13,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: _tertiaryTextColor,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildVoiceSettings() {
@@ -696,183 +779,126 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     );
   }
 
-  Widget _buildSceneRow(SceneCatalogItem scene) {
+  Widget _buildDefaultSceneRow(SceneCatalogItem scene) {
     final isSaving = _isSavingScene(scene.sceneId);
-    final isExpanded = _expandedSceneIds.contains(scene.sceneId);
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _isDarkTheme
-              ? context.omniPalette.borderSubtle
-              : const Color(0x14000000),
-        ),
-      ),
-      child: Column(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
         children: [
-          InkWell(
-            onTap: () => _toggleSceneExpanded(scene.sceneId),
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                _sceneDisplayName(scene.sceneId),
-                                style: TextStyle(
-                                  color: _primaryTextColor,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            if (_isAgentScene(scene.sceneId)) ...[
-                              const AgentAvatarButton(
-                                size: 28,
-                                showEditBadge: true,
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                            Tooltip(
-                              message: _sceneTooltip(scene),
-                              triggerMode: TooltipTriggerMode.tap,
-                              showDuration: const Duration(seconds: 3),
-                              child: Icon(
-                                Icons.info_outline,
-                                size: 15,
-                                color: _tertiaryTextColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _selectionLabel(scene),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: _secondaryTextColor,
-                            fontSize: 12,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (isSaving)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 2),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    size: 22,
-                    color: _tertiaryTextColor,
-                  ),
-                ],
-              ),
-            ),
+          Expanded(flex: 4, child: _buildSceneLabel(scene)),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 6,
+            child: _buildSceneSelectorField(scene, isSaving: isSaving),
           ),
-          if (isExpanded) ...[
-            Divider(
-              height: 1,
-              thickness: 0.6,
-              color: context.omniPalette.borderSubtle.withValues(alpha: 0.9),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _sceneTooltip(scene),
-                    style: TextStyle(
-                      color: _secondaryTextColor,
-                      fontSize: 12,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Builder(
-                    builder: (fieldContext) {
-                      return InkWell(
-                        onTap: isSaving
-                            ? null
-                            : () => _openSceneSelector(scene, fieldContext),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _isDarkTheme
-                                ? context.omniPalette.surfaceSecondary
-                                : const Color(0xFFF8FAFD),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: _isDarkTheme
-                                  ? context.omniPalette.borderSubtle
-                                  : const Color(0x1A000000),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _selectionLabel(scene),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: _primaryTextColor,
-                                    fontSize: 13,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Icon(
-                                Icons.tune_rounded,
-                                size: 18,
-                                color: _tertiaryTextColor,
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  if (_isVoiceScene(scene.sceneId)) ...[
-                    const SizedBox(height: 14),
-                    _buildVoiceSettings(),
-                  ],
-                ],
-              ),
+          if (isSaving) ...[
+            const SizedBox(width: 8),
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
           ],
         ],
       ),
     );
+  }
+
+  Widget _buildVoiceSceneRow(SceneCatalogItem scene) {
+    final isSaving = _isSavingScene(scene.sceneId);
+    final isExpanded = _expandedSceneIds.contains(scene.sceneId);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 4,
+                child: Row(
+                  children: [
+                    Expanded(child: _buildSceneLabel(scene)),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      key: const Key('voice-scene-expand-button'),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 22,
+                        height: 22,
+                      ),
+                      splashRadius: 14,
+                      tooltip: isExpanded ? '收起语音设置' : '展开语音设置',
+                      onPressed: () => _toggleSceneExpanded(scene.sceneId),
+                      icon: Icon(
+                        isExpanded
+                            ? Icons.expand_less_rounded
+                            : Icons.tune_rounded,
+                        size: 18,
+                        color: _tertiaryTextColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 6,
+                child: _buildSceneSelectorField(scene, isSaving: isSaving),
+              ),
+              if (isSaving) ...[
+                const SizedBox(width: 8),
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (isExpanded)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 2, bottom: 6),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            decoration: BoxDecoration(
+              color: _cardColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isDarkTheme
+                    ? context.omniPalette.borderSubtle
+                    : const Color(0x14000000),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _sceneTooltip(scene),
+                  style: TextStyle(
+                    color: _secondaryTextColor,
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildVoiceSettings(),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSceneRow(SceneCatalogItem scene) {
+    if (_isVoiceScene(scene.sceneId)) {
+      return _buildVoiceSceneRow(scene);
+    }
+    return _buildDefaultSceneRow(scene);
   }
 
   @override
@@ -917,7 +943,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                         if (_showManualRefreshButton)
                           const SizedBox(height: 12),
                         Text(
-                          '点击场景卡片可展开配置；模型选择支持按 Provider 搜索和折叠。',
+                          '点击右侧按钮后，可按 Provider 搜索、折叠并选择模型；Voice 的音色与自动播放可通过调节按钮展开。',
                           style: TextStyle(
                             color: _secondaryTextColor,
                             fontSize: 12,

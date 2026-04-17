@@ -61,6 +61,23 @@ void main() {
             case 'getSceneModelCatalog':
               return <Map<String, dynamic>>[
                 <String, dynamic>{
+                  'sceneId': 'scene.vlm.operation.primary',
+                  'description': '负责执行 UI 操作主链路',
+                  'defaultModel': 'default-operation-model',
+                  'effectiveModel': 'default-operation-model',
+                  'effectiveProviderProfileId': '',
+                  'effectiveProviderProfileName': '',
+                  'boundProviderProfileId': '',
+                  'boundProviderProfileName': '',
+                  'transport': 'openai_compatible',
+                  'configSource': 'builtin',
+                  'overrideApplied': false,
+                  'overrideModel': '',
+                  'providerConfigured': false,
+                  'bindingExists': false,
+                  'bindingProfileMissing': false,
+                },
+                <String, dynamic>{
                   'sceneId': 'scene.voice',
                   'description': '负责 AI 回复文本的语音合成与播放',
                   'defaultModel': '',
@@ -125,9 +142,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.text('Voice'), findsOneWidget);
+    expect(find.text('Operation'), findsOneWidget);
     expect(find.text('未绑定'), findsOneWidget);
+    expect(find.text('AI 响应完成后自动播放'), findsNothing);
+    expect(find.byKey(const Key('voice-scene-expand-button')), findsOneWidget);
 
-    await tester.tap(find.text('Voice'));
+    await tester.tap(find.byKey(const Key('voice-scene-expand-button')));
     await tester.pumpAndSettle();
 
     expect(find.text('AI 响应完成后自动播放'), findsOneWidget);

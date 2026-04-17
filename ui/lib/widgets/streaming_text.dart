@@ -7,7 +7,8 @@ import 'package:ui/widgets/omnibot_markdown_body.dart';
 const String kThinkingText = '小万正在思考...';
 
 /// 思考中的加载文案（本地化显示用）
-String get kThinkingTextLocalized => LegacyTextLocalizer.localize(kThinkingText);
+String get kThinkingTextLocalized =>
+    LegacyTextLocalizer.localize(kThinkingText);
 
 /// 总结中的加载文案（本地化显示用）
 String get kSummarizingText => LegacyTextLocalizer.localize('总结中');
@@ -44,6 +45,9 @@ class StreamingText extends StatefulWidget {
   /// 文本流式显示发生布局变化时回调
   final VoidCallback? onDisplayedTextChanged;
 
+  /// 尾随在文本末尾的内联组件
+  final Widget? trailing;
+
   const StreamingText({
     super.key,
     required this.fullText,
@@ -51,6 +55,7 @@ class StreamingText extends StatefulWidget {
     this.enableMarkdown = false,
     this.selectable = false,
     this.onDisplayedTextChanged,
+    this.trailing,
   });
 
   @override
@@ -157,6 +162,7 @@ class _StreamingTextState extends State<StreamingText> {
             data: displayText,
             baseStyle: widget.style,
             inlineResourcePlainStyle: true,
+            trailingInline: widget.trailing,
           );
 
           return widget.selectable
@@ -179,7 +185,12 @@ class _StreamingTextState extends State<StreamingText> {
 
         Widget child = RichText(
           text: TextSpan(
-            children: _buildTextSpans(displayText, previousLength, progress),
+            children: _buildTextSpans(
+              displayText,
+              previousLength,
+              progress,
+              widget.trailing,
+            ),
             style: widget.style,
           ),
         );
@@ -204,13 +215,14 @@ class _StreamingTextState extends State<StreamingText> {
   /// [displayText] 当前要显示的文本
   /// [previousLength] 之前已显示的文本长度
   /// [progress] 动画进度 (0.0 到 1.0)
-  List<TextSpan> _buildTextSpans(
+  List<InlineSpan> _buildTextSpans(
     String displayText,
     int previousLength,
     double progress,
+    Widget? trailing,
   ) {
     if (displayText.length <= previousLength) {
-      return [TextSpan(text: displayText)];
+      return _appendTrailingSpan([TextSpan(text: displayText)], trailing);
     }
 
     final oldText = displayText.substring(0, previousLength);
@@ -220,7 +232,7 @@ class _StreamingTextState extends State<StreamingText> {
     // 使用easeIn曲线使渐入更平滑
     final opacity = 0.3 + (0.7 * progress);
 
-    return [
+    return _appendTrailingSpan([
       // 已显示的旧文本，完全不透明
       if (oldText.isNotEmpty) TextSpan(text: oldText),
       // 新增的文本，使用渐变透明度
@@ -233,6 +245,25 @@ class _StreamingTextState extends State<StreamingText> {
             ),
           ),
         ),
+    ], trailing);
+  }
+
+  List<InlineSpan> _appendTrailingSpan(
+    List<InlineSpan> spans,
+    Widget? trailing,
+  ) {
+    if (trailing == null) {
+      return spans;
+    }
+    return [
+      ...spans,
+      WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: trailing,
+        ),
+      ),
     ];
   }
 

@@ -11,10 +11,13 @@ import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/omnibot_resource_widgets.dart';
 
 class OmnibotMarkdownBody extends StatelessWidget {
+  static const String _trailingInlineToken = '[[omnibot-trailing-inline]]';
+
   final String data;
   final TextStyle baseStyle;
   final bool selectable;
   final bool inlineResourcePlainStyle;
+  final Widget? trailingInline;
 
   const OmnibotMarkdownBody({
     super.key,
@@ -22,13 +25,14 @@ class OmnibotMarkdownBody extends StatelessWidget {
     required this.baseStyle,
     this.selectable = false,
     this.inlineResourcePlainStyle = false,
+    this.trailingInline,
   });
 
   @override
   Widget build(BuildContext context) {
     final codeTapHandler = OmnibotCodeTapHandler();
     return MarkdownBody(
-      data: _linkifyBareOmnibotUris(data),
+      data: _linkifyBareOmnibotUris(_withTrailingInlineToken(data)),
       selectable: selectable,
       onTapLink: (text, href, title) {
         if (href == null) return;
@@ -38,6 +42,7 @@ class OmnibotMarkdownBody extends StatelessWidget {
       inlineSyntaxes: <md.InlineSyntax>[
         OmnibotInlineMathSyntax(),
         OmnibotInlineLinkSyntax(),
+        if (trailingInline != null) OmnibotTrailingInlineSyntax(),
       ],
       builders: <String, MarkdownElementBuilder>{
         'code': OmnibotInlineCodeBuilder(onCopy: codeTapHandler.copy),
@@ -47,6 +52,10 @@ class OmnibotMarkdownBody extends StatelessWidget {
         'omnibot-link': OmnibotInlineLinkBuilder(
           inlineResourcePlainStyle: inlineResourcePlainStyle,
         ),
+        if (trailingInline != null)
+          'omnibot-trailing-inline': OmnibotTrailingInlineBuilder(
+            child: trailingInline!,
+          ),
       },
       sizedImageBuilder: (config) {
         final uri = config.uri;
@@ -66,6 +75,17 @@ class OmnibotMarkdownBody extends StatelessWidget {
       },
       styleSheet: buildOmnibotMarkdownStyleSheet(context, baseStyle),
     );
+  }
+
+  String _withTrailingInlineToken(String source) {
+    if (trailingInline == null) {
+      return source;
+    }
+    final trimmed = source.trimRight();
+    if (trimmed.isEmpty) {
+      return _trailingInlineToken;
+    }
+    return '$trimmed $_trailingInlineToken';
   }
 }
 
@@ -226,9 +246,17 @@ class OmnibotCodeTapHandler {
     if (code.trim().isEmpty) return;
     try {
       await Clipboard.setData(ClipboardData(text: code));
-      showToast(LegacyTextLocalizer.isEnglish ? 'Code copied' : '代码已复制', type: ToastType.success);
+      showToast(
+        LegacyTextLocalizer.isEnglish ? 'Code copied' : '代码已复制',
+        type: ToastType.success,
+      );
     } catch (_) {
-      showToast(LegacyTextLocalizer.isEnglish ? 'Copy failed, please try again' : '复制失败，请重试', type: ToastType.error);
+      showToast(
+        LegacyTextLocalizer.isEnglish
+            ? 'Copy failed, please try again'
+            : '复制失败，请重试',
+        type: ToastType.error,
+      );
     }
   }
 }
@@ -485,6 +513,39 @@ class OmnibotInlineLinkBuilder extends MarkdownElementBuilder {
             plainStyle: inlineResourcePlainStyle,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class OmnibotTrailingInlineSyntax extends md.InlineSyntax {
+  OmnibotTrailingInlineSyntax() : super(_pattern);
+
+  static const String _pattern = r'\[\[omnibot-trailing-inline\]\]';
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    parser.addNode(md.Element.empty('omnibot-trailing-inline'));
+    return true;
+  }
+}
+
+class OmnibotTrailingInlineBuilder extends MarkdownElementBuilder {
+  OmnibotTrailingInlineBuilder({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    return Text.rich(
+      WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Padding(padding: const EdgeInsets.only(left: 4), child: child),
       ),
     );
   }
