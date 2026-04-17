@@ -521,6 +521,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get skillStoreTitle => '技能仓库';
 
   @override
+  String get skillSearchHint => '搜索技能名称或描述';
+
+  @override
+  String get skillSearchEmpty => '未找到匹配的技能';
+
+  @override
   String get skillBuiltin => '内置';
 
   @override

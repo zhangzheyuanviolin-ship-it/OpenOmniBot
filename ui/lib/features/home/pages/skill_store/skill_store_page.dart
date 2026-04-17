@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:ui/features/home/widgets/home_drawer_search_field.dart';
 import 'package:ui/l10n/l10n.dart';
 import 'package:ui/models/agent_skill_item.dart';
 import 'package:ui/services/agent_skill_store_service.dart';
@@ -6,6 +8,16 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+
+const String _kBuiltinSkillBadgeCheckSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" '
+    'class="lucide lucide-badge-check-icon lucide-badge-check">'
+    '<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 '
+    '4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 '
+    '4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/>'
+    '<path d="m9 12 2 2 4-4"/></svg>';
 
 class SkillStorePage extends StatefulWidget {
   const SkillStorePage({super.key});
@@ -15,14 +27,55 @@ class SkillStorePage extends StatefulWidget {
 }
 
 class _SkillStorePageState extends State<SkillStorePage> {
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   bool _loading = true;
   final Set<String> _busyIds = <String>{};
   List<AgentSkillItem> _skills = [];
 
+  String get _searchQuery => _searchController.text.trim();
+
+  List<AgentSkillItem> get _visibleSkills {
+    final query = _searchQuery.toLowerCase();
+    if (query.isEmpty) {
+      return _skills;
+    }
+
+    return _skills
+        .where((skill) {
+          return skill.name.toLowerCase().contains(query) ||
+              skill.description.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
+  }
+
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(_handleSearchChanged);
+    _searchFocusNode.addListener(_handleSearchFocusChanged);
     _loadSkills();
+  }
+
+  @override
+  void dispose() {
+    _searchController
+      ..removeListener(_handleSearchChanged)
+      ..dispose();
+    _searchFocusNode
+      ..removeListener(_handleSearchFocusChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleSearchChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _handleSearchFocusChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _loadSkills() async {
@@ -69,7 +122,11 @@ class _SkillStorePageState extends State<SkillStorePage> {
             .map((skill) => skill.id == item.id ? updated : skill)
             .toList();
       });
-      showToast(enabled ? context.l10n.skillEnabledMsg(item.name) : context.l10n.skillDisabledMsg(item.name));
+      showToast(
+        enabled
+            ? context.l10n.skillEnabledMsg(item.name)
+            : context.l10n.skillDisabledMsg(item.name),
+      );
     } catch (_) {
       showToast(context.l10n.skillToggleFailed, type: ToastType.error);
     } finally {
@@ -102,7 +159,10 @@ class _SkillStorePageState extends State<SkillStorePage> {
           return a.name.toLowerCase().compareTo(b.name.toLowerCase());
         });
       });
-      showToast(context.l10n.skillInstalledMsg(item.name), type: ToastType.success);
+      showToast(
+        context.l10n.skillInstalledMsg(item.name),
+        type: ToastType.success,
+      );
     } catch (_) {
       showToast(context.l10n.skillInstallFailed, type: ToastType.error);
     } finally {
@@ -136,7 +196,8 @@ class _SkillStorePageState extends State<SkillStorePage> {
       final deleted = await AgentSkillStoreService.deleteSkill(
         skillId: item.id,
       );
-      if (!mounted || !deleted) {
+      if (!mounted) return;
+      if (!deleted) {
         showToast(context.l10n.skillDeleteFailed, type: ToastType.error);
         return;
       }
@@ -144,6 +205,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
       if (!mounted) return;
       showToast(context.l10n.skillDeleted, type: ToastType.success);
     } catch (_) {
+      if (!mounted) return;
       showToast(context.l10n.skillDeleteFailed, type: ToastType.error);
     } finally {
       _setBusy(item.id, false);
@@ -153,6 +215,29 @@ class _SkillStorePageState extends State<SkillStorePage> {
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
+    final visibleSkills = _visibleSkills;
+    final listChildren = <Widget>[
+      HomeDrawerSearchField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        isSearching: false,
+        textColor: context.isDarkTheme ? palette.textPrimary : AppColors.text,
+        hintText: context.l10n.skillSearchHint,
+      ),
+      const SizedBox(height: 12),
+    ];
+
+    if (visibleSkills.isEmpty) {
+      listChildren.add(_buildSearchEmpty());
+    } else {
+      for (var index = 0; index < visibleSkills.length; index++) {
+        if (index > 0) {
+          listChildren.add(const SizedBox(height: 12));
+        }
+        listChildren.add(_buildSkillCard(visibleSkills[index]));
+      }
+    }
+
     return Scaffold(
       backgroundColor: context.isDarkTheme
           ? palette.pageBackground
@@ -164,12 +249,10 @@ class _SkillStorePageState extends State<SkillStorePage> {
           ? _buildEmpty()
           : RefreshIndicator(
               onRefresh: _loadSkills,
-              child: ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemBuilder: (context, index) =>
-                    _buildSkillCard(_skills[index]),
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemCount: _skills.length,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: listChildren,
               ),
             ),
     );
@@ -237,16 +320,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.name,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: context.isDarkTheme
-                            ? palette.textPrimary
-                            : AppColors.text,
-                      ),
-                    ),
+                    _buildSkillTitle(item),
                     const SizedBox(height: 6),
                     Text(
                       description,
@@ -280,17 +354,6 @@ class _SkillStorePageState extends State<SkillStorePage> {
                       : null,
                   child: Text(context.l10n.skillInstall),
                 ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildChip(item.isBuiltin ? context.l10n.skillBuiltin : context.l10n.skillUser),
-              _buildChip(item.installed ? context.l10n.skillInstalled : context.l10n.skillNotInstalled),
-              if (item.installed) _buildChip(item.enabled ? context.l10n.skillEnabled : context.l10n.skillDisabled),
-              ...item.capabilities.map(_buildChip),
             ],
           ),
           if (!item.installed && item.isBuiltin) ...[
@@ -339,25 +402,69 @@ class _SkillStorePageState extends State<SkillStorePage> {
     );
   }
 
-  Widget _buildChip(String label) {
+  Widget _buildSkillTitle(AgentSkillItem item) {
     final palette = context.omniPalette;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: context.isDarkTheme
-            ? palette.surfaceSecondary
-            : const Color(0xFFF4F7FD),
-        borderRadius: BorderRadius.circular(999),
-        border: context.isDarkTheme
-            ? Border.all(color: palette.borderSubtle)
-            : null,
+    final titleStyle = TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+      color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
+    );
+
+    if (!item.isBuiltin) {
+      return Text(item.name, style: titleStyle);
+    }
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: item.name, style: titleStyle),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Tooltip(
+                message: context.l10n.skillBuiltin,
+                child: SvgPicture.string(
+                  _kBuiltinSkillBadgeCheckSvg,
+                  width: 18,
+                  height: 18,
+                  colorFilter: ColorFilter.mode(
+                    palette.accentPrimary,
+                    BlendMode.srcIn,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          color: context.isDarkTheme ? palette.textSecondary : AppColors.text70,
-        ),
+    );
+  }
+
+  Widget _buildSearchEmpty() {
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.only(top: 120),
+      child: Column(
+        children: [
+          Icon(
+            Icons.search_off_rounded,
+            size: 48,
+            color: context.isDarkTheme
+                ? palette.textTertiary
+                : AppColors.text50,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            context.l10n.skillSearchEmpty,
+            style: TextStyle(
+              fontSize: 16,
+              color: context.isDarkTheme
+                  ? palette.textSecondary
+                  : AppColors.text70,
+            ),
+          ),
+        ],
       ),
     );
   }
