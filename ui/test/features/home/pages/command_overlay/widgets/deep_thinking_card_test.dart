@@ -122,4 +122,225 @@ void main() {
     expect(find.text('思考完成'), findsOneWidget);
     expect(find.textContaining('流式思考内容'), findsNothing);
   });
+
+  testWidgets('nested thinking scroll hands off leftover drag at bottom edge', (
+    tester,
+  ) async {
+    final parentController = ScrollController();
+
+    await tester.pumpWidget(
+      _buildNestedThinkingHarness(parentController: parentController),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(InkWell));
+    await tester.pumpAndSettle();
+
+    final innerScrollable = find.descendant(
+      of: find.byType(DeepThinkingCard),
+      matching: find.byType(Scrollable),
+    );
+    final innerState = tester.state<ScrollableState>(innerScrollable);
+
+    expect(innerState.position.pixels, 0);
+    expect(parentController.offset, 0);
+
+    await tester.drag(innerScrollable, const Offset(0, -80));
+    await tester.pump();
+
+    expect(innerState.position.pixels, greaterThan(0));
+    expect(parentController.offset, 0);
+
+    innerState.position.jumpTo(innerState.position.maxScrollExtent - 20);
+    await tester.pump();
+
+    await tester.drag(innerScrollable, const Offset(0, -60));
+    await tester.pump();
+
+    expect(
+      innerState.position.pixels,
+      closeTo(innerState.position.maxScrollExtent, 1),
+    );
+    expect(parentController.offset, greaterThan(0));
+    expect(
+      parentController.offset,
+      lessThan(parentController.position.maxScrollExtent),
+    );
+    expect(parentController.offset, lessThan(120));
+  });
+
+  testWidgets(
+    'same drag starts on inner content then smoothly hands off after bottom',
+    (tester) async {
+      final parentController = ScrollController();
+
+      await tester.pumpWidget(
+        _buildNestedThinkingHarness(parentController: parentController),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(InkWell));
+      await tester.pumpAndSettle();
+
+      final innerScrollable = find.descendant(
+        of: find.byType(DeepThinkingCard),
+        matching: find.byType(Scrollable),
+      );
+      final innerState = tester.state<ScrollableState>(innerScrollable);
+
+      expect(innerState.position.pixels, 0);
+      expect(parentController.offset, 0);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(innerScrollable),
+      );
+      final stepCount = (innerState.position.maxScrollExtent / 80).ceil() + 2;
+      for (var index = 0; index < stepCount; index++) {
+        await gesture.moveBy(const Offset(0, -80));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        innerState.position.pixels,
+        closeTo(innerState.position.maxScrollExtent, 1),
+      );
+
+      expect(parentController.offset, greaterThan(0));
+      expect(
+        parentController.offset,
+        lessThan(parentController.position.maxScrollExtent),
+      );
+      expect(parentController.offset, lessThan(200));
+    },
+  );
+
+  testWidgets('nested thinking scroll hands off upward drag from top edge', (
+    tester,
+  ) async {
+    final parentController = ScrollController();
+
+    await tester.pumpWidget(
+      _buildNestedThinkingHarness(parentController: parentController),
+    );
+    await tester.pumpAndSettle();
+
+    parentController.jumpTo(180);
+    await tester.pump();
+
+    await tester.tap(find.byType(InkWell));
+    await tester.pumpAndSettle();
+
+    final innerScrollable = find.descendant(
+      of: find.byType(DeepThinkingCard),
+      matching: find.byType(Scrollable),
+    );
+
+    final before = parentController.offset;
+    await tester.drag(innerScrollable, const Offset(0, 60));
+    await tester.pump();
+
+    expect(parentController.offset, lessThan(before));
+    expect(parentController.offset, greaterThan(0));
+  });
+
+  testWidgets('completed thinking expands from top after prior bottom scroll', (
+    tester,
+  ) async {
+    final longThinkingText = List.generate(
+      80,
+      (index) => '第 ${index + 1} 行思考内容，验证展开后重置到顶部。',
+    ).join('\n');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DeepThinkingCard(
+            thinkingText: longThinkingText,
+            stage: 4,
+            isLoading: false,
+            isCollapsible: false,
+            maxHeight: 120,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    var innerScrollable = find.descendant(
+      of: find.byType(DeepThinkingCard),
+      matching: find.byType(Scrollable),
+    );
+    var innerState = tester.state<ScrollableState>(innerScrollable);
+    innerState.position.jumpTo(innerState.position.maxScrollExtent);
+    await tester.pump();
+
+    expect(innerState.position.pixels, innerState.position.maxScrollExtent);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DeepThinkingCard(
+            thinkingText: longThinkingText,
+            stage: 4,
+            isLoading: false,
+            isCollapsible: true,
+            maxHeight: 120,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(InkWell));
+    await tester.pumpAndSettle();
+
+    innerScrollable = find.descendant(
+      of: find.byType(DeepThinkingCard),
+      matching: find.byType(Scrollable),
+    );
+    innerState = tester.state<ScrollableState>(innerScrollable);
+
+    expect(
+      innerState.position.pixels,
+      closeTo(innerState.position.minScrollExtent, 1),
+    );
+  });
+}
+
+Widget _buildNestedThinkingHarness({
+  required ScrollController parentController,
+}) {
+  return MaterialApp(
+    home: Scaffold(
+      body: Center(
+        child: SizedBox(
+          width: 360,
+          height: 320,
+          child: SingleChildScrollView(
+            controller: parentController,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 180),
+                DeepThinkingCard(
+                  thinkingText: List.generate(
+                    80,
+                    (index) => '第 ${index + 1} 行思考内容，保留足够高度用于滚动联动测试。',
+                  ).join('\n'),
+                  stage: 4,
+                  isLoading: false,
+                  isCollapsible: true,
+                  maxHeight: 120,
+                  parentScrollController: parentController,
+                ),
+                const SizedBox(height: 960),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }

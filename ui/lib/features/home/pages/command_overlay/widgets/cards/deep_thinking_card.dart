@@ -39,6 +39,7 @@ class DeepThinkingCard extends StatefulWidget {
 
   /// 外层消息列表滚动控制器，用于内外滚动联动
   final ScrollController? parentScrollController;
+  final VoidCallback? onParentScrollHandoff;
   final double textScale;
   final Color textColor;
   final bool showStatusAvatar;
@@ -56,6 +57,7 @@ class DeepThinkingCard extends StatefulWidget {
     this.isExecutable = false,
     this.isCollapsible = false,
     this.parentScrollController,
+    this.onParentScrollHandoff,
     this.textScale = 1,
     this.textColor = const Color(0x80353E53),
     this.showStatusAvatar = true,
@@ -243,10 +245,28 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
         _hasAutoCollapsedForCurrentCompletion = true;
       }
     });
+
+    if (!collapsed && _shouldResetScrollPositionOnExpand()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) {
+          return;
+        }
+        final position = _scrollController.position;
+        final top = position.minScrollExtent;
+        if ((position.pixels - top).abs() > _bottomTolerance) {
+          _scrollController.jumpTo(top);
+        }
+        _checkOverflow();
+      });
+    }
   }
 
   bool _shouldAutoCollapse(DeepThinkingCard widget) {
     return widget.isCollapsible && widget.stage == 4 && !widget.isLoading;
+  }
+
+  bool _shouldResetScrollPositionOnExpand() {
+    return widget.stage == 4 && widget.isCollapsible;
   }
 
   bool _isCompletedStage(int stage) => stage == 4 || stage == 5;
@@ -402,16 +422,17 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
               ),
               child: Stack(
                 children: [
-                  NotificationListener<ScrollNotification>(
-                    onNotification: (notification) {
-                      return _handleThinkingScrollNotification(
-                        notification,
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onVerticalDragUpdate: (details) {
+                      _handleContentVerticalDragUpdate(
+                        details,
                         parentScrollPosition,
                       );
                     },
                     child: SingleChildScrollView(
                       controller: _scrollController,
-                      physics: const ClampingScrollPhysics(),
+                      physics: const NeverScrollableScrollPhysics(),
                       child: Padding(
                         padding: const EdgeInsets.only(left: 12.0),
                         child: Column(
@@ -520,97 +541,67 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     );
   }
 
-  bool _handleThinkingScrollNotification(
-    ScrollNotification notification,
+  void _handleContentVerticalDragUpdate(
+    DragUpdateDetails details,
     ScrollPosition? parentPosition,
   ) {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    final pointerDelta = details.primaryDelta ?? details.delta.dy;
+    if (pointerDelta.abs() < 0.5) {
+      return;
+    }
+
+    var remainingPointerDelta = _consumePointerDelta(
+      position: _scrollController.position,
+      pointerDelta: pointerDelta,
+    );
+
+    if (remainingPointerDelta.abs() >= 0.5 &&
+        parentPosition != null &&
+        parentPosition.hasPixels) {
+      final before = parentPosition.pixels;
+      remainingPointerDelta = _consumePointerDelta(
+        position: parentPosition,
+        pointerDelta: remainingPointerDelta,
+      );
+      if ((parentPosition.pixels - before).abs() >= 0.5) {
+        widget.onParentScrollHandoff?.call();
+      }
+    }
+
+    _autoScrollToLatest = _isInnerNearLatest();
     _checkOverflow();
-    final isUserDrivenUpdate =
-        (notification is ScrollUpdateNotification &&
-            notification.dragDetails != null) ||
-        (notification is OverscrollNotification &&
-            notification.dragDetails != null);
-    if (isUserDrivenUpdate) {
-      _autoScrollToLatest = _isInnerNearLatest(notification.metrics);
-    } else if (notification is ScrollEndNotification &&
-        _isInnerNearLatest(notification.metrics)) {
-      _autoScrollToLatest = true;
-    }
-    return _forwardScrollToParent(notification, parentPosition);
   }
 
-  bool _forwardScrollToParent(
-    ScrollNotification notification,
-    ScrollPosition? parentPosition,
-  ) {
-    if (parentPosition == null || !parentPosition.hasPixels) {
-      return false;
-    }
-
-    final pointerDelta = _resolvePointerDelta(notification);
-    if (pointerDelta == null || pointerDelta.abs() < 0.5) {
-      return false;
-    }
-
-    final parentDelta = _pointerDeltaToScrollDelta(
+  double _consumePointerDelta({
+    required ScrollPosition position,
+    required double pointerDelta,
+  }) {
+    final scrollDelta = _pointerDeltaToScrollDelta(
       pointerDelta,
-      parentPosition.axisDirection,
+      position.axisDirection,
     );
-    if (parentDelta.abs() < 0.5) {
-      return false;
+    if (scrollDelta.abs() < 0.5) {
+      return 0;
     }
 
-    final current = parentPosition.pixels;
-    final min = parentPosition.minScrollExtent;
-    final max = parentPosition.maxScrollExtent;
-    final next = (current + parentDelta).clamp(min, max).toDouble();
+    final current = position.pixels;
+    final min = position.minScrollExtent;
+    final max = position.maxScrollExtent;
+    final next = (current + scrollDelta).clamp(min, max).toDouble();
+    final consumedScrollDelta = next - current;
 
-    if ((next - current).abs() < 0.5) {
-      return false;
+    if (consumedScrollDelta.abs() >= 0.5) {
+      position.jumpTo(next);
     }
 
-    parentPosition.jumpTo(next);
-    return true;
-  }
-
-  double? _resolvePointerDelta(ScrollNotification notification) {
-    final dragDelta = switch (notification) {
-      OverscrollNotification(:final dragDetails?) => _primaryDelta(
-        dragDetails.delta,
-        notification.metrics.axis,
-      ),
-      _ => null,
-    };
-    if (dragDelta != null) {
-      return dragDelta;
-    }
-
-    final scrollDelta = switch (notification) {
-      OverscrollNotification(:final overscroll) => overscroll,
-      _ => null,
-    };
-    if (scrollDelta == null || scrollDelta.abs() < 0.5) {
-      return null;
-    }
-
-    return _scrollDeltaToPointerDelta(
-      scrollDelta,
-      notification.metrics.axisDirection,
+    final consumedPointerDelta = _scrollDeltaToPointerDelta(
+      consumedScrollDelta,
+      position.axisDirection,
     );
-  }
-
-  double _primaryDelta(Offset offset, Axis axis) {
-    return axis == Axis.vertical ? offset.dy : offset.dx;
-  }
-
-  double _scrollDeltaToPointerDelta(
-    double scrollDelta,
-    AxisDirection axisDirection,
-  ) {
-    return switch (axisDirection) {
-      AxisDirection.down || AxisDirection.right => -scrollDelta,
-      AxisDirection.up || AxisDirection.left => scrollDelta,
-    };
+    return pointerDelta - consumedPointerDelta;
   }
 
   double _pointerDeltaToScrollDelta(
@@ -620,6 +611,16 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     return switch (axisDirection) {
       AxisDirection.down || AxisDirection.right => -pointerDelta,
       AxisDirection.up || AxisDirection.left => pointerDelta,
+    };
+  }
+
+  double _scrollDeltaToPointerDelta(
+    double scrollDelta,
+    AxisDirection axisDirection,
+  ) {
+    return switch (axisDirection) {
+      AxisDirection.down || AxisDirection.right => -scrollDelta,
+      AxisDirection.up || AxisDirection.left => scrollDelta,
     };
   }
 }

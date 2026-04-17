@@ -26,6 +26,7 @@ class CardWidgetFactory {
     void Function(String taskId)? onCancelTask,
     bool enableThinkingCollapse = false,
     ScrollController? parentScrollController,
+    VoidCallback? onParentScrollHandoff,
     AppBackgroundConfig appearanceConfig = AppBackgroundConfig.defaults,
     AppBackgroundVisualProfile visualProfile =
         AppBackgroundVisualProfile.defaultProfile,
@@ -71,6 +72,7 @@ class CardWidgetFactory {
           isExecutable: isExecutable,
           isCollapsible: isCollapsible,
           parentScrollController: parentScrollController,
+          onParentScrollHandoff: onParentScrollHandoff,
           textScale: resolvedChatTextScale(appearanceConfig),
           textColor: visualProfile.primaryTextColor,
           showStatusAvatar: _shouldShowDeepThinkingAvatar(
