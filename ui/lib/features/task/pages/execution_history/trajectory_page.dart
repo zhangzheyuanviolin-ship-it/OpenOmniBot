@@ -745,8 +745,6 @@ class _TrajectoryPageState
             Expanded(
               child: _isLoading
                   ? _buildLoadingIndicator()
-                  : allRecords.isEmpty
-                  ? _buildEmptyState()
                   : SingleChildScrollView(
                       child: Column(
                         children: [
@@ -763,44 +761,47 @@ class _TrajectoryPageState
                               ],
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                '任务记录',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: context.omniPalette.textPrimary,
+                          if (allRecords.isNotEmpty) ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '任务记录',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: context.omniPalette.textPrimary,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          SizedBox(height: 10),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: TagSection(
-                              items: executionTags,
-                              selectedIds: selectedTagIds,
-                              onSelectionChanged: _onTagSelectionChanged,
-                              maxCollapsedRows: 1,
+                            SizedBox(height: 10),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: TagSection(
+                                items: executionTags,
+                                selectedIds: selectedTagIds,
+                                onSelectionChanged: _onTagSelectionChanged,
+                                maxCollapsedRows: 1,
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 8),
-                          ExecutionRecordList(
-                            records: filterRecords,
-                            onDelete: _deleteExecutionRecord,
-                            onMore: _showContextMenu,
-                            onLongPress: (vm) => _enterSelectionMode(vm),
-                            onTap: (vm) => _navigateToDetail(vm),
-                            isSelectionMode: _isSelectionMode,
-                            selectedKeys: _selectedRecordKeys,
-                            onToggleSelection: _toggleRecordSelection,
-                            getRecordKey: _getRecordKey,
-                            onSchedulePressed: _onSchedulePressed,
-                            scheduledTaskKeys: _scheduledTaskKeys,
-                          ),
+                            SizedBox(height: 8),
+                            ExecutionRecordList(
+                              records: filterRecords,
+                              onDelete: _deleteExecutionRecord,
+                              onMore: _showContextMenu,
+                              onLongPress: (vm) => _enterSelectionMode(vm),
+                              onTap: (vm) => _navigateToDetail(vm),
+                              isSelectionMode: _isSelectionMode,
+                              selectedKeys: _selectedRecordKeys,
+                              onToggleSelection: _toggleRecordSelection,
+                              getRecordKey: _getRecordKey,
+                              onSchedulePressed: _onSchedulePressed,
+                              scheduledTaskKeys: _scheduledTaskKeys,
+                            ),
+                          ] else
+                            _buildEmptyRecordsHint(),
                         ],
                       ),
                     ),
@@ -866,11 +867,11 @@ class _TrajectoryPageState
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyRecordsHint() {
     final palette = context.omniPalette;
-    return Center(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SvgPicture.asset(
             'assets/common/empty_record.svg',
@@ -885,7 +886,7 @@ class _TrajectoryPageState
           ),
           const SizedBox(height: 12),
           Text(
-            '暂无执行记录',
+            '暂无任务记录',
             style: TextStyle(
               fontSize: AppTextStyles.fontSizeH3,
               fontWeight: AppTextStyles.fontWeightMedium,
