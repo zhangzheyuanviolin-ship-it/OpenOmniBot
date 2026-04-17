@@ -245,28 +245,37 @@ class AgentToolSummaryCard extends StatelessWidget {
       return;
     }
     final runId = (payload['run_id'] ?? '').toString().trim();
-    var raw = <String, dynamic>{};
-    if (runId.isNotEmpty) {
-      try {
-        final detail = await AssistsMessageService.getUtgRunLogDetail(
-          runId: runId,
-        );
-        raw = detail.runLog;
-      } catch (_) {
-        final runLog = payload['run_log'];
-        raw = runLog is Map<String, dynamic>
-            ? runLog
-            : runLog is Map
-            ? Map<String, dynamic>.from(runLog)
-            : <String, dynamic>{};
+    if (runId.isEmpty) {
+      final message = (payload['error_message'] ?? '').toString().trim();
+      showToast(
+        message.isEmpty ? 'OmniFlow runlog 尚未落盘' : message,
+        type: ToastType.error,
+      );
+      return;
+    }
+    late final Map<String, dynamic> raw;
+    late final Map<String, dynamic> view;
+    try {
+      final detail = await AssistsMessageService.getUtgRunLogDetail(
+        runId: runId,
+      );
+      raw = detail.runLog;
+      final rawView = detail.rawJson['view'];
+      view = rawView is Map
+          ? Map<String, dynamic>.from(
+              rawView.map((key, value) => MapEntry(key.toString(), value)),
+            )
+          : const <String, dynamic>{};
+    } catch (e) {
+      if (!context.mounted) {
+        return;
       }
-    } else {
-      final runLog = payload['run_log'];
-      raw = runLog is Map<String, dynamic>
-          ? runLog
-          : runLog is Map
-          ? Map<String, dynamic>.from(runLog)
-          : <String, dynamic>{};
+      final message = e.toString().trim();
+      showToast(
+        message.isEmpty ? '加载 OmniFlow runlog 失败' : message,
+        type: ToastType.error,
+      );
+      return;
     }
     if (!context.mounted) {
       return;
@@ -291,7 +300,7 @@ class AgentToolSummaryCard extends StatelessWidget {
                 title: title,
                 runId: runId,
                 raw: raw,
-                payload: payload,
+                view: view,
               ),
             ),
           ),
@@ -305,35 +314,39 @@ class AgentToolSummaryCard extends StatelessWidget {
     required String title,
     required String runId,
     required Map<String, dynamic> raw,
-    required Map<String, dynamic> payload,
+    required Map<String, dynamic> view,
   }) {
     final extra =
         (raw['extra'] as Map<dynamic, dynamic>?) ?? const <dynamic, dynamic>{};
     final finalObservation =
         (raw['final_observation'] as Map<dynamic, dynamic>?) ??
         const <dynamic, dynamic>{};
-    final steps = (raw['steps'] as List<dynamic>?) ?? const <dynamic>[];
-    final success = raw['success'] == true;
-    final ingestPayload = payload['ingest_payload'] is Map
-        ? Map<String, dynamic>.from(payload['ingest_payload'] as Map)
-        : payload['raw_trace'] is Map
-        ? Map<String, dynamic>.from(payload['raw_trace'] as Map)
-        : const <String, dynamic>{};
-    final canImport = runId.isNotEmpty || ingestPayload.isNotEmpty;
-    final compileKind = (extra['compile_kind'] ?? '').toString().trim();
-    final compileLabel = compileKind.isEmpty
-        ? 'compile unknown'
-        : 'compile $compileKind';
-    final toolName = steps.isEmpty
-        ? '无 tool'
-        : (((steps.first as Map)['plan'] as Map?)?['tool_name'] ?? '')
-              .toString()
-              .trim()
-              .isEmpty
-        ? '无 tool'
-        : (((steps.first as Map)['plan'] as Map?)?['tool_name'] ?? '')
-              .toString()
-              .trim();
+    final rawSteps = (raw['steps'] as List<dynamic>?) ?? const <dynamic>[];
+    final viewSteps = (view['steps'] as List<dynamic>?) ?? const <dynamic>[];
+    final success =
+        view['success'] == true || (view.isEmpty && raw['success'] == true);
+    final canImport = runId.isNotEmpty;
+    final stepCount = view['step_count'] is num
+        ? (view['step_count'] as num).toInt()
+        : int.tryParse((view['step_count'] ?? '').toString()) ??
+              rawSteps.length;
+    final compileLabel = (view['compile_label'] ?? '').toString().trim().isEmpty
+        ? (((extra['compile_kind'] ?? '').toString().trim().isEmpty)
+              ? 'compile unknown'
+              : 'compile ${(extra['compile_kind'] ?? '').toString().trim()}')
+        : (view['compile_label'] ?? '').toString().trim();
+    final toolLabel = (view['tool_label'] ?? '').toString().trim();
+    final toolName = toolLabel.isEmpty ? '无 tool' : toolLabel;
+    final summary = (view['summary'] ?? '').toString().trim();
+    final goal = (view['goal'] ?? raw['goal'] ?? '').toString().trim();
+    final finalPackage = (view['final_package'] ?? '').toString().trim().isEmpty
+        ? ((finalObservation['package_name'] ?? '').toString().trim().isEmpty
+              ? 'unknown'
+              : (finalObservation['package_name'] ?? '').toString().trim())
+        : (view['final_package'] ?? '').toString().trim();
+    final emptyMessage = (view['empty_message'] ?? '').toString().trim().isEmpty
+        ? '这个 run_log 没有记录到 step。常见原因是任务在首轮观察前失败或被中断。'
+        : (view['empty_message'] ?? '').toString().trim();
     final prettyJson = const JsonEncoder.withIndent('  ').convert(raw);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -359,21 +372,15 @@ class AgentToolSummaryCard extends StatelessWidget {
           runSpacing: 8,
           children: [
             _buildRunStatusPill(success),
-            _buildRunDetailPill('${steps.length} steps'),
+            _buildRunDetailPill('$stepCount steps'),
             _buildRunDetailPill(compileLabel),
-            _buildRunDetailPill(toolName.isEmpty ? '无 tool' : toolName),
+            _buildRunDetailPill(toolName),
           ],
         ),
+        _buildInfoRow('goal', goal),
         _buildInfoRow('started_at', (raw['started_at'] ?? '').toString()),
         _buildInfoRow('done_reason', (raw['done_reason'] ?? '').toString()),
-        if ((finalObservation['package_name'] ?? '')
-            .toString()
-            .trim()
-            .isNotEmpty)
-          _buildInfoRow(
-            'final_package',
-            (finalObservation['package_name'] ?? '').toString(),
-          ),
+        _buildInfoRow('final_package', finalPackage),
         const SizedBox(height: 16),
         Container(
           width: double.infinity,
@@ -419,14 +426,134 @@ class AgentToolSummaryCard extends StatelessWidget {
                     height: 1.5,
                   ),
                 ),
+              if (summary.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  summary,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.black87,
+                    height: 1.6,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
-              if (steps.isEmpty)
-                const Text(
-                  '这个 run_log 没有记录到 step。常见原因是任务在首轮观察前失败或被中断。',
+              if (viewSteps.isEmpty && rawSteps.isEmpty)
+                Text(
+                  emptyMessage,
                   style: TextStyle(color: AppColors.text70, height: 1.6),
                 )
+              else if (viewSteps.isNotEmpty)
+                ...viewSteps.asMap().entries.map((entry) {
+                  final step = entry.value is Map
+                      ? Map<String, dynamic>.from(entry.value as Map)
+                      : const <String, dynamic>{};
+                  final actions =
+                      (step['actions'] as List<dynamic>?)
+                          ?.map((item) => item.toString().trim())
+                          .where((item) => item.isNotEmpty)
+                          .toList() ??
+                      const <String>[];
+                  final stepSuccess = step['success'] != false;
+                  final title = (step['title'] ?? '').toString().trim().isEmpty
+                      ? 'Step ${entry.key + 1}'
+                      : (step['title'] ?? '').toString().trim();
+                  final selectedBy = (step['selected_by'] ?? '')
+                      .toString()
+                      .trim();
+                  final why = (step['why'] ?? '').toString().trim();
+                  final result = (step['result'] ?? '').toString().trim();
+                  final thought = (step['thought'] ?? '').toString().trim();
+                  final summaryText = (step['summary'] ?? '').toString().trim();
+                  return Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFE4E8EE)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Step ${entry.key + 1} · $title',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _buildRunStatusPill(stepSuccess),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        if (selectedBy.isNotEmpty)
+                          Text(
+                            'selected_by: $selectedBy',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.text70,
+                              height: 1.5,
+                            ),
+                          ),
+                        if (why.isNotEmpty)
+                          Text(
+                            'why: $why',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.text70,
+                              height: 1.5,
+                            ),
+                          ),
+                        ...actions.asMap().entries.map(
+                          (actionEntry) => Text(
+                            'action ${actionEntry.key + 1}: ${actionEntry.value}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.text70,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                        if (result.isNotEmpty)
+                          Text(
+                            'result: $result',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.text70,
+                              height: 1.5,
+                            ),
+                          ),
+                        if (thought.isNotEmpty)
+                          Text(
+                            'thought: $thought',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.text70,
+                              height: 1.5,
+                            ),
+                          ),
+                        if (summaryText.isNotEmpty)
+                          Text(
+                            'summary: $summaryText',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.text70,
+                              height: 1.5,
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                })
               else
-                ...steps.asMap().entries.map((entry) {
+                ...rawSteps.asMap().entries.map((entry) {
                   final step = entry.value is Map
                       ? Map<String, dynamic>.from(entry.value as Map)
                       : const <String, dynamic>{};
@@ -556,7 +683,7 @@ class AgentToolSummaryCard extends StatelessWidget {
                 }),
               const SizedBox(height: 8),
               Text(
-                'final package: ${(finalObservation['package_name'] ?? '').toString().trim().isEmpty ? 'unknown' : (finalObservation['package_name'] ?? '').toString()}',
+                'final package: $finalPackage',
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.text70,
@@ -605,22 +732,14 @@ class AgentToolSummaryCard extends StatelessWidget {
               FilledButton.icon(
                 onPressed: !canImport
                     ? null
-                    : () => _importRunLogToOmniFlow(
-                        context,
-                        runId: runId,
-                        ingestPayload: ingestPayload,
-                      ),
+                    : () => _importRunLogToOmniFlow(context, runId: runId),
                 icon: const Icon(Icons.psychology_alt_outlined),
                 label: const Text('记忆'),
               ),
               OutlinedButton.icon(
                 onPressed: !canImport
                     ? null
-                    : () => _replayRunLogViaOmniFlow(
-                        context,
-                        runId: runId,
-                        ingestPayload: ingestPayload,
-                      ),
+                    : () => _replayRunLogViaOmniFlow(context, runId: runId),
                 icon: const Icon(Icons.play_arrow_outlined),
                 label: const Text('重放'),
               ),
@@ -638,7 +757,6 @@ class AgentToolSummaryCard extends StatelessWidget {
   Future<void> _importRunLogToOmniFlow(
     BuildContext context, {
     required String runId,
-    Map<String, dynamic> ingestPayload = const <String, dynamic>{},
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -686,19 +804,9 @@ class AgentToolSummaryCard extends StatelessWidget {
     );
     loadingShown = true;
     try {
-      var effectiveRunId = runId.trim();
-      if (effectiveRunId.isEmpty && ingestPayload.isNotEmpty) {
-        final appendResult = await AssistsMessageService.ingestTraceRunLog(
-          ingestPayload: ingestPayload,
-        );
-        effectiveRunId = appendResult.runId.trim();
-        if (!appendResult.success || effectiveRunId.isEmpty) {
-          throw Exception(
-            appendResult.errorMessage?.trim().isNotEmpty == true
-                ? appendResult.errorMessage
-                : 'OmniFlow 未能先导入这条执行 trace',
-          );
-        }
+      final effectiveRunId = runId.trim();
+      if (effectiveRunId.isEmpty) {
+        throw Exception('OmniFlow run_id 缺失，无法记忆');
       }
       final result = await AssistsMessageService.importUtgRunLog(
         runId: effectiveRunId,
@@ -746,14 +854,13 @@ class AgentToolSummaryCard extends StatelessWidget {
   Future<void> _replayRunLogViaOmniFlow(
     BuildContext context, {
     required String runId,
-    Map<String, dynamic> ingestPayload = const <String, dynamic>{},
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('通过 OmniFlow 重放'),
-          content: const Text('是否确定将这次执行记录导入 OmniFlow 临时区，并立即重放该轨迹？'),
+          content: const Text('是否确定通过 OmniFlow 直接重放这次执行记录？'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -784,7 +891,7 @@ class AgentToolSummaryCard extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2.4),
               ),
               SizedBox(width: 12),
-              Expanded(child: Text('正在导入并重放 OmniFlow 轨迹...')),
+              Expanded(child: Text('正在通过 OmniFlow 重放执行记录...')),
             ],
           ),
         );
@@ -792,47 +899,13 @@ class AgentToolSummaryCard extends StatelessWidget {
     );
     loadingShown = true;
     try {
-      var effectiveRunId = runId.trim();
-      if (effectiveRunId.isEmpty && ingestPayload.isNotEmpty) {
-        final appendResult = await AssistsMessageService.ingestTraceRunLog(
-          ingestPayload: ingestPayload,
-        );
-        effectiveRunId = appendResult.runId.trim();
-        if (!appendResult.success || effectiveRunId.isEmpty) {
-          throw Exception(
-            appendResult.errorMessage?.trim().isNotEmpty == true
-                ? appendResult.errorMessage
-                : 'OmniFlow 未能先导入这条执行 trace',
-          );
-        }
+      final effectiveRunId = runId.trim();
+      if (effectiveRunId.isEmpty) {
+        throw Exception('OmniFlow run_id 缺失，无法重放');
       }
-      final importResult = await AssistsMessageService.importUtgRunLog(
+      final result = await AssistsMessageService.replayUtgRunLog(
         runId: effectiveRunId,
       );
-      if (!context.mounted) {
-        return;
-      }
-      if (!importResult.success) {
-        if (loadingShown) {
-          Navigator.of(context, rootNavigator: true).pop();
-          loadingShown = false;
-        }
-        showToast(
-          importResult.errorMessage ?? '该 run_log 不能转换成可重放轨迹',
-          type: ToastType.error,
-        );
-        return;
-      }
-      final pathId = importResult.createdPathId.trim();
-      if (pathId.isEmpty) {
-        if (loadingShown) {
-          Navigator.of(context, rootNavigator: true).pop();
-          loadingShown = false;
-        }
-        showToast('该 run_log 未生成可重放轨迹', type: ToastType.error);
-        return;
-      }
-      final result = await AssistsMessageService.runUtgPath(pathId: pathId);
       if (!context.mounted) {
         return;
       }
@@ -840,8 +913,11 @@ class AgentToolSummaryCard extends StatelessWidget {
         Navigator.of(context, rootNavigator: true).pop();
         loadingShown = false;
       }
+      final pathId = result.pathId.trim();
       showToast(
-        result.success ? '已通过 OmniFlow 重放：$pathId' : 'OmniFlow 重放失败：$pathId',
+        result.success
+            ? (pathId.isEmpty ? '已通过 OmniFlow 重放' : '已通过 OmniFlow 重放：$pathId')
+            : (pathId.isEmpty ? 'OmniFlow 重放失败' : 'OmniFlow 重放失败：$pathId'),
         type: result.success ? ToastType.success : ToastType.error,
       );
     } catch (e) {

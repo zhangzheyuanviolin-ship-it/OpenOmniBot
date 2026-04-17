@@ -73,7 +73,6 @@ import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.agent.resolveToolExecutionStatus
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
-import cn.com.omnimind.bot.mnnlocal.MnnLocalModelsManager
 import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
 import cn.com.omnimind.bot.utg.EmbeddedProviderManager
 import cn.com.omnimind.bot.utg.UtgBridge
@@ -1049,15 +1048,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     }
 
     /**
-     * Return the locally cached run-log snapshot for one finished `vlm_task`.
-     *
-     * The snapshot may contain the provider-returned canonical run when upload
-     * succeeds, or an ingest-payload fallback snapshot when provider ingest fails.
+     * Return the provider-backed run-log reference for one finished `vlm_task`.
      *
      * Args:
      *     call: Method-call payload carrying the originating `taskId`.
      *     result: Flutter result callback receiving
-     *         `{success, run_log, ingest_payload, ...}`.
+     *         `{success, run_id, run_log_path, ...}`.
      */
     fun getVlmTaskRunLog(
         call: MethodCall, result: MethodChannel.Result,
@@ -1140,7 +1136,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         (method == "GET" && routePath == "/run_logs") ||
                         (method == "GET" && Regex("^/run_logs/[^/]+$").matches(routePath)) ||
                         (method == "POST" && routePath == "/run_logs/import_trace") ||
-                        (method == "POST" && routePath == "/run_logs/import")
+                        (method == "POST" && routePath == "/run_logs/import") ||
+                        (method == "POST" && routePath == "/run_logs/replay")
                 if (!isAllowedRequest) {
                     throw IllegalArgumentException("unsupported_utg_debug_route")
                 }
@@ -1257,7 +1254,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         mainJob.launch {
             try {
                 val success = withContext(Dispatchers.IO) {
-                    EmbeddedProviderManager.stop()
+                    EmbeddedProviderManager.stop(context)
                 }
                 withContext(Dispatchers.Main) {
                     result.success(mapOf("success" to success))
