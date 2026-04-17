@@ -19,6 +19,7 @@ import cn.com.omnimind.assists.task.scheduled.worker.ScheduledStates
 import cn.com.omnimind.assists.task.scheduled.worker.toScheduledVLMOperationTaskParamsData
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.database.Conversation
+import cn.com.omnimind.baselib.database.TokenUsageRecord
 import cn.com.omnimind.baselib.http.Http429Exception
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.i18n.PromptLocale
@@ -4600,6 +4601,36 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         },
                         null
                     )
+                }
+            }
+        }
+    }
+
+    fun getTokenUsageRecords(call: MethodCall, result: MethodChannel.Result) {
+        val sinceMs = call.argument<Number>("since")?.toLong() ?: 0L
+        workJob.launch {
+            try {
+                val records = DatabaseHelper.getTokenUsageRecordsSince(sinceMs)
+                val jsonList = records.map { record ->
+                    mapOf(
+                        "id" to record.id,
+                        "conversationId" to record.conversationId,
+                        "isLocal" to record.isLocal,
+                        "model" to record.model,
+                        "promptTokens" to record.promptTokens,
+                        "completionTokens" to record.completionTokens,
+                        "reasoningTokens" to record.reasoningTokens,
+                        "textTokens" to record.textTokens,
+                        "createdAt" to record.createdAt
+                    )
+                }
+                withContext(Dispatchers.Main) {
+                    result.success(jsonList)
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "Failed to get token usage records: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("GET_TOKEN_USAGE_RECORDS_ERROR", e.message, null)
                 }
             }
         }

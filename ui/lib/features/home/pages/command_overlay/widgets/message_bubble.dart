@@ -37,6 +37,7 @@ class MessageBubble extends StatelessWidget {
   final OnRequestAuthorize? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
+  final VoidCallback? onStreamingTextLayoutChanged;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
 
@@ -49,6 +50,7 @@ class MessageBubble extends StatelessWidget {
     this.parentScrollController,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
+    this.onStreamingTextLayoutChanged,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
   });
@@ -512,6 +514,7 @@ class MessageBubble extends StatelessWidget {
             enableMarkdown: true,
             fullText: text,
             selectable: true,
+            onDisplayedTextChanged: onStreamingTextLayoutChanged,
             style: TextStyle(
               fontSize: _chatTextSize,
               color: aiPrimaryTextColor,
@@ -526,6 +529,7 @@ class MessageBubble extends StatelessWidget {
       enableMarkdown: true,
       fullText: text,
       selectable: true,
+      onDisplayedTextChanged: onStreamingTextLayoutChanged,
       style: TextStyle(
         fontSize: _chatTextSize,
         color: aiPrimaryTextColor,
@@ -627,7 +631,8 @@ class MessageBubble extends StatelessWidget {
 
   /// 构建卡片消息
   Widget _buildCardMessage(BuildContext context) {
-    final cardData = message.cardData ?? {};
+    final cardData = Map<String, dynamic>.from(message.cardData ?? {});
+    cardData.putIfAbsent('cardId', () => message.contentId ?? message.id);
 
     // 卡片消息撑满聊天框宽度，减去头像和间距的宽度
     return SizedBox(

@@ -65,7 +65,7 @@ object OmniInferMnnModelsManager {
 
     fun handleAppOpen() {
         if (shouldAutoStartOnAppOpen()) {
-            startApiService(getActiveModelId())
+            Thread({ startApiService(getActiveModelId()) }, "OmniInfer-autostart").start()
         }
     }
 

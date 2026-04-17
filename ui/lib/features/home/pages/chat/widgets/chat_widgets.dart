@@ -66,7 +66,6 @@ const List<Color> _kDarkChatAccentGradient = <Color>[
   Color(0xFF8FA38A),
 ];
 
-const Color _kDarkChatAccentShadow = Color(0x2610110F);
 const double _kChatAppBarMenuButtonSize = 50;
 const double _kChatAppBarAccessoryButtonSize = 40;
 const double _kChatAppBarAccessoryGap = 12;
@@ -698,25 +697,11 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
           opacity: 0.78,
         ),
         borderRadius: BorderRadius.circular(999),
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(
-                    alpha: widget.translucent ? 0.18 : 0.14,
-                  ),
-                  blurRadius: widget.translucent ? 18 : 14,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(
-                    alpha: widget.translucent ? 0.2 : 0.12,
-                  ),
-                  blurRadius: widget.translucent ? 22 : 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+        border: Border.all(
+          color: widget.translucent
+              ? widget.visualProfile.islandBorderColor
+              : palette.borderSubtle.withValues(alpha: 0.72),
+        ),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
@@ -818,9 +803,6 @@ class _ChatToolSlider extends StatelessWidget {
     final activeGradient = context.isDarkTheme
         ? _kDarkChatAccentGradient
         : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
-    final activeShadowColor = context.isDarkTheme
-        ? _kDarkChatAccentShadow
-        : const Color(0x291930D9);
     return SizedBox(
       height: 32,
       child: Container(
@@ -847,13 +829,6 @@ class _ChatToolSlider extends StatelessWidget {
                       colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: activeShadowColor,
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
                   ),
                 ),
               ),
@@ -1047,9 +1022,6 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
     final activeGradient = context.isDarkTheme
         ? _kDarkChatAccentGradient
         : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
-    final activeShadowColor = context.isDarkTheme
-        ? _kDarkChatAccentShadow
-        : const Color(0x291930D9);
     final alignment = _activeVisibleModeIndex == 0
         ? Alignment.centerLeft
         : Alignment.centerRight;
@@ -1099,13 +1071,6 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
                       colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: activeShadowColor,
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
                   ),
                 ),
               ),
@@ -1193,6 +1158,8 @@ class ChatMessageList extends StatefulWidget {
 
 class _ChatMessageListState extends State<ChatMessageList> {
   bool _stickToBottomScheduled = false;
+  bool _autoStickToLatest = true;
+  static const double _latestEdgeTolerance = 48.0;
 
   @override
   void initState() {
@@ -1203,20 +1170,44 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   void didUpdateWidget(covariant ChatMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_isNearBottom()) {
-      _scheduleStickToBottom();
+    if (oldWidget.scrollController != widget.scrollController) {
+      _autoStickToLatest = true;
+    }
+    if (_autoStickToLatest || _isNearLatest()) {
+      _autoStickToLatest = true;
+      _scheduleStickToLatest();
     }
   }
 
-  bool _isNearBottom() {
+  bool _isNearLatest([ScrollMetrics? metrics]) {
+    final resolvedMetrics = metrics;
+    if (resolvedMetrics != null) {
+      return _distanceToLatest(resolvedMetrics) <= _latestEdgeTolerance;
+    }
     if (!widget.scrollController.hasClients) {
       return true;
     }
     final position = widget.scrollController.position;
-    return (position.maxScrollExtent - position.pixels).abs() <= 24;
+    return _distanceToLatest(position) <= _latestEdgeTolerance;
   }
 
-  void _scheduleStickToBottom() {
+  double _latestOffset(ScrollMetrics metrics) {
+    return switch (metrics.axisDirection) {
+      AxisDirection.down || AxisDirection.right => metrics.maxScrollExtent,
+      AxisDirection.up || AxisDirection.left => metrics.minScrollExtent,
+    };
+  }
+
+  double _distanceToLatest(ScrollMetrics metrics) {
+    return (metrics.pixels - _latestOffset(metrics)).abs();
+  }
+
+  void _scheduleStickToBottom() => _scheduleStickToLatest();
+
+  void _scheduleStickToLatest() {
+    if (!_autoStickToLatest) {
+      return;
+    }
     if (_stickToBottomScheduled) {
       return;
     }
@@ -1230,12 +1221,38 @@ class _ChatMessageListState extends State<ChatMessageList> {
         return;
       }
       final position = widget.scrollController.position;
-      final target = position.maxScrollExtent;
+      final target = _latestOffset(position);
       if ((target - position.pixels).abs() < 0.5) {
         return;
       }
       widget.scrollController.jumpTo(target);
     });
+  }
+
+  void _handleStreamingTextLayoutChanged() {
+    if (_autoStickToLatest) {
+      _scheduleStickToLatest();
+    }
+  }
+
+  bool _handleListScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    final isUserDrivenUpdate =
+        (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null) ||
+        (notification is OverscrollNotification &&
+            notification.dragDetails != null);
+    if (isUserDrivenUpdate) {
+      _autoStickToLatest = _isNearLatest(notification.metrics);
+      return false;
+    }
+    if (notification is ScrollEndNotification &&
+        _isNearLatest(notification.metrics)) {
+      _autoStickToLatest = true;
+    }
+    return false;
   }
 
   @override
@@ -1279,46 +1296,51 @@ class _ChatMessageListState extends State<ChatMessageList> {
       content = ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
-          child: ListView.builder(
-            controller: widget.scrollController,
-            reverse: false,
-            shrinkWrap: true,
-            physics: const ClampingScrollPhysics(),
-            clipBehavior: Clip.hardEdge,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            itemCount: widget.messages.length,
-            itemBuilder: (context, index) {
-              final dataIndex = widget.messages.length - 1 - index;
-              final message = widget.messages[dataIndex];
-              final isNewestMessage = dataIndex == 0;
-              final isOldestMessage = dataIndex == widget.messages.length - 1;
-              final bottomPadding = isNewestMessage
-                  ? widget.bottomOverlayInset
-                  : 0.0;
-              final needTopPadding = isOldestMessage && message.user != 1;
-              return Padding(
-                key: ValueKey('chat-message-list-item-$dataIndex'),
-                padding: EdgeInsets.only(
-                  top: needTopPadding ? 24.0 : 0.0,
-                  bottom: bottomPadding,
-                ),
-                child: MessageBubble(
-                  message: message,
-                  key: ValueKey(
-                    message.dbId ?? message.contentId ?? message.id,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _handleListScrollNotification,
+            child: ListView.builder(
+              controller: widget.scrollController,
+              reverse: false,
+              shrinkWrap: true,
+              physics: const ClampingScrollPhysics(),
+              clipBehavior: Clip.hardEdge,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              itemCount: widget.messages.length,
+              itemBuilder: (context, index) {
+                final dataIndex = widget.messages.length - 1 - index;
+                final message = widget.messages[dataIndex];
+                final isNewestMessage = dataIndex == 0;
+                final isOldestMessage = dataIndex == widget.messages.length - 1;
+                final bottomPadding = isNewestMessage
+                    ? widget.bottomOverlayInset
+                    : 0.0;
+                final needTopPadding = isOldestMessage && message.user != 1;
+                return Padding(
+                  key: ValueKey('chat-message-list-item-$dataIndex'),
+                  padding: EdgeInsets.only(
+                    top: needTopPadding ? 24.0 : 0.0,
+                    bottom: bottomPadding,
                   ),
-                  onBeforeTaskExecute: widget.onBeforeTaskExecute,
-                  onCancelTask: widget.onCancelTask,
-                  enableThinkingCollapse: true,
-                  parentScrollController: widget.scrollController,
-                  onRequestAuthorize: widget.onRequestAuthorize,
-                  onUserMessageLongPressStart:
-                      widget.onUserMessageLongPressStart,
-                  visualProfile: widget.visualProfile,
-                  appearanceConfig: widget.appearanceConfig,
-                ),
-              );
-            },
+                  child: MessageBubble(
+                    message: message,
+                    key: ValueKey(
+                      message.dbId ?? message.contentId ?? message.id,
+                    ),
+                    onBeforeTaskExecute: widget.onBeforeTaskExecute,
+                    onCancelTask: widget.onCancelTask,
+                    enableThinkingCollapse: true,
+                    parentScrollController: widget.scrollController,
+                    onRequestAuthorize: widget.onRequestAuthorize,
+                    onUserMessageLongPressStart:
+                        widget.onUserMessageLongPressStart,
+                    onStreamingTextLayoutChanged:
+                        _handleStreamingTextLayoutChanged,
+                    visualProfile: widget.visualProfile,
+                    appearanceConfig: widget.appearanceConfig,
+                  ),
+                );
+              },
+            ),
           ),
         ),
       );

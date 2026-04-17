@@ -8,6 +8,7 @@ import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/agent_avatar.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/widgets/settings_section_title.dart';
 
@@ -146,6 +147,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
 
   bool _isSavingScene(String sceneId) {
     return _savingSceneIds.contains(sceneId);
+  }
+
+  bool _isAgentScene(String sceneId) {
+    return sceneId == 'scene.dispatch.model';
   }
 
   Future<void> _loadData() async {
@@ -484,6 +489,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                     ),
                   ),
                   const SizedBox(width: 6),
+                  if (_isAgentScene(scene.sceneId)) ...[
+                    const AgentAvatarButton(size: 30, showEditBadge: true),
+                    const SizedBox(width: 6),
+                  ],
                   Icon(Icons.info_outline, size: 15, color: _tertiaryTextColor),
                 ],
               ),

@@ -613,8 +613,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final isOpenClawAttachment = type == 'openclaw_attachment';
     final payload = safeDecodeMap(content);
     final payloadAttachments = _parseAttachments(payload['attachments']);
-    final prefillTokensPerSecond =
-        extractChatTaskPrefillTokensPerSecond(content);
+    final prefillTokensPerSecond = extractChatTaskPrefillTokensPerSecond(
+      content,
+    );
     final decodeTokensPerSecond = extractChatTaskDecodeTokensPerSecond(content);
     final hasPerformanceMetrics =
         prefillTokensPerSecond != null || decodeTokensPerSecond != null;
@@ -1719,6 +1720,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       'thinkingContent': thinkingContent ?? '',
       'stage': stage ?? runtime.currentThinkingStage,
       'taskID': taskId,
+      'cardId': thinkingCardId,
       'startTime': startTime,
       'endTime': null,
     };
@@ -1881,6 +1883,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     cardData['isLoading'] = isLoading ?? runtime.isDeepThinking;
     cardData['stage'] = newStage;
     cardData['taskID'] = taskId;
+    cardData['cardId'] = thinkingCardId;
     cardData['startTime'] = startTime;
     cardData['endTime'] = endTime;
 

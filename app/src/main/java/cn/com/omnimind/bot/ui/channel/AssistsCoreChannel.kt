@@ -277,6 +277,9 @@ class AssistsCoreChannel {
                 "hideScheduledTaskReminder" -> {
                     assistsCoreManager!!.hideScheduledTaskReminder(call, result)
                 }
+                "getTokenUsageRecords" -> {
+                    assistsCoreManager!!.getTokenUsageRecords(call, result)
+                }
                 "getConversations" -> {
                     assistsCoreManager!!.getConversations(call, result)
                 }

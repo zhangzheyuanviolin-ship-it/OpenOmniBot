@@ -41,6 +41,7 @@ class DeepThinkingCard extends StatefulWidget {
   final ScrollController? parentScrollController;
   final double textScale;
   final Color textColor;
+  final bool showStatusAvatar;
 
   const DeepThinkingCard({
     super.key,
@@ -57,6 +58,7 @@ class DeepThinkingCard extends StatefulWidget {
     this.parentScrollController,
     this.textScale = 1,
     this.textColor = const Color(0x80353E53),
+    this.showStatusAvatar = true,
   });
 
   @override
@@ -69,6 +71,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
   final ScrollController _scrollController = ScrollController();
   bool _showGradient = false;
   bool _isCollapsed = false;
+  bool _autoScrollToLatest = true;
   bool _hasAutoCollapsedForCurrentCompletion = false;
   static const double _bottomTolerance = 1.0;
 
@@ -113,6 +116,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     // 如果从完成/取消状态变回非完成状态，重新启动计时器并展开内容
     if (becameThinking) {
       _startTimer();
+      _autoScrollToLatest = true;
       _hasAutoCollapsedForCurrentCompletion = false;
     }
 
@@ -187,10 +191,25 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     }
   }
 
+  bool _isInnerNearLatest([ScrollMetrics? metrics]) {
+    final resolvedMetrics = metrics;
+    if (resolvedMetrics != null) {
+      return (resolvedMetrics.maxScrollExtent - resolvedMetrics.pixels).abs() <=
+          _bottomTolerance;
+    }
+    if (!_scrollController.hasClients) {
+      return true;
+    }
+    final position = _scrollController.position;
+    return (position.maxScrollExtent - position.pixels).abs() <=
+        _bottomTolerance;
+  }
+
   void _scrollToLatestIfNeeded({bool force = false}) {
     if (!mounted || !_scrollController.hasClients) return;
     if (_isCollapsed || widget.stage == 5) return;
     if (!force && widget.stage == 4) return;
+    if (!_autoScrollToLatest) return;
 
     final position = _scrollController.position;
     final maxExtent = position.maxScrollExtent;
@@ -320,6 +339,8 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                           : BotStatusType.hint,
                       hintText: hintText,
                       costTime: _formatTime(_elapsedSeconds),
+                      showAvatar: widget.showStatusAvatar,
+                      shimmerText: widget.stage != 4 && widget.stage != 5,
                       textStyle: TextStyle(
                         color: secondaryTextColor,
                         fontSize: 12 * widget.textScale,
@@ -348,6 +369,8 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                 : BotStatusType.hint,
             hintText: hintText,
             costTime: _formatTime(_elapsedSeconds),
+            showAvatar: widget.showStatusAvatar,
+            shimmerText: widget.stage != 4 && widget.stage != 5,
             textStyle: TextStyle(
               color: secondaryTextColor,
               fontSize: 12 * widget.textScale,
@@ -381,8 +404,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                 children: [
                   NotificationListener<ScrollNotification>(
                     onNotification: (notification) {
-                      _checkOverflow();
-                      return _forwardScrollToParent(
+                      return _handleThinkingScrollNotification(
                         notification,
                         parentScrollPosition,
                       );
@@ -496,6 +518,25 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [header, content, if (footer != null) footer],
     );
+  }
+
+  bool _handleThinkingScrollNotification(
+    ScrollNotification notification,
+    ScrollPosition? parentPosition,
+  ) {
+    _checkOverflow();
+    final isUserDrivenUpdate =
+        (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null) ||
+        (notification is OverscrollNotification &&
+            notification.dragDetails != null);
+    if (isUserDrivenUpdate) {
+      _autoScrollToLatest = _isInnerNearLatest(notification.metrics);
+    } else if (notification is ScrollEndNotification &&
+        _isInnerNearLatest(notification.metrics)) {
+      _autoScrollToLatest = true;
+    }
+    return _forwardScrollToParent(notification, parentPosition);
   }
 
   bool _forwardScrollToParent(
