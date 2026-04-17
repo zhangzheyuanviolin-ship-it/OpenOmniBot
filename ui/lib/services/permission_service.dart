@@ -11,28 +11,35 @@ import 'package:ui/services/special_permission.dart';
 class PermissionService {
   PermissionService._();
 
-  static final Map<String, _PermissionDisplaySpec> _specialDisplaySpecs = {
-    kWorkspaceStoragePermissionId: _PermissionDisplaySpec(
-      id: kWorkspaceStoragePermissionId,
-      iconPath: 'assets/welcome/permission_installed_apps.svg',
-      iconWidth: 32,
-      iconHeight: 32,
-      name: LegacyTextLocalizer.isEnglish ? 'Built-in workspace' : '内置 workspace',
-      description: LegacyTextLocalizer.isEnglish
-          ? 'Omnibot maintains `/workspace` internally; public storage permission is usually unnecessary'
-          : 'Omnibot 会在应用内部维护 `/workspace`，通常无需再单独授予公共存储权限',
-    ),
-    kPublicStoragePermissionId: _PermissionDisplaySpec(
-      id: kPublicStoragePermissionId,
-      iconPath: 'assets/welcome/permission_installed_apps.svg',
-      iconWidth: 32,
-      iconHeight: 32,
-      name: LegacyTextLocalizer.isEnglish ? 'Public Storage Access' : '公共文件访问',
-      description: LegacyTextLocalizer.isEnglish
-          ? 'Allow agent to read/write files in public storage'
-          : '允许 agent 读取和操作安卓公共存储中的文件与文件夹',
-    ),
-  };
+  static _PermissionDisplaySpec? _specialDisplaySpec(String id) {
+    return switch (id) {
+      kWorkspaceStoragePermissionId => _PermissionDisplaySpec(
+        id: kWorkspaceStoragePermissionId,
+        iconPath: 'assets/welcome/permission_installed_apps.svg',
+        iconWidth: 32,
+        iconHeight: 32,
+        name: LegacyTextLocalizer.isEnglish
+            ? 'Built-in workspace'
+            : '内置 workspace',
+        description: LegacyTextLocalizer.isEnglish
+            ? 'Omnibot maintains `/workspace` internally; public storage permission is usually unnecessary'
+            : 'Omnibot 会在应用内部维护 `/workspace`，通常无需再单独授予公共存储权限',
+      ),
+      kPublicStoragePermissionId => _PermissionDisplaySpec(
+        id: kPublicStoragePermissionId,
+        iconPath: 'assets/welcome/permission_installed_apps.svg',
+        iconWidth: 32,
+        iconHeight: 32,
+        name: LegacyTextLocalizer.isEnglish
+            ? 'Public Storage Access'
+            : '公共文件访问',
+        description: LegacyTextLocalizer.isEnglish
+            ? 'Allow agent to read/write files in public storage'
+            : '允许 agent 读取和操作安卓公共存储中的文件与文件夹',
+      ),
+      _ => null,
+    };
+  }
 
   /// 根据品牌加载权限规格列表
   static List<PermissionSpec> loadSpecs({required String brand}) {
@@ -69,7 +76,7 @@ class PermissionService {
           if (spec.customCheckMethod != null) {
             return await spec.customCheckMethod!();
           }
-          
+
           // 使用默认的原生方法检查
           try {
             if (spec.checkMethod.isEmpty) {
@@ -108,7 +115,7 @@ class PermissionService {
           }
           continue;
         }
-        
+
         final granted = await spePermission.invokeMethod(spec.checkMethod);
         print('权限 ${spec.id} 授权状态: $granted');
         if (granted != true) {
@@ -159,9 +166,7 @@ class PermissionService {
     final matchedPermissions = permissions
         .where((item) => requiredIds.contains(item.id))
         .toList(growable: false);
-    final matchedIds = matchedPermissions
-        .map((item) => item.id)
-        .toSet();
+    final matchedIds = matchedPermissions.map((item) => item.id).toSet();
 
     if (!requiredIds.every(matchedIds.contains)) {
       return false;
@@ -203,7 +208,7 @@ class PermissionService {
     String id, {
     required BuildContext context,
   }) {
-    final spec = _specialDisplaySpecs[id];
+    final spec = _specialDisplaySpec(id);
     if (spec == null) {
       return null;
     }
@@ -229,7 +234,7 @@ class PermissionService {
   ) {
     return ids
         .map((id) {
-          final special = _specialDisplaySpecs[id];
+          final special = _specialDisplaySpec(id);
           if (special != null) {
             return _buildDisplayPermissionData(
               special,
@@ -243,8 +248,12 @@ class PermissionService {
               iconPath: 'assets/welcome/permission_overlay.svg',
               iconWidth: 32,
               iconHeight: 32,
-              name: LegacyTextLocalizer.isEnglish ? 'Overlay Permission' : '悬浮窗权限',
-              description: LegacyTextLocalizer.isEnglish ? 'Desktop overlay for quick access' : '桌面悬浮显示，快速唤起小万',
+              name: LegacyTextLocalizer.isEnglish
+                  ? 'Overlay Permission'
+                  : '悬浮窗权限',
+              description: LegacyTextLocalizer.isEnglish
+                  ? 'Desktop overlay for quick access'
+                  : '桌面悬浮显示，快速唤起小万',
               onAuthorize: () async {},
               checkAuthorization: () async => false,
             ),
@@ -254,7 +263,9 @@ class PermissionService {
               iconWidth: 30,
               iconHeight: 30,
               name: LegacyTextLocalizer.isEnglish ? 'Accessibility' : '无障碍辅助权限',
-              description: LegacyTextLocalizer.isEnglish ? 'Persistent automation for complex tasks' : '持久化自动操作，轻松完成复杂任务',
+              description: LegacyTextLocalizer.isEnglish
+                  ? 'Persistent automation for complex tasks'
+                  : '持久化自动操作，轻松完成复杂任务',
               onAuthorize: () async {},
               checkAuthorization: () async => false,
             ),
@@ -263,8 +274,12 @@ class PermissionService {
               iconPath: 'assets/welcome/permission_installed_apps.svg',
               iconWidth: 32,
               iconHeight: 32,
-              name: LegacyTextLocalizer.isEnglish ? 'Installed Apps Access' : '应用列表读取',
-              description: LegacyTextLocalizer.isEnglish ? 'Enable cross-app automation' : '支持跨应用自动操作',
+              name: LegacyTextLocalizer.isEnglish
+                  ? 'Installed Apps Access'
+                  : '应用列表读取',
+              description: LegacyTextLocalizer.isEnglish
+                  ? 'Enable cross-app automation'
+                  : '支持跨应用自动操作',
               onAuthorize: () async {},
               checkAuthorization: () async => false,
             ),
@@ -317,8 +332,8 @@ class _PermissionDisplaySpec {
 /// 如果 brand 为 null 或空字符串，则自动检测设备品牌
 Future<int> checkMissingPermissions(String? brand) async {
   if (brand == null || brand.isEmpty) {
-      final deviceInfo = await DeviceService.getDeviceInfo();
-      brand = (deviceInfo?['brand'] as String?)?.toLowerCase() ?? 'other';
+    final deviceInfo = await DeviceService.getDeviceInfo();
+    brand = (deviceInfo?['brand'] as String?)?.toLowerCase() ?? 'other';
   }
   final specs = PermissionService.loadSpecs(brand: brand);
   final missing = await PermissionService.getMissing(specs);

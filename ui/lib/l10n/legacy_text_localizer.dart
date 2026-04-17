@@ -5,6 +5,8 @@ import 'package:ui/services/storage_service.dart';
 typedef _TextRewriter = String Function(RegExpMatch match);
 
 class LegacyTextLocalizer {
+  static Locale? _activeLocale;
+
   static final Map<String, String> _exactEn = <String, String>{
     '设置': 'Settings',
     '外观设置': 'Appearance',
@@ -51,7 +53,8 @@ class LegacyTextLocalizer {
     '自动': 'Auto',
     '自定义色号': 'Custom Color',
     '关闭浏览器窗口': 'Close browser window',
-    '当前平台暂不支持浏览器工具视图': 'Browser tool view is not supported on this platform yet',
+    '当前平台暂不支持浏览器工具视图':
+        'Browser tool view is not supported on this platform yet',
     '无障碍权限': 'Accessibility',
     '悬浮窗权限': 'Overlay',
     '应用列表读取权限': 'Installed Apps Access',
@@ -78,17 +81,15 @@ class LegacyTextLocalizer {
     '请输入 #RRGGBB 或 #AARRGGBB': 'Enter #RRGGBB or #AARRGGBB',
     '色号格式不正确': 'Invalid color code',
     '请先选择本地图片': 'Select a local image first',
-    '本地图片不存在，请重新选择':
-        'The local image no longer exists. Please choose it again',
+    '本地图片不存在，请重新选择': 'The local image no longer exists. Please choose it again',
     '尚未选择本地图片': 'No local image selected yet',
     '正在自动保存…': 'Saving changes…',
     '更改会自动保存': 'Changes are saved automatically',
-    '正在调用内嵌 Alpine 终端执行命令':
-        'Running a command in the embedded Alpine terminal',
-    '正在执行内嵌 Alpine 终端命令':
-        'Executing a command in the embedded Alpine terminal',
+    '正在调用内嵌 Alpine 终端执行命令': 'Running a command in the embedded Alpine terminal',
+    '正在执行内嵌 Alpine 终端命令': 'Executing a command in the embedded Alpine terminal',
     '终端输出更新中': 'Updating terminal output',
-    '🎉Hi，我是小万，我会做很多事，让我展示给你下！': '🎉Hi, I\'m Omnibot. I can do many things, let me show you!',
+    '🎉Hi，我是小万，我会做很多事，让我展示给你下！':
+        '🎉Hi, I\'m Omnibot. I can do many things, let me show you!',
     '换一换': 'Shuffle',
     '小万正在思考...': 'Omnibot is thinking...',
     '总结中': 'Summarizing',
@@ -145,11 +146,9 @@ class LegacyTextLocalizer {
     '长期记忆': 'Long-term Memory',
   };
 
-  static final List<(RegExp, _TextRewriter)> _regexEn = <(RegExp, _TextRewriter)>[
-    (
-      RegExp(r'^MCP 已开启：(.+)$'),
-      (match) => 'MCP enabled: ${match.group(1)!}',
-    ),
+  static final List<(RegExp, _TextRewriter)>
+  _regexEn = <(RegExp, _TextRewriter)>[
+    (RegExp(r'^MCP 已开启：(.+)$'), (match) => 'MCP enabled: ${match.group(1)!}'),
     (
       RegExp(r'^任务完成后将自动返回聊天$'),
       (_) => 'The app will return to chat after tasks finish',
@@ -178,19 +177,35 @@ class LegacyTextLocalizer {
     ),
     (
       RegExp(r'^执行任务前，请先开启：(.+)$'),
-      (match) => 'Enable these permissions before running tasks: ${match.group(1)!}',
+      (match) =>
+          'Enable these permissions before running tasks: ${match.group(1)!}',
     ),
     (
       RegExp(r'^执行任务前需要先开启权限$'),
       (_) => 'Permissions must be enabled before running tasks',
     ),
-    (
-      RegExp(r'^用户: (.+)\n$'),
-      (match) => 'User: ${match.group(1)!}\n',
-    ),
+    (RegExp(r'^用户: (.+)\n$'), (match) => 'User: ${match.group(1)!}\n'),
   ];
 
-  static Locale get _resolvedLocale => StorageService.getResolvedLocale();
+  static void setResolvedLocale(Locale locale) {
+    _activeLocale = locale;
+  }
+
+  static void clearResolvedLocale() {
+    _activeLocale = null;
+  }
+
+  static Locale get _resolvedLocale {
+    final activeLocale = _activeLocale;
+    if (activeLocale != null) {
+      return activeLocale;
+    }
+    try {
+      return StorageService.getResolvedLocale();
+    } catch (_) {
+      return PlatformDispatcher.instance.locale;
+    }
+  }
 
   static bool get isEnglish => _resolvedLocale.languageCode == 'en';
 
