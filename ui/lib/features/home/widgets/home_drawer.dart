@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -795,13 +796,13 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
               const SizedBox(width: 10),
               _buildSectionActionButton(
                 iconPath: 'assets/home/archive_icon.svg',
-                tooltip: LegacyTextLocalizer.isEnglish ? 'Archive conversation' : '归档对话',
+                tooltip: context.l10n.homeDrawerArchive,
                 onTap: () => _navigateTo('/home/archived_conversations'),
               ),
               const SizedBox(width: 10),
               _buildSectionActionButton(
                 iconPath: 'assets/home/chat_add_icon.svg',
-                tooltip: LegacyTextLocalizer.isEnglish ? 'New conversation' : '新对话',
+                tooltip: context.l10n.homeDrawerNewChat,
                 onTap: _openNewConversation,
                 isPrimary: true,
               ),

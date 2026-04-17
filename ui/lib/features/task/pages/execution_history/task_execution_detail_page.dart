@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/models/execution_record.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_text_styles.dart';
@@ -559,7 +560,7 @@ class _TaskExecutionDetailPageState extends State<TaskExecutionDetailPage> {
       padding: const EdgeInsets.all(32),
       child: Center(
         child: Text(
-          '暂无执行记录',
+          context.l10n.trajectoryNoRecords,
           style: TextStyle(
             fontSize: AppTextStyles.fontSizeMain,
             color: context.isDarkTheme

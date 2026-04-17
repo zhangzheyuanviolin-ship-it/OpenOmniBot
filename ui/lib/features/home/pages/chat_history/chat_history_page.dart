@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/core/router/go_router_manager.dart';
@@ -211,9 +212,13 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     );
   }
 
-  String get _pageTitle => widget.archivedOnly ? '归档对话' : '聊天记录';
+  String get _pageTitle => widget.archivedOnly
+      ? context.l10n.chatHistoryArchivedTitle
+      : context.l10n.chatHistoryTitle;
 
-  String get _emptyTitle => widget.archivedOnly ? '暂无归档对话' : '暂无聊天记录';
+  String get _emptyTitle => widget.archivedOnly
+      ? context.l10n.chatHistoryNoArchived
+      : context.l10n.chatHistoryEmpty;
 
   List<ConversationSlideAction> _buildActions(ConversationModel conversation) {
     final palette = context.omniPalette;

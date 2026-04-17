@@ -12,6 +12,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:ui/features/home/pages/chat/tool_activity_utils.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/webchat/web_backends.dart';
 
@@ -1187,12 +1188,8 @@ class _WebChatHomeState extends State<_WebChatHome> {
               ? Center(
                   child: Text(
                     _archivedOnly
-                        ? (Localizations.localeOf(context).languageCode == 'en'
-                            ? 'No archived conversations'
-                            : '暂无归档对话')
-                        : (Localizations.localeOf(context).languageCode == 'en'
-                            ? 'Start a new conversation'
-                            : '开始一个新的对话吧'),
+                        ? context.l10n.chatHistoryNoArchived
+                        : context.l10n.webchatNoChats,
                     style: const TextStyle(color: _kSecondaryText),
                   ),
                 )

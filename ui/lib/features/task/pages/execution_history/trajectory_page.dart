@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/core/mixins/page_lifecycle_mixin.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/memory/pages/memory_center/widgets/tag_section.dart';
@@ -167,7 +168,7 @@ class _TrajectoryPageState
       tagList.add(
         AppTag(
           id: 'all',
-          label: '全部',
+          label: context.l10n.trajectoryAll,
           count: totalCount,
           svgPath: 'assets/common/all_icon.svg',
           iconBgColor: Colors.black,
@@ -617,7 +618,7 @@ class _TrajectoryPageState
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) =>
-          BatchDeleteConfirmSheet(count: count, unit: ' 任务记录'),
+          BatchDeleteConfirmSheet(count: count, unit: ' ${context.l10n.trajectoryTaskRecords}'),
     );
 
     if (result == true) {
@@ -647,7 +648,7 @@ class _TrajectoryPageState
 
       // 显示删除结果
       if (successCount > 0) {
-        showToast('已删除', type: ToastType.success);
+        showToast(context.l10n.skillDeleted, type: ToastType.success);
       }
     }
   }
@@ -682,10 +683,10 @@ class _TrajectoryPageState
   void _deleteExecutionRecord(int recordId) {
     AppDialog.confirm(
       context,
-      title: '确定删除吗？',
-      content: '删除后该内容将不可找回',
-      cancelText: '取消',
-      confirmText: '删除',
+      title: context.l10n.memoryDeleteConfirmTitle,
+      content: context.l10n.memoryDeleteWarning,
+      cancelText: context.trLegacy('取消'),
+      confirmText: context.l10n.skillDelete,
       confirmButtonColor: AppColors.alertRed,
     ).then((result) async {
       if (result == true) {
@@ -699,7 +700,7 @@ class _TrajectoryPageState
     try {
       bool success = await CacheUtil.deleteExecutionRecordById(recordId);
       if (!success) {
-        showToast('删除失败', type: ToastType.error);
+        showToast(context.l10n.skillDeleteFailed, type: ToastType.error);
         return;
       }
 
@@ -708,14 +709,14 @@ class _TrajectoryPageState
         taskExecutionInfos.removeWhere((record) => record.id == recordId);
       });
 
-      showToast('删除成功', type: ToastType.success);
+      showToast(context.l10n.skillDeleted, type: ToastType.success);
 
       // 重新加载标签统计
       await _loadExecutionTags();
 
     } catch (e) {
       print('Error deleting card: $e');
-      showToast('删除失败', type: ToastType.error);
+      showToast(context.l10n.skillDeleteFailed, type: ToastType.error);
     }
   }
 
@@ -737,7 +738,7 @@ class _TrajectoryPageState
           : AppColors.background,
       appBar: _isSelectionMode
           ? _buildSelectionAppBar(filterRecords)
-          : const CommonAppBar(title: '轨迹', showAiBadge: false, primary: true),
+          : CommonAppBar(title: context.l10n.trajectoryTitle, showAiBadge: false, primary: true),
       body: SafeArea(
         top: false,
         child: Column(
@@ -768,7 +769,7 @@ class _TrajectoryPageState
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                '任务记录',
+                                context.l10n.trajectoryTaskRecords,
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -828,7 +829,7 @@ class _TrajectoryPageState
         filterRecords.isNotEmpty;
     return CommonAppBar(
       primary: true,
-      title: '已选择${_selectedRecordKeys.length}项',
+      title: context.l10n.trajectorySelectedCount(_selectedRecordKeys.length),
       titleStyle: TextStyle(
         fontSize: 17,
         fontWeight: FontWeight.w600,
@@ -839,7 +840,7 @@ class _TrajectoryPageState
       leading: TextButton(
         onPressed: _exitSelectionMode,
         child: Text(
-          '取消',
+          context.trLegacy('取消'),
           style: TextStyle(
             color: palette.accentPrimary,
             fontSize: 14,
@@ -853,7 +854,7 @@ class _TrajectoryPageState
           child: TextButton(
             onPressed: () => _toggleSelectAll(filterRecords),
             child: Text(
-              isAllSelected ? '全不选' : '全选',
+              isAllSelected ? context.l10n.memoryDeselectAll : context.trLegacy('全选'),
               style: TextStyle(
                 color: palette.accentPrimary,
                 fontSize: 14,
@@ -885,7 +886,7 @@ class _TrajectoryPageState
           ),
           const SizedBox(height: 12),
           Text(
-            '暂无执行记录',
+            context.l10n.trajectoryNoRecords,
             style: TextStyle(
               fontSize: AppTextStyles.fontSizeH3,
               fontWeight: AppTextStyles.fontWeightMedium,
@@ -901,7 +902,7 @@ class _TrajectoryPageState
             alignment: Alignment.center,
             width: 192,
             child: Text(
-              '小万为你执行的任务，后续都会在此展示',
+              context.l10n.trajectoryNoRecordsDesc,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: AppTextStyles.fontSizeMain,
@@ -920,30 +921,35 @@ class _TrajectoryPageState
   }
 
   String _getSection(int timestamp) {
-    String section = '未知日期';
+    String section = context.l10n.trajectoryUnknownDate;
     final today = DateTime.now();
     final recordDate = DateTime.fromMillisecondsSinceEpoch(timestamp);
     if (recordDate.year == today.year &&
         recordDate.month == today.month &&
         recordDate.day == today.day) {
-      section = '今天';
+      section = context.trLegacy('今天');
     } else if (recordDate.year == today.year &&
         recordDate.month == today.month &&
         recordDate.day == today.day - 1) {
-      section = '昨天';
+      section = context.trLegacy('昨天');
     } else {
-      section = '三天前';
+      section = context.l10n.trajectoryThreeDaysAgo;
     }
     return section;
   }
 
   String _getTimeLabel(String section, int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    final today = DateTime.now();
 
-    if (section == '今天') {
-      return '今天 ' + DateFormat('HH:mm').format(date);
-    } else if (section == '昨天') {
-      return '昨天 ' + DateFormat('HH:mm').format(date);
+    if (date.year == today.year &&
+        date.month == today.month &&
+        date.day == today.day) {
+      return '${context.trLegacy('今天')} ' + DateFormat('HH:mm').format(date);
+    } else if (date.year == today.year &&
+        date.month == today.month &&
+        date.day == today.day - 1) {
+      return '${context.trLegacy('昨天')} ' + DateFormat('HH:mm').format(date);
     } else {
       return DateFormat('yyyy/MM/dd HH:mm').format(date);
     }
