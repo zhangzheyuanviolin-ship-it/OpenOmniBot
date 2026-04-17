@@ -84,14 +84,11 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   Set<String> _savingSceneIds = <String>{};
   Set<String> _expandedSceneIds = <String>{};
   SceneVoiceConfig _voiceConfig = const SceneVoiceConfig();
+  late final TextEditingController _voiceIdController;
   late final TextEditingController _voiceCustomStyleController;
+  Timer? _voiceConfigSaveDebounce;
+  SceneVoiceConfig? _pendingVoiceConfig;
   StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
-
-  static const List<String> _voiceIds = <String>[
-    'mimo_default',
-    'default_zh',
-    'default_en',
-  ];
   static const List<String> _voiceStylePresets = <String>[
     '默认',
     '自然对话',
@@ -105,6 +102,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   @override
   void initState() {
     super.initState();
+    _voiceIdController = TextEditingController();
     _voiceCustomStyleController = TextEditingController();
     _loadData();
     _configChangedSubscription = AssistsMessageService
@@ -120,6 +118,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   @override
   void dispose() {
     _configChangedSubscription?.cancel();
+    _voiceConfigSaveDebounce?.cancel();
+    _voiceIdController.dispose();
     _voiceCustomStyleController.dispose();
     super.dispose();
   }
@@ -181,6 +181,39 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     return sceneId == 'scene.voice';
   }
 
+  void _syncVoiceControllers(SceneVoiceConfig config) {
+    if (_voiceIdController.text != config.voiceId) {
+      _voiceIdController.value = TextEditingValue(
+        text: config.voiceId,
+        selection: TextSelection.collapsed(offset: config.voiceId.length),
+      );
+    }
+    if (_voiceCustomStyleController.text != config.customStyle) {
+      _voiceCustomStyleController.value = TextEditingValue(
+        text: config.customStyle,
+        selection: TextSelection.collapsed(offset: config.customStyle.length),
+      );
+    }
+  }
+
+  void _updateVoiceConfig(
+    SceneVoiceConfig nextConfig, {
+    bool saveImmediately = false,
+  }) {
+    if (_voiceConfig == nextConfig) {
+      return;
+    }
+    setState(() => _voiceConfig = nextConfig);
+    if (saveImmediately) {
+      unawaited(_enqueueVoiceConfigSave(nextConfig));
+      return;
+    }
+    _voiceConfigSaveDebounce?.cancel();
+    _voiceConfigSaveDebounce = Timer(const Duration(milliseconds: 450), () {
+      unawaited(_enqueueVoiceConfigSave(nextConfig));
+    });
+  }
+
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
@@ -216,12 +249,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         _providerModelsByProfileId = enriched;
         _voiceConfig = voiceConfig;
       });
-      _voiceCustomStyleController.value = TextEditingValue(
-        text: voiceConfig.customStyle,
-        selection: TextSelection.collapsed(
-          offset: voiceConfig.customStyle.length,
-        ),
-      );
+      _syncVoiceControllers(voiceConfig);
       if (_profiles.any((profile) => profile.configured)) {
         unawaited(_refreshProviderModels());
       }
@@ -434,7 +462,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   }
 
   Future<void> _saveVoiceConfig(SceneVoiceConfig nextConfig) async {
+    _voiceConfigSaveDebounce?.cancel();
     if (_isSavingVoiceConfig) {
+      _pendingVoiceConfig = nextConfig;
       return;
     }
     setState(() => _isSavingVoiceConfig = true);
@@ -443,14 +473,12 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         nextConfig,
       );
       if (!mounted) return;
-      setState(() {
-        _voiceConfig = saved;
-      });
-      _voiceCustomStyleController.value = TextEditingValue(
-        text: saved.customStyle,
-        selection: TextSelection.collapsed(offset: saved.customStyle.length),
-      );
-      showToast('Voice 配置已保存', type: ToastType.success);
+      if (_voiceConfig == nextConfig || _voiceConfig == saved) {
+        setState(() {
+          _voiceConfig = saved;
+        });
+        _syncVoiceControllers(saved);
+      }
     } catch (e) {
       if (!mounted) return;
       showToast('保存 Voice 配置失败：$e', type: ToastType.error);
@@ -458,7 +486,17 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       if (mounted) {
         setState(() => _isSavingVoiceConfig = false);
       }
+      final pending = _pendingVoiceConfig;
+      _pendingVoiceConfig = null;
+      if (pending != null && pending != nextConfig) {
+        unawaited(_saveVoiceConfig(pending));
+      }
     }
+  }
+
+  Future<void> _enqueueVoiceConfigSave(SceneVoiceConfig nextConfig) async {
+    _pendingVoiceConfig = nextConfig;
+    await _saveVoiceConfig(nextConfig);
   }
 
   Future<void> _openSceneSelector(
@@ -626,6 +664,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
 
   Widget _buildVoiceSettings() {
     final isSinging = _voiceConfig.stylePreset == '唱歌';
+    final borderColor = _isDarkTheme
+        ? context.omniPalette.borderSubtle
+        : const Color(0x1A000000);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -643,13 +684,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
             ),
             Switch(
               value: _voiceConfig.autoPlay,
-              onChanged: _isSavingVoiceConfig
-                  ? null
-                  : (value) {
-                      final next = _voiceConfig.copyWith(autoPlay: value);
-                      setState(() => _voiceConfig = next);
-                      unawaited(_saveVoiceConfig(next));
-                    },
+              onChanged: (value) {
+                final next = _voiceConfig.copyWith(autoPlay: value);
+                _updateVoiceConfig(next, saveImmediately: true);
+              },
             ),
           ],
         ),
@@ -663,28 +701,29 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
           ),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          initialValue: _voiceConfig.voiceId,
-          decoration: const InputDecoration(
+        TextField(
+          key: const Key('voice-scene-voice-id-field'),
+          controller: _voiceIdController,
+          maxLines: 1,
+          decoration: InputDecoration(
+            hintText: '例如：default_zh / mimo_default / default_en',
+            border: const OutlineInputBorder(),
             isDense: true,
-            border: OutlineInputBorder(),
+            suffixIcon: _isSavingVoiceConfig
+                ? const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
           ),
-          items: _voiceIds
-              .map(
-                (voiceId) => DropdownMenuItem<String>(
-                  value: voiceId,
-                  child: Text(voiceId),
-                ),
-              )
-              .toList(),
-          onChanged: _isSavingVoiceConfig
-              ? null
-              : (value) {
-                  if (value == null) return;
-                  final next = _voiceConfig.copyWith(voiceId: value);
-                  setState(() => _voiceConfig = next);
-                  unawaited(_saveVoiceConfig(next));
-                },
+          onChanged: (value) {
+            final next = _voiceConfig.copyWith(voiceId: value);
+            _updateVoiceConfig(next);
+          },
         ),
         const SizedBox(height: 12),
         Text(
@@ -696,86 +735,105 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
           ),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _voiceStylePresets.map((preset) {
-            final selected = _voiceConfig.stylePreset == preset;
-            return ChoiceChip(
-              label: Text(preset),
-              selected: selected,
-              onSelected: _isSavingVoiceConfig
-                  ? null
-                  : (_) {
-                      final next = _voiceConfig.copyWith(
-                        stylePreset: preset,
-                        customStyle: preset == '唱歌'
-                            ? ''
-                            : _voiceCustomStyleController.text,
-                      );
-                      setState(() {
-                        _voiceConfig = next;
-                        if (preset == '唱歌') {
-                          _voiceCustomStyleController.clear();
-                        }
-                      });
-                      unawaited(_saveVoiceConfig(next));
-                    },
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _voiceCustomStyleController,
-          enabled: !_isSavingVoiceConfig && !isSinging,
-          maxLines: 2,
-          minLines: 1,
-          decoration: InputDecoration(
-            labelText: '自定义风格描述',
-            hintText: isSinging ? '唱歌模式下不支持附加风格' : '例如：更温柔、节奏慢一点、偏播客感',
-            border: const OutlineInputBorder(),
-            isDense: true,
+        Container(
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
           ),
-          onChanged: (value) {
-            setState(() {
-              _voiceConfig = _voiceConfig.copyWith(customStyle: value);
-            });
-          },
+          child: Column(
+            children: [
+              for (var i = 0; i < _voiceStylePresets.length; i++) ...[
+                _buildVoiceStyleOption(_voiceStylePresets[i]),
+                if (i != _voiceStylePresets.length - 1)
+                  Divider(height: 1, thickness: 1, color: borderColor),
+              ],
+              Divider(height: 1, thickness: 1, color: borderColor),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '自定义补充',
+                      style: TextStyle(
+                        color: _primaryTextColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      key: const Key('voice-scene-custom-style-field'),
+                      controller: _voiceCustomStyleController,
+                      enabled: !isSinging,
+                      maxLines: 2,
+                      minLines: 1,
+                      decoration: InputDecoration(
+                        hintText: isSinging
+                            ? '唱歌模式下不支持附加风格'
+                            : '例如：更温柔、节奏慢一点、偏播客感',
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onChanged: (value) {
+                        final next = _voiceConfig.copyWith(customStyle: value);
+                        _updateVoiceConfig(next);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 10),
-        Row(
+      ],
+    );
+  }
+
+  Widget _buildVoiceStyleOption(String preset) {
+    final selected = _voiceConfig.stylePreset == preset;
+    return InkWell(
+      key: Key('voice-style-option-$preset'),
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        final next = _voiceConfig.copyWith(
+          stylePreset: preset,
+          customStyle: preset == '唱歌' ? '' : _voiceCustomStyleController.text,
+        );
+        if (preset == '唱歌' && _voiceCustomStyleController.text.isNotEmpty) {
+          _syncVoiceControllers(next);
+        }
+        _updateVoiceConfig(next, saveImmediately: true);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
           children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
+              size: 18,
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : _tertiaryTextColor,
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '建议绑定 MiMo Provider，Base URL 使用 https://api.xiaomimimo.com/v1，模型填写 mimo-v2-tts。',
+                preset,
                 style: TextStyle(
-                  color: _secondaryTextColor,
-                  fontSize: 12,
-                  height: 1.45,
+                  color: _primaryTextColor,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 ),
               ),
             ),
-            const SizedBox(width: 12),
-            FilledButton.tonalIcon(
-              onPressed: _isSavingVoiceConfig
-                  ? null
-                  : () => _saveVoiceConfig(
-                      _voiceConfig.copyWith(
-                        customStyle: _voiceCustomStyleController.text,
-                      ),
-                    ),
-              icon: _isSavingVoiceConfig
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_outlined, size: 16),
-              label: const Text('保存语音设置'),
-            ),
           ],
         ),
-      ],
+      ),
     );
   }
 

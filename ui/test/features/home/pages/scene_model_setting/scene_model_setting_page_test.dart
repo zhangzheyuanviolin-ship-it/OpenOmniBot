@@ -151,13 +151,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AI 响应完成后自动播放'), findsOneWidget);
-    expect(find.text('自定义风格描述'), findsOneWidget);
+    expect(find.byKey(const Key('voice-scene-voice-id-field')), findsOneWidget);
+    expect(
+      find.byKey(const Key('voice-scene-custom-style-field')),
+      findsOneWidget,
+    );
+    expect(find.text('保存语音设置'), findsNothing);
+    expect(find.textContaining('建议绑定 MiMo'), findsNothing);
 
-    await tester.enterText(find.byType(TextField), '更温柔一点');
-    await tester.tap(find.text('保存语音设置'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.enterText(
+      find.byKey(const Key('voice-scene-voice-id-field')),
+      'mimo_default',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
 
+    await tester.tap(find.byKey(const Key('voice-style-option-温柔陪伴')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('voice-scene-custom-style-field')),
+      '更温柔一点',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(savedVoiceConfig['voiceId'], 'mimo_default');
+    expect(savedVoiceConfig['stylePreset'], '温柔陪伴');
     expect(savedVoiceConfig['customStyle'], '更温柔一点');
   });
 }
