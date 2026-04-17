@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/theme/theme_context.dart';
 import '../../../../../models/chat_message_model.dart';
@@ -246,9 +247,27 @@ class ChatAppBar extends StatelessWidget {
                               : _chatAppBarPureChatIconSvg,
                           tooltip: isPureChatToggleLocked
                               ? (isPureChatSelected
-                                    ? '当前线程已锁定为纯聊天'
-                                    : '当前线程模式已锁定')
-                              : (isPureChatSelected ? '关闭纯聊天' : '开启纯聊天'),
+                                    ? (Localizations.localeOf(context)
+                                                  .languageCode ==
+                                              'en'
+                                          ? 'Current thread is locked to pure chat'
+                                          : '当前线程已锁定为纯聊天')
+                                    : (Localizations.localeOf(context)
+                                                  .languageCode ==
+                                              'en'
+                                          ? 'Current thread mode is locked'
+                                          : '当前线程模式已锁定'))
+                              : (isPureChatSelected
+                                    ? (Localizations.localeOf(context)
+                                                  .languageCode ==
+                                              'en'
+                                          ? 'Disable pure chat'
+                                          : '关闭纯聊天')
+                                    : (Localizations.localeOf(context)
+                                                  .languageCode ==
+                                              'en'
+                                          ? 'Enable pure chat'
+                                          : '开启纯聊天')),
                           selected: isPureChatSelected,
                           disabled: isPureChatToggleLocked,
                           onTap: isPureChatToggleLocked
@@ -501,7 +520,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
   String get _modelLabel {
     final text = (widget.activeModelId ?? '').trim();
     if (text.isEmpty) {
-      return '未设置模型';
+      return LegacyTextLocalizer.isEnglish ? 'No model set' : '未设置模型';
     }
     return text;
   }
@@ -823,7 +842,7 @@ class _ChatToolSlider extends StatelessWidget {
                     key: const ValueKey('chat-island-terminal-button'),
                     isSelected: _isTerminalActive,
                     isEnabled: true,
-                    tooltip: '打开终端',
+                    tooltip: LegacyTextLocalizer.isEnglish ? 'Open terminal' : '打开终端',
                     onTap: onTerminalTap,
                     child: SvgPicture.string(
                       terminalIconSvg,
@@ -838,7 +857,9 @@ class _ChatToolSlider extends StatelessWidget {
                     key: const ValueKey('chat-island-browser-button'),
                     isSelected: _isBrowserActive,
                     isEnabled: isBrowserEnabled,
-                    tooltip: isBrowserEnabled ? '打开当前会话浏览器' : '当前会话还没有可用的浏览器会话',
+                    tooltip: isBrowserEnabled
+                        ? (LegacyTextLocalizer.isEnglish ? 'Open browser for current session' : '打开当前会话浏览器')
+                        : (LegacyTextLocalizer.isEnglish ? 'No browser session available' : '当前会话还没有可用的浏览器会话'),
                     onTap: onBrowserTap,
                     child: SvgPicture.string(
                       browserIconSvg,
@@ -862,7 +883,9 @@ class _ChatToolSlider extends StatelessWidget {
     return Builder(
       builder: (anchorContext) {
         return Tooltip(
-          message: '管理终端环境变量',
+          message: LegacyTextLocalizer.isEnglish
+            ? 'Manage terminal environment variables'
+            : '管理终端环境变量',
           child: InkWell(
             key: const ValueKey('chat-island-terminal-env-button'),
             onTap: () {
@@ -1266,7 +1289,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
           padding: EdgeInsets.only(bottom: emptyStateBottomInset),
           child: Center(
             child: Text(
-              '有什么可以帮助你的？',
+              Localizations.localeOf(context).languageCode == 'en'
+                  ? 'How can I help you?'
+                  : '有什么可以帮助你的？',
               style: TextStyle(
                 color:
                     !widget.appearanceConfig.isActive &&
@@ -1372,9 +1397,11 @@ class VlmInfoPrompt extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '需要你的确认',
-            style: TextStyle(
+          Text(
+            Localizations.localeOf(context).languageCode == 'en'
+                ? 'Need your confirmation'
+                : '需要你的确认',
+            style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: Color(0xFF1D3E7B),
@@ -1389,11 +1416,16 @@ class VlmInfoPrompt extends StatelessWidget {
           TextField(
             controller: controller,
             maxLines: 2,
-            decoration: const InputDecoration(
-              hintText: '可选：补充你的操作说明，默认发送"已完成操作，继续执行"',
+            decoration: InputDecoration(
+              hintText: Localizations.localeOf(context).languageCode == 'en'
+                  ? 'Optional: add details. Default sends: Completed action, continue execution'
+                  : '可选：补充你的操作说明，默认发送"已完成操作，继续执行"',
               isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              border: OutlineInputBorder(),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 10),
@@ -1402,14 +1434,26 @@ class VlmInfoPrompt extends StatelessWidget {
               Expanded(
                 child: OutlinedButton(
                   onPressed: isSubmitting ? null : onDismiss,
-                  child: const Text('稍后再说'),
+                  child: Text(
+                    Localizations.localeOf(context).languageCode == 'en'
+                        ? 'Later'
+                        : '稍后再说',
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
                   onPressed: isSubmitting ? null : onSubmit,
-                  child: Text(isSubmitting ? '发送中...' : '继续执行'),
+                  child: Text(
+                    isSubmitting
+                        ? (Localizations.localeOf(context).languageCode == 'en'
+                              ? 'Sending...'
+                              : '发送中...')
+                        : (Localizations.localeOf(context).languageCode == 'en'
+                              ? 'Continue'
+                              : '继续执行'),
+                  ),
                 ),
               ),
             ],

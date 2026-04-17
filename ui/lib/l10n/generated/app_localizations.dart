@@ -871,6 +871,1446 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'小万忙不过来了，等会儿再试试吧'**
   String get rateLimitErrorMessage;
+
+  /// No description provided for @chatHistoryArchivedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'归档对话'**
+  String get chatHistoryArchivedTitle;
+
+  /// No description provided for @chatHistoryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'聊天记录'**
+  String get chatHistoryTitle;
+
+  /// No description provided for @chatHistoryNoArchived.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无归档对话'**
+  String get chatHistoryNoArchived;
+
+  /// No description provided for @chatHistoryEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无聊天记录'**
+  String get chatHistoryEmpty;
+
+  /// No description provided for @homeDrawerArchive.
+  ///
+  /// In zh, this message translates to:
+  /// **'归档对话'**
+  String get homeDrawerArchive;
+
+  /// No description provided for @homeDrawerNewChat.
+  ///
+  /// In zh, this message translates to:
+  /// **'新对话'**
+  String get homeDrawerNewChat;
+
+  /// No description provided for @webchatNoChats.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始一个新的对话吧'**
+  String get webchatNoChats;
+
+  /// No description provided for @memoryCenterTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'记忆中心'**
+  String get memoryCenterTitle;
+
+  /// No description provided for @memoryNoShortTerm.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有短期记忆'**
+  String get memoryNoShortTerm;
+
+  /// No description provided for @memoryNoShortTermDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'会话中的过程性信息会沉淀到短期记忆，并在后续整理后转入长期记忆。'**
+  String get memoryNoShortTermDesc;
+
+  /// No description provided for @memoryFilteredNoShortTerm.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前筛选下还没有短期记忆'**
+  String get memoryFilteredNoShortTerm;
+
+  /// No description provided for @memoryFilteredNoShortTermDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'稍后再来看看，新的短期记忆会逐步出现。'**
+  String get memoryFilteredNoShortTermDesc;
+
+  /// No description provided for @memoryNoLongTerm.
+  ///
+  /// In zh, this message translates to:
+  /// **'长期记忆还未初始化'**
+  String get memoryNoLongTerm;
+
+  /// No description provided for @memoryNoLongTermDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'记忆能力启用后，你的跨会话长期记忆会在这里持续沉淀。'**
+  String get memoryNoLongTermDesc;
+
+  /// No description provided for @memoryDeleteConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定删除吗？'**
+  String get memoryDeleteConfirmTitle;
+
+  /// No description provided for @memoryDeleteWarning.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除后该内容将不可找回'**
+  String get memoryDeleteWarning;
+
+  /// No description provided for @memoryEditDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'短期记忆暂不支持编辑'**
+  String get memoryEditDisabled;
+
+  /// No description provided for @memoryDeleteDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'短期记忆暂不支持删除'**
+  String get memoryDeleteDisabled;
+
+  /// No description provided for @memoryGreeting.
+  ///
+  /// In zh, this message translates to:
+  /// **'你好呀，\n小万会在这里收集你的记忆！'**
+  String get memoryGreeting;
+
+  /// No description provided for @memorySelectedCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选择{n}项'**
+  String memorySelectedCount(Object n);
+
+  /// No description provided for @memoryDeselectAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全不选'**
+  String get memoryDeselectAll;
+
+  /// No description provided for @memoryEditTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑记忆'**
+  String get memoryEditTitle;
+
+  /// No description provided for @memoryIdLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'记忆 ID'**
+  String get memoryIdLabel;
+
+  /// No description provided for @memoryMatchScore.
+  ///
+  /// In zh, this message translates to:
+  /// **'匹配度'**
+  String get memoryMatchScore;
+
+  /// No description provided for @memoryAdditionalInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'附加信息'**
+  String get memoryAdditionalInfo;
+
+  /// No description provided for @memoryAddLongTerm.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增长期记忆'**
+  String get memoryAddLongTerm;
+
+  /// No description provided for @memorySaveToLongTerm.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存到长期记忆'**
+  String get memorySaveToLongTerm;
+
+  /// No description provided for @memoryLongTermAdded.
+  ///
+  /// In zh, this message translates to:
+  /// **'长期记忆已新增'**
+  String get memoryLongTermAdded;
+
+  /// No description provided for @memoryEditLongTerm.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑长期记忆'**
+  String get memoryEditLongTerm;
+
+  /// No description provided for @memorySaveChanges.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存修改'**
+  String get memorySaveChanges;
+
+  /// No description provided for @memoryDeleteLongTermConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除这条长期记忆？'**
+  String get memoryDeleteLongTermConfirm;
+
+  /// No description provided for @memoryLongTermDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'长期记忆已删除'**
+  String get memoryLongTermDeleted;
+
+  /// No description provided for @memoryLongTermFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'长期记忆操作失败：{error}'**
+  String memoryLongTermFailed(Object error);
+
+  /// No description provided for @memoryNoMemories.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无记忆'**
+  String get memoryNoMemories;
+
+  /// No description provided for @memoryNoMemoriesDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'快去探索，添加喜欢的内容吧'**
+  String get memoryNoMemoriesDesc;
+
+  /// No description provided for @skillStoreTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'技能仓库'**
+  String get skillStoreTitle;
+
+  /// No description provided for @skillBuiltin.
+  ///
+  /// In zh, this message translates to:
+  /// **'内置'**
+  String get skillBuiltin;
+
+  /// No description provided for @skillUser.
+  ///
+  /// In zh, this message translates to:
+  /// **'用户'**
+  String get skillUser;
+
+  /// No description provided for @skillInstalled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已安装'**
+  String get skillInstalled;
+
+  /// No description provided for @skillNotInstalled.
+  ///
+  /// In zh, this message translates to:
+  /// **'未安装'**
+  String get skillNotInstalled;
+
+  /// No description provided for @skillEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用中'**
+  String get skillEnabled;
+
+  /// No description provided for @skillDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已禁用'**
+  String get skillDisabled;
+
+  /// No description provided for @skillInstall.
+  ///
+  /// In zh, this message translates to:
+  /// **'安装'**
+  String get skillInstall;
+
+  /// No description provided for @skillDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get skillDelete;
+
+  /// No description provided for @skillEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无已接入的技能'**
+  String get skillEmpty;
+
+  /// No description provided for @skillNoDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无描述'**
+  String get skillNoDescription;
+
+  /// No description provided for @skillBuiltinRemovedDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'该内置技能已从工作区移除，可随时重新安装。'**
+  String get skillBuiltinRemovedDesc;
+
+  /// No description provided for @skillDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除技能'**
+  String get skillDeleteTitle;
+
+  /// No description provided for @skillDeleteConfirmMsg.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认删除\"{name}\"？'**
+  String skillDeleteConfirmMsg(Object name);
+
+  /// No description provided for @skillDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除'**
+  String get skillDeleted;
+
+  /// No description provided for @skillDeleteFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除失败'**
+  String get skillDeleteFailed;
+
+  /// No description provided for @skillInstalledMsg.
+  ///
+  /// In zh, this message translates to:
+  /// **'已安装 {name}'**
+  String skillInstalledMsg(Object name);
+
+  /// No description provided for @skillInstallFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'安装失败'**
+  String get skillInstallFailed;
+
+  /// No description provided for @skillEnabledMsg.
+  ///
+  /// In zh, this message translates to:
+  /// **'已启用 {name}'**
+  String skillEnabledMsg(Object name);
+
+  /// No description provided for @skillDisabledMsg.
+  ///
+  /// In zh, this message translates to:
+  /// **'已禁用 {name}'**
+  String skillDisabledMsg(Object name);
+
+  /// No description provided for @skillToggleFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换失败'**
+  String get skillToggleFailed;
+
+  /// No description provided for @skillLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载技能仓库失败'**
+  String get skillLoadFailed;
+
+  /// No description provided for @trajectoryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'轨迹'**
+  String get trajectoryTitle;
+
+  /// No description provided for @trajectoryNoRecords.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无执行记录'**
+  String get trajectoryNoRecords;
+
+  /// No description provided for @trajectoryNoRecordsDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'小万为你执行的任务，后续都会在此展示'**
+  String get trajectoryNoRecordsDesc;
+
+  /// No description provided for @trajectoryAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部'**
+  String get trajectoryAll;
+
+  /// No description provided for @trajectoryTaskRecords.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务记录'**
+  String get trajectoryTaskRecords;
+
+  /// No description provided for @trajectorySelectedCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选择{n}项'**
+  String trajectorySelectedCount(Object n);
+
+  /// No description provided for @trajectoryUnknownDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'未知日期'**
+  String get trajectoryUnknownDate;
+
+  /// No description provided for @trajectoryThreeDaysAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'三天前'**
+  String get trajectoryThreeDaysAgo;
+
+  /// No description provided for @executionHistoryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行历史'**
+  String get executionHistoryTitle;
+
+  /// No description provided for @executionHistorySubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'近3次任务执行历史'**
+  String get executionHistorySubtitle;
+
+  /// No description provided for @executionHistoryEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无执行历史'**
+  String get executionHistoryEmpty;
+
+  /// No description provided for @executionHistoryTaskLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'{option}任务'**
+  String executionHistoryTaskLabel(Object option);
+
+  /// No description provided for @modelProviderConfigTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'Provider 配置'**
+  String get modelProviderConfigTitle;
+
+  /// No description provided for @modelProviderConfigDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增、切换并维护模型服务提供商的名称、地址与密钥。'**
+  String get modelProviderConfigDesc;
+
+  /// No description provided for @modelProviderName.
+  ///
+  /// In zh, this message translates to:
+  /// **'Provider 名称'**
+  String get modelProviderName;
+
+  /// No description provided for @modelProviderNameHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'例如：DeepSeek'**
+  String get modelProviderNameHint;
+
+  /// No description provided for @modelProviderBaseUrlHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'末尾加 # 可禁用自动补全请求路径'**
+  String get modelProviderBaseUrlHint;
+
+  /// No description provided for @modelProviderApiKeyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'未填写 API Key 时，会以无鉴权方式请求 Provider。'**
+  String get modelProviderApiKeyHint;
+
+  /// No description provided for @modelListTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型列表'**
+  String get modelListTitle;
+
+  /// No description provided for @modelListDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'支持手动补充模型，也可从当前 Provider 拉取远端模型清单。'**
+  String get modelListDesc;
+
+  /// No description provided for @modelListCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'共 {count} 个模型'**
+  String modelListCount(Object count);
+
+  /// No description provided for @modelAddPrompt.
+  ///
+  /// In zh, this message translates to:
+  /// **'请添加模型！'**
+  String get modelAddPrompt;
+
+  /// No description provided for @modelBuiltinProvider.
+  ///
+  /// In zh, this message translates to:
+  /// **'内置 Provider'**
+  String get modelBuiltinProvider;
+
+  /// No description provided for @modelIdEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型 ID 不能为空且不能以 scene. 开头'**
+  String get modelIdEmpty;
+
+  /// No description provided for @modelAlreadyExists.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型已存在'**
+  String get modelAlreadyExists;
+
+  /// No description provided for @modelAdded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已添加模型'**
+  String get modelAdded;
+
+  /// No description provided for @modelDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除模型'**
+  String get modelDeleted;
+
+  /// No description provided for @modelDeleteFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除模型失败'**
+  String get modelDeleteFailed;
+
+  /// No description provided for @modelIdHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入模型 ID'**
+  String get modelIdHint;
+
+  /// No description provided for @modelAddProviderTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增 Provider'**
+  String get modelAddProviderTitle;
+
+  /// No description provided for @modelAddButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增'**
+  String get modelAddButton;
+
+  /// No description provided for @modelProviderAdded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已新增 Provider'**
+  String get modelProviderAdded;
+
+  /// No description provided for @modelProviderAddFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增 Provider 失败：{error}'**
+  String modelProviderAddFailed(Object error);
+
+  /// No description provided for @modelDeleteProviderTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除 Provider'**
+  String get modelDeleteProviderTitle;
+
+  /// No description provided for @modelDeleteProviderMsg.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定删除\"{name}\"吗？场景绑定会保留，但需要重新选择可用 Provider。'**
+  String modelDeleteProviderMsg(Object name);
+
+  /// No description provided for @modelProviderDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除 Provider'**
+  String get modelProviderDeleted;
+
+  /// No description provided for @modelProviderDeleteFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除 Provider 失败：{error}'**
+  String modelProviderDeleteFailed(Object error);
+
+  /// No description provided for @sceneModelMapping.
+  ///
+  /// In zh, this message translates to:
+  /// **'场景映射'**
+  String get sceneModelMapping;
+
+  /// No description provided for @sceneModelMappingDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'按场景绑定 Provider 与模型，未绑定的场景会继续使用默认模型。'**
+  String get sceneModelMappingDesc;
+
+  /// No description provided for @sceneModelRefreshList.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新模型列表'**
+  String get sceneModelRefreshList;
+
+  /// No description provided for @sceneModelSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击右侧按钮后，可按 Provider 搜索、折叠并选择模型；顶部搜索框固定不随列表滚动。'**
+  String get sceneModelSearchHint;
+
+  /// No description provided for @sceneModelNoScenes.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可配置场景'**
+  String get sceneModelNoScenes;
+
+  /// No description provided for @localModelsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地模型'**
+  String get localModelsTitle;
+
+  /// No description provided for @localModelsAutoPreheat.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开 App 时自动预热'**
+  String get localModelsAutoPreheat;
+
+  /// No description provided for @localModelsAutoPreheatDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入应用后自动启动本地服务，并直接加载当前模型。'**
+  String get localModelsAutoPreheatDesc;
+
+  /// No description provided for @localModelsInstalled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已安装模型'**
+  String get localModelsInstalled;
+
+  /// No description provided for @localModelsInstalledDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索、切换默认模型或删除当前设备上的模型。'**
+  String get localModelsInstalledDesc;
+
+  /// No description provided for @localModelsSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索模型名称、ID 或标签'**
+  String get localModelsSearchHint;
+
+  /// No description provided for @localModelsEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有可用的本地模型'**
+  String get localModelsEmpty;
+
+  /// No description provided for @localModelsEmptyDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'先去模型市场下载一个模型，或者手动放置 MNN 模型目录。'**
+  String get localModelsEmptyDesc;
+
+  /// No description provided for @alarmSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'闹钟设置已保存'**
+  String get alarmSaved;
+
+  /// No description provided for @alarmRingtoneSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'铃声来源'**
+  String get alarmRingtoneSource;
+
+  /// No description provided for @alarmSystemDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统默认铃声'**
+  String get alarmSystemDefault;
+
+  /// No description provided for @alarmSystemDefaultDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'无需额外配置，兼容性最好'**
+  String get alarmSystemDefaultDesc;
+
+  /// No description provided for @alarmLocalMp3.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地 mp3'**
+  String get alarmLocalMp3;
+
+  /// No description provided for @alarmLocalMp3Desc.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择手机内 mp3 作为闹钟铃声'**
+  String get alarmLocalMp3Desc;
+
+  /// No description provided for @alarmMp3Url.
+  ///
+  /// In zh, this message translates to:
+  /// **'mp3 直链'**
+  String get alarmMp3Url;
+
+  /// No description provided for @alarmMp3UrlDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用 http(s) 直链播放在线 mp3'**
+  String get alarmMp3UrlDesc;
+
+  /// No description provided for @alarmAudioPermissionDenied.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取音频权限未授予'**
+  String get alarmAudioPermissionDenied;
+
+  /// No description provided for @alarmInvalidFilePath.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件路径无效，请重新选择'**
+  String get alarmInvalidFilePath;
+
+  /// No description provided for @alarmSelectLocalFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先选择本地 mp3 文件'**
+  String get alarmSelectLocalFirst;
+
+  /// No description provided for @alarmEnterHttpsUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入 http(s) 开头的 mp3 直链'**
+  String get alarmEnterHttpsUrl;
+
+  /// No description provided for @alarmLocalFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地文件'**
+  String get alarmLocalFile;
+
+  /// No description provided for @alarmSelectMp3.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择 mp3 文件'**
+  String get alarmSelectMp3;
+
+  /// No description provided for @authorizePageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用权限授权'**
+  String get authorizePageTitle;
+
+  /// No description provided for @authorizeReceiveNotifications.
+  ///
+  /// In zh, this message translates to:
+  /// **'接收消息通知'**
+  String get authorizeReceiveNotifications;
+
+  /// No description provided for @authorizeNotificationsDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开后可以及时了解任务进展'**
+  String get authorizeNotificationsDesc;
+
+  /// No description provided for @companionPermissionManagement.
+  ///
+  /// In zh, this message translates to:
+  /// **'陪伴权限管理'**
+  String get companionPermissionManagement;
+
+  /// No description provided for @companionPermissionDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭对应的授权后，小万仍会显示，但不会展示任务执行内容'**
+  String get companionPermissionDesc;
+
+  /// No description provided for @companionPermissionNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限说明'**
+  String get companionPermissionNote;
+
+  /// No description provided for @companionAuthorizedApps.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权应用'**
+  String get companionAuthorizedApps;
+
+  /// No description provided for @storageUsageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'存储占用'**
+  String get storageUsageTitle;
+
+  /// No description provided for @storageUsageSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看空间占用明细，支持分项清理'**
+  String get storageUsageSubtitle;
+
+  /// No description provided for @storageAnalyzeFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'存储分析失败，请重试'**
+  String get storageAnalyzeFailed;
+
+  /// No description provided for @storageCategoryCleaned.
+  ///
+  /// In zh, this message translates to:
+  /// **'已清理{name}，释放 {size}'**
+  String storageCategoryCleaned(Object name, Object size);
+
+  /// No description provided for @storageCleanFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'清理失败，请稍后重试'**
+  String get storageCleanFailed;
+
+  /// No description provided for @storageCleanCategory.
+  ///
+  /// In zh, this message translates to:
+  /// **'清理{name}'**
+  String storageCleanCategory(Object name);
+
+  /// No description provided for @storageCleanConfirmMsg.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认清理该分类数据吗？'**
+  String get storageCleanConfirmMsg;
+
+  /// No description provided for @storageCleanScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'清理范围'**
+  String get storageCleanScope;
+
+  /// No description provided for @storageCleanAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部'**
+  String get storageCleanAll;
+
+  /// No description provided for @storageClean7Days.
+  ///
+  /// In zh, this message translates to:
+  /// **'7天前'**
+  String get storageClean7Days;
+
+  /// No description provided for @storageClean30Days.
+  ///
+  /// In zh, this message translates to:
+  /// **'30天前'**
+  String get storageClean30Days;
+
+  /// No description provided for @storageStrategyName.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行策略：{name}'**
+  String storageStrategyName(Object name);
+
+  /// No description provided for @storageStrategyDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'策略执行完成，释放 {size}'**
+  String storageStrategyDone(Object size);
+
+  /// No description provided for @storageStrategyPartialDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'策略完成，释放 {size}，{count} 项未完全成功'**
+  String storageStrategyPartialDone(Object count, Object size);
+
+  /// No description provided for @storageStrategyFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'策略执行失败，请稍后重试'**
+  String get storageStrategyFailed;
+
+  /// No description provided for @storageLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败'**
+  String get storageLoadFailed;
+
+  /// No description provided for @storageReanalyze.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新分析'**
+  String get storageReanalyze;
+
+  /// No description provided for @storageTotalUsage.
+  ///
+  /// In zh, this message translates to:
+  /// **'总占用'**
+  String get storageTotalUsage;
+
+  /// No description provided for @storageAppSize.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用大小'**
+  String get storageAppSize;
+
+  /// No description provided for @storageUserData.
+  ///
+  /// In zh, this message translates to:
+  /// **'用户数据'**
+  String get storageUserData;
+
+  /// No description provided for @storageCleanable.
+  ///
+  /// In zh, this message translates to:
+  /// **'可清理'**
+  String get storageCleanable;
+
+  /// No description provided for @storageStatsSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'统计口径：{source}'**
+  String storageStatsSource(Object source);
+
+  /// No description provided for @storagePackageName.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前包名：{name}'**
+  String storagePackageName(Object name);
+
+  /// No description provided for @storageTrendFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是首次分析，后续将展示占用变化趋势'**
+  String get storageTrendFirst;
+
+  /// No description provided for @storageSmartCleanup.
+  ///
+  /// In zh, this message translates to:
+  /// **'智能清理策略'**
+  String get storageSmartCleanup;
+
+  /// No description provided for @storageExecute.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行'**
+  String get storageExecute;
+
+  /// No description provided for @storageUsageAnalysis.
+  ///
+  /// In zh, this message translates to:
+  /// **'占用分析'**
+  String get storageUsageAnalysis;
+
+  /// No description provided for @storageClean.
+  ///
+  /// In zh, this message translates to:
+  /// **'清理'**
+  String get storageClean;
+
+  /// No description provided for @storageRiskLow.
+  ///
+  /// In zh, this message translates to:
+  /// **'低风险'**
+  String get storageRiskLow;
+
+  /// No description provided for @storageRiskCaution.
+  ///
+  /// In zh, this message translates to:
+  /// **'谨慎'**
+  String get storageRiskCaution;
+
+  /// No description provided for @storageRiskHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'高风险'**
+  String get storageRiskHigh;
+
+  /// No description provided for @storageReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'只读'**
+  String get storageReadOnly;
+
+  /// No description provided for @storageSystemStats.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统统计（与系统设置更接近）'**
+  String get storageSystemStats;
+
+  /// No description provided for @storageDirectoryScan.
+  ///
+  /// In zh, this message translates to:
+  /// **'目录扫描估算'**
+  String get storageDirectoryScan;
+
+  /// No description provided for @storageAdditionalInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'附加信息'**
+  String get storageAdditionalInfo;
+
+  /// No description provided for @aboutDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'小万，是一款以智能对话为核心的手机AI助\n手，通过语义理解与持续学习能力，协助用户\n完成信息处理、决策辅助和日常管理。'**
+  String get aboutDescription;
+
+  /// No description provided for @workspaceMemoryLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载 workspace 记忆配置失败'**
+  String get workspaceMemoryLoadFailed;
+
+  /// No description provided for @workspaceSoulSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'SOUL.md 已保存'**
+  String get workspaceSoulSaved;
+
+  /// No description provided for @workspaceSoulSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'SOUL.md 保存失败'**
+  String get workspaceSoulSaveFailed;
+
+  /// No description provided for @workspaceChatSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'CHAT.md 已保存'**
+  String get workspaceChatSaved;
+
+  /// No description provided for @workspaceChatSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'CHAT.md 保存失败'**
+  String get workspaceChatSaveFailed;
+
+  /// No description provided for @workspaceMemorySaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'MEMORY.md 已保存'**
+  String get workspaceMemorySaved;
+
+  /// No description provided for @workspaceMemorySaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'MEMORY.md 保存失败'**
+  String get workspaceMemorySaveFailed;
+
+  /// No description provided for @workspaceEmbeddingToggleFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'记忆嵌入开关更新失败'**
+  String get workspaceEmbeddingToggleFailed;
+
+  /// No description provided for @workspaceRollupToggleFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'夜间整理开关更新失败'**
+  String get workspaceRollupToggleFailed;
+
+  /// No description provided for @workspaceRollupDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'整理完成'**
+  String get workspaceRollupDone;
+
+  /// No description provided for @workspaceRollupFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即整理失败'**
+  String get workspaceRollupFailed;
+
+  /// No description provided for @workspaceNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无'**
+  String get workspaceNone;
+
+  /// No description provided for @workspaceMemoryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'Workspace 记忆'**
+  String get workspaceMemoryTitle;
+
+  /// No description provided for @workspaceMemoryCapability.
+  ///
+  /// In zh, this message translates to:
+  /// **'记忆能力'**
+  String get workspaceMemoryCapability;
+
+  /// No description provided for @workspaceEmbeddingReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'已配置，可使用向量检索'**
+  String get workspaceEmbeddingReady;
+
+  /// No description provided for @workspaceEmbeddingNotReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置，将自动降级为词法检索'**
+  String get workspaceEmbeddingNotReady;
+
+  /// No description provided for @workspaceGoToConfig.
+  ///
+  /// In zh, this message translates to:
+  /// **'去场景模型配置记忆嵌入模型'**
+  String get workspaceGoToConfig;
+
+  /// No description provided for @workspaceNightlyRollup.
+  ///
+  /// In zh, this message translates to:
+  /// **'夜间记忆整理（22:00）'**
+  String get workspaceNightlyRollup;
+
+  /// No description provided for @workspaceLastRun.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近运行：{time}'**
+  String workspaceLastRun(Object time);
+
+  /// No description provided for @workspaceNextRun.
+  ///
+  /// In zh, this message translates to:
+  /// **'下次运行：{time}'**
+  String workspaceNextRun(Object time);
+
+  /// No description provided for @workspaceRollupNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即整理一次'**
+  String get workspaceRollupNow;
+
+  /// No description provided for @workspaceDocContent.
+  ///
+  /// In zh, this message translates to:
+  /// **'文档内容'**
+  String get workspaceDocContent;
+
+  /// No description provided for @workspaceSoulMd.
+  ///
+  /// In zh, this message translates to:
+  /// **'SOUL.md（Agent 灵魂）'**
+  String get workspaceSoulMd;
+
+  /// No description provided for @workspaceChatMd.
+  ///
+  /// In zh, this message translates to:
+  /// **'CHAT.md（纯聊天系统提示词）'**
+  String get workspaceChatMd;
+
+  /// No description provided for @workspaceMemoryMd.
+  ///
+  /// In zh, this message translates to:
+  /// **'MEMORY.md（长期记忆）'**
+  String get workspaceMemoryMd;
+
+  /// No description provided for @alpineNodeJs.
+  ///
+  /// In zh, this message translates to:
+  /// **'Node.js 运行时'**
+  String get alpineNodeJs;
+
+  /// No description provided for @alpineNpm.
+  ///
+  /// In zh, this message translates to:
+  /// **'Node.js 包管理器'**
+  String get alpineNpm;
+
+  /// No description provided for @alpineGit.
+  ///
+  /// In zh, this message translates to:
+  /// **'Git 版本控制'**
+  String get alpineGit;
+
+  /// No description provided for @alpinePython.
+  ///
+  /// In zh, this message translates to:
+  /// **'Python 解释器'**
+  String get alpinePython;
+
+  /// No description provided for @alpinePip.
+  ///
+  /// In zh, this message translates to:
+  /// **'Python 项目与包工具'**
+  String get alpinePip;
+
+  /// No description provided for @alpinePipInstall.
+  ///
+  /// In zh, this message translates to:
+  /// **'Python 包安装器'**
+  String get alpinePipInstall;
+
+  /// No description provided for @alpineSshClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'SSH 客户端'**
+  String get alpineSshClient;
+
+  /// No description provided for @alpineSshpass.
+  ///
+  /// In zh, this message translates to:
+  /// **'SSH 密码辅助工具'**
+  String get alpineSshpass;
+
+  /// No description provided for @alpineOpenSshServer.
+  ///
+  /// In zh, this message translates to:
+  /// **'OpenSSH 服务器'**
+  String get alpineOpenSshServer;
+
+  /// No description provided for @alpineDetectFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'检测 Alpine 环境失败'**
+  String get alpineDetectFailed;
+
+  /// No description provided for @alpineBootTasksLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取自启动任务失败'**
+  String get alpineBootTasksLoadFailed;
+
+  /// No description provided for @alpineConfigOpenFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开终端环境配置失败'**
+  String get alpineConfigOpenFailed;
+
+  /// No description provided for @alpineBootTaskAdded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已新增自启动任务'**
+  String get alpineBootTaskAdded;
+
+  /// No description provided for @alpineBootTaskUpdated.
+  ///
+  /// In zh, this message translates to:
+  /// **'已更新自启动任务'**
+  String get alpineBootTaskUpdated;
+
+  /// No description provided for @alpineBootTaskSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存自启动任务失败'**
+  String get alpineBootTaskSaveFailed;
+
+  /// No description provided for @alpineBootEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已开启应用启动时自启动'**
+  String get alpineBootEnabled;
+
+  /// No description provided for @alpineBootDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已关闭自动启动'**
+  String get alpineBootDisabled;
+
+  /// No description provided for @alpineBootTaskUpdateFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新任务失败'**
+  String get alpineBootTaskUpdateFailed;
+
+  /// No description provided for @alpineDeleteBootTask.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除自启动任务'**
+  String get alpineDeleteBootTask;
+
+  /// No description provided for @alpineDeleteBootTaskMsg.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认删除\"{name}\"吗？'**
+  String alpineDeleteBootTaskMsg(Object name);
+
+  /// No description provided for @alpineBootTaskDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除自启动任务'**
+  String get alpineBootTaskDeleted;
+
+  /// No description provided for @alpineBootTaskDeleteFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除任务失败'**
+  String get alpineBootTaskDeleteFailed;
+
+  /// No description provided for @alpineCommandSent.
+  ///
+  /// In zh, this message translates to:
+  /// **'启动命令已发送'**
+  String get alpineCommandSent;
+
+  /// No description provided for @alpineStartFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'启动任务失败'**
+  String get alpineStartFailed;
+
+  /// No description provided for @alpineDetecting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在检测环境'**
+  String get alpineDetecting;
+
+  /// No description provided for @alpineStartConfig.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始配置（{count} 项）'**
+  String alpineStartConfig(Object count);
+
+  /// No description provided for @alpineAllReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部已就绪'**
+  String get alpineAllReady;
+
+  /// No description provided for @alpineDetectingDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在后台检测 Alpine 内常见开发环境的版本信息。'**
+  String get alpineDetectingDesc;
+
+  /// No description provided for @alpineReadyCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'已就绪 {ready}/{total} 项，可直接勾选缺失项并进入 ReTerminal 自动配置。'**
+  String alpineReadyCount(Object ready, Object total);
+
+  /// No description provided for @alpineBootTasks.
+  ///
+  /// In zh, this message translates to:
+  /// **'自启动任务'**
+  String get alpineBootTasks;
+
+  /// No description provided for @alpineBootTasksDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开 Omnibot 时会在后台检查已启用的任务，并在对应 ReTerminal 会话内启动命令，适合常驻服务。'**
+  String get alpineBootTasksDesc;
+
+  /// No description provided for @alpineAddTask.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增任务'**
+  String get alpineAddTask;
+
+  /// No description provided for @alpineOpenTerminal.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开终端'**
+  String get alpineOpenTerminal;
+
+  /// No description provided for @alpineNoTasksDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无任务。你可以添加例如 `python app.py`、`node server.js`、`./start.sh` 之类的常驻命令。'**
+  String get alpineNoTasksDesc;
+
+  /// No description provided for @alpineBootOnAppOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'开机打开 app 后启动'**
+  String get alpineBootOnAppOpen;
+
+  /// No description provided for @alpineNotEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'未启用'**
+  String get alpineNotEnabled;
+
+  /// No description provided for @alpineRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'已在运行'**
+  String get alpineRunning;
+
+  /// No description provided for @alpineStartNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即启动'**
+  String get alpineStartNow;
+
+  /// No description provided for @alpineEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑'**
+  String get alpineEdit;
+
+  /// No description provided for @alpineVersionDetected.
+  ///
+  /// In zh, this message translates to:
+  /// **'已检测到可用版本'**
+  String get alpineVersionDetected;
+
+  /// No description provided for @alpineVersionNotFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'未检测到'**
+  String get alpineVersionNotFound;
+
+  /// No description provided for @alpineTaskNameHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入任务名称'**
+  String get alpineTaskNameHint;
+
+  /// No description provided for @alpineCommandHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入启动命令'**
+  String get alpineCommandHint;
+
+  /// No description provided for @alpineEditBootTask.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑自启动任务'**
+  String get alpineEditBootTask;
+
+  /// No description provided for @alpineAddBootTask.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增自启动任务'**
+  String get alpineAddBootTask;
+
+  /// No description provided for @alpineTaskName.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务名称'**
+  String get alpineTaskName;
+
+  /// No description provided for @alpineTaskNameExample.
+  ///
+  /// In zh, this message translates to:
+  /// **'例如：本地 API 服务'**
+  String get alpineTaskNameExample;
+
+  /// No description provided for @alpineStartCommand.
+  ///
+  /// In zh, this message translates to:
+  /// **'启动命令'**
+  String get alpineStartCommand;
+
+  /// No description provided for @alpineCommandExample.
+  ///
+  /// In zh, this message translates to:
+  /// **'例如：python app.py 或 pnpm start'**
+  String get alpineCommandExample;
+
+  /// No description provided for @alpineWorkDir.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作目录'**
+  String get alpineWorkDir;
+
+  /// No description provided for @alpineBootAutoStart.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开小万时自动启动'**
+  String get alpineBootAutoStart;
 }
 
 class _AppLocalizationsDelegate

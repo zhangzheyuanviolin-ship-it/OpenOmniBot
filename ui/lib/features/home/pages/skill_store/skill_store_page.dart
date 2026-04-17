@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/models/agent_skill_item.dart';
 import 'package:ui/services/agent_skill_store_service.dart';
 import 'package:ui/theme/app_colors.dart';
@@ -36,7 +37,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast('加载技能仓库失败', type: ToastType.error);
+      showToast(context.l10n.skillLoadFailed, type: ToastType.error);
     }
   }
 
@@ -60,7 +61,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
       );
       if (!mounted) return;
       if (updated == null) {
-        showToast('切换失败', type: ToastType.error);
+        showToast(context.l10n.skillToggleFailed, type: ToastType.error);
         return;
       }
       setState(() {
@@ -68,9 +69,9 @@ class _SkillStorePageState extends State<SkillStorePage> {
             .map((skill) => skill.id == item.id ? updated : skill)
             .toList();
       });
-      showToast(enabled ? '已启用 ${item.name}' : '已禁用 ${item.name}');
+      showToast(enabled ? context.l10n.skillEnabledMsg(item.name) : context.l10n.skillDisabledMsg(item.name));
     } catch (_) {
-      showToast('切换失败', type: ToastType.error);
+      showToast(context.l10n.skillToggleFailed, type: ToastType.error);
     } finally {
       _setBusy(item.id, false);
     }
@@ -84,7 +85,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
       );
       if (!mounted) return;
       if (installed == null) {
-        showToast('安装失败', type: ToastType.error);
+        showToast(context.l10n.skillInstallFailed, type: ToastType.error);
         return;
       }
       setState(() {
@@ -101,9 +102,9 @@ class _SkillStorePageState extends State<SkillStorePage> {
           return a.name.toLowerCase().compareTo(b.name.toLowerCase());
         });
       });
-      showToast('已安装 ${item.name}', type: ToastType.success);
+      showToast(context.l10n.skillInstalledMsg(item.name), type: ToastType.success);
     } catch (_) {
-      showToast('安装失败', type: ToastType.error);
+      showToast(context.l10n.skillInstallFailed, type: ToastType.error);
     } finally {
       _setBusy(item.id, false);
     }
@@ -113,17 +114,17 @@ class _SkillStorePageState extends State<SkillStorePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除技能'),
-        content: Text('确认删除“${item.name}”？'),
+        title: Text(context.l10n.skillDeleteTitle),
+        content: Text(context.l10n.skillDeleteConfirmMsg(item.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(context.trLegacy('取消')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.alertRed),
-            child: const Text('删除'),
+            child: Text(context.l10n.skillDelete),
           ),
         ],
       ),
@@ -136,14 +137,14 @@ class _SkillStorePageState extends State<SkillStorePage> {
         skillId: item.id,
       );
       if (!mounted || !deleted) {
-        showToast('删除失败', type: ToastType.error);
+        showToast(context.l10n.skillDeleteFailed, type: ToastType.error);
         return;
       }
       await _loadSkills();
       if (!mounted) return;
-      showToast('已删除', type: ToastType.success);
+      showToast(context.l10n.skillDeleted, type: ToastType.success);
     } catch (_) {
-      showToast('删除失败', type: ToastType.error);
+      showToast(context.l10n.skillDeleteFailed, type: ToastType.error);
     } finally {
       _setBusy(item.id, false);
     }
@@ -156,7 +157,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
       backgroundColor: context.isDarkTheme
           ? palette.pageBackground
           : AppColors.background,
-      appBar: const CommonAppBar(title: '技能仓库', primary: true),
+      appBar: CommonAppBar(title: context.l10n.skillStoreTitle, primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _skills.isEmpty
@@ -188,7 +189,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
         const SizedBox(height: 12),
         Center(
           child: Text(
-            '暂无已接入的技能',
+            context.l10n.skillEmpty,
             style: TextStyle(
               fontSize: 16,
               color: context.isDarkTheme
@@ -205,7 +206,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
     final palette = context.omniPalette;
     final busy = _busyIds.contains(item.id);
     final description = item.description.trim().isEmpty
-        ? '暂无描述'
+        ? context.l10n.skillNoDescription
         : item.description;
 
     return Container(
@@ -277,7 +278,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
                   onPressed: item.isBuiltin
                       ? () => _installBuiltinSkill(item)
                       : null,
-                  child: const Text('安装'),
+                  child: Text(context.l10n.skillInstall),
                 ),
             ],
           ),
@@ -286,16 +287,16 @@ class _SkillStorePageState extends State<SkillStorePage> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _buildChip(item.isBuiltin ? '内置' : '用户'),
-              _buildChip(item.installed ? '已安装' : '未安装'),
-              if (item.installed) _buildChip(item.enabled ? '启用中' : '已禁用'),
+              _buildChip(item.isBuiltin ? context.l10n.skillBuiltin : context.l10n.skillUser),
+              _buildChip(item.installed ? context.l10n.skillInstalled : context.l10n.skillNotInstalled),
+              if (item.installed) _buildChip(item.enabled ? context.l10n.skillEnabled : context.l10n.skillDisabled),
               ...item.capabilities.map(_buildChip),
             ],
           ),
           if (!item.installed && item.isBuiltin) ...[
             const SizedBox(height: 12),
             Text(
-              '该内置技能已从工作区移除，可随时重新安装。',
+              context.l10n.skillBuiltinRemovedDesc,
               style: TextStyle(
                 fontSize: 12,
                 color: context.isDarkTheme
@@ -328,7 +329,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.alertRed,
                   ),
-                  child: const Text('删除'),
+                  child: Text(context.l10n.skillDelete),
                 ),
               ],
             ),

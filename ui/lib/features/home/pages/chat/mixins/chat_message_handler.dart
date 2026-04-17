@@ -212,7 +212,9 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
   Future<void> onSubmitVlmInfo() async {
     if (isSubmittingVlmReply || vlmInfoQuestion == null) return;
     final reply = vlmAnswerController.text.trim().isEmpty
-        ? '已完成操作，继续执行'
+        ? (Localizations.localeOf(context).languageCode == 'en'
+              ? 'Completed action, continue execution'
+              : '已完成操作，继续执行')
         : vlmAnswerController.text.trim();
     setState(() {
       isSubmittingVlmReply = true;

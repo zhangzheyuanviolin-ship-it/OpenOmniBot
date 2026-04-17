@@ -767,7 +767,13 @@ mixin _ChatInputAreaComposerMixin
           contextMenuBuilder: (context, editableTextState) =>
               TextInputContextMenu(editableTextState: editableTextState),
           decoration: InputDecoration(
-            hintText: isRecording ? '输入或直接说，我在听' : '请输入内容',
+            hintText: isRecording
+                ? (Localizations.localeOf(context).languageCode == 'en'
+                      ? 'Type or speak directly, I am listening'
+                      : '输入或直接说，我在听')
+                : (Localizations.localeOf(context).languageCode == 'en'
+                      ? 'Type your message'
+                      : '请输入内容'),
             hintStyle: TextStyle(
               fontSize: multiline ? 15.0 : 14.0,
               color: hintColor,

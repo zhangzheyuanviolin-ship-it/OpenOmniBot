@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:ui/features/memory/models/mem0_memory_item.dart';
 import 'package:ui/features/memory/pages/memory_center/widgets/tag_chip.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_text_styles.dart';
 import 'package:ui/theme/theme_context.dart';
@@ -130,7 +131,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
     return Row(
       children: [
         Text(
-          '长期记忆',
+          LegacyTextLocalizer.localize('长期记忆'),
           style: TextStyle(
             color: palette.textPrimary,
             fontSize: AppTextStyles.fontSizeMain,
@@ -407,7 +408,7 @@ class _Mem0MemorySectionState extends State<Mem0MemorySection> {
 
   String _formatTime(DateTime? dateTime) {
     if (dateTime == null) {
-      return '长期记忆';
+      return LegacyTextLocalizer.localize('长期记忆');
     }
     final now = DateTime.now();
     final diff = now.difference(dateTime);

@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/deep_thinking_card.dart';
 import 'package:ui/features/home/pages/chat/widgets/chat_widgets.dart';
+import 'package:ui/l10n/generated/app_localizations.dart';
+import 'package:ui/models/chat_message_model.dart';
 
 void main() {
   testWidgets('empty chat state offsets with bottom overlay inset', (
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ChatMessageList(
-            messages: const [],
-            scrollController: ScrollController(),
-            bottomOverlayInset: 128,
-            onBeforeTaskExecute: () async {},
-          ),
+      _buildLocalizedApp(
+        child: ChatMessageList(
+          messages: const [],
+          scrollController: ScrollController(),
+          bottomOverlayInset: 128,
+          onBeforeTaskExecute: () async {},
         ),
       ),
     );
@@ -85,22 +84,20 @@ void main() {
     late StateSetter setState;
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, stateSetter) {
-              setState = stateSetter;
-              return SizedBox(
-                width: 400,
-                height: 520,
-                child: ChatMessageList(
-                  messages: messages,
-                  scrollController: controller,
-                  onBeforeTaskExecute: () async {},
-                ),
-              );
-            },
-          ),
+      _buildLocalizedApp(
+        child: StatefulBuilder(
+          builder: (context, stateSetter) {
+            setState = stateSetter;
+            return SizedBox(
+              width: 400,
+              height: 520,
+              child: ChatMessageList(
+                messages: messages,
+                scrollController: controller,
+                onBeforeTaskExecute: () async {},
+              ),
+            );
+          },
         ),
       ),
     );
@@ -152,18 +149,25 @@ Widget _buildChatMessageListHarness({
   required ScrollController controller,
   required List<ChatMessageModel> messages,
 }) {
-  return MaterialApp(
-    home: Scaffold(
-      body: SizedBox(
-        width: 400,
-        height: 520,
-        child: ChatMessageList(
-          messages: messages,
-          scrollController: controller,
-          onBeforeTaskExecute: () async {},
-        ),
+  return _buildLocalizedApp(
+    child: SizedBox(
+      width: 400,
+      height: 520,
+      child: ChatMessageList(
+        messages: messages,
+        scrollController: controller,
+        onBeforeTaskExecute: () async {},
       ),
     ),
+  );
+}
+
+Widget _buildLocalizedApp({required Widget child}) {
+  return MaterialApp(
+    locale: const Locale('zh'),
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: Scaffold(body: child),
   );
 }
 

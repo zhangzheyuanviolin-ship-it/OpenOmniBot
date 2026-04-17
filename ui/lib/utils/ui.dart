@@ -466,8 +466,8 @@ class AppDialog {
         title: title,
         content: content,
         type: DialogType.confirm,
-        cancelText: cancelText,
-        confirmText: confirmText,
+        cancelText: LegacyTextLocalizer.localize(cancelText),
+        confirmText: LegacyTextLocalizer.localize(confirmText),
         confirmButtonColor: confirmButtonColor,
         buttonTextSize: buttonTextSize,
       ),
@@ -516,8 +516,8 @@ class AppDialog {
         title: title,
         content: content,
         type: DialogType.input,
-        cancelText: cancelText,
-        confirmText: confirmText,
+        cancelText: LegacyTextLocalizer.localize(cancelText),
+        confirmText: LegacyTextLocalizer.localize(confirmText),
         hintText: hintText,
         initialValue: initialValue,
         maxLines: maxLines,
@@ -552,7 +552,7 @@ class AppDialog {
   /// 加载对话框 - 显示loading状态
   static void loading(
     BuildContext context, {
-    String title = '加载中',
+    String title = '加载中', // Will be localized via LegacyTextLocalizer.localize in widget
     dynamic content,
     bool barrierDismissible = false,
   }) {
@@ -835,7 +835,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
               ),
               SizedBox(width: 12),
               Text(
-                '请稍候...',
+                LegacyTextLocalizer.localize('请稍候...'),
                 style: TextStyle(
                   color: palette.textSecondary,
                   fontSize: 14,
@@ -873,7 +873,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
                 ),
                 child: Center(
                   child: Text(
-                    widget.confirmText ?? '确定',
+                    LegacyTextLocalizer.localize(widget.confirmText ?? '确定'),
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: confirmColor,
@@ -908,7 +908,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
               ),
               child: Center(
                 child: Text(
-                  widget.cancelText ?? '取消',
+                  LegacyTextLocalizer.localize(widget.cancelText ?? '取消'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: confirmColor,
@@ -951,7 +951,7 @@ class _AppDialogWidgetState extends State<_AppDialogWidget> {
               ),
               child: Center(
                 child: Text(
-                  widget.confirmText ?? '确认',
+                  LegacyTextLocalizer.localize(widget.confirmText ?? '确认'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:simple_gradient_text/simple_gradient_text.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/core/mixins/page_lifecycle_mixin.dart';
 import 'package:ui/features/memory/models/mem0_memory_item.dart';
 import 'package:ui/features/memory/pages/memory_center/widgets/batch_delete_confirm_sheet.dart';
@@ -1195,8 +1196,8 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
             ),
             Row(
               children: [
-                _buildMemoryTabButton(label: '短期记忆', tabIndex: _localMemoryTab),
-                _buildMemoryTabButton(label: '长期记忆', tabIndex: _cloudMemoryTab),
+                _buildMemoryTabButton(label: LegacyTextLocalizer.localize('短期记忆'), tabIndex: _localMemoryTab),
+                _buildMemoryTabButton(label: LegacyTextLocalizer.localize('长期记忆'), tabIndex: _cloudMemoryTab),
               ],
             ),
           ],
@@ -1253,7 +1254,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
               child: Row(
                 children: [
                   Text(
-                    '短期记忆',
+                    LegacyTextLocalizer.localize('短期记忆'),
                     style: TextStyle(
                       color: context.omniPalette.textPrimary,
                       fontSize: AppTextStyles.fontSizeMain,
@@ -1534,7 +1535,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '长期记忆',
+                        LegacyTextLocalizer.localize('长期记忆'),
                         style: TextStyle(
                           color: palette.accentPrimary,
                           fontSize: AppTextStyles.fontSizeSmall,
