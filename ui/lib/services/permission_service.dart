@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
 import 'package:ui/features/home/pages/authorize/widgets/permission_section.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/device_service.dart';
 import 'package:ui/services/permission_registry.dart';
 import 'package:ui/services/special_permission.dart';
@@ -10,22 +11,26 @@ import 'package:ui/services/special_permission.dart';
 class PermissionService {
   PermissionService._();
 
-  static const Map<String, _PermissionDisplaySpec> _specialDisplaySpecs = {
+  static final Map<String, _PermissionDisplaySpec> _specialDisplaySpecs = {
     kWorkspaceStoragePermissionId: _PermissionDisplaySpec(
       id: kWorkspaceStoragePermissionId,
       iconPath: 'assets/welcome/permission_installed_apps.svg',
       iconWidth: 32,
       iconHeight: 32,
-      name: '内置 workspace',
-      description: 'Omnibot 会在应用内部维护 `/workspace`，通常无需再单独授予公共存储权限',
+      name: LegacyTextLocalizer.isEnglish ? 'Built-in workspace' : '内置 workspace',
+      description: LegacyTextLocalizer.isEnglish
+          ? 'Omnibot maintains `/workspace` internally; public storage permission is usually unnecessary'
+          : 'Omnibot 会在应用内部维护 `/workspace`，通常无需再单独授予公共存储权限',
     ),
     kPublicStoragePermissionId: _PermissionDisplaySpec(
       id: kPublicStoragePermissionId,
       iconPath: 'assets/welcome/permission_installed_apps.svg',
       iconWidth: 32,
       iconHeight: 32,
-      name: '公共文件访问',
-      description: '允许 agent 读取和操作安卓公共存储中的文件与文件夹',
+      name: LegacyTextLocalizer.isEnglish ? 'Public Storage Access' : '公共文件访问',
+      description: LegacyTextLocalizer.isEnglish
+          ? 'Allow agent to read/write files in public storage'
+          : '允许 agent 读取和操作安卓公共存储中的文件与文件夹',
     ),
   };
 
@@ -238,8 +243,8 @@ class PermissionService {
               iconPath: 'assets/welcome/permission_overlay.svg',
               iconWidth: 32,
               iconHeight: 32,
-              name: '悬浮窗权限',
-              description: '桌面悬浮显示，快速唤起小万',
+              name: LegacyTextLocalizer.isEnglish ? 'Overlay Permission' : '悬浮窗权限',
+              description: LegacyTextLocalizer.isEnglish ? 'Desktop overlay for quick access' : '桌面悬浮显示，快速唤起小万',
               onAuthorize: () async {},
               checkAuthorization: () async => false,
             ),
@@ -248,8 +253,8 @@ class PermissionService {
               iconPath: 'assets/welcome/permission_accessibility.svg',
               iconWidth: 30,
               iconHeight: 30,
-              name: '无障碍辅助权限',
-              description: '持久化自动操作，轻松完成复杂任务',
+              name: LegacyTextLocalizer.isEnglish ? 'Accessibility' : '无障碍辅助权限',
+              description: LegacyTextLocalizer.isEnglish ? 'Persistent automation for complex tasks' : '持久化自动操作，轻松完成复杂任务',
               onAuthorize: () async {},
               checkAuthorization: () async => false,
             ),
@@ -258,8 +263,8 @@ class PermissionService {
               iconPath: 'assets/welcome/permission_installed_apps.svg',
               iconWidth: 32,
               iconHeight: 32,
-              name: '应用列表读取',
-              description: '支持跨应用自动操作',
+              name: LegacyTextLocalizer.isEnglish ? 'Installed Apps Access' : '应用列表读取',
+              description: LegacyTextLocalizer.isEnglish ? 'Enable cross-app automation' : '支持跨应用自动操作',
               onAuthorize: () async {},
               checkAuthorization: () async => false,
             ),

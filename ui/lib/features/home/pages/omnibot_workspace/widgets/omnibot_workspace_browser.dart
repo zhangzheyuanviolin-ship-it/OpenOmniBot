@@ -340,7 +340,9 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         children: [
           if (widget.showHeaderTitle) ...[
             Text(
-              '工作区',
+              Localizations.localeOf(context).languageCode == 'en'
+                  ? 'Workspace'
+                  : '工作区',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -351,7 +353,9 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
           ],
           if (breadcrumbs.isEmpty)
             Text(
-              '加载工作区中...',
+              Localizations.localeOf(context).languageCode == 'en'
+                  ? 'Loading workspace...'
+                  : '加载工作区中...',
               style: TextStyle(fontSize: 12, color: palette.textSecondary),
             )
           else
@@ -476,9 +480,17 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         : RefreshIndicator(
             onRefresh: () async => _refresh(),
             child: !exists
-                ? _buildStatusList(message: '工作区不存在')
+                ? _buildStatusList(
+                    message: Localizations.localeOf(context).languageCode == 'en'
+                        ? 'Workspace not found'
+                        : '工作区不存在',
+                  )
                 : itemCount == 0
-                ? _buildStatusList(message: '当前目录为空')
+                ? _buildStatusList(
+                    message: Localizations.localeOf(context).languageCode == 'en'
+                        ? 'Current directory is empty'
+                        : '当前目录为空',
+                  )
                 : ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -1531,8 +1543,16 @@ class _WorkspaceInlineFilePreviewState
 
   Widget _buildEditor() {
     final statusText = _loadingText && _textContent == null
-        ? '正在加载原始内容，可先开始编辑'
-        : (_isDirty ? '编辑中，存在未保存修改' : '编辑中，保存后会立即写回 workspace');
+        ? (Localizations.localeOf(context).languageCode == 'en'
+            ? 'Loading original content, you can start editing first'
+            : '正在加载原始内容，可先开始编辑')
+        : (_isDirty
+            ? (Localizations.localeOf(context).languageCode == 'en'
+                ? 'Editing with unsaved changes'
+                : '编辑中，存在未保存修改')
+            : (Localizations.localeOf(context).languageCode == 'en'
+                ? 'Editing. Save will write back to workspace immediately'
+                : '编辑中，保存后会立即写回 workspace'));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1568,7 +1588,9 @@ class _WorkspaceInlineFilePreviewState
               decoration: InputDecoration(
                 filled: true,
                 fillColor: context.omniPalette.surfacePrimary,
-                hintText: '输入文件内容',
+                hintText: Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Enter file content'
+                    : '输入文件内容',
                 alignLabelWithHint: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1601,7 +1623,11 @@ class _WorkspaceInlineFilePreviewState
                 key: const ValueKey('workspace-inline-preview-cancel'),
                 onPressed: _isSaving ? null : _handleCancelEditing,
                 icon: const Icon(Icons.close_rounded),
-                label: const Text('取消'),
+                label: Text(
+                  Localizations.localeOf(context).languageCode == 'en'
+                      ? 'Cancel'
+                      : '取消',
+                ),
               ),
             if (_isEditing) const SizedBox(width: 10),
             FilledButton.icon(
@@ -1622,7 +1648,15 @@ class _WorkspaceInlineFilePreviewState
                           )
                         : const Icon(Icons.save_outlined))
                   : const Icon(Icons.edit_outlined),
-              label: Text(_isEditing ? '保存' : '编辑'),
+              label: Text(
+                _isEditing
+                    ? (Localizations.localeOf(context).languageCode == 'en'
+                        ? 'Save'
+                        : '保存')
+                    : (Localizations.localeOf(context).languageCode == 'en'
+                        ? 'Edit'
+                        : '编辑'),
+              ),
             ),
           ],
         ),
@@ -1632,7 +1666,13 @@ class _WorkspaceInlineFilePreviewState
 
   Widget _buildBody(BuildContext context) {
     if (!widget.metadata.exists) {
-      return const Center(child: Text('文件不存在'));
+      return Center(
+        child: Text(
+          Localizations.localeOf(context).languageCode == 'en'
+              ? 'File does not exist'
+              : '文件不存在',
+        ),
+      );
     }
     if (_error != null) {
       return Center(child: Text(_error!));
@@ -1662,7 +1702,13 @@ class _WorkspaceInlineFilePreviewState
           return const Center(child: CircularProgressIndicator.adaptive());
         }
         if (_textContent == null) {
-          return const Center(child: Text('暂无内容'));
+          return Center(
+            child: Text(
+              Localizations.localeOf(context).languageCode == 'en'
+                  ? 'No content'
+                  : '暂无内容',
+            ),
+          );
         }
         if (widget.metadata.mimeType == 'text/markdown') {
           return SingleChildScrollView(

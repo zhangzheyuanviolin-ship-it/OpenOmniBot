@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
 
-/// 思考中的加载文案
+/// 思考中的加载文案（原始中文值，用于数据比较）
 const String kThinkingText = '小万正在思考...';
 
-/// 总结中的加载文案
-const String kSummarizingText = '总结中';
+/// 思考中的加载文案（本地化显示用）
+String get kThinkingTextLocalized => LegacyTextLocalizer.localize(kThinkingText);
 
-/// 总结完成的提示文案
-const String kSummaryCompleteText = '总结如下';
+/// 总结中的加载文案（本地化显示用）
+String get kSummarizingText => LegacyTextLocalizer.localize('总结中');
+
+/// 总结完成的提示文案（本地化显示用）
+String get kSummaryCompleteText => LegacyTextLocalizer.localize('总结如下');
 
 /// 流式文本显示组件，支持平滑渐显效果
 ///
@@ -72,13 +76,14 @@ class _StreamingTextState extends State<StreamingText> {
 
     // 如果是思考中文案，直接显示，不做动画
     if (widget.fullText == kThinkingText) {
+      final localizedText = kThinkingTextLocalized;
       Widget child = widget.enableMarkdown
           ? OmnibotMarkdownBody(
-              data: widget.fullText,
+              data: localizedText,
               baseStyle: widget.style,
               inlineResourcePlainStyle: true,
             )
-          : Text(widget.fullText, style: widget.style);
+          : Text(localizedText, style: widget.style);
 
       return widget.selectable
           ? SelectionArea(
@@ -217,14 +222,14 @@ class _StreamingTextState extends State<StreamingText> {
       buttonItems: [
         // 全选按钮
         ContextMenuButtonItem(
-          label: '全选',
+          label: LegacyTextLocalizer.localize('全选'),
           onPressed: () {
             selectableRegionState.selectAll(SelectionChangedCause.toolbar);
           },
         ),
         // 复制按钮 - 使用 native channel 复制
         ContextMenuButtonItem(
-          label: '复制',
+          label: LegacyTextLocalizer.localize('复制'),
           onPressed: () {
             // 使用 onSelectionChanged 回调跟踪到的选中内容
             final selectedText = _lastSelectedContent;

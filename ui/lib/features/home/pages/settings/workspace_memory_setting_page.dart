@@ -164,9 +164,19 @@ class _WorkspaceMemorySettingPageState
       );
       if (!mounted) return;
       _chatController.text = saved;
-      showToast('CHAT.md 已保存', type: ToastType.success);
+      showToast(
+        Localizations.localeOf(context).languageCode == 'en'
+            ? 'CHAT.md saved'
+            : 'CHAT.md 已保存',
+        type: ToastType.success,
+      );
     } catch (e) {
-      showToast('CHAT.md 保存失败', type: ToastType.error);
+      showToast(
+        Localizations.localeOf(context).languageCode == 'en'
+            ? 'Failed to save CHAT.md'
+            : 'CHAT.md 保存失败',
+        type: ToastType.error,
+      );
     } finally {
       if (mounted) {
         setState(() => _savingChat = false);
@@ -297,14 +307,18 @@ class _WorkspaceMemorySettingPageState
                 ),
                 const Divider(height: 24),
                 _buildEditorCard(
-                  title: 'CHAT.md（纯聊天系统提示词）',
+                  title: Localizations.localeOf(context).languageCode == 'en'
+                      ? 'CHAT.md (pure chat system prompt)'
+                      : 'CHAT.md（纯聊天系统提示词）',
                   controller: _chatController,
                   saving: _savingChat,
                   onSave: _saveChatPrompt,
                 ),
                 const Divider(height: 24),
                 _buildEditorCard(
-                  title: 'MEMORY.md（长期记忆）',
+                  title: Localizations.localeOf(context).languageCode == 'en'
+                      ? 'MEMORY.md (long-term memory)'
+                      : 'MEMORY.md（长期记忆）',
                   controller: _memoryController,
                   saving: _savingMemory,
                   onSave: _saveMemory,

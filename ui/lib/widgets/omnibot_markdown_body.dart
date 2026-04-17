@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/omnibot_resource_widgets.dart';
@@ -225,9 +226,9 @@ class OmnibotCodeTapHandler {
     if (code.trim().isEmpty) return;
     try {
       await Clipboard.setData(ClipboardData(text: code));
-      showToast('代码已复制', type: ToastType.success);
+      showToast(LegacyTextLocalizer.isEnglish ? 'Code copied' : '代码已复制', type: ToastType.success);
     } catch (_) {
-      showToast('复制失败，请重试', type: ToastType.error);
+      showToast(LegacyTextLocalizer.isEnglish ? 'Copy failed, please try again' : '复制失败，请重试', type: ToastType.error);
     }
   }
 }
@@ -514,7 +515,7 @@ String _linkifyBareOmnibotUris(String input) {
       final parsed = Uri.tryParse(trimmed);
       final label = parsed?.pathSegments.isNotEmpty == true
           ? parsed!.pathSegments.last
-          : '资源';
+          : (LegacyTextLocalizer.isEnglish ? 'Resource' : '资源');
       buffer.write('[$label]($trimmed)');
     } else {
       buffer.write(line);

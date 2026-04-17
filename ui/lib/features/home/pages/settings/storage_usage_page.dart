@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/storage_usage_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/utils/ui.dart';
@@ -58,7 +59,9 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = '存储分析失败，请重试';
+        _error = LegacyTextLocalizer.isEnglish
+            ? 'Storage analysis failed, please try again'
+            : '存储分析失败，请重试';
       });
     }
   }
@@ -86,19 +89,32 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
 
       if (result.success) {
         showToast(
-          '已清理${category.name}，释放 ${_formatBytes(result.releasedBytes)}',
+          LegacyTextLocalizer.isEnglish
+              ? 'Cleaned ${category.name}, freed ${_formatBytes(result.releasedBytes)}'
+              : '已清理${category.name}，释放 ${_formatBytes(result.releasedBytes)}',
           type: ToastType.success,
         );
       } else {
         final hint = (result.manualActionHint ?? '').trim();
         showToast(
-          hint.isNotEmpty ? '部分清理失败：$hint' : '部分文件清理失败，请稍后重试',
+          hint.isNotEmpty
+              ? (LegacyTextLocalizer.isEnglish
+                  ? 'Some cleanup failed: $hint'
+                  : '部分清理失败：$hint')
+              : (LegacyTextLocalizer.isEnglish
+                  ? 'Some files failed to clean up, please try again later'
+                  : '部分文件清理失败，请稍后重试'),
           type: ToastType.error,
         );
       }
     } catch (_) {
       if (!mounted) return;
-      showToast('清理失败，请稍后重试', type: ToastType.error);
+      showToast(
+        LegacyTextLocalizer.isEnglish
+            ? 'Cleanup failed, please try again later'
+            : '清理失败，请稍后重试',
+        type: ToastType.error,
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -117,26 +133,39 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text('清理${category.name}'),
+              title: Text(
+                LegacyTextLocalizer.isEnglish
+                    ? 'Clean ${category.name}'
+                    : '清理${category.name}',
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(category.cleanupHint ?? '确认清理该分类数据吗？'),
+                  Text(category.cleanupHint ??
+                      (LegacyTextLocalizer.isEnglish
+                          ? 'Confirm cleanup for this category?'
+                          : '确认清理该分类数据吗？')),
                   if (canRetention) ...[
                     const SizedBox(height: 12),
-                    const Text('清理范围'),
+                    Text(
+                      LegacyTextLocalizer.isEnglish ? 'Cleanup scope' : '清理范围',
+                    ),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
                       children: [
                         ChoiceChip(
-                          label: const Text('全部'),
+                          label: Text(
+                            LegacyTextLocalizer.isEnglish ? 'All' : '全部',
+                          ),
                           selected: selected == 0,
                           onSelected: (_) => setDialogState(() => selected = 0),
                         ),
                         ChoiceChip(
-                          label: const Text('7天前'),
+                          label: Text(
+                            LegacyTextLocalizer.isEnglish ? '7 days ago' : '7天前',
+                          ),
                           selected: selected == 7,
                           onSelected: (_) => setDialogState(() => selected = 7),
                         ),

@@ -21,23 +21,23 @@ class BotStatus extends StatelessWidget {
         return _buildStatusRow(
           context,
           svgPath: 'assets/chatbot/thinking_icon.svg',
-          text: '正在思考...',
-          timeDesc: '已用时',
+          text: Localizations.localeOf(context).languageCode == 'en' ? 'Thinking...' : '正在思考...',
+          timeDesc: Localizations.localeOf(context).languageCode == 'en' ? 'Time taken' : '已用时',
           costTime: costTime,
         );
       case BotStatusType.completed:
         return _buildStatusRow(
           context,
           icon: Icons.check_circle,
-          text: '已完成思考',
-          timeDesc: '总用时',
+          text: Localizations.localeOf(context).languageCode == 'en' ? 'Thinking complete' : '已完成思考',
+          timeDesc: Localizations.localeOf(context).languageCode == 'en' ? 'Total time' : '总用时',
           costTime: costTime,
         );
       case BotStatusType.hint:
         return _buildStatusRow(
           context,
           svgPath: 'assets/chatbot/thinking_icon.svg',
-          text: hintText ?? '提示',
+          text: hintText ?? (Localizations.localeOf(context).languageCode == 'en' ? 'Hint' : '提示'),
         );
     }
   }
