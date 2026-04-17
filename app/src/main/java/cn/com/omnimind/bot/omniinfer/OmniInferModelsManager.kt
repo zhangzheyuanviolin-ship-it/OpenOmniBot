@@ -74,7 +74,7 @@ object OmniInferModelsManager {
 
     fun handleAppOpen() {
         if (shouldAutoStartOnAppOpen()) {
-            startApiService(getActiveModelId())
+            Thread({ startApiService(getActiveModelId()) }, "OmniInfer-autostart").start()
         }
     }
 
