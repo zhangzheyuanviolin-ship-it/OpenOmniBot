@@ -1152,7 +1152,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
       _autoStickToLatest = true;
       _outerScrollWasUserDriven = false;
     }
-    if (_autoStickToLatest) {
+    if (_autoStickToLatest || _isNearLatest()) {
+      _autoStickToLatest = true;
       _scheduleStickToLatest();
     }
   }

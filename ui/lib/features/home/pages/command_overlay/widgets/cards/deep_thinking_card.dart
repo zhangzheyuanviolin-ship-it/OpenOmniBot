@@ -74,6 +74,8 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
   final ScrollController _scrollController = ScrollController();
   final Set<int> _heldPointerIds = <int>{};
   bool _showGradient = false;
+  bool _gradientUpdateScheduled = false;
+  bool? _pendingGradientVisibility;
   bool _isCollapsed = false;
   bool _autoScrollToLatest = true;
   bool _hasAutoCollapsedForCurrentCompletion = false;
@@ -190,9 +192,30 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     final isAtBottom = distanceToBottom <= _bottomTolerance;
     final shouldShowGradient = hasOverflow && !isAtBottom;
 
-    if (shouldShowGradient != _showGradient) {
-      setState(() => _showGradient = shouldShowGradient);
+    if (shouldShowGradient == _showGradient &&
+        _pendingGradientVisibility == null) {
+      return;
     }
+
+    _pendingGradientVisibility = shouldShowGradient;
+    if (_gradientUpdateScheduled) {
+      return;
+    }
+
+    _gradientUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _gradientUpdateScheduled = false;
+      final nextVisibility = _pendingGradientVisibility;
+      _pendingGradientVisibility = null;
+
+      if (!mounted ||
+          nextVisibility == null ||
+          nextVisibility == _showGradient) {
+        return;
+      }
+
+      setState(() => _showGradient = nextVisibility);
+    });
   }
 
   bool _isInnerNearLatest([ScrollMetrics? metrics]) {
@@ -343,9 +366,6 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
         : resolvedTextColor.withValues(alpha: 0.68);
     final bool hasContent = widget.thinkingText.isNotEmpty;
     final bool canCollapse = widget.isCollapsible && widget.stage == 4;
-    final sizeAnimationDuration = canCollapse
-        ? const Duration(milliseconds: 180)
-        : Duration.zero;
 
     // 根据阶段显示不同的文案
     String hintText;
@@ -425,101 +445,100 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
               letterSpacing: 0.33,
             ),
           );
-    final content = AnimatedSize(
-      duration: sizeAnimationDuration,
-      curve: Curves.easeInOut,
-      alignment: Alignment.topLeft,
-      child:
-          (hasContent && widget.stage != 5 && (!canCollapse || !_isCollapsed))
-          ? Container(
-              width: double.infinity,
-              constraints: BoxConstraints(maxHeight: widget.maxHeight),
-              margin: const EdgeInsets.only(top: 8.0),
-              decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(
-                    color: context.isDarkTheme
-                        ? palette.borderSubtle
-                        : AppColors.text10,
-                    width: 1.0,
-                  ),
+    final contentChild =
+        (hasContent && widget.stage != 5 && (!canCollapse || !_isCollapsed))
+        ? Container(
+            width: double.infinity,
+            constraints: BoxConstraints(maxHeight: widget.maxHeight),
+            margin: const EdgeInsets.only(top: 8.0),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(
+                  color: context.isDarkTheme
+                      ? palette.borderSubtle
+                      : AppColors.text10,
+                  width: 1.0,
                 ),
               ),
-              child: Stack(
-                children: [
-                  Listener(
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: (event) =>
-                        _handleContentPointerDown(event.pointer),
-                    onPointerUp: (event) =>
-                        _handleContentPointerEnd(event.pointer),
-                    onPointerCancel: (event) =>
-                        _handleContentPointerEnd(event.pointer),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onVerticalDragUpdate: (details) {
-                        _handleContentVerticalDragUpdate(
-                          details,
-                          parentScrollPosition,
-                        );
-                      },
-                      child: SingleChildScrollView(
-                        controller: _scrollController,
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 12.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildText(
-                                widget.thinkingText,
-                                resolvedTextColor,
-                              ),
+            ),
+            child: Stack(
+              children: [
+                Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: (event) =>
+                      _handleContentPointerDown(event.pointer),
+                  onPointerUp: (event) =>
+                      _handleContentPointerEnd(event.pointer),
+                  onPointerCancel: (event) =>
+                      _handleContentPointerEnd(event.pointer),
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      return _handleThinkingScrollNotification(
+                        notification,
+                        parentScrollPosition,
+                      );
+                    },
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      physics: const ClampingScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildText(widget.thinkingText, resolvedTextColor),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (_showGradient)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 40,
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.only(
+                            bottomLeft: Radius.circular(4),
+                            bottomRight: Radius.circular(4),
+                          ),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              (context.isDarkTheme
+                                      ? palette.surfacePrimary
+                                      : const Color(0xCCF1F8FF))
+                                  .withValues(alpha: 0.0),
+                              (context.isDarkTheme
+                                      ? palette.surfacePrimary
+                                      : const Color(0xCCF1F8FF))
+                                  .withValues(alpha: 0.8),
+                              context.isDarkTheme
+                                  ? palette.surfacePrimary
+                                  : const Color(0xCCF1F8FF),
                             ],
                           ),
                         ),
                       ),
                     ),
                   ),
-                  if (_showGradient)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: 40,
-                      child: IgnorePointer(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: const BorderRadius.only(
-                              bottomLeft: Radius.circular(4),
-                              bottomRight: Radius.circular(4),
-                            ),
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                (context.isDarkTheme
-                                        ? palette.surfacePrimary
-                                        : const Color(0xCCF1F8FF))
-                                    .withValues(alpha: 0.0),
-                                (context.isDarkTheme
-                                        ? palette.surfacePrimary
-                                        : const Color(0xCCF1F8FF))
-                                    .withValues(alpha: 0.8),
-                                context.isDarkTheme
-                                    ? palette.surfacePrimary
-                                    : const Color(0xCCF1F8FF),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            )
-          : const SizedBox.shrink(),
-    );
+              ],
+            ),
+          )
+        : const SizedBox.shrink();
+    final content = canCollapse
+        ? AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topLeft,
+            child: contentChild,
+          )
+        : contentChild;
     final footer = widget.stage == 4 && widget.isExecutable
         ? Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -578,77 +597,64 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     );
   }
 
-  void _handleContentVerticalDragUpdate(
-    DragUpdateDetails details,
+  bool _handleThinkingScrollNotification(
+    ScrollNotification notification,
     ScrollPosition? parentPosition,
   ) {
-    if (!_scrollController.hasClients) {
-      return;
-    }
-    final pointerDelta = details.primaryDelta ?? details.delta.dy;
-    if (pointerDelta.abs() < 0.5) {
-      return;
-    }
-
-    var remainingPointerDelta = _consumePointerDelta(
-      position: _scrollController.position,
-      pointerDelta: pointerDelta,
-    );
-
-    if (remainingPointerDelta.abs() >= 0.5 &&
-        parentPosition != null &&
-        parentPosition.hasPixels) {
-      final before = parentPosition.pixels;
-      remainingPointerDelta = _consumePointerDelta(
-        position: parentPosition,
-        pointerDelta: remainingPointerDelta,
-      );
-      if ((parentPosition.pixels - before).abs() >= 0.5) {
-        widget.onParentScrollHandoff?.call();
-      }
-    }
-
-    _autoScrollToLatest = _isInnerNearLatest();
     _checkOverflow();
+    final isUserDrivenUpdate =
+        (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null) ||
+        (notification is OverscrollNotification &&
+            notification.dragDetails != null);
+    if (isUserDrivenUpdate) {
+      _autoScrollToLatest = _isInnerNearLatest(notification.metrics);
+    } else if (notification is ScrollEndNotification &&
+        _isInnerNearLatest(notification.metrics)) {
+      _autoScrollToLatest = true;
+    }
+    return _forwardOverscrollToParent(notification, parentPosition);
   }
 
-  double _consumePointerDelta({
-    required ScrollPosition position,
-    required double pointerDelta,
-  }) {
-    final scrollDelta = _pointerDeltaToScrollDelta(
-      pointerDelta,
-      position.axisDirection,
-    );
-    if (scrollDelta.abs() < 0.5) {
-      return 0;
-    }
-
-    final current = position.pixels;
-    final min = position.minScrollExtent;
-    final max = position.maxScrollExtent;
-    final next = (current + scrollDelta).clamp(min, max).toDouble();
-    final consumedScrollDelta = next - current;
-
-    if (consumedScrollDelta.abs() >= 0.5) {
-      position.jumpTo(next);
-    }
-
-    final consumedPointerDelta = _scrollDeltaToPointerDelta(
-      consumedScrollDelta,
-      position.axisDirection,
-    );
-    return pointerDelta - consumedPointerDelta;
-  }
-
-  double _pointerDeltaToScrollDelta(
-    double pointerDelta,
-    AxisDirection axisDirection,
+  bool _forwardOverscrollToParent(
+    ScrollNotification notification,
+    ScrollPosition? parentPosition,
   ) {
-    return switch (axisDirection) {
-      AxisDirection.down || AxisDirection.right => -pointerDelta,
-      AxisDirection.up || AxisDirection.left => pointerDelta,
-    };
+    if (parentPosition == null ||
+        !parentPosition.hasPixels ||
+        notification is! OverscrollNotification ||
+        notification.dragDetails == null) {
+      return false;
+    }
+
+    final overscroll = notification.overscroll;
+    if (overscroll.abs() < 0.5) {
+      return false;
+    }
+
+    final pointerDelta = _scrollDeltaToPointerDelta(
+      overscroll,
+      notification.metrics.axisDirection,
+    );
+    final parentDelta = _pointerDeltaToScrollDelta(
+      pointerDelta,
+      parentPosition.axisDirection,
+    );
+    if (parentDelta.abs() < 0.5) {
+      return false;
+    }
+
+    final current = parentPosition.pixels;
+    final min = parentPosition.minScrollExtent;
+    final max = parentPosition.maxScrollExtent;
+    final next = (current + parentDelta).clamp(min, max).toDouble();
+    if ((next - current).abs() < 0.5) {
+      return false;
+    }
+
+    parentPosition.jumpTo(next);
+    widget.onParentScrollHandoff?.call();
+    return true;
   }
 
   double _scrollDeltaToPointerDelta(
@@ -658,6 +664,16 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     return switch (axisDirection) {
       AxisDirection.down || AxisDirection.right => -scrollDelta,
       AxisDirection.up || AxisDirection.left => scrollDelta,
+    };
+  }
+
+  double _pointerDeltaToScrollDelta(
+    double pointerDelta,
+    AxisDirection axisDirection,
+  ) {
+    return switch (axisDirection) {
+      AxisDirection.down || AxisDirection.right => -pointerDelta,
+      AxisDirection.up || AxisDirection.left => pointerDelta,
     };
   }
 }

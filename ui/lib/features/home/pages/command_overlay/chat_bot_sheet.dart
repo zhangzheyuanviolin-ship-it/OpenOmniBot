@@ -1084,7 +1084,8 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
   }
 
   void _handleStreamingTextLayoutChanged() {
-    if (_autoStickMessageListToLatest) {
+    if (_autoStickMessageListToLatest || _isMessageListNearLatest()) {
+      _autoStickMessageListToLatest = true;
       _scheduleMessageStickToLatest();
     }
   }

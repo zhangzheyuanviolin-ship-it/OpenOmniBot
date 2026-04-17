@@ -281,6 +281,46 @@ void main() {
     expect(ToolCardDetailGestureGate.hasActivePointers, isFalse);
   });
 
+  testWidgets('thinking content keeps ballistic scrolling after fling', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DeepThinkingCard(
+            thinkingText: List.generate(
+              120,
+              (index) => '第 ${index + 1} 行思考内容，验证抬手后的惯性滚动。',
+            ).join('\n'),
+            stage: 4,
+            isLoading: false,
+            isCollapsible: false,
+            maxHeight: 120,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final innerScrollable = find.descendant(
+      of: find.byType(DeepThinkingCard),
+      matching: find.byType(Scrollable),
+    );
+    final innerState = tester.state<ScrollableState>(innerScrollable);
+
+    innerState.position.jumpTo(200);
+    await tester.pump();
+
+    await tester.fling(innerScrollable, const Offset(0, -120), 800);
+    await tester.pump();
+
+    final afterRelease = innerState.position.pixels;
+    expect(innerState.position.activity, isA<BallisticScrollActivity>());
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(innerState.position.pixels, greaterThan(afterRelease));
+  });
+
   testWidgets('completed thinking expands from top after prior bottom scroll', (
     tester,
   ) async {

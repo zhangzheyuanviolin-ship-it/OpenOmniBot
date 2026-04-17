@@ -76,6 +76,76 @@ void main() {
       expect(controller.offset, closeTo(movedOffset, 1));
     },
   );
+
+  testWidgets('list resumes auto-follow after layout returns it to latest', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    var messages = _buildMessagesWithThinkingCard();
+    late StateSetter setState;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, stateSetter) {
+              setState = stateSetter;
+              return SizedBox(
+                width: 400,
+                height: 520,
+                child: ChatMessageList(
+                  messages: messages,
+                  scrollController: controller,
+                  onBeforeTaskExecute: () async {},
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final deepThinkingCard = find.descendant(
+      of: find.byType(ChatMessageList),
+      matching: find.byType(DeepThinkingCard),
+    );
+    await tester.tap(
+      find.descendant(of: deepThinkingCard, matching: find.byType(InkWell)),
+    );
+    await tester.pumpAndSettle();
+
+    final dragStart =
+        tester.getTopLeft(deepThinkingCard) + const Offset(120, 96);
+    await tester.dragFrom(dragStart, const Offset(0, 60));
+    await tester.pumpAndSettle();
+
+    expect(controller.offset, lessThan(controller.position.maxScrollExtent));
+
+    setState(() {
+      messages = <ChatMessageModel>[
+        messages.first,
+        ...messages.skip(1).take(1),
+      ];
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pumpAndSettle();
+
+    expect(controller.offset, closeTo(controller.position.maxScrollExtent, 1));
+
+    setState(() {
+      messages = <ChatMessageModel>[
+        ChatMessageModel.assistantMessage('新的最新消息', id: 'new-latest'),
+        ...messages,
+      ];
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pumpAndSettle();
+
+    expect(controller.offset, closeTo(controller.position.maxScrollExtent, 1));
+  });
 }
 
 Widget _buildChatMessageListHarness({
