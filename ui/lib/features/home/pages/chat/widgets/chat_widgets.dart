@@ -1136,6 +1136,7 @@ class ChatMessageList extends StatefulWidget {
 class _ChatMessageListState extends State<ChatMessageList> {
   bool _stickToBottomScheduled = false;
   bool _autoStickToLatest = true;
+  bool _outerScrollWasUserDriven = false;
   static const double _latestEdgeTolerance = 48.0;
 
   @override
@@ -1149,6 +1150,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.scrollController != widget.scrollController) {
       _autoStickToLatest = true;
+      _outerScrollWasUserDriven = false;
     }
     if (_autoStickToLatest || _isNearLatest()) {
       _autoStickToLatest = true;
@@ -1197,6 +1199,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
         }
         return;
       }
+      if (!_autoStickToLatest) {
+        return;
+      }
       final position = widget.scrollController.position;
       final target = _latestOffset(position);
       if ((target - position.pixels).abs() < 0.5) {
@@ -1212,6 +1217,11 @@ class _ChatMessageListState extends State<ChatMessageList> {
     }
   }
 
+  void _handleParentScrollHandoff() {
+    _autoStickToLatest = false;
+    _outerScrollWasUserDriven = false;
+  }
+
   bool _handleListScrollNotification(ScrollNotification notification) {
     if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
       return false;
@@ -1222,12 +1232,15 @@ class _ChatMessageListState extends State<ChatMessageList> {
         (notification is OverscrollNotification &&
             notification.dragDetails != null);
     if (isUserDrivenUpdate) {
+      _outerScrollWasUserDriven = true;
       _autoStickToLatest = _isNearLatest(notification.metrics);
       return false;
     }
-    if (notification is ScrollEndNotification &&
-        _isNearLatest(notification.metrics)) {
-      _autoStickToLatest = true;
+    if (notification is ScrollEndNotification) {
+      if (_outerScrollWasUserDriven && _isNearLatest(notification.metrics)) {
+        _autoStickToLatest = true;
+      }
+      _outerScrollWasUserDriven = false;
     }
     return false;
   }
@@ -1305,6 +1318,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
                     onCancelTask: widget.onCancelTask,
                     enableThinkingCollapse: true,
                     parentScrollController: widget.scrollController,
+                    onParentScrollHandoff: _handleParentScrollHandoff,
                     onRequestAuthorize: widget.onRequestAuthorize,
                     onUserMessageLongPressStart:
                         widget.onUserMessageLongPressStart,

@@ -76,6 +76,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
   final Map<String, String> _currentAiMessages = {};
   bool _autoStickMessageListToLatest = true;
   bool _messageStickToLatestScheduled = false;
+  bool _messageListScrollWasUserDriven = false;
   static const double _messageLatestEdgeTolerance = 48.0;
 
   // 流式思考内容相关状态
@@ -1070,6 +1071,9 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       if (!mounted || !_messageScrollController.hasClients) {
         return;
       }
+      if (!_autoStickMessageListToLatest) {
+        return;
+      }
       final position = _messageScrollController.position;
       final target = _messageLatestOffset(position);
       if ((target - position.pixels).abs() < 0.5) {
@@ -1080,9 +1084,15 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
   }
 
   void _handleStreamingTextLayoutChanged() {
-    if (_autoStickMessageListToLatest) {
+    if (_autoStickMessageListToLatest || _isMessageListNearLatest()) {
+      _autoStickMessageListToLatest = true;
       _scheduleMessageStickToLatest();
     }
+  }
+
+  void _handleParentScrollHandoff() {
+    _autoStickMessageListToLatest = false;
+    _messageListScrollWasUserDriven = false;
   }
 
   void _handleMessageScrollNotification(ScrollNotification notification) {
@@ -1095,14 +1105,18 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         (notification is OverscrollNotification &&
             notification.dragDetails != null);
     if (isUserDrivenUpdate) {
+      _messageListScrollWasUserDriven = true;
       _autoStickMessageListToLatest = _isMessageListNearLatest(
         notification.metrics,
       );
       return;
     }
-    if (notification is ScrollEndNotification &&
-        _isMessageListNearLatest(notification.metrics)) {
-      _autoStickMessageListToLatest = true;
+    if (notification is ScrollEndNotification) {
+      if (_messageListScrollWasUserDriven &&
+          _isMessageListNearLatest(notification.metrics)) {
+        _autoStickMessageListToLatest = true;
+      }
+      _messageListScrollWasUserDriven = false;
     }
   }
 
@@ -1942,6 +1956,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
               onBeforeTaskExecute: _handleBeforeTaskExecute,
               onCancelTask: _onCancelTaskFromCard,
               parentScrollController: _messageScrollController,
+              onParentScrollHandoff: _handleParentScrollHandoff,
               onStreamingTextLayoutChanged: _handleStreamingTextLayoutChanged,
             ),
           );

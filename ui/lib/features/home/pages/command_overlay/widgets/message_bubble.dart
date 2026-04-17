@@ -34,6 +34,7 @@ class MessageBubble extends StatelessWidget {
 
   /// 外层消息列表滚动控制器，用于卡片内嵌滚动与父列表联动
   final ScrollController? parentScrollController;
+  final VoidCallback? onParentScrollHandoff;
   final OnRequestAuthorize? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
@@ -48,6 +49,7 @@ class MessageBubble extends StatelessWidget {
     this.onCancelTask,
     this.enableThinkingCollapse = false,
     this.parentScrollController,
+    this.onParentScrollHandoff,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
     this.onStreamingTextLayoutChanged,
@@ -644,6 +646,7 @@ class MessageBubble extends StatelessWidget {
         onCancelTask: onCancelTask,
         enableThinkingCollapse: enableThinkingCollapse,
         parentScrollController: parentScrollController,
+        onParentScrollHandoff: onParentScrollHandoff,
         appearanceConfig: appearanceConfig,
         visualProfile: visualProfile,
       ),
