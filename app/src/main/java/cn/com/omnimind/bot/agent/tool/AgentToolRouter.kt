@@ -1792,6 +1792,10 @@ class AgentToolRouter(
                         if (goal.isEmpty()) {
                             throw IllegalArgumentException("vlm 定时任务缺少 goal")
                         }
+                        val missing = checkExecutionPrerequisites()
+                        if (missing.isNotEmpty()) {
+                            return permissionRequiredResult(callback, missing)
+                        }
                     }
                     if (targetKind == "subagent") {
                         val prompt = payload["subagentPrompt"]?.toString()?.trim().orEmpty()
