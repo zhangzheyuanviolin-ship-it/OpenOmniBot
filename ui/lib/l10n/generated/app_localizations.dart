@@ -1088,18 +1088,6 @@ abstract class AppLocalizations {
   /// **'技能仓库'**
   String get skillStoreTitle;
 
-  /// No description provided for @skillSearchHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'搜索技能名称或描述'**
-  String get skillSearchHint;
-
-  /// No description provided for @skillSearchEmpty.
-  ///
-  /// In zh, this message translates to:
-  /// **'未找到匹配的技能'**
-  String get skillSearchEmpty;
-
   /// No description provided for @skillBuiltin.
   ///
   /// In zh, this message translates to:

@@ -222,7 +222,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
         focusNode: _searchFocusNode,
         isSearching: false,
         textColor: context.isDarkTheme ? palette.textPrimary : AppColors.text,
-        hintText: context.l10n.skillSearchHint,
+        hintText: context.trLegacy('搜索技能名称或描述'),
       ),
       const SizedBox(height: 12),
     ];
@@ -456,7 +456,7 @@ class _SkillStorePageState extends State<SkillStorePage> {
           ),
           const SizedBox(height: 12),
           Text(
-            context.l10n.skillSearchEmpty,
+            context.trLegacy('未找到匹配的技能'),
             style: TextStyle(
               fontSize: 16,
               color: context.isDarkTheme

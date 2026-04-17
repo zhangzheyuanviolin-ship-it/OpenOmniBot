@@ -559,12 +559,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get skillStoreTitle => 'Skill Store';
 
   @override
-  String get skillSearchHint => 'Search skills by name or description';
-
-  @override
-  String get skillSearchEmpty => 'No matching skills found';
-
-  @override
   String get skillBuiltin => 'Built-in';
 
   @override
