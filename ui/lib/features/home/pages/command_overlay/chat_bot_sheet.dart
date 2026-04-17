@@ -12,6 +12,7 @@ import 'package:ui/features/home/pages/command_overlay/services/chat_service.dar
 import 'package:ui/features/home/pages/command_overlay/constants/messages.dart';
 import 'package:ui/features/home/pages/command_overlay/utils/deep_thinking_parser.dart';
 import 'package:ui/services/storage_service.dart';
+import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/services/screen_dialog_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
@@ -431,9 +432,11 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
 
   Future<void> _setOpenClawEnabled(bool enabled) async {
     if (enabled && _openClawBaseUrl.trim().isEmpty) {
-      AppToast.show(LegacyTextLocalizer.isEnglish
-          ? 'Please configure OpenClaw first using /openclaw'
-          : '请先使用 /openclaw 配置 OpenClaw');
+      AppToast.show(
+        LegacyTextLocalizer.isEnglish
+            ? 'Please configure OpenClaw first using /openclaw'
+            : '请先使用 /openclaw 配置 OpenClaw',
+      );
       _showOpenClawCommandPanel(expand: true);
       return;
     }
@@ -546,26 +549,32 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     if (!trimmed.startsWith('/')) return false;
 
     if (!trimmed.startsWith('/openclaw')) {
-      _showSnackBar(LegacyTextLocalizer.isEnglish
-          ? 'Unknown command, please use /openclaw'
-          : '未知指令，请使用 /openclaw');
+      _showSnackBar(
+        LegacyTextLocalizer.isEnglish
+            ? 'Unknown command, please use /openclaw'
+            : '未知指令，请使用 /openclaw',
+      );
       return true;
     }
 
     final parts = trimmed.split(RegExp(r'\\s+'));
     if (parts.length < 2) {
-      _showSnackBar(LegacyTextLocalizer.isEnglish
-          ? 'Format: /openclaw <baseurl> --token <token> <userid>'
-          : '格式: /openclaw <baseurl> --token <token> <userid>');
+      _showSnackBar(
+        LegacyTextLocalizer.isEnglish
+            ? 'Format: /openclaw <baseurl> --token <token> <userid>'
+            : '格式: /openclaw <baseurl> --token <token> <userid>',
+      );
       return true;
     }
 
     final baseUrl = parts[1];
     final tokenIndex = parts.indexOf('--token');
     if (tokenIndex == -1) {
-      _showSnackBar(LegacyTextLocalizer.isEnglish
-          ? 'Please include --token explicitly in the command'
-          : '请在命令中显式包含 --token');
+      _showSnackBar(
+        LegacyTextLocalizer.isEnglish
+            ? 'Please include --token explicitly in the command'
+            : '请在命令中显式包含 --token',
+      );
       return true;
     }
     String token = '';
@@ -581,9 +590,11 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     }
 
     if (baseUrl.trim().isEmpty) {
-      _showSnackBar(LegacyTextLocalizer.isEnglish
-          ? 'OpenClaw baseurl cannot be empty'
-          : 'OpenClaw baseurl 不能为空');
+      _showSnackBar(
+        LegacyTextLocalizer.isEnglish
+            ? 'OpenClaw baseurl cannot be empty'
+            : 'OpenClaw baseurl 不能为空',
+      );
       return true;
     }
 
@@ -596,9 +607,11 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     _messageController.clear();
     _inputFocusNode.unfocus();
     _hideSlashCommandPanel();
-    _showSnackBar(LegacyTextLocalizer.isEnglish
-        ? 'OpenClaw configured and enabled'
-        : 'OpenClaw 已配置并启用');
+    _showSnackBar(
+      LegacyTextLocalizer.isEnglish
+          ? 'OpenClaw configured and enabled'
+          : 'OpenClaw 已配置并启用',
+    );
     return true;
   }
 
@@ -626,9 +639,9 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       if (message.user == 1) {
         final text = message.content?['text'] as String? ?? '';
         if (text.isNotEmpty) {
-          buffer.write(LegacyTextLocalizer.isEnglish
-              ? 'User: $text\n'
-              : '用户: $text\n');
+          buffer.write(
+            LegacyTextLocalizer.isEnglish ? 'User: $text\n' : '用户: $text\n',
+          );
         }
       }
       // else if (message.user == 2) {
@@ -655,13 +668,13 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
 
       final firstUserMessage = _messages.firstWhere(
         (m) => m.user == 1,
-        orElse: () => ChatMessageModel.userMessage(LegacyTextLocalizer.isEnglish
-            ? "New conversation"
-            : "新对话"),
+        orElse: () => ChatMessageModel.userMessage(
+          LegacyTextLocalizer.isEnglish ? "New conversation" : "新对话",
+        ),
       );
-      final userText = firstUserMessage.text ?? (LegacyTextLocalizer.isEnglish
-          ? 'New conversation'
-          : '新对话');
+      final userText =
+          firstUserMessage.text ??
+          (LegacyTextLocalizer.isEnglish ? 'New conversation' : '新对话');
       final title = userText.length > 20
           ? '${userText.substring(0, 20)}...'
           : userText;
@@ -847,9 +860,12 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
           id: textMessageId,
           type: 1, // 文本类型
           user: 2, // AI消息
-          content: {'text': LegacyTextLocalizer.isEnglish
-              ? 'This is your scheduled task about to be executed'
-              : '这是您即将执行的预约任务', 'id': textMessageId},
+          content: {
+            'text': LegacyTextLocalizer.isEnglish
+                ? 'This is your scheduled task about to be executed'
+                : '这是您即将执行的预约任务',
+            'id': textMessageId,
+          },
         ),
       );
       _messages.insert(
@@ -1027,6 +1043,15 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         prefillTokensPerSecond: prefillTokensPerSecond,
         decodeTokensPerSecond: decodeTokensPerSecond,
       );
+      if (!isError && !isSummarizing && messageText.trim().isNotEmpty) {
+        unawaited(
+          VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
+            messageId: taskId,
+            text: messageText,
+            isFinal: false,
+          ),
+        );
+      }
     }
   }
 
@@ -1210,6 +1235,14 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         _messages[index] = existing.copyWith(content: existing.content);
       });
     }
+    if (!isErrorMessage && messageText.trim().isNotEmpty) {
+      unawaited(
+        VoicePlaybackCoordinator.instance.onAssistantMessageCompleted(
+          messageId: taskId,
+          text: messageText,
+        ),
+      );
+    }
     _currentAiMessages.remove(taskId);
     await _saveConversationToDb();
   }
@@ -1388,9 +1421,12 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
           id: taskID,
           type: 1,
           user: 2,
-          content: {'text': LegacyTextLocalizer.isEnglish
-              ? 'Omnibot is busy right now. Please try again in a moment.'
-              : '小万忙不过来了，等会儿再试试吧', 'id': taskID},
+          content: {
+            'text': LegacyTextLocalizer.isEnglish
+                ? 'Omnibot is busy right now. Please try again in a moment.'
+                : '小万忙不过来了，等会儿再试试吧',
+            'id': taskID,
+          },
           isError: true,
         ),
       );
@@ -1517,9 +1553,11 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     if (!handled &&
         mounted &&
         _currentDispatchTaskId == messageIds.aiMessageId) {
-      handleAgentError(LegacyTextLocalizer.isEnglish
-          ? 'Failed to start unified Agent. Please check model provider and scene model config.'
-          : '统一 Agent 启动失败，请检查模型提供商与场景模型配置。');
+      handleAgentError(
+        LegacyTextLocalizer.isEnglish
+            ? 'Failed to start unified Agent. Please check model provider and scene model config.'
+            : '统一 Agent 启动失败，请检查模型提供商与场景模型配置。',
+      );
     }
   }
 
@@ -1649,9 +1687,11 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
 
   void _sendChatMessage(String aiMessageId) {
     if (!_openClawEnabled) {
-      handleAgentError(LegacyTextLocalizer.isEnglish
-          ? 'Unified Agent is enabled. The legacy chat path has been removed. Please check config and try again.'
-          : '统一 Agent 已启用，旧聊天链路已移除，请检查配置后重试。');
+      handleAgentError(
+        LegacyTextLocalizer.isEnglish
+            ? 'Unified Agent is enabled. The legacy chat path has been removed. Please check config and try again.'
+            : '统一 Agent 已启用，旧聊天链路已移除，请检查配置后重试。',
+      );
       return;
     }
     final history = _buildOpenClawHistory();
@@ -1680,9 +1720,12 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
             id: errorId,
             type: 1,
             user: 2,
-            content: {'text': LegacyTextLocalizer.isEnglish
-                ? 'Sorry, failed to send message: $error'
-                : '抱歉，发送消息失败：$error', 'id': errorId},
+            content: {
+              'text': LegacyTextLocalizer.isEnglish
+                  ? 'Sorry, failed to send message: $error'
+                  : '抱歉，发送消息失败：$error',
+              'id': errorId,
+            },
           ),
         );
       });
@@ -2162,7 +2205,11 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
                       borderRadius: BorderRadius.circular(10),
                       child: Row(
                         children: [
-                          const Icon(Icons.link, size: 16, color: Color(0xFF2563EB)),
+                          const Icon(
+                            Icons.link,
+                            size: 16,
+                            color: Color(0xFF2563EB),
+                          ),
                           const SizedBox(width: 8),
                           const Expanded(
                             child: Text(
@@ -2175,9 +2222,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
                             ),
                           ),
                           Text(
-                            LegacyTextLocalizer.isEnglish
-                                ? 'Config'
-                                : '配置',
+                            LegacyTextLocalizer.isEnglish ? 'Config' : '配置',
                             style: const TextStyle(
                               fontSize: 12,
                               color: Color(0xFF6B7280),
