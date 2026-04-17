@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail_gesture_gate.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import './bot_status.dart';
@@ -71,6 +72,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
   Timer? _timer;
   int _elapsedSeconds = 0;
   final ScrollController _scrollController = ScrollController();
+  final Set<int> _heldPointerIds = <int>{};
   bool _showGradient = false;
   bool _isCollapsed = false;
   bool _autoScrollToLatest = true;
@@ -274,8 +276,31 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
   @override
   void dispose() {
     _timer?.cancel();
+    _releaseHeldPointers();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleContentPointerDown(int pointer) {
+    if (_heldPointerIds.add(pointer)) {
+      ToolCardDetailGestureGate.holdPointer(pointer);
+    }
+  }
+
+  void _handleContentPointerEnd(int pointer) {
+    if (_heldPointerIds.remove(pointer)) {
+      ToolCardDetailGestureGate.releasePointer(pointer);
+    }
+  }
+
+  void _releaseHeldPointers() {
+    if (_heldPointerIds.isEmpty) {
+      return;
+    }
+    for (final pointer in _heldPointerIds.toList(growable: false)) {
+      ToolCardDetailGestureGate.releasePointer(pointer);
+    }
+    _heldPointerIds.clear();
   }
 
   String _formatTime(int seconds) {
@@ -422,24 +447,36 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
               ),
               child: Stack(
                 children: [
-                  GestureDetector(
+                  Listener(
                     behavior: HitTestBehavior.opaque,
-                    onVerticalDragUpdate: (details) {
-                      _handleContentVerticalDragUpdate(
-                        details,
-                        parentScrollPosition,
-                      );
-                    },
-                    child: SingleChildScrollView(
-                      controller: _scrollController,
-                      physics: const NeverScrollableScrollPhysics(),
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildText(widget.thinkingText, resolvedTextColor),
-                          ],
+                    onPointerDown: (event) =>
+                        _handleContentPointerDown(event.pointer),
+                    onPointerUp: (event) =>
+                        _handleContentPointerEnd(event.pointer),
+                    onPointerCancel: (event) =>
+                        _handleContentPointerEnd(event.pointer),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragUpdate: (details) {
+                        _handleContentVerticalDragUpdate(
+                          details,
+                          parentScrollPosition,
+                        );
+                      },
+                      child: SingleChildScrollView(
+                        controller: _scrollController,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildText(
+                                widget.thinkingText,
+                                resolvedTextColor,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail_gesture_gate.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/card_widget_factory.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/deep_thinking_card.dart';
 
@@ -243,6 +244,41 @@ void main() {
 
     expect(parentController.offset, lessThan(before));
     expect(parentController.offset, greaterThan(0));
+  });
+
+  testWidgets('thinking content drag is isolated from page-level listeners', (
+    tester,
+  ) async {
+    final parentController = ScrollController();
+
+    expect(ToolCardDetailGestureGate.hasActivePointers, isFalse);
+
+    await tester.pumpWidget(
+      _buildNestedThinkingHarness(parentController: parentController),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(InkWell));
+    await tester.pumpAndSettle();
+
+    final innerScrollable = find.descendant(
+      of: find.byType(DeepThinkingCard),
+      matching: find.byType(Scrollable),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(innerScrollable),
+    );
+    await tester.pump();
+
+    expect(ToolCardDetailGestureGate.hasActivePointers, isTrue);
+
+    await gesture.moveBy(const Offset(0, -40));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(ToolCardDetailGestureGate.hasActivePointers, isFalse);
   });
 
   testWidgets('completed thinking expands from top after prior bottom scroll', (
