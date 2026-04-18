@@ -18,6 +18,7 @@ import cn.com.omnimind.baselib.util.OmniLog
 import com.google.gson.JsonParser
 import java.io.File
 import java.util.UUID
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -235,7 +236,7 @@ class DataSyncManager private constructor(
                 step = "handshake",
                 message = "开始同步"
             )
-            onProgress(progressFor("handshake", "正在建立安全连接…", 0, 100))
+            onProgress(progressFor("handshake", "正在建立安全连接…", 0, 0, 5))
             val handshake = apiClient.handshake(config)
             val existingCheckpoint = getCheckpoint()
             val checkpoint = existingCheckpoint.copy(
@@ -243,6 +244,7 @@ class DataSyncManager private constructor(
                 updatedAt = System.currentTimeMillis()
             )
             database.syncCheckpointDao().upsert(checkpoint)
+            onProgress(progressFor("handshake", "安全连接已建立", 1, 1, 10))
 
             val shouldPullFirst = reason == "pairing_import" || (!hasMaterialLocalState() && checkpoint.remoteCursor > 0)
             if (!shouldPullFirst) {
@@ -309,12 +311,29 @@ class DataSyncManager private constructor(
         onProgress: suspend (DataSyncProgress) -> Unit
     ) {
         var cursor = getCheckpoint().remoteCursor
+        var pulledPages = 0
+        var pulledChanges = 0
         while (true) {
-            val progress = progressFor("pull", "正在拉取远端变更…", 0, 100)
+            val progress = progressFor(
+                "pull",
+                if (pulledChanges > 0) "正在继续接收远端变更…" else "正在拉取远端变更…",
+                pulledChanges,
+                if (pulledChanges > 0) pulledChanges else 0,
+                pullPercent(pulledPages, pulledChanges)
+            )
             updateStatus(config, DataSyncState.SYNCING, "pull", progress.detail, progress)
             onProgress(progress)
             val pulled = apiClient.pullChanges(config, cursor = cursor, limit = 200)
             if (pulled.changes.isEmpty()) {
+                val finished = progressFor(
+                    "pull",
+                    if (pulledChanges > 0) "已接收并应用 $pulledChanges 条远端变更" else "远端没有新的变更",
+                    pulledChanges,
+                    if (pulledChanges > 0) pulledChanges else 0,
+                    95
+                )
+                updateStatus(config, DataSyncState.SYNCING, "pull", finished.detail, finished)
+                onProgress(finished)
                 if (pulled.nextCursor > cursor) {
                     database.syncCheckpointDao().upsert(
                         getCheckpoint().copy(
@@ -326,6 +345,17 @@ class DataSyncManager private constructor(
                 return
             }
             applyRemoteChanges(config, pulled.changes)
+            pulledPages += 1
+            pulledChanges += pulled.changes.size
+            val applied = progressFor(
+                "pull",
+                "已接收并应用 $pulledChanges 条远端变更",
+                pulledChanges,
+                pulledChanges.coerceAtLeast(1),
+                pullPercent(pulledPages, pulledChanges)
+            )
+            updateStatus(config, DataSyncState.SYNCING, "pull", applied.detail, applied)
+            onProgress(applied)
             val metadataWatermark = currentMetadataWatermark()
             cursor = maxOf(cursor, pulled.nextCursor, pulled.changes.maxOfOrNull { it.cursor } ?: cursor)
             database.syncCheckpointDao().upsert(
@@ -342,10 +372,18 @@ class DataSyncManager private constructor(
         config: DataSyncConfig,
         onProgress: suspend (DataSyncProgress) -> Unit
     ) {
+        val total = database.syncOutboxDao().countAll().coerceAtLeast(1)
+        var uploaded = 0
         while (true) {
             val ready = database.syncOutboxDao().listReady(System.currentTimeMillis(), 50)
             if (ready.isEmpty()) return
-            val progress = progressFor("push", "正在上传本地变更…", 0, ready.size)
+            val progress = progressFor(
+                "push",
+                "正在上传本地变更…",
+                uploaded,
+                total,
+                rangedPercent(uploaded, total, 40, 72)
+            )
             updateStatus(config, DataSyncState.SYNCING, "push", progress.detail, progress)
             onProgress(progress)
             val operations = ready.map { entry ->
@@ -362,11 +400,22 @@ class DataSyncManager private constructor(
             runCatching {
                 apiClient.pushChanges(config, operations)
             }.onSuccess { response ->
+                val acknowledged = ready.count { entry -> response.acknowledgedOpIds.contains(entry.opId) }
                 ready.forEach { entry ->
                     if (response.acknowledgedOpIds.contains(entry.opId)) {
                         database.syncOutboxDao().deleteById(entry.id)
                     }
                 }
+                uploaded = (uploaded + acknowledged).coerceAtMost(total)
+                val uploadedProgress = progressFor(
+                    "push",
+                    "已上传 $uploaded/$total 条本地变更",
+                    uploaded,
+                    total,
+                    rangedPercent(uploaded, total, 40, 72)
+                )
+                updateStatus(config, DataSyncState.SYNCING, "push", uploadedProgress.detail, uploadedProgress)
+                onProgress(uploadedProgress)
                 if (response.cursor > 0) {
                     database.syncCheckpointDao().upsert(
                         getCheckpoint().copy(
@@ -397,12 +446,31 @@ class DataSyncManager private constructor(
         reason: String,
         onProgress: suspend (DataSyncProgress) -> Unit = {}
     ) {
-        val progress = progressFor("snapshot", "正在分析本地快照差异…", 0, 100)
+        val progress = progressFor("snapshot", "正在分析本地快照差异…", 0, 3, 12)
         updateStatus(config, DataSyncState.SYNCING, "snapshot", progress.detail, progress)
         onProgress(progress)
         collectDatabaseChanges(checkpoint.lastMetadataSyncAt)
+        val databaseProgress = progressFor("snapshot", "聊天与记录差异已整理", 1, 3, 22)
+        updateStatus(config, DataSyncState.SYNCING, "snapshot", databaseProgress.detail, databaseProgress)
+        onProgress(databaseProgress)
         collectSettingsChange(checkpoint)
-        collectFileChanges(config)
+        val settingsProgress = progressFor("snapshot", "跨设备设置差异已整理", 2, 3, 30)
+        updateStatus(config, DataSyncState.SYNCING, "snapshot", settingsProgress.detail, settingsProgress)
+        onProgress(settingsProgress)
+        collectFileChanges(config) { processed, total, detail ->
+            val fileProgress = progressFor(
+                "snapshot",
+                detail,
+                processed,
+                total.coerceAtLeast(1),
+                rangedPercent(processed, total.coerceAtLeast(1), 30, 40)
+            )
+            updateStatus(config, DataSyncState.SYNCING, "snapshot", fileProgress.detail, fileProgress)
+            onProgress(fileProgress)
+        }
+        val snapshotReady = progressFor("snapshot", "本地差异已整理完成", 3, 3, 40)
+        updateStatus(config, DataSyncState.SYNCING, "snapshot", snapshotReady.detail, snapshotReady)
+        onProgress(snapshotReady)
         val watermark = currentMetadataWatermark()
         val latestCheckpoint = getCheckpoint()
         database.syncCheckpointDao().upsert(
@@ -445,12 +513,25 @@ class DataSyncManager private constructor(
         )
     }
 
-    private suspend fun collectFileChanges(config: DataSyncConfig) {
+    private suspend fun collectFileChanges(
+        config: DataSyncConfig,
+        onProgress: suspend (processed: Int, total: Int, detail: String) -> Unit = { _, _, _ -> }
+    ) {
         val currentFiles = fileScanner.scanManagedFiles()
         val existing = database.syncFileIndexDao().getAll().associateBy { it.relativePath }
+        val deletedCandidates = existing.values
+            .filter { currentFiles.none { file -> file.relativePath == it.relativePath } && it.status != "deleted" }
+        val totalOperations = (currentFiles.size + deletedCandidates.size).coerceAtLeast(1)
+        var processedOperations = 0
         currentFiles.forEach { file ->
             val current = existing[file.relativePath]
             if (current?.contentHash == file.contentHash && current.status != "deleted") {
+                processedOperations += 1
+                onProgress(
+                    processedOperations,
+                    totalOperations,
+                    "正在检查受管文件… $processedOperations/$totalOperations"
+                )
                 return@forEach
             }
             val objectKey = objectKeyForHash(config.namespace, file.contentHash)
@@ -482,11 +563,14 @@ class DataSyncManager private constructor(
                     "deleted" to false
                 )
             )
+            processedOperations += 1
+            onProgress(
+                processedOperations,
+                totalOperations,
+                "正在处理文件变更… $processedOperations/$totalOperations"
+            )
         }
-        val currentPaths = currentFiles.mapTo(mutableSetOf()) { it.relativePath }
-        existing.values
-            .filter { !currentPaths.contains(it.relativePath) && it.status != "deleted" }
-            .forEach { previous ->
+        deletedCandidates.forEach { previous ->
                 database.syncFileIndexDao().insert(
                     previous.copy(status = "deleted", updatedAt = System.currentTimeMillis())
                 )
@@ -500,6 +584,12 @@ class DataSyncManager private constructor(
                         "objectKey" to previous.objectKey,
                         "deleted" to true
                     )
+                )
+                processedOperations += 1
+                onProgress(
+                    processedOperations,
+                    totalOperations,
+                    "正在记录文件删除… $processedOperations/$totalOperations"
                 )
             }
     }
@@ -998,9 +1088,15 @@ class DataSyncManager private constructor(
         statusStore.write(status)
     }
 
-    private fun progressFor(stage: String, detail: String, completed: Int, total: Int): DataSyncProgress {
+    private fun progressFor(
+        stage: String,
+        detail: String,
+        completed: Int,
+        total: Int,
+        percentOverride: Int? = null
+    ): DataSyncProgress {
         val safeTotal = if (total <= 0) 100 else total
-        val percent = ((completed.toDouble() / safeTotal.toDouble()) * 100.0).toInt()
+        val percent = percentOverride ?: ((completed.toDouble() / safeTotal.toDouble()) * 100.0).toInt()
             .coerceIn(0, 100)
         return DataSyncProgress(
             stage = stage,
@@ -1010,6 +1106,19 @@ class DataSyncManager private constructor(
             percent = percent,
             updatedAt = System.currentTimeMillis()
         )
+    }
+
+    private fun rangedPercent(completed: Int, total: Int, start: Int, end: Int): Int {
+        if (end <= start) return start.coerceIn(0, 100)
+        val safeTotal = total.coerceAtLeast(1)
+        val ratio = completed.coerceIn(0, safeTotal).toDouble() / safeTotal.toDouble()
+        return (start + ((end - start) * ratio)).roundToInt().coerceIn(0, 100)
+    }
+
+    private fun pullPercent(pages: Int, changes: Int): Int {
+        val pagesContribution = (pages * 7).coerceAtMost(18)
+        val changeContribution = (changes / 50).coerceAtMost(5)
+        return (72 + pagesContribution + changeContribution).coerceAtMost(95)
     }
 
     private fun retryDelayMillis(attempts: Int): Long {

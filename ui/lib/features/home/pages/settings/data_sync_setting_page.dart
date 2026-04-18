@@ -57,6 +57,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    hideProgressToast();
     _supabaseUrlController.dispose();
     _anonKeyController.dispose();
     _namespaceController.dispose();
@@ -88,6 +89,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
         _loading = false;
       });
       _ensurePolling(status);
+      _syncProgressToastForStatus(status);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -186,7 +188,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
         _status = status;
       });
       _ensurePolling(status);
-      showToast(_t('已开始同步', 'Sync started'));
+      _syncProgressToastForStatus(status, forceShow: true);
     });
   }
 
@@ -385,10 +387,15 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     try {
       final status = await DataSyncService.getStatus();
       if (!mounted) return;
+      final previousStatus = _status;
       setState(() {
         _status = status;
       });
       _ensurePolling(status);
+      _syncProgressToastForStatus(
+        status,
+        completedFromSync: previousStatus.isSyncing && !status.isSyncing,
+      );
     } catch (_) {}
   }
 
@@ -401,6 +408,51 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     _pollTimer ??= Timer.periodic(const Duration(seconds: 2), (_) {
       _refreshStatus();
     });
+  }
+
+  void _syncProgressToastForStatus(
+    DataSyncStatus status, {
+    bool forceShow = false,
+    bool completedFromSync = false,
+  }) {
+    if (status.isSyncing || forceShow) {
+      showProgressToast(
+        title: forceShow
+            ? _t('已开始同步', 'Sync started')
+            : _t('同步进行中', 'Sync in progress'),
+        message: _progressToastMessage(status),
+        progress: status.progress.percent.clamp(0, 100),
+        indeterminate: status.progress.percent <= 0 && status.progress.detail.isEmpty,
+      );
+      return;
+    }
+
+    hideProgressToast();
+    if (!completedFromSync) {
+      return;
+    }
+    if (status.state == 'success') {
+      showToast(_t('同步完成', 'Sync completed'), type: ToastType.success);
+    } else if (status.state == 'error') {
+      showToast(
+        status.lastError.isNotEmpty
+            ? status.lastError
+            : _t('同步失败', 'Sync failed'),
+        type: ToastType.error,
+      );
+    }
+  }
+
+  String _progressToastMessage(DataSyncStatus status) {
+    final detail = status.progress.detail.trim();
+    if (detail.isNotEmpty) {
+      return detail;
+    }
+    final message = status.lastMessage.trim();
+    if (message.isNotEmpty) {
+      return message;
+    }
+    return _t('正在安全同步聊天、workspace 与附件', 'Securely syncing chats, workspace, and attachments');
   }
 
   Future<void> _guardBusy(Future<void> Function() action) async {

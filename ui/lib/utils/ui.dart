@@ -77,6 +77,8 @@ class Loading {
 class AppToast {
   static OverlayEntry? _entry;
   static Timer? _timer;
+  static OverlayEntry? _progressEntry;
+  static ValueNotifier<_ProgressToastData>? _progressNotifier;
 
   /// 展示一个 Toast。
   ///
@@ -171,6 +173,66 @@ class AppToast {
     position: position,
   );
 
+  static void showProgress({
+    required String title,
+    String? message,
+    int progress = 0,
+    ToastType type = ToastType.info,
+    ToastPosition position = ToastPosition.top,
+    bool indeterminate = false,
+  }) {
+    final nav = GoRouterManager.rootNavigatorKey.currentState;
+    if (nav == null || nav.overlay == null) {
+      debugPrint('AppToast: navigator is null, skip progress toast');
+      return;
+    }
+
+    final payload = _ProgressToastData(
+      title: LegacyTextLocalizer.localize(title),
+      message: LegacyTextLocalizer.localize(message ?? ''),
+      progress: progress.clamp(0, 100),
+      type: type,
+      position: position,
+      indeterminate: indeterminate,
+    );
+
+    if (_progressEntry != null && _progressNotifier != null) {
+      _progressNotifier!.value = payload;
+      return;
+    }
+
+    final alignment = _alignmentFor(position);
+    final margin = _marginFor(position);
+    _progressNotifier = ValueNotifier<_ProgressToastData>(payload);
+    _progressEntry = OverlayEntry(
+      builder: (context) => SafeArea(
+        child: IgnorePointer(
+          child: _ProgressToastHost(
+            notifier: _progressNotifier!,
+            alignment: alignment,
+            margin: margin,
+          ),
+        ),
+      ),
+    );
+    nav.overlay!.insert(_progressEntry!);
+  }
+
+  static void hideProgress() {
+    _progressEntry?.remove();
+    _progressEntry = null;
+    _progressNotifier?.dispose();
+    _progressNotifier = null;
+  }
+
+  static void dismiss() {
+    _timer?.cancel();
+    _timer = null;
+    _entry?.remove();
+    _entry = null;
+    hideProgress();
+  }
+
   static Alignment _alignmentFor(ToastPosition position) {
     switch (position) {
       case ToastPosition.top:
@@ -199,6 +261,207 @@ enum ToastType { info, success, warning, error }
 enum ToastPosition { top, center, bottom }
 
 enum DialogType { confirm, alert, input, select, loading }
+
+class _ProgressToastData {
+  const _ProgressToastData({
+    required this.title,
+    required this.message,
+    required this.progress,
+    required this.type,
+    required this.position,
+    required this.indeterminate,
+  });
+
+  final String title;
+  final String message;
+  final int progress;
+  final ToastType type;
+  final ToastPosition position;
+  final bool indeterminate;
+}
+
+class _ProgressToastHost extends StatefulWidget {
+  const _ProgressToastHost({
+    required this.notifier,
+    required this.alignment,
+    required this.margin,
+  });
+
+  final ValueNotifier<_ProgressToastData> notifier;
+  final Alignment alignment;
+  final EdgeInsets margin;
+
+  @override
+  State<_ProgressToastHost> createState() => _ProgressToastHostState();
+}
+
+class _ProgressToastHostState extends State<_ProgressToastHost>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    );
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    final begin = widget.alignment == Alignment.bottomCenter
+        ? const Offset(0, 0.06)
+        : const Offset(0, -0.06);
+    _offset = Tween<Offset>(
+      begin: begin,
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _controller.forward());
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: widget.alignment,
+      child: Container(
+        margin: widget.margin,
+        child: SlideTransition(
+          position: _offset,
+          child: FadeTransition(
+            opacity: _opacity,
+            child: ValueListenableBuilder<_ProgressToastData>(
+              valueListenable: widget.notifier,
+              builder: (context, payload, _) {
+                return _ProgressToastCard(data: payload);
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProgressToastCard extends StatelessWidget {
+  const _ProgressToastCard({required this.data});
+
+  final _ProgressToastData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final colors = _ToastColors.of(data.type);
+    final surfaceColors = _ToastSurfaceColors.resolve(
+      palette: palette,
+      isDark: isDark,
+    );
+    final maxWidth = (MediaQuery.sizeOf(context).width - 32)
+        .clamp(260.0, 380.0)
+        .toDouble();
+    final body = data.message.trim();
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: maxWidth,
+        minWidth: 260,
+      ),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: ShapeDecoration(
+          gradient: LinearGradient(
+            begin: const Alignment(0.25, 0.21),
+            end: const Alignment(0.97, 1.01),
+            colors: surfaceColors.gradientColors,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: surfaceColors.borderColor),
+          ),
+          shadows: surfaceColors.shadows,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(
+                    colors.icon,
+                    color: colors.color,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    data.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: surfaceColors.textColor,
+                      fontSize: 14,
+                      fontFamily: 'PingFang SC',
+                      fontWeight: FontWeight.w500,
+                      height: 1.2,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  data.indeterminate ? '...' : '${data.progress}%',
+                  style: TextStyle(
+                    color: surfaceColors.textColor.withValues(alpha: 0.74),
+                    fontSize: 12,
+                    fontFamily: 'PingFang SC',
+                    fontWeight: FontWeight.w500,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+            if (body.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                body,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: surfaceColors.textColor.withValues(alpha: 0.78),
+                  fontSize: 13,
+                  fontFamily: 'PingFang SC',
+                  fontWeight: FontWeight.w400,
+                  height: 1.25,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 6,
+                value: data.indeterminate ? null : data.progress / 100.0,
+                backgroundColor: colors.color.withValues(alpha: 0.14),
+                valueColor: AlwaysStoppedAnimation<Color>(colors.color),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _ToastContainer extends StatefulWidget {
   const _ToastContainer({
@@ -443,6 +706,32 @@ void showToast(
   ToastPosition position = ToastPosition.top,
 }) {
   AppToast.show(message, type: type, duration: duration, position: position);
+}
+
+void showProgressToast({
+  required String title,
+  String? message,
+  int progress = 0,
+  ToastType type = ToastType.info,
+  ToastPosition position = ToastPosition.top,
+  bool indeterminate = false,
+}) {
+  AppToast.showProgress(
+    title: title,
+    message: message,
+    progress: progress,
+    type: type,
+    position: position,
+    indeterminate: indeterminate,
+  );
+}
+
+void hideProgressToast() {
+  AppToast.hideProgress();
+}
+
+void hideToast() {
+  AppToast.dismiss();
 }
 
 /// Dialog组件工具类

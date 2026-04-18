@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/pages/settings/data_sync_setting_page.dart';
 import 'package:ui/theme/app_theme.dart';
+import 'package:ui/utils/ui.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -12,6 +14,7 @@ void main() {
 
   Widget buildApp() {
     return MaterialApp(
+      navigatorKey: GoRouterManager.rootNavigatorKey,
       locale: const Locale('zh'),
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
@@ -56,6 +59,20 @@ void main() {
               };
             case 'testConnection':
               return <String, dynamic>{'success': true, 'message': '连接成功'};
+            case 'syncNow':
+              return <String, dynamic>{
+                'enabled': true,
+                'configured': true,
+                'state': 'syncing',
+                'namespace': 'demo',
+                'deviceId': 'device-a',
+                'lastMessage': '同步任务已加入队列',
+                'progress': <String, dynamic>{
+                  'stage': 'handshake',
+                  'detail': '正在建立安全连接…',
+                  'percent': 5,
+                },
+              };
             default:
               return <String, dynamic>{};
           }
@@ -63,6 +80,8 @@ void main() {
   });
 
   tearDown(() {
+    hideToast();
+    hideProgressToast();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
   });
@@ -110,9 +129,41 @@ void main() {
         : find.text('Test Connection');
     await tester.tap(testConnectionFinder);
     await tester.pump();
+    hideToast();
+    await tester.pump();
 
     expect(
       recordedCalls.where((call) => call.method == 'testConnection'),
+      hasLength(1),
+    );
+  });
+
+  testWidgets('shows progress toast after tapping sync now', (tester) async {
+    await tester.pumpWidget(buildApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.drag(find.byType(ListView), const Offset(0, -900));
+    await tester.pump();
+    final syncNowFinder = find.text('立即同步').evaluate().isNotEmpty
+        ? find.text('立即同步')
+        : find.text('Sync Now');
+    await tester.tap(syncNowFinder);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(
+      find.text('已开始同步').evaluate().isNotEmpty ||
+          find.text('Sync started').evaluate().isNotEmpty,
+      isTrue,
+    );
+    expect(
+      find.text('正在建立安全连接…').evaluate().isNotEmpty ||
+          find.text('Establishing secure sync connection…').evaluate().isNotEmpty,
+      isTrue,
+    );
+    expect(
+      recordedCalls.where((call) => call.method == 'syncNow'),
       hasLength(1),
     );
   });
