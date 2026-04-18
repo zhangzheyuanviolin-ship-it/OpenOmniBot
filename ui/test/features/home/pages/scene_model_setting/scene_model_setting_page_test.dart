@@ -43,11 +43,13 @@ void main() {
   }
 
   late Map<String, dynamic> savedVoiceConfig;
+  late int getSceneModelCatalogCount;
 
   setUp(() async {
     AssistsMessageService.initialize();
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await StorageService.init();
+    getSceneModelCatalogCount = 0;
     savedVoiceConfig = <String, dynamic>{
       'autoPlay': false,
       'voiceId': 'default_zh',
@@ -59,6 +61,7 @@ void main() {
         .setMockMethodCallHandler(channel, (call) async {
           switch (call.method) {
             case 'getSceneModelCatalog':
+              getSceneModelCatalogCount += 1;
               return <Map<String, dynamic>>[
                 <String, dynamic>{
                   'sceneId': 'scene.vlm.operation.primary',
@@ -177,5 +180,14 @@ void main() {
     expect(savedVoiceConfig['voiceId'], 'mimo_default');
     expect(savedVoiceConfig['stylePreset'], '温柔陪伴');
     expect(savedVoiceConfig['customStyle'], '更温柔一点');
+
+    final catalogCallCountAfterSave = getSceneModelCatalogCount;
+    AssistsMessageService.dispatchAgentAiConfigChanged(
+      const AgentAiConfigChangedEvent(source: 'store', path: '/tmp/agent.json'),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(getSceneModelCatalogCount, catalogCallCountAfterSave);
   });
 }

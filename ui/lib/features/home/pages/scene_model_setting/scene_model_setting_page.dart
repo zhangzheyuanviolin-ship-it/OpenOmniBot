@@ -88,6 +88,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   late final TextEditingController _voiceCustomStyleController;
   Timer? _voiceConfigSaveDebounce;
   SceneVoiceConfig? _pendingVoiceConfig;
+  DateTime? _suppressExternalReloadUntil;
   StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
   static const List<String> _voiceStylePresets = <String>[
     '默认',
@@ -111,7 +112,11 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
           if ((event.source != 'file' && event.source != 'store') || !mounted) {
             return;
           }
-          unawaited(_loadData());
+          final suppressUntil = _suppressExternalReloadUntil;
+          if (suppressUntil != null && DateTime.now().isBefore(suppressUntil)) {
+            return;
+          }
+          unawaited(_loadData(showLoading: false, refreshProviderModels: false));
         });
   }
 
@@ -214,8 +219,13 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     });
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadData({
+    bool showLoading = true,
+    bool refreshProviderModels = true,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() => _isLoading = true);
+    }
     try {
       final results = await Future.wait<dynamic>([
         SceneModelConfigService.getSceneCatalog(),
@@ -250,14 +260,14 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         _voiceConfig = voiceConfig;
       });
       _syncVoiceControllers(voiceConfig);
-      if (_profiles.any((profile) => profile.configured)) {
+      if (refreshProviderModels && _profiles.any((profile) => profile.configured)) {
         unawaited(_refreshProviderModels());
       }
     } catch (_) {
       if (!mounted) return;
       showToast('加载场景配置失败', type: ToastType.error);
     } finally {
-      if (mounted) {
+      if (showLoading && mounted) {
         setState(() => _isLoading = false);
       }
     }
@@ -467,6 +477,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       _pendingVoiceConfig = nextConfig;
       return;
     }
+    _suppressExternalReloadUntil = DateTime.now().add(
+      const Duration(seconds: 2),
+    );
     setState(() => _isSavingVoiceConfig = true);
     try {
       final saved = await SceneModelConfigService.saveSceneVoiceConfig(
@@ -774,6 +787,11 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                             ? '唱歌模式下不支持附加风格'
                             : '例如：更温柔、节奏慢一点、偏播客感',
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
                       ),
