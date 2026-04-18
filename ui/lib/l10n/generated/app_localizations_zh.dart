@@ -598,7 +598,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get trajectoryNoRecords => '暂无执行记录';
 
   @override
-  String get trajectoryNoRecordsDesc => '小万为你执行的任务，后续都会在此展示';
+  String get trajectoryNoRecordsDesc => '小万为你执行的视觉任务，都会在此展示';
 
   @override
   String get trajectoryAll => '全部';
