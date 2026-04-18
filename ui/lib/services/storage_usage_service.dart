@@ -1,5 +1,19 @@
 import 'package:flutter/services.dart';
 
+class StorageUsageBreakdownEntry {
+  const StorageUsageBreakdownEntry({required this.label, required this.bytes});
+
+  final String label;
+  final int bytes;
+
+  factory StorageUsageBreakdownEntry.fromMap(Map<dynamic, dynamic> map) {
+    return StorageUsageBreakdownEntry(
+      label: (map['label'] ?? '').toString(),
+      bytes: StorageUsageCategory._asInt(map['bytes']),
+    );
+  }
+}
+
 class StorageUsageCategory {
   const StorageUsageCategory({
     required this.id,
@@ -9,6 +23,7 @@ class StorageUsageCategory {
     required this.cleanable,
     required this.riskLevel,
     this.cleanupHint,
+    this.breakdown = const [],
     this.order = 0,
   });
 
@@ -19,6 +34,7 @@ class StorageUsageCategory {
   final bool cleanable;
   final String riskLevel;
   final String? cleanupHint;
+  final List<StorageUsageBreakdownEntry> breakdown;
   final int order;
 
   factory StorageUsageCategory.fromMap(Map<dynamic, dynamic> map) {
@@ -30,6 +46,10 @@ class StorageUsageCategory {
       cleanable: map['cleanable'] == true,
       riskLevel: (map['riskLevel'] ?? 'info').toString(),
       cleanupHint: map['cleanupHint']?.toString(),
+      breakdown: (map['breakdown'] as List<dynamic>? ?? const [])
+          .whereType<Map<dynamic, dynamic>>()
+          .map(StorageUsageBreakdownEntry.fromMap)
+          .toList(),
       order: _asInt(map['order']),
     );
   }
@@ -65,8 +85,12 @@ class StorageUsageTrend {
       deltaCleanableBytes: StorageUsageCategory._asInt(
         map['deltaCleanableBytes'],
       ),
-      previousGeneratedAt: StorageUsageCategory._asInt(map['previousGeneratedAt']),
-      previousTotalBytes: StorageUsageCategory._asInt(map['previousTotalBytes']),
+      previousGeneratedAt: StorageUsageCategory._asInt(
+        map['previousGeneratedAt'],
+      ),
+      previousTotalBytes: StorageUsageCategory._asInt(
+        map['previousTotalBytes'],
+      ),
       previousCleanableBytes: StorageUsageCategory._asInt(
         map['previousCleanableBytes'],
       ),
@@ -118,7 +142,9 @@ class StorageCleanupStrategyPreset {
       description: (map['description'] ?? '').toString(),
       riskLevel: (map['riskLevel'] ?? 'info').toString(),
       olderThanDays: StorageUsageCategory._asInt(map['olderThanDays']),
-      targetReleaseBytes: StorageUsageCategory._asInt(map['targetReleaseBytes']),
+      targetReleaseBytes: StorageUsageCategory._asInt(
+        map['targetReleaseBytes'],
+      ),
     );
   }
 }
@@ -157,11 +183,12 @@ class StorageUsageSummary {
   final int systemTotalBytes;
 
   factory StorageUsageSummary.fromMap(Map<dynamic, dynamic> map) {
-    final rawCategories = (map['categories'] as List<dynamic>? ?? const [])
-        .whereType<Map<dynamic, dynamic>>()
-        .map(StorageUsageCategory.fromMap)
-        .toList()
-      ..sort((a, b) => b.bytes.compareTo(a.bytes));
+    final rawCategories =
+        (map['categories'] as List<dynamic>? ?? const [])
+            .whereType<Map<dynamic, dynamic>>()
+            .map(StorageUsageCategory.fromMap)
+            .toList()
+          ..sort((a, b) => b.bytes.compareTo(a.bytes));
     final rawHistory = (map['history'] as List<dynamic>? ?? const [])
         .whereType<Map<dynamic, dynamic>>()
         .map(StorageUsageHistoryPoint.fromMap)
@@ -237,9 +264,7 @@ class StorageUsageCleanupResult {
       retryable: map['retryable'] == true,
       manualActionHint: map['manualActionHint']?.toString(),
       summary: summaryMap is Map
-          ? StorageUsageSummary.fromMap(
-              Map<dynamic, dynamic>.from(summaryMap as Map),
-            )
+          ? StorageUsageSummary.fromMap(Map<dynamic, dynamic>.from(summaryMap))
           : null,
     );
   }
@@ -314,7 +339,9 @@ class StorageUsageService {
   );
 
   static Future<StorageUsageSummary> getStorageUsageSummary() async {
-    final result = await _channel.invokeMethod<dynamic>('getStorageUsageSummary');
+    final result = await _channel.invokeMethod<dynamic>(
+      'getStorageUsageSummary',
+    );
     if (result is! Map) {
       throw PlatformException(
         code: 'INVALID_STORAGE_USAGE_RESULT',
@@ -328,14 +355,12 @@ class StorageUsageService {
     String categoryId, {
     int? olderThanDays,
   }) async {
-    final result = await _channel.invokeMethod<dynamic>(
-      'clearStorageUsageCategory',
-      {
-        'categoryId': categoryId,
-        if (olderThanDays != null && olderThanDays > 0)
-          'olderThanDays': olderThanDays,
-      },
-    );
+    final result = await _channel
+        .invokeMethod<dynamic>('clearStorageUsageCategory', {
+          'categoryId': categoryId,
+          if (olderThanDays != null && olderThanDays > 0)
+            'olderThanDays': olderThanDays,
+        });
     if (result is! Map) {
       throw PlatformException(
         code: 'INVALID_STORAGE_CLEAN_RESULT',
@@ -352,16 +377,14 @@ class StorageUsageService {
     int? olderThanDays,
     int? targetReleaseBytes,
   }) async {
-    final result = await _channel.invokeMethod<dynamic>(
-      'applyStorageCleanupStrategy',
-      {
-        'strategyId': strategyId,
-        if (olderThanDays != null && olderThanDays > 0)
-          'olderThanDays': olderThanDays,
-        if (targetReleaseBytes != null && targetReleaseBytes > 0)
-          'targetReleaseBytes': targetReleaseBytes,
-      },
-    );
+    final result = await _channel
+        .invokeMethod<dynamic>('applyStorageCleanupStrategy', {
+          'strategyId': strategyId,
+          if (olderThanDays != null && olderThanDays > 0)
+            'olderThanDays': olderThanDays,
+          if (targetReleaseBytes != null && targetReleaseBytes > 0)
+            'targetReleaseBytes': targetReleaseBytes,
+        });
     if (result is! Map) {
       throw PlatformException(
         code: 'INVALID_STORAGE_STRATEGY_RESULT',
