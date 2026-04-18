@@ -71,7 +71,7 @@ Then open the scenario model settings:
 Note: `Memory embedding` requires an embedding model. For the best overall experience, the other scenarios should use multimodal or vision-capable models whenever possible.
 
 <p align="center">
-  <img src="docs/tutorial/five.jpg" alt="Alpine environment" width="260" />
+  <img src="docs/tutorial/five.png" alt="Alpine environment" width="260" />
 </p>
 
 The app usually initializes the Alpine environment automatically on startup, and you can also manage that environment from the same settings area.
