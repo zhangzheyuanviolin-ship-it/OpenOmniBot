@@ -801,7 +801,8 @@ class _TrajectoryPageState
                               onSchedulePressed: _onSchedulePressed,
                               scheduledTaskKeys: _scheduledTaskKeys,
                             ),
-                          ],
+                          ] else
+                            _buildEmptyRecordsHint(),
                         ],
                       ),
                     ),
@@ -885,34 +886,20 @@ class _TrajectoryPageState
             ),
           ),
           const SizedBox(height: 12),
+          
           Text(
-            '暂无任务记录',
+            context.l10n.trajectoryNoRecordsDesc,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: AppTextStyles.fontSizeH3,
-              fontWeight: AppTextStyles.fontWeightMedium,
+              fontSize: AppTextStyles.fontSizeMain,
+              fontWeight: AppTextStyles.fontWeightRegular,
               color: context.isDarkTheme
-                  ? palette.textPrimary
-                  : AppColors.primaryBlue,
-              height: AppTextStyles.lineHeightH1,
+                  ? palette.textSecondary
+                  : AppColors.text20,
+              height: AppTextStyles.lineHeightH2,
               letterSpacing: AppTextStyles.letterSpacingWide,
-            ),
-          ),
-          const SizedBox(height: 9),
-          Container(
-            alignment: Alignment.center,
-            width: 192,
-            child: Text(
-              context.l10n.trajectoryNoRecordsDesc,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: AppTextStyles.fontSizeMain,
-                fontWeight: AppTextStyles.fontWeightRegular,
-                color: context.isDarkTheme
-                    ? palette.textSecondary
-                    : AppColors.text20,
-                height: AppTextStyles.lineHeightH2,
-                letterSpacing: AppTextStyles.letterSpacingWide,
-              ),
             ),
           ),
         ],

@@ -192,7 +192,7 @@
 
   "trajectoryTitle": "Trajectory",
   "trajectoryNoRecords": "No execution records",
-  "trajectoryNoRecordsDesc": "Tasks executed by Omnibot will be displayed here",
+  "trajectoryNoRecordsDesc": "VLM tasks will be displayed here",
   "trajectoryAll": "All",
   "trajectoryTaskRecords": "Task Records",
   "trajectorySelectedCount": "{n} selected",

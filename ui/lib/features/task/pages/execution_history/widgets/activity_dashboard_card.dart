@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/token_usage_service.dart';
+import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/omni_theme_palette.dart';
 import 'package:ui/theme/theme_context.dart';
-import 'package:ui/widgets/omni_segmented_slider.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 
 // ---------------------------------------------------------------------------
 //  Weekly token bucket
@@ -42,7 +43,10 @@ class ActivityDashboardCard extends StatefulWidget {
 class _ActivityDashboardCardState extends State<ActivityDashboardCard>
     with SingleTickerProviderStateMixin {
   // -- tab --
+  static const int _convTab = 0;
+  static const int _tokenTab = 1;
   int _currentTab = 0; // 0=对话  1=Token
+  double _tabSwitcherDragDelta = 0;
 
   // -- conversation data --
   Map<String, int> _activityMap = {};
@@ -292,7 +296,7 @@ class _ActivityDashboardCardState extends State<ActivityDashboardCard>
                     AnimatedCrossFade(
                       firstChild: _buildConversationView(isDark, palette),
                       secondChild: _buildTokenView(isDark, palette),
-                      crossFadeState: _currentTab == 0
+                      crossFadeState: _currentTab == _convTab
                           ? CrossFadeState.showFirst
                           : CrossFadeState.showSecond,
                       duration: const Duration(milliseconds: 300),
@@ -365,18 +369,151 @@ class _ActivityDashboardCardState extends State<ActivityDashboardCard>
   }
 
   // -----------------------------------------------------------------------
-  //  Segmented control
+  //  Tab switcher (matches Scheduled page style, smaller size)
   // -----------------------------------------------------------------------
 
+  void _switchTab(int tabIndex) {
+    if (_currentTab == tabIndex) return;
+    setState(() => _currentTab = tabIndex);
+  }
+
+  void _handleTabSwitcherDragEnd({double velocity = 0}) {
+    final shouldSwitchRight = (_tabSwitcherDragDelta + velocity * 0.015) > 0;
+    final shouldSwitch =
+        _tabSwitcherDragDelta.abs() > 14 || velocity.abs() > 250;
+    if (shouldSwitch) {
+      _switchTab(shouldSwitchRight ? _tokenTab : _convTab);
+    }
+    _tabSwitcherDragDelta = 0;
+  }
+
   Widget _buildSegmentedControl() {
-    return OmniSegmentedSlider<int>(
-      value: _currentTab,
-      height: 28,
-      options: const [
-        OmniSegmentedOption(value: 0, label: '对话'),
-        OmniSegmentedOption(value: 1, label: 'Token'),
-      ],
-      onChanged: (v) => setState(() => _currentTab = v),
+    final palette = context.omniPalette;
+    return Builder(
+      builder: (sliderContext) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (details) {
+          _tabSwitcherDragDelta += details.delta.dx;
+        },
+        onHorizontalDragEnd: (details) {
+          _handleTabSwitcherDragEnd(velocity: details.primaryVelocity ?? 0);
+        },
+        onTapUp: (details) {
+          final box = sliderContext.findRenderObject() as RenderBox?;
+          if (box == null || !box.hasSize) return;
+          final local = box.globalToLocal(details.globalPosition);
+          _switchTab(
+            local.dx >= box.size.width / 2 ? _tokenTab : _convTab,
+          );
+        },
+        child: Container(
+          height: 28,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: context.isDarkTheme ? palette.segmentTrack : Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: context.isDarkTheme
+                  ? palette.borderSubtle
+                  : AppColors.text10,
+            ),
+          ),
+          child: Stack(
+            children: [
+              AnimatedAlign(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                alignment: _currentTab == _convTab
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight,
+                child: FractionallySizedBox(
+                  widthFactor: 0.5,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 1),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      gradient: context.isDarkTheme
+                          ? LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color.lerp(
+                                  palette.surfaceElevated,
+                                  palette.accentPrimary,
+                                  0.18,
+                                )!,
+                                Color.lerp(
+                                  palette.surfaceSecondary,
+                                  palette.accentPrimary,
+                                  0.30,
+                                )!,
+                              ],
+                            )
+                          : const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                            ),
+                      boxShadow: context.isDarkTheme
+                          ? null
+                          : const [
+                              BoxShadow(
+                                color: Color(0x1F1930D9),
+                                blurRadius: 10,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                      border: context.isDarkTheme
+                          ? Border.all(color: palette.borderSubtle)
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  _buildTabButton(
+                    label: LegacyTextLocalizer.isEnglish ? 'Chat' : '对话',
+                    tabIndex: _convTab,
+                  ),
+                  _buildTabButton(
+                    label: 'Token',
+                    tabIndex: _tokenTab,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabButton({required String label, required int tabIndex}) {
+    final selected = _currentTab == tabIndex;
+    final palette = context.omniPalette;
+    return Expanded(
+      child: Center(
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          scale: selected ? 1 : 0.97,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            style: TextStyle(
+              color: selected
+                  ? (context.isDarkTheme ? palette.textPrimary : Colors.white)
+                  : (context.isDarkTheme
+                        ? palette.textSecondary
+                        : AppColors.text70),
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            ),
+            child: Text(label),
+          ),
+        ),
+      ),
     );
   }
 
