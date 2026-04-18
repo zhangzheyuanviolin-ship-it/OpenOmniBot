@@ -189,6 +189,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.work.runtime)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
@@ -200,4 +201,3 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest )
 }
-

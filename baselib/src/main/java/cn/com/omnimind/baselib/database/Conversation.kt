@@ -1,13 +1,20 @@
 package cn.com.omnimind.baselib.database
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.Date
+import java.util.UUID
 
-@Entity(tableName = "conversations")
+@Entity(
+    tableName = "conversations",
+    indices = [Index(value = ["syncId"], unique = true)]
+)
 data class Conversation(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+
+    val syncId: String = UUID.randomUUID().toString(),
 
     // 对话标题（用户可编辑）
     val title: String,

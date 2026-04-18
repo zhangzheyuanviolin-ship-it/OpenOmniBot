@@ -61,6 +61,8 @@ dependencies:
   flutter_math_fork: ^0.7.3
   video_player: ^2.10.0
   xml: ^6.6.1
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
 
 dev_dependencies:
   flutter_test:

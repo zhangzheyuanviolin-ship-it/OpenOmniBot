@@ -1,12 +1,18 @@
 package cn.com.omnimind.baselib.database
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.Date
+import java.util.UUID
 
-@Entity(tableName = "execution_records")
+@Entity(
+    tableName = "execution_records",
+    indices = [Index(value = ["syncId"], unique = true)]
+)
 data class ExecutionRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val syncId: String = UUID.randomUUID().toString(),
     val title: String,
     val appName: String,
     val packageName: String,

@@ -15,6 +15,8 @@ import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
 import cn.com.omnimind.bot.omniinfer.OmniInferMnnModelsManager
 import cn.com.omnimind.bot.omniinfer.OmniInferModelsManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
+import cn.com.omnimind.bot.sync.DataSyncManager
+import cn.com.omnimind.bot.sync.DataSyncScheduler
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
 import com.omniinfer.server.OmniInferServer
@@ -149,6 +151,9 @@ class App : BaseApplication() {
         }
         runCatching {
             WorkspaceScheduledTaskScheduler(this).rescheduleAllEnabled()
+        }
+        runCatching {
+            DataSyncScheduler.ensureScheduledIfEnabled(this, DataSyncManager.get(this).getConfig())
         }
 
         initSDKsAfterPrivacyConsent()

@@ -17,6 +17,7 @@ import 'pages/edit_profile/edit_profile_page.dart';
 import 'pages/settings/workspace_memory_setting_page.dart';
 import 'pages/settings/background_setting_page.dart';
 import 'pages/settings/storage_usage_page.dart';
+import 'pages/settings/data_sync_setting_page.dart';
 import 'pages/omnibot_workspace/omnibot_artifact_preview_page.dart';
 import 'pages/omnibot_workspace/omnibot_workspace_page.dart';
 import 'pages/webview/webview_page.dart';
@@ -242,6 +243,15 @@ List<GoRoute> homeRoutes = [
       key: state.pageKey,
       name: 'home/settings',
       child: const SettingsPage(),
+    ),
+  ),
+  GoRoute(
+    path: '/home/data_sync_setting',
+    name: 'home/data_sync_setting',
+    pageBuilder: (context, state) => GoRouterManager.buildActivitySlidePage(
+      key: state.pageKey,
+      name: 'home/data_sync_setting',
+      child: const DataSyncSettingPage(),
     ),
   ),
 

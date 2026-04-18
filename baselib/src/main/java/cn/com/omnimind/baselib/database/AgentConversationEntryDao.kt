@@ -8,6 +8,9 @@ import androidx.room.Query
 @Dao
 interface AgentConversationEntryDao {
 
+    @Query("SELECT * FROM agent_conversation_entries WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): AgentConversationEntry?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: AgentConversationEntry): Long
 
@@ -108,6 +111,24 @@ interface AgentConversationEntryDao {
 
     @Query(
         """
+        SELECT * FROM agent_conversation_entries
+        WHERE syncId = :syncId
+        LIMIT 1
+        """
+    )
+    suspend fun getBySyncId(syncId: String): AgentConversationEntry?
+
+    @Query(
+        """
+        SELECT * FROM agent_conversation_entries
+        WHERE updatedAt > :updatedAfter
+        ORDER BY updatedAt ASC, id ASC
+        """
+    )
+    suspend fun getUpdatedAfter(updatedAfter: Long): List<AgentConversationEntry>
+
+    @Query(
+        """
         DELETE FROM agent_conversation_entries
         WHERE conversationId = :conversationId AND conversationMode = :conversationMode
         """
@@ -124,4 +145,10 @@ interface AgentConversationEntryDao {
         """
     )
     suspend fun deleteConversationEntries(conversationId: Long): Int
+
+    @Query("DELETE FROM agent_conversation_entries WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String): Int
+
+    @Query("SELECT MAX(updatedAt) FROM agent_conversation_entries")
+    suspend fun getMaxUpdatedAt(): Long?
 }

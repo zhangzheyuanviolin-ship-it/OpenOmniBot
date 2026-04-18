@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -67,6 +68,64 @@ class AppDatabaseMigrationTest {
                 .getByThreadAndEntryId(1L, "agent", "entry-1")
             assertNotNull(entry)
             assertEquals("queued", entry!!.status)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun migrate11To12_backfillsSyncIds_andCreatesSyncTables() = runBlocking {
+        createVersion11Database()
+
+        val database = openMigratedDatabase()
+        try {
+            val conversation = database.conversationDao().getById(1L)
+            assertNotNull(conversation)
+            assertFalse(conversation!!.syncId.isBlank())
+
+            val message = database.messageDao().getById(1L)
+            assertNotNull(message)
+            assertFalse(message!!.syncId.isBlank())
+
+            val favorite = database.favoriteRecordDao().getById(1L)
+            assertNotNull(favorite)
+            assertFalse(favorite!!.syncId.isBlank())
+
+            val execution = database.executionRecordDao().getAll().single()
+            assertFalse(execution.syncId.isBlank())
+
+            val study = database.studyRecordDao().getById(1L)
+            assertFalse(study.syncId.isBlank())
+
+            val entry = database.agentConversationEntryDao()
+                .getByThreadAndEntryId(1L, "agent", "entry-11")
+            assertNotNull(entry)
+            assertFalse(entry!!.syncId.isBlank())
+
+            val tokenUsage = database.tokenUsageRecordDao().getByConversationId(1L).single()
+            assertFalse(tokenUsage.syncId.isBlank())
+
+            database.syncCheckpointDao().upsert(
+                SyncCheckpoint(
+                    checkpointKey = "default",
+                    remoteCursor = 5,
+                    updatedAt = 1234L
+                )
+            )
+            assertEquals(
+                5L,
+                database.syncCheckpointDao().getByKey("default")?.remoteCursor
+            )
+
+            database.syncOutboxDao().insert(
+                SyncOutbox(
+                    docType = "conversation",
+                    docSyncId = conversation.syncId,
+                    opType = "upsert",
+                    payloadJson = "{}"
+                )
+            )
+            assertEquals(1, database.syncOutboxDao().countAll())
         } finally {
             database.close()
         }
@@ -168,6 +227,144 @@ class AppDatabaseMigrationTest {
                 (id, conversationId, conversationMode, entryId, entryType, status, summary, payloadJson, createdAt, updatedAt)
                 VALUES
                 (1, 1, 'agent', 'entry-1', 'message', 'queued', 'legacy entry', '{"text":"hello"}', 7000, 8000)
+                """.trimIndent()
+            )
+        } finally {
+            database.close()
+        }
+    }
+
+    private fun createVersion11Database() {
+        val database = openLegacyDatabase(version = 11)
+        try {
+            createCommonPreConversationTables(database)
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `conversations` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `summary` TEXT,
+                    `status` INTEGER NOT NULL DEFAULT 0,
+                    `lastMessage` TEXT,
+                    `messageCount` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    `mode` TEXT NOT NULL DEFAULT 'normal',
+                    `contextSummary` TEXT,
+                    `contextSummaryCutoffEntryDbId` INTEGER,
+                    `contextSummaryUpdatedAt` INTEGER NOT NULL DEFAULT 0,
+                    `latestPromptTokens` INTEGER NOT NULL DEFAULT 0,
+                    `promptTokenThreshold` INTEGER NOT NULL DEFAULT 128000,
+                    `latestPromptTokensUpdatedAt` INTEGER NOT NULL DEFAULT 0,
+                    `isArchived` INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `agent_conversation_entries` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `conversationId` INTEGER NOT NULL,
+                    `conversationMode` TEXT NOT NULL,
+                    `entryId` TEXT NOT NULL,
+                    `entryType` TEXT NOT NULL,
+                    `status` TEXT NOT NULL,
+                    `summary` TEXT NOT NULL,
+                    `payloadJson` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                `index_agent_conversation_entries_conversationId_conversationMode_entryId`
+                ON `agent_conversation_entries` (`conversationId`, `conversationMode`, `entryId`)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS
+                `index_agent_conversation_entries_conversationId_conversationMode_updatedAt`
+                ON `agent_conversation_entries` (`conversationId`, `conversationMode`, `updatedAt`)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `token_usage_records` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `conversationId` INTEGER NOT NULL,
+                    `isLocal` INTEGER NOT NULL DEFAULT 0,
+                    `model` TEXT NOT NULL DEFAULT '',
+                    `promptTokens` INTEGER NOT NULL DEFAULT 0,
+                    `completionTokens` INTEGER NOT NULL DEFAULT 0,
+                    `reasoningTokens` INTEGER NOT NULL DEFAULT 0,
+                    `textTokens` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_token_usage_records_createdAt` ON `token_usage_records` (`createdAt`)"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_token_usage_records_conversationId` ON `token_usage_records` (`conversationId`)"
+            )
+            database.execSQL(
+                """
+                INSERT INTO conversations
+                (id, title, summary, status, lastMessage, messageCount, createdAt, updatedAt, mode, contextSummary, contextSummaryCutoffEntryDbId, contextSummaryUpdatedAt, latestPromptTokens, promptTokenThreshold, latestPromptTokensUpdatedAt, isArchived)
+                VALUES
+                (1, 'legacy v11 conversation', 'summary', 0, 'last', 2, 1000, 2000, 'agent', NULL, NULL, 0, 32, 4096, 0, 0)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                INSERT INTO messages
+                (id, messageId, type, user, content, createdAt, updatedAt)
+                VALUES
+                (1, 'msg-1', 1, 1, '{"text":"hello"}', 1000, 2000)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                INSERT INTO favorite_records
+                (id, title, `desc`, type, imagePath, packageName, status, createdAt, updatedAt)
+                VALUES
+                (1, 'favorite', 'desc', 'image', '/tmp/image.png', 'cn.demo.favorite', 1, 1000, 2000)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                INSERT INTO execution_records
+                (id, title, appName, packageName, nodeId, suggestionId, iconUrl, type, createdAt, updatedAt, content, status)
+                VALUES
+                (1, 'execution', 'Demo', 'cn.demo.execution', 'node-1', 'suggestion-1', NULL, 'summary', 1000, 2000, 'content', 'success')
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                INSERT INTO study_records
+                (id, title, suggestionId, appName, packageName, createdAt, updatedAt, isFavorite)
+                VALUES
+                (1, 'study', 'suggestion-1', 'Demo', 'cn.demo.study', 1000, 2000, 0)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                INSERT INTO agent_conversation_entries
+                (id, conversationId, conversationMode, entryId, entryType, status, summary, payloadJson, createdAt, updatedAt)
+                VALUES
+                (1, 1, 'agent', 'entry-11', 'message', 'done', 'legacy entry', '{"text":"entry"}', 1000, 2000)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                INSERT INTO token_usage_records
+                (id, conversationId, isLocal, model, promptTokens, completionTokens, reasoningTokens, textTokens, createdAt)
+                VALUES
+                (1, 1, 0, 'gpt-demo', 12, 3, 2, 1, 3000)
                 """.trimIndent()
             )
         } finally {

@@ -17,8 +17,14 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getById(id: Long): Conversation?
 
+    @Query("SELECT * FROM conversations WHERE syncId = :syncId LIMIT 1")
+    suspend fun getBySyncId(syncId: String): Conversation?
+
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC")
     suspend fun getAll(): List<Conversation>
+
+    @Query("SELECT * FROM conversations WHERE updatedAt > :updatedAfter ORDER BY updatedAt ASC, id ASC")
+    suspend fun getUpdatedAfter(updatedAfter: Long): List<Conversation>
 
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC LIMIT :limit OFFSET :offset")
     suspend fun getConversationsByPage(offset: Int, limit: Int): List<Conversation>
@@ -29,6 +35,9 @@ interface ConversationDao {
     @Query("DELETE FROM conversations WHERE id = :id")
     suspend fun deleteById(id: Long): Int
 
+    @Query("DELETE FROM conversations WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String): Int
+
     @Query("DELETE FROM conversations")
     suspend fun deleteAll(): Int
 
@@ -37,4 +46,7 @@ interface ConversationDao {
 
     @Query("SELECT * FROM conversations WHERE status = :status ORDER BY updatedAt DESC")
     suspend fun getByStatus(status: Int): List<Conversation>
+
+    @Query("SELECT MAX(updatedAt) FROM conversations")
+    suspend fun getMaxUpdatedAt(): Long?
 }

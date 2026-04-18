@@ -9,6 +9,8 @@ import android.os.Bundle
 import androidx.lifecycle.lifecycleScope
 import cn.com.omnimind.bot.App
 import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
+import cn.com.omnimind.bot.sync.DataSyncManager
+import cn.com.omnimind.bot.sync.DataSyncScheduler
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalAutoStartManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalInitCoordinator
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
@@ -155,6 +157,9 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         AppUpdateManager.requestSilentCheckIfDue(this)
+        runCatching {
+            DataSyncScheduler.requestForegroundSyncIfDue(this, DataSyncManager.get(this).getConfig())
+        }
 
         try {
             val isAssistsCoreInitialized = AssistsUtil.Core.isInitialized()

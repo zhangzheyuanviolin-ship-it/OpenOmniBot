@@ -16,9 +16,15 @@ interface MessageDao {
     
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun getById(id: Long): Message?
-    
+
+    @Query("SELECT * FROM messages WHERE syncId = :syncId LIMIT 1")
+    suspend fun getBySyncId(syncId: String): Message?
+
     @Query("SELECT * FROM messages ORDER BY createdAt DESC")
     suspend fun getAll(): List<Message>
+
+    @Query("SELECT * FROM messages WHERE updatedAt > :updatedAfter ORDER BY updatedAt ASC, id ASC")
+    suspend fun getUpdatedAfter(updatedAfter: Long): List<Message>
     
     @Query("SELECT * FROM messages ORDER BY createdAt DESC LIMIT :pageSize OFFSET :offset")
     suspend fun getMessagesByPage(offset: Int, pageSize: Int): List<Message>
@@ -28,7 +34,13 @@ interface MessageDao {
     
     @Query("DELETE FROM messages WHERE id = :id")
     suspend fun deleteById(id: Long): Int
-    
+
+    @Query("DELETE FROM messages WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String): Int
+
     @Query("DELETE FROM messages")
     suspend fun deleteAll(): Int
+
+    @Query("SELECT MAX(updatedAt) FROM messages")
+    suspend fun getMaxUpdatedAt(): Long?
 }

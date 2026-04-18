@@ -8,6 +8,7 @@ import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/l10n/l10n.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/services/data_sync_service.dart';
 import 'package:ui/services/hide_from_recents_service.dart';
 import 'package:ui/services/mcp_server_service.dart';
 import 'package:ui/services/special_permission.dart';
@@ -36,6 +37,7 @@ class _SettingsPageState extends State<SettingsPage> {
   McpServerInfo? _mcpInfo;
   bool _workspaceMemoryLoaded = false;
   WorkspaceMemoryEmbeddingConfig? _embeddingConfig;
+  DataSyncStatus? _dataSyncStatus;
   StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
 
   @override
@@ -52,6 +54,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadAutoBackToChatAfterTaskState();
     _loadMcpServerState();
     _loadWorkspaceMemoryState();
+    _loadDataSyncStatus();
     _configChangedSubscription = AssistsMessageService
         .agentAiConfigChangedStream
         .listen((event) {
@@ -60,6 +63,18 @@ class _SettingsPageState extends State<SettingsPage> {
           }
           _loadWorkspaceMemoryState();
         });
+  }
+
+  Future<void> _loadDataSyncStatus() async {
+    try {
+      final status = await DataSyncService.getStatus();
+      if (!mounted) return;
+      setState(() {
+        _dataSyncStatus = status;
+      });
+    } catch (e) {
+      debugPrint('Load data sync status failed: $e');
+    }
   }
 
   @override
@@ -371,6 +386,41 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   List<_SettingSection> _buildSections(String workspaceMemorySubtitle) {
+    final dataSyncSubtitle = () {
+      final status = _dataSyncStatus;
+      if (status == null) {
+        return Localizations.localeOf(context).languageCode == 'en'
+            ? 'Loading sync status...'
+            : '正在加载同步状态...';
+      }
+      if (!status.enabled) {
+        return Localizations.localeOf(context).languageCode == 'en'
+            ? 'Disabled'
+            : '未启用';
+      }
+      if (status.state == 'syncing') {
+        return status.progress.detail.isNotEmpty
+            ? status.progress.detail
+            : (Localizations.localeOf(context).languageCode == 'en'
+                ? 'Sync in progress'
+                : '正在同步');
+      }
+      if (status.state == 'error') {
+        return status.lastError.isNotEmpty
+            ? status.lastError
+            : (Localizations.localeOf(context).languageCode == 'en'
+                ? 'Sync failed'
+                : '同步失败');
+      }
+      if (status.lastSuccessAt > 0) {
+        return Localizations.localeOf(context).languageCode == 'en'
+            ? 'Last sync succeeded'
+            : '最近一次同步成功';
+      }
+      return Localizations.localeOf(context).languageCode == 'en'
+          ? 'Ready to sync'
+          : '已就绪';
+    }();
     return [
       _SettingSection(
         label: context.l10n.settingsSectionModelMemory,
@@ -419,6 +469,17 @@ class _SettingsPageState extends State<SettingsPage> {
       _SettingSection(
         label: context.l10n.settingsSectionServiceEnvironment,
         items: [
+          _SettingItem(
+            icon: Icons.sync_outlined,
+            title: Localizations.localeOf(context).languageCode == 'en'
+                ? 'Data Sync'
+                : '数据同步',
+            subtitle: dataSyncSubtitle,
+            onTap: () async {
+              await GoRouterManager.pushForResult('/home/data_sync_setting');
+              _loadDataSyncStatus();
+            },
+          ),
           _SettingItem(
             icon: Icons.extension_outlined,
             iconSvg: 'assets/home/mcp_tools_setting_icon.svg',

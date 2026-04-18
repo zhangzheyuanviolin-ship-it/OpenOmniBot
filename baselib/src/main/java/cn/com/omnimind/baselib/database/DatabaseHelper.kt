@@ -7,6 +7,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import cn.com.omnimind.baselib.util.APPPackageUtil
 import cn.com.omnimind.baselib.util.OmniLog
 import org.json.JSONObject
+import java.security.MessageDigest
+import java.util.UUID
 
 object DatabaseHelper {
     // 保留既有 OSS 数据库文件名，避免用户升级后丢失本地数据。
@@ -201,6 +203,127 @@ object DatabaseHelper {
         }
     }
 
+    private val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            listOf(
+                "conversations",
+                "messages",
+                "favorite_records",
+                "execution_records",
+                "study_records",
+                "token_usage_records",
+                "agent_conversation_entries"
+            ).forEach { tableName ->
+                database.execSQL(
+                    "ALTER TABLE $tableName ADD COLUMN syncId TEXT NOT NULL DEFAULT ''"
+                )
+                database.execSQL(
+                    "UPDATE $tableName SET syncId = lower(hex(randomblob(16))) WHERE syncId = ''"
+                )
+            }
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_conversations_syncId` ON `conversations` (`syncId`)"
+            )
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_syncId` ON `messages` (`syncId`)"
+            )
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_favorite_records_syncId` ON `favorite_records` (`syncId`)"
+            )
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_execution_records_syncId` ON `execution_records` (`syncId`)"
+            )
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_study_records_syncId` ON `study_records` (`syncId`)"
+            )
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_token_usage_records_syncId` ON `token_usage_records` (`syncId`)"
+            )
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_agent_conversation_entries_syncId` ON `agent_conversation_entries` (`syncId`)"
+            )
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `sync_outbox` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `opId` TEXT NOT NULL,
+                    `docType` TEXT NOT NULL,
+                    `docSyncId` TEXT NOT NULL,
+                    `opType` TEXT NOT NULL,
+                    `payloadJson` TEXT NOT NULL,
+                    `contentHash` TEXT NOT NULL DEFAULT '',
+                    `attempts` INTEGER NOT NULL DEFAULT 0,
+                    `nextRetryAt` INTEGER NOT NULL DEFAULT 0,
+                    `lastError` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_outbox_opId` ON `sync_outbox` (`opId`)"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_sync_outbox_nextRetryAt` ON `sync_outbox` (`nextRetryAt`)"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_sync_outbox_docType_docSyncId` ON `sync_outbox` (`docType`, `docSyncId`)"
+            )
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `sync_checkpoint` (
+                    `checkpointKey` TEXT NOT NULL,
+                    `remoteCursor` INTEGER NOT NULL DEFAULT 0,
+                    `lastSuccessfulSyncAt` INTEGER NOT NULL DEFAULT 0,
+                    `lastMetadataSyncAt` INTEGER NOT NULL DEFAULT 0,
+                    `lastFileScanAt` INTEGER NOT NULL DEFAULT 0,
+                    `lastSettingsHash` TEXT NOT NULL DEFAULT '',
+                    `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`checkpointKey`)
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `sync_file_index` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `relativePath` TEXT NOT NULL,
+                    `contentHash` TEXT NOT NULL,
+                    `sizeBytes` INTEGER NOT NULL,
+                    `lastModifiedAt` INTEGER NOT NULL,
+                    `objectKey` TEXT NOT NULL DEFAULT '',
+                    `status` TEXT NOT NULL DEFAULT 'ready',
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_file_index_relativePath` ON `sync_file_index` (`relativePath`)"
+            )
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `sync_conflict_record` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `relativePath` TEXT NOT NULL,
+                    `localHash` TEXT NOT NULL DEFAULT '',
+                    `remoteHash` TEXT NOT NULL DEFAULT '',
+                    `remoteObjectKey` TEXT NOT NULL DEFAULT '',
+                    `conflictCopyPath` TEXT NOT NULL DEFAULT '',
+                    `status` TEXT NOT NULL DEFAULT 'open',
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_sync_conflict_record_status` ON `sync_conflict_record` (`status`)"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_sync_conflict_record_relativePath` ON `sync_conflict_record` (`relativePath`)"
+            )
+        }
+    }
+
     internal val ALL_MIGRATIONS = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -211,7 +334,8 @@ object DatabaseHelper {
         MIGRATION_7_8,
         MIGRATION_8_9,
         MIGRATION_9_10,
-        MIGRATION_10_11
+        MIGRATION_10_11,
+        MIGRATION_11_12
     )
 
     fun init(context: Context) {
@@ -248,7 +372,9 @@ object DatabaseHelper {
     }
 
     suspend fun deleteStudyRecordById(id: Long) {
+        val existing = runCatching { getDatabase().studyRecordDao().getById(id) }.getOrNull()
         getDatabase().studyRecordDao().deleteById(id)
+        existing?.let { enqueueSyncTombstone("study_record", it.syncId) }
     }
 
     // FavoriteRecord新增方法
@@ -258,11 +384,15 @@ object DatabaseHelper {
 
     // StudyRecord新增方法
     suspend fun updateStudyRecordFavoriteStatus(id: Long, isFavorite: Boolean) {
-        getDatabase().studyRecordDao().updateIsFavoriteById(id, isFavorite)
+        getDatabase().studyRecordDao().updateIsFavoriteById(
+            id,
+            isFavorite,
+            System.currentTimeMillis()
+        )
     }
 
     suspend fun updateStudyRecordTitleAndReturnSuggestionId(id: Long, title: String): String {
-        getDatabase().studyRecordDao().updateTitleById(id, title)
+        getDatabase().studyRecordDao().updateTitleById(id, title, System.currentTimeMillis())
         var record = getDatabase().studyRecordDao().getById(id)
         return record.suggestionId
     }
@@ -284,7 +414,9 @@ object DatabaseHelper {
     }
 
     suspend fun deleteFavoriteRecordById(id: Long) {
+        val existing = getDatabase().favoriteRecordDao().getById(id)
         getDatabase().favoriteRecordDao().deleteById(id)
+        existing?.let { enqueueSyncTombstone("favorite_record", it.syncId) }
     }
 
     suspend fun getFavoriteRecordsByTitle(title: String): List<FavoriteRecord> {
@@ -309,7 +441,7 @@ object DatabaseHelper {
     }
 
     suspend fun updateExecutionRecordTitle(id: Long, title: String) {
-        getDatabase().executionRecordDao().updateTitleById(id, title)
+        getDatabase().executionRecordDao().updateTitleById(id, title, System.currentTimeMillis())
     }
 
     suspend fun getExecutionRecordsByTitle(title: String): List<ExecutionRecord> {
@@ -321,11 +453,15 @@ object DatabaseHelper {
     }
 
     suspend fun deleteExecutionRecordById(id: Long) {
+        val existing = getDatabase().executionRecordDao().getById(id)
         getDatabase().executionRecordDao().deleteById(id)
+        existing?.let { enqueueSyncTombstone("execution_record", it.syncId) }
     }
 
     suspend fun deleteExecutionRecordByNodeAndSuggestionId(nodeId: String, suggestionId: String) {
+        val existing = getDatabase().executionRecordDao().getByNodeAndSuggestionId(nodeId, suggestionId)
         getDatabase().executionRecordDao().deleteByNodeAndSuggestionId(nodeId, suggestionId)
+        existing.forEach { enqueueSyncTombstone("execution_record", it.syncId) }
     }
 
     suspend fun getExecutionRecordsByNodeAndSuggestionId(nodeId: String, suggestionId: String): List<ExecutionRecord> {
@@ -360,10 +496,13 @@ object DatabaseHelper {
     }
 
     suspend fun deleteMessageById(id: Long): Int {
+        val existing = getDatabase().messageDao().getById(id)
+        existing?.let { enqueueSyncTombstone("message", it.syncId) }
         return getDatabase().messageDao().deleteById(id)
     }
 
     suspend fun deleteAllMessages(): Int {
+        getDatabase().messageDao().getAll().forEach { enqueueSyncTombstone("message", it.syncId) }
         return getDatabase().messageDao().deleteAll()
     }
 
@@ -709,10 +848,13 @@ object DatabaseHelper {
     }
 
     suspend fun deleteConversation(conversation: Conversation) {
+        enqueueSyncTombstone("conversation", conversation.syncId)
         getDatabase().conversationDao().delete(conversation)
     }
 
     suspend fun deleteConversationById(id: Long): Int {
+        val existing = getDatabase().conversationDao().getById(id)
+        existing?.let { enqueueSyncTombstone("conversation", it.syncId) }
         return getDatabase().conversationDao().deleteById(id)
     }
 
@@ -772,6 +914,10 @@ object DatabaseHelper {
         conversationId: Long,
         conversationMode: String
     ): Int {
+        getDatabase().agentConversationEntryDao().getThreadEntriesAsc(
+            conversationId = conversationId,
+            conversationMode = conversationMode
+        ).forEach { enqueueSyncTombstone("agent_conversation_entry", it.syncId) }
         return getDatabase().agentConversationEntryDao().deleteThreadEntries(
             conversationId = conversationId,
             conversationMode = conversationMode
@@ -779,6 +925,8 @@ object DatabaseHelper {
     }
 
     suspend fun deleteAgentConversationEntries(conversationId: Long): Int {
+        getDatabase().agentConversationEntryDao().getConversationEntriesAsc(conversationId)
+            .forEach { enqueueSyncTombstone("agent_conversation_entry", it.syncId) }
         return getDatabase().agentConversationEntryDao().deleteConversationEntries(conversationId)
     }
 
@@ -844,5 +992,31 @@ object DatabaseHelper {
             OmniLog.e("DatabaseHelper", "Failed to insert task result message: ${e.message}")
             -1L
         }
+    }
+
+    private suspend fun enqueueSyncTombstone(docType: String, syncId: String) {
+        if (syncId.isBlank()) {
+            return
+        }
+        val payloadJson = """{"deleted":true,"deletedAt":${System.currentTimeMillis()}}"""
+        getDatabase().syncOutboxDao().deleteByDocument(docType, syncId)
+        getDatabase().syncOutboxDao().insert(
+            SyncOutbox(
+                opId = UUID.randomUUID().toString(),
+                docType = docType,
+                docSyncId = syncId,
+                opType = "delete",
+                payloadJson = payloadJson,
+                contentHash = sha256Hex(payloadJson),
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun sha256Hex(value: String): String {
+        return MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray())
+            .joinToString("") { "%02x".format(it) }
     }
 }

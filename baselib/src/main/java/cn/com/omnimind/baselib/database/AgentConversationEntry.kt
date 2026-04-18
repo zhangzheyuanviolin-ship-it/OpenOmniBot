@@ -4,10 +4,12 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.Date
+import java.util.UUID
 
 @Entity(
     tableName = "agent_conversation_entries",
     indices = [
+        Index(value = ["syncId"], unique = true),
         Index(
             value = ["conversationId", "conversationMode", "entryId"],
             unique = true
@@ -18,6 +20,7 @@ import java.util.Date
 data class AgentConversationEntry(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    val syncId: String = UUID.randomUUID().toString(),
     val conversationId: Long,
     val conversationMode: String,
     val entryId: String,

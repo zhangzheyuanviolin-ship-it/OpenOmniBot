@@ -4,17 +4,20 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.Date
+import java.util.UUID
 
 @Entity(
     tableName = "token_usage_records",
     indices = [
         Index(value = ["createdAt"]),
-        Index(value = ["conversationId"])
+        Index(value = ["conversationId"]),
+        Index(value = ["syncId"], unique = true)
     ]
 )
 data class TokenUsageRecord(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    val syncId: String = UUID.randomUUID().toString(),
     val conversationId: Long,
     val isLocal: Boolean,
     val model: String = "",

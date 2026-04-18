@@ -13,8 +13,17 @@ interface ExecutionRecordDao {
     @Update
     suspend fun update(record: ExecutionRecord)
 
+    @Query("SELECT * FROM execution_records WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): ExecutionRecord?
+
     @Query("SELECT * FROM execution_records ORDER BY createdAt DESC")
     suspend fun getAll(): List<ExecutionRecord>
+
+    @Query("SELECT * FROM execution_records WHERE syncId = :syncId LIMIT 1")
+    suspend fun getBySyncId(syncId: String): ExecutionRecord?
+
+    @Query("SELECT * FROM execution_records WHERE updatedAt > :updatedAfter ORDER BY updatedAt ASC, id ASC")
+    suspend fun getUpdatedAfter(updatedAfter: Long): List<ExecutionRecord>
 
     @Query("SELECT * FROM execution_records WHERE appName = :appName ORDER BY createdAt DESC")
     suspend fun getByAppName(appName: String): List<ExecutionRecord>
@@ -25,8 +34,8 @@ interface ExecutionRecordDao {
     @Query("SELECT title, COUNT(*) as count FROM execution_records GROUP BY title")
     suspend fun getNumGroupByTitle(): List<ExecutionRecordTitleCount>
 
-    @Query("UPDATE execution_records SET title = :title WHERE id = :id")
-    suspend fun updateTitleById(id: Long, title: String)
+    @Query("UPDATE execution_records SET title = :title, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateTitleById(id: Long, title: String, updatedAt: Long)
 
     @Query("UPDATE execution_records SET content = :content, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateContentById(id: Long, content: String, updatedAt: Long)
@@ -44,6 +53,9 @@ interface ExecutionRecordDao {
     @Query("DELETE FROM execution_records WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("DELETE FROM execution_records WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String)
+
     // Updated query to delete by nodeId and suggestionId
     @Query("DELETE FROM execution_records WHERE nodeId = :nodeId AND suggestionId = :suggestionId")
     suspend fun deleteByNodeAndSuggestionId(nodeId: String, suggestionId: String)
@@ -51,6 +63,9 @@ interface ExecutionRecordDao {
     // 按 nodeId 和 suggestionId 获取执行记录列表，排除执行中的记录
     @Query("SELECT * FROM execution_records WHERE nodeId = :nodeId AND suggestionId = :suggestionId AND status != 'running' ORDER BY createdAt DESC")
     suspend fun getByNodeAndSuggestionId(nodeId: String, suggestionId: String): List<ExecutionRecord>
+
+    @Query("SELECT MAX(updatedAt) FROM execution_records")
+    suspend fun getMaxUpdatedAt(): Long?
 
     data class ExecutionRecordCount(val appName: String, val packageName: String, val count: Int)
     data class ExecutionRecordTitleCount(val title: String, val count: Int)
