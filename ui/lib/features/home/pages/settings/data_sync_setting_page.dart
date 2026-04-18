@@ -208,7 +208,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     await _saveConfig();
     final passphrase = await _askPassphrase(
       title: _t('导出配对二维码', 'Export pairing QR'),
-      subtitle: _t('请输入一次性口令，用于加密导出的配对配置', 'Enter a one-time passphrase to encrypt the exported pairing payload'),
+      subtitle: _t('请设置加密口令', 'Enter a passphrase to encrypt'),
     );
     if (passphrase == null || passphrase.isEmpty) return;
     await _guardBusy(() async {
