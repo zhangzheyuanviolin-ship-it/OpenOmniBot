@@ -16,6 +16,14 @@ class DataSyncApiClient {
     companion object {
         private const val EDGE_BASE_PATH = "/functions/v1"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+        private fun normalizeSignedPath(rawPath: String): String {
+            return if (rawPath.startsWith("$EDGE_BASE_PATH/")) {
+                rawPath.removePrefix(EDGE_BASE_PATH)
+            } else {
+                rawPath
+            }
+        }
     }
 
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -126,7 +134,7 @@ class DataSyncApiClient {
         val signature = DataSyncCrypto.signRequest(
             secret = config.syncSecret,
             method = "POST",
-            path = uri.rawPath,
+            path = normalizeSignedPath(uri.rawPath),
             timestamp = timestamp,
             nonce = nonce,
             bodyHash = bodyHash

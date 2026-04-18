@@ -84,7 +84,7 @@ export async function verifySignedRequest(
   }
   const signingText = [
     request.method.toUpperCase(),
-    new URL(request.url).pathname,
+    normalizeSignedPath(new URL(request.url).pathname),
     timestamp,
     nonce,
     bodyHash,
@@ -94,6 +94,12 @@ export async function verifySignedRequest(
     throw new Error('Invalid sync signature')
   }
   return { namespace, deviceId, nonce }
+}
+
+function normalizeSignedPath(pathname: string) {
+  return pathname.startsWith('/functions/v1/')
+    ? pathname.replace(/^\/functions\/v1/, '')
+    : pathname
 }
 
 export async function ensureNamespace(
