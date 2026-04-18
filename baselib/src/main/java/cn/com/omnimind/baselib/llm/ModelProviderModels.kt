@@ -62,3 +62,10 @@ data class SceneModelBindingEntry(
     val providerProfileId: String,
     val modelId: String
 )
+
+data class SceneVoiceConfig(
+    val autoPlay: Boolean = false,
+    val voiceId: String = "default_zh",
+    val stylePreset: String = "默认",
+    val customStyle: String = ""
+)

@@ -11,6 +11,7 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/storage_service.dart';
+import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/utils/data_parser.dart';
 
 const String kChatRuntimeModeNormal = 'normal';
@@ -134,6 +135,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   void ensureInitialized() {
     if (_initialized) return;
     _initialized = true;
+    unawaited(VoicePlaybackCoordinator.instance.ensureInitialized());
 
     AssistsMessageService.initialize();
     AssistsMessageService.addOnChatTaskMessageCallBack(_handleChatTaskMessage);
@@ -691,6 +693,15 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         prefillTokensPerSecond: prefillTokensPerSecond,
         decodeTokensPerSecond: decodeTokensPerSecond,
       );
+      if (!isError && !isSummarizing && messageText.trim().isNotEmpty) {
+        unawaited(
+          VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
+            messageId: taskId,
+            text: messageText,
+            isFinal: false,
+          ),
+        );
+      }
     }
     runtime.isAiResponding = true;
     notifyListeners();
@@ -729,6 +740,14 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     if (messageText.isNotEmpty && index != -1) {
       final existing = runtime.messages[index];
       runtime.messages[index] = existing.copyWith(content: existing.content);
+    }
+    if (!isErrorMessage && messageText.trim().isNotEmpty) {
+      unawaited(
+        VoicePlaybackCoordinator.instance.onAssistantMessageCompleted(
+          messageId: taskId,
+          text: messageText,
+        ),
+      );
     }
     runtime.currentAiMessages.remove(taskId);
     _taskBindings.remove(taskId);
@@ -976,6 +995,15 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       runtime.lastAgentTaskId = null;
     }
     notifyListeners();
+    if (message.trim().isNotEmpty) {
+      unawaited(
+        VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
+          messageId: aiTextMessageId,
+          text: message,
+          isFinal: isFinal,
+        ),
+      );
+    }
     if (isFinal) {
       unawaited(
         persistRuntimeConversation(

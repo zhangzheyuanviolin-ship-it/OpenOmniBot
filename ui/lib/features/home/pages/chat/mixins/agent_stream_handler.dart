@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/services/voice_playback_coordinator.dart';
 
 enum ThinkingStage {
   thinking(1),
@@ -288,6 +291,15 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     _pendingAgentTextTaskId = isFinal ? null : taskId;
     if (isFinal && currentDispatchTaskId == null) {
       _lastAgentTaskId = null;
+    }
+    if (message.trim().isNotEmpty) {
+      unawaited(
+        VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
+          messageId: aiTextMessageId,
+          text: message,
+          isFinal: isFinal,
+        ),
+      );
     }
     if (isFinal) {
       _persistAgentConversationSafely();
