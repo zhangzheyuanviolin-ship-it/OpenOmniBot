@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.os.Process
 import android.os.storage.StorageManager
+import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import io.flutter.embedding.engine.FlutterEngine
@@ -32,6 +33,7 @@ class StorageUsageChannel {
         private const val STORAGE_METRICS_HISTORY_KEY = "history_v1"
         private const val MAX_HISTORY_SIZE = 30
         private const val DEFAULT_HISTORY_OUTPUT_SIZE = 10
+        private const val APP_BINARY_LIB_TOP_LIMIT = 5
     }
 
     private var methodChannel: MethodChannel? = null
@@ -146,7 +148,7 @@ class StorageUsageChannel {
         val cacheExternalDir: File?,
         val sharedDraftsDir: File,
         val mcpInboxDir: File,
-        val localModelsRoot: File,
+        val localModelsRoots: List<File>,
         val localModelsMmapDir: File,
         val localModelsTempsDir: File,
         val localModelsBuiltinTempsDir: File,
@@ -166,7 +168,13 @@ class StorageUsageChannel {
         val cleanable: Boolean,
         val riskLevel: String,
         val cleanupHint: String? = null,
+        val breakdown: List<CategoryBreakdownEntry> = emptyList(),
         val order: Int,
+    )
+
+    private data class CategoryBreakdownEntry(
+        val label: String,
+        val bytes: Long,
     )
 
     private data class SnapshotPoint(
@@ -234,6 +242,10 @@ class StorageUsageChannel {
         val userDataBytes = systemStats?.dataBytes ?: dataDirScanBytes
         val summaryCacheBytes = systemStats?.cacheBytes ?: cacheScanBytes
         val cacheCategoryBytes = maxOf(cacheScanBytes, summaryCacheBytes)
+        val appBinaryTopLibs = buildTopNativeLibBreakdown(
+            context = context,
+            topLimit = APP_BINARY_LIB_TOP_LIMIT,
+        )
 
         val databaseBytes = sumUniquePaths(paths.databaseFiles)
         val conversationEstimateBytes = estimateConversationHistoryBytes().coerceAtMost(databaseBytes)
@@ -246,7 +258,7 @@ class StorageUsageChannel {
         val workspaceMemoryBytes = sumUniquePaths(listOf(File(paths.workspaceInternalRoot, "memory")))
         val workspaceUserFilesBytes = sumWorkspaceUserFiles(paths.workspaceRoot)
 
-        val localModelsFilesBytes = sumUniquePaths(listOf(paths.localModelsRoot))
+        val localModelsFilesBytes = sumUniquePaths(paths.localModelsRoots)
         val localModelsCacheBytes = sumUniquePaths(
             listOf(paths.localModelsMmapDir, paths.localModelsTempsDir, paths.localModelsBuiltinTempsDir)
         )
@@ -271,10 +283,11 @@ class StorageUsageChannel {
             CategoryEntry(
                 id = "app_binary",
                 name = "应用安装包",
-                description = "应用安装文件占用（APK/AAB split）",
+                description = "应用安装文件与 Native 库占用",
                 bytes = appBinaryBytes,
                 cleanable = false,
                 riskLevel = "info",
+                breakdown = appBinaryTopLibs,
                 order = 1,
             ),
             CategoryEntry(
@@ -367,7 +380,7 @@ class StorageUsageChannel {
             CategoryEntry(
                 id = "local_models_files",
                 name = "本地模型文件",
-                description = ".mnnmodels 下的模型文件",
+                description = ".mnnmodels 与 workspace/.omnibot/models 下的模型文件",
                 bytes = localModelsFilesBytes,
                 cleanable = true,
                 riskLevel = "dangerous",
@@ -436,13 +449,14 @@ class StorageUsageChannel {
             ),
         )
 
-        val knownBytes = baseCategories.sumOf { it.bytes }
+        val localizedBaseCategories = baseCategories.map { localizeCategoryEntry(context, it) }
+        val knownBytes = localizedBaseCategories.sumOf { it.bytes }
         val scanTotalBytes = appBinaryScanBytes + dataDirScanBytes + externalKnownBytes
         val baselineTotalBytes = systemStats?.totalBytes ?: scanTotalBytes
         val totalBytes = maxOf(baselineTotalBytes, knownBytes)
         val otherUserDataBytes = (totalBytes - knownBytes).coerceAtLeast(0L)
 
-        val categories = (baseCategories + CategoryEntry(
+        val categories = (localizedBaseCategories + localizeCategoryEntry(context, CategoryEntry(
             id = "other_user_data",
             name = "其他数据",
             description = "未命中分类规则的数据",
@@ -450,7 +464,7 @@ class StorageUsageChannel {
             cleanable = false,
             riskLevel = "info",
             order = 99,
-        )).sortedByDescending { it.bytes }
+        ))).sortedByDescending { it.bytes }
 
         val cleanableBytes = categories.filter { it.cleanable }.sumOf { it.bytes }
         val generatedAt = System.currentTimeMillis()
@@ -481,7 +495,7 @@ class StorageUsageChannel {
                     "cleanableBytes" to point.cleanableBytes,
                 )
             },
-            "strategyPresets" to cleanupStrategyPresets().map { preset ->
+            "strategyPresets" to cleanupStrategyPresets(context).map { preset ->
                 mapOf(
                     "id" to preset.id,
                     "name" to preset.name,
@@ -500,6 +514,12 @@ class StorageUsageChannel {
                     "cleanable" to category.cleanable,
                     "riskLevel" to category.riskLevel,
                     "cleanupHint" to category.cleanupHint,
+                    "breakdown" to category.breakdown.map { item ->
+                        mapOf(
+                            "label" to item.label,
+                            "bytes" to item.bytes,
+                        )
+                    },
                     "order" to category.order,
                 )
             },
@@ -553,7 +573,7 @@ class StorageUsageChannel {
         val after = analyzeStorageUsage(context, persistSnapshot = true)
         val afterBytes = after.categoryBytes[categoryId] ?: 0L
         val releasedBytes = (beforeBytes - afterBytes).coerceAtLeast(0L)
-        val manualActionHint = manualActionHintForCategory(categoryId)
+        val manualActionHint = manualActionHintForCategory(context, categoryId)
 
         return mapOf(
             "categoryId" to categoryId,
@@ -574,7 +594,7 @@ class StorageUsageChannel {
         overrideOlderThanDays: Int?,
         targetReleaseBytes: Long,
     ): Map<String, Any?> {
-        val strategy = cleanupStrategyPresets().firstOrNull { it.id == strategyId }
+        val strategy = cleanupStrategyPresets(context).firstOrNull { it.id == strategyId }
             ?: error("Unknown strategy: $strategyId")
         val before = analyzeStorageUsage(context, persistSnapshot = false)
         var current = before
@@ -596,11 +616,7 @@ class StorageUsageChannel {
                         "success" to !action.required,
                         "releasedBytes" to 0L,
                         "failedPaths" to emptyList<String>(),
-                        "manualActionHint" to if (action.required) {
-                            "该分类当前不可清理"
-                        } else {
-                            "该分类已跳过（可选项）"
-                        },
+                        "manualActionHint" to categorySkipHint(context, action.required),
                     )
                 )
                 continue
@@ -628,7 +644,7 @@ class StorageUsageChannel {
                     "success" to outcome.success,
                     "releasedBytes" to released,
                     "failedPaths" to outcome.failedPaths,
-                    "manualActionHint" to manualActionHintForCategory(categoryId),
+                    "manualActionHint" to manualActionHintForCategory(context, categoryId),
                 )
             )
 
@@ -650,7 +666,7 @@ class StorageUsageChannel {
         )
     }
 
-    private fun cleanupStrategyPresets(): List<CleanupStrategyPreset> {
+    private fun cleanupStrategyPresets(context: Context): List<CleanupStrategyPreset> {
         return listOf(
             CleanupStrategyPreset(
                 id = "safe_quick",
@@ -701,7 +717,7 @@ class StorageUsageChannel {
                     StrategyAction("local_models_files", required = false),
                 ),
             ),
-        )
+        ).map { preset -> localizeStrategyPreset(context, preset) }
     }
 
     private fun clearCategoryInternal(
@@ -747,7 +763,7 @@ class StorageUsageChannel {
                 clearCategoryInternal(context, "terminal_runtime_bootstrap", olderThanDays),
             )
 
-            "local_models_files" -> clearDirectoryContents(File(context.filesDir, ".mnnmodels"))
+            "local_models_files" -> clearUniqueDirectories(resolveLocalModelRoots(context))
             "local_models_cache" -> mergeOutcomes(
                 clearDirectoryContents(File(context.filesDir, "tmps")),
                 clearDirectoryContents(File(context.filesDir, "local_temps")),
@@ -810,14 +826,174 @@ class StorageUsageChannel {
         }
     }
 
-    private fun manualActionHintForCategory(categoryId: String): String {
+    private fun manualActionHintForCategory(
+        context: Context,
+        categoryId: String,
+    ): String {
         return when (categoryId) {
-            "conversation_history" -> "如历史未释放，请重新进入页面执行“重新分析”"
-            "local_models_files", "local_models" -> "模型被清理后，可在“本地模型服务”页面重新下载"
+            "conversation_history" -> text(
+                context,
+                zh = "如历史未释放，请重新进入页面执行“重新分析”",
+                en = "If history size does not drop, open this page again and run Analyze again.",
+            )
+            "local_models_files", "local_models" -> text(
+                context,
+                zh = "模型被清理后，可在“本地模型服务”页面重新下载",
+                en = "After cleanup, model files can be downloaded again in Local Models.",
+            )
             "terminal_runtime_local", "terminal_runtime_bootstrap", "terminal_runtime" ->
-                "终端运行时被清理后，可在 Alpine 环境页重新初始化"
-            else -> "若清理失败，可稍后重试或重启应用后再次清理"
+                text(
+                    context,
+                    zh = "终端运行时被清理后，可在 Alpine 环境页重新初始化",
+                    en = "After cleanup, terminal runtime can be re-initialized in Alpine Environment.",
+                )
+            else -> text(
+                context,
+                zh = "若清理失败，可稍后重试或重启应用后再次清理",
+                en = "If cleanup fails, try again later or retry after restarting the app.",
+            )
         }
+    }
+
+    private fun categorySkipHint(context: Context, required: Boolean): String {
+        return if (required) {
+            text(
+                context,
+                zh = "该分类当前不可清理",
+                en = "This category is not cleanable right now.",
+            )
+        } else {
+            text(
+                context,
+                zh = "该分类已跳过（可选项）",
+                en = "Skipped this optional category.",
+            )
+        }
+    }
+
+    private fun localizeStrategyPreset(
+        context: Context,
+        preset: CleanupStrategyPreset,
+    ): CleanupStrategyPreset {
+        if (!AppLocaleManager.isEnglish(context)) {
+            return preset
+        }
+        return when (preset.id) {
+            "safe_quick" -> preset.copy(
+                name = "Safe quick cleanup",
+                description = "Prioritize low-risk cache and temporary artifacts.",
+            )
+            "balance_deep" -> preset.copy(
+                name = "Balanced deep cleanup",
+                description = "Free more space while keeping core models and user files.",
+            )
+            "free_1gb_priority" -> preset.copy(
+                name = "Target free 1 GB",
+                description = "Clean in high-yield order to approach 1 GB released.",
+            )
+            else -> preset
+        }
+    }
+
+    private fun localizeCategoryEntry(
+        context: Context,
+        entry: CategoryEntry,
+    ): CategoryEntry {
+        if (!AppLocaleManager.isEnglish(context)) {
+            return entry
+        }
+        return when (entry.id) {
+            "app_binary" -> entry.copy(
+                name = "App package",
+                description = "App install files and native libraries.",
+            )
+            "cache" -> entry.copy(
+                name = "Cache",
+                description = "Temporary files and image cache, safe to clean.",
+                cleanupHint = "Will be regenerated during normal usage.",
+            )
+            "conversation_history" -> entry.copy(
+                name = "Conversation history",
+                description = "Chat and tool execution history (estimated).",
+                cleanupHint = "Deletes history records permanently and cannot be undone.",
+            )
+            "database_other" -> entry.copy(
+                name = "Database (other)",
+                description = "Indexes and system table data.",
+            )
+            "workspace_browser" -> entry.copy(
+                name = "Workspace browser artifacts",
+                description = "Screenshots, downloads, and intermediate browser outputs.",
+                cleanupHint = "Deletes intermediate files from browser tools.",
+            )
+            "workspace_offloads" -> entry.copy(
+                name = "Workspace offloads",
+                description = "Offline tool outputs and temporary files.",
+                cleanupHint = "Deletes offline outputs only and keeps core functionality intact.",
+            )
+            "workspace_attachments" -> entry.copy(
+                name = "Workspace attachments",
+                description = "Attachments used by historical tasks.",
+                cleanupHint = "May affect reviewing attachments in past tasks.",
+            )
+            "workspace_shared" -> entry.copy(
+                name = "Workspace shared files",
+                description = "Cross-task shared workspace files.",
+                cleanupHint = "May affect reuse of shared files in future tasks.",
+            )
+            "workspace_memory" -> entry.copy(
+                name = "Workspace memory data",
+                description = "Long/short-term memory and index data.",
+            )
+            "workspace_user_files" -> entry.copy(
+                name = "Workspace user files",
+                description = "Files explicitly saved by user into workspace.",
+            )
+            "local_models_files" -> entry.copy(
+                name = "Local model files",
+                description = "Model files under .mnnmodels and workspace/.omnibot/models.",
+                cleanupHint = "Deletes model files; they need to be downloaded again later.",
+            )
+            "local_models_cache" -> entry.copy(
+                name = "Model inference cache",
+                description = "mmap and local inference temp directories.",
+                cleanupHint = "Will be regenerated during inference.",
+            )
+            "terminal_runtime_local" -> entry.copy(
+                name = "Terminal runtime (local)",
+                description = "Alpine terminal local runtime directory.",
+                cleanupHint = "Deletes terminal local directory and requires re-initialization.",
+            )
+            "terminal_runtime_bootstrap" -> entry.copy(
+                name = "Terminal runtime (bootstrap)",
+                description = "proot/lib/alpine bootstrap files.",
+                cleanupHint = "Deletes terminal bootstrap files and requires re-initialization.",
+            )
+            "shared_drafts" -> entry.copy(
+                name = "Shared drafts",
+                description = "Draft cache imported from external sharing.",
+                cleanupHint = "Deletes unsent draft attachments.",
+            )
+            "mcp_inbox" -> entry.copy(
+                name = "MCP inbox",
+                description = "Incoming directory for MCP file transfers.",
+                cleanupHint = "Deletes files in MCP inbox.",
+            )
+            "legacy_workspace" -> entry.copy(
+                name = "Legacy workspace data",
+                description = "Old workspace directories that may remain after upgrades.",
+                cleanupHint = "Recommended to clean after confirming they are no longer needed.",
+            )
+            "other_user_data" -> entry.copy(
+                name = "Other data",
+                description = "Data not matched by current category rules.",
+            )
+            else -> entry
+        }
+    }
+
+    private fun text(context: Context, zh: String, en: String): String {
+        return if (AppLocaleManager.isEnglish(context)) en else zh
     }
 
     private fun buildSnapshotBundle(
@@ -986,7 +1162,7 @@ class StorageUsageChannel {
             cacheExternalDir = context.externalCacheDir,
             sharedDraftsDir = File(context.filesDir, "shared_open_drafts"),
             mcpInboxDir = File(context.filesDir, "mcp_inbox"),
-            localModelsRoot = File(context.filesDir, ".mnnmodels"),
+            localModelsRoots = resolveLocalModelRoots(context),
             localModelsMmapDir = File(context.filesDir, "tmps"),
             localModelsTempsDir = File(context.filesDir, "local_temps"),
             localModelsBuiltinTempsDir = File(context.filesDir, "builtin_temps"),
@@ -999,8 +1175,47 @@ class StorageUsageChannel {
         )
     }
 
+    private fun resolveLocalModelRoots(context: Context): List<File> {
+        return listOf(
+            File(context.filesDir, ".mnnmodels"),
+            AgentWorkspaceManager.modelsDirectory(context),
+        )
+    }
+
     private fun resolvePrimaryDatabaseFile(context: Context): File {
         return context.getDatabasePath(DATABASE_PRIMARY_NAME)
+    }
+
+    private fun buildTopNativeLibBreakdown(
+        context: Context,
+        topLimit: Int,
+    ): List<CategoryBreakdownEntry> {
+        if (topLimit <= 0) {
+            return emptyList()
+        }
+        val nativeLibRootPath = context.applicationInfo.nativeLibraryDir ?: return emptyList()
+        val nativeLibRoot = File(nativeLibRootPath)
+        if (!nativeLibRoot.exists() || !nativeLibRoot.isDirectory) {
+            return emptyList()
+        }
+
+        return nativeLibRoot.walkTopDown()
+            .maxDepth(8)
+            .filter { file ->
+                file.isFile && file.name.endsWith(".so", ignoreCase = true)
+            }
+            .map { file ->
+                val relative = runCatching {
+                    nativeLibRoot.toPath().relativize(file.toPath()).toString()
+                }.getOrDefault(file.name)
+                CategoryBreakdownEntry(
+                    label = relative.replace('\\', '/'),
+                    bytes = file.length().coerceAtLeast(0L),
+                )
+            }
+            .sortedByDescending { it.bytes }
+            .take(topLimit)
+            .toList()
     }
 
     private fun safeExecSql(database: SQLiteDatabase, sql: String) {
@@ -1169,6 +1384,22 @@ class StorageUsageChannel {
         var merged = CleanupOutcome(success = true)
         outcomes.forEach { outcome ->
             merged = merged.merge(outcome)
+        }
+        return merged
+    }
+
+    private fun clearUniqueDirectories(paths: List<File>): CleanupOutcome {
+        if (paths.isEmpty()) {
+            return CleanupOutcome(success = true)
+        }
+        val visited = hashSetOf<String>()
+        var merged = CleanupOutcome(success = true)
+        paths.forEach { path ->
+            val key = canonicalPath(path)
+            if (!visited.add(key)) {
+                return@forEach
+            }
+            merged = merged.merge(clearDirectoryContents(path))
         }
         return merged
     }
