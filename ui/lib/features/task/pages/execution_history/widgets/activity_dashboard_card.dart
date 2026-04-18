@@ -547,11 +547,16 @@ class _ActivityDashboardCardState extends State<ActivityDashboardCard>
 
   Widget _buildStackedBars(bool isDark, OmniThemePalette palette) {
     final maxWeekTotal = _weeklyData.fold<int>(0, (p, w) => w.totalTokens > p ? w.totalTokens : p);
-    const double barAreaHeight = 60.0;
     const double barGap = 3.0;
+    const double heatmapCellGap = 3.0;
+    const double dayLabelWidth = 20.0;
 
     return LayoutBuilder(builder: (context, constraints) {
       final totalBars = _weeklyData.length;
+      // Match heatmap grid height
+      final gridWidth = constraints.maxWidth - dayLabelWidth;
+      final heatmapCellSize = (totalBars > 0 ? (gridWidth - (totalBars - 1) * heatmapCellGap) / totalBars : 11.0).clamp(4.0, 14.0);
+      final barAreaHeight = 7 * heatmapCellSize + 6 * heatmapCellGap;
       final barWidth = (totalBars > 0 ? (constraints.maxWidth - (totalBars - 1) * barGap) / totalBars : 8.0).clamp(4.0, 14.0);
 
       return SizedBox(

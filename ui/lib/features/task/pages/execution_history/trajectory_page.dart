@@ -762,31 +762,31 @@ class _TrajectoryPageState
                               ],
                             ),
                           ),
-                          if (allRecords.isNotEmpty) ...[
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  '任务记录',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                    color: context.omniPalette.textPrimary,
-                                  ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '任务记录',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: context.omniPalette.textPrimary,
                                 ),
                               ),
                             ),
-                            SizedBox(height: 10),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: TagSection(
-                                items: executionTags,
-                                selectedIds: selectedTagIds,
-                                onSelectionChanged: _onTagSelectionChanged,
-                                maxCollapsedRows: 1,
-                              ),
+                          ),
+                          SizedBox(height: 10),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: TagSection(
+                              items: executionTags,
+                              selectedIds: selectedTagIds,
+                              onSelectionChanged: _onTagSelectionChanged,
+                              maxCollapsedRows: 1,
                             ),
+                          ),
+                          if (allRecords.isNotEmpty) ...[
                             SizedBox(height: 8),
                             ExecutionRecordList(
                               records: filterRecords,
@@ -801,8 +801,7 @@ class _TrajectoryPageState
                               onSchedulePressed: _onSchedulePressed,
                               scheduledTaskKeys: _scheduledTaskKeys,
                             ),
-                          ] else
-                            _buildEmptyRecordsHint(),
+                          ],
                         ],
                       ),
                     ),
