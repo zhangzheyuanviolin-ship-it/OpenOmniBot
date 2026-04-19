@@ -13,7 +13,7 @@
   "themeModeSystem": "System",
   "languageTitle": "Language",
   "languageSubtitle": "Choose the display language for the app UI, agent prompts, and tool text",
-  "languageFollowSystem": "Follow System",
+  "languageFollowSystem": "System",
   "languageZhHans": "简体中文",
   "languageEnglish": "English",
   "settingsTitle": "Settings",
@@ -192,7 +192,7 @@
 
   "trajectoryTitle": "Trajectory",
   "trajectoryNoRecords": "No execution records",
-  "trajectoryNoRecordsDesc": "Tasks executed by Omnibot will be displayed here",
+  "trajectoryNoRecordsDesc": "VLM tasks will be displayed here",
   "trajectoryAll": "All",
   "trajectoryTaskRecords": "Task Records",
   "trajectorySelectedCount": "{n} selected",

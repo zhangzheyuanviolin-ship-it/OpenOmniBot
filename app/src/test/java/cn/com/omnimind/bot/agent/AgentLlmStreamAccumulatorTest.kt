@@ -93,4 +93,27 @@ class AgentLlmStreamAccumulatorTest {
         assertEquals(36.6, turn.usage?.prefillTokensPerSecond ?: 0.0, 0.0)
         assertEquals(12.4, turn.usage?.decodeTokensPerSecond ?: 0.0, 0.0)
     }
+
+    @Test
+    fun `preserves surrogate pair split across chunks`() {
+        val accumulator = AgentLlmStreamAccumulator(json = json)
+
+        accumulator.consume("""{"choices":[{"delta":{"content":"前缀\uD83D"}}]}""")
+        accumulator.consume("""{"choices":[{"delta":{"content":"\uDE00后缀"}}]}""")
+
+        val turn = accumulator.buildTurn()
+
+        assertEquals("前缀😀后缀", turn.message.contentText())
+    }
+
+    @Test
+    fun `drops dangling surrogate from final content`() {
+        val accumulator = AgentLlmStreamAccumulator(json = json)
+
+        accumulator.consume("""{"choices":[{"delta":{"content":"前缀\uD83D后缀"}}]}""")
+
+        val turn = accumulator.buildTurn()
+
+        assertEquals("前缀后缀", turn.message.contentText())
+    }
 }

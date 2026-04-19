@@ -91,7 +91,7 @@ class AgentConversationHistorySupportTest {
     }
 
     @Test
-    fun `buildPromptSeedFromEntries replays per-tool summaries in chronological order`() {
+    fun `buildPromptSeedFromEntries replays compact tool history in chronological order`() {
         val userEntry = AgentConversationEntry(
             id = 1,
             conversationId = 7,
@@ -195,17 +195,60 @@ class AgentConversationHistorySupportTest {
         assertTrue(firstToolSummary.contains("浏览器自动化"))
         assertTrue(firstToolSummary.contains("抓取成功"))
         assertTrue(firstToolSummary.contains("previewJson"))
+        assertFalse(firstToolSummary.contains("rawResultJson"))
 
         val secondToolSummary = seed.historyMessages[5].content!!.jsonPrimitive.content
         assertTrue(secondToolSummary.contains("执行命令"))
         assertTrue(secondToolSummary.contains("执行命令失败"))
         assertTrue(secondToolSummary.contains("terminalOutput"))
+        assertFalse(secondToolSummary.contains("rawResultJson"))
 
         val allReplayText = seed.historyMessages.joinToString("\n") {
             it.content?.toString().orEmpty()
         }
         assertTrue(allReplayText.contains("assistant should start being replayed"))
         assertFalse(allReplayText.contains("super long raw payload"))
+        assertFalse(allReplayText.contains("super long raw payload terminal"))
+    }
+
+    @Test
+    fun `restoreToolPayloadFromUiMessage keeps agent tool cards restorable as tool events`() {
+        val message = mapOf<String, Any?>(
+            "id" to "task-1-tool-1",
+            "type" to 2,
+            "user" to 3,
+            "content" to mapOf(
+                "id" to "task-1-tool-1",
+                "cardData" to mapOf(
+                    "type" to "agent_tool_summary",
+                    "taskId" to "task-1",
+                    "cardId" to "task-1-tool-1",
+                    "toolName" to "browser_use",
+                    "displayName" to "浏览器自动化",
+                    "toolType" to "builtin",
+                    "status" to "success",
+                    "summary" to "抓取成功",
+                    "argsJson" to """{"url":"https://example.com"}""",
+                    "resultPreviewJson" to """{"title":"Example"}""",
+                    "rawResultJson" to """{"title":"Example","html":"<html>raw</html>"}""",
+                    "success" to true
+                )
+            )
+        )
+
+        val restored = AgentConversationHistorySupport.restoreToolPayloadFromUiMessage(message)
+
+        assertEquals("browser_use", restored?.get("toolName"))
+        assertEquals("success", restored?.get("status"))
+        assertEquals("抓取成功", restored?.get("summary"))
+        assertEquals(
+            """{"url":"https://example.com"}""",
+            restored?.get("argsJson")
+        )
+        assertEquals(
+            """{"title":"Example","html":"<html>raw</html>"}""",
+            restored?.get("rawResultJson")
+        )
     }
 
     @Test
@@ -374,7 +417,7 @@ class AgentConversationHistorySupportTest {
     }
 
     @Test
-    fun `buildPromptRelevantMessages replays task assistant content after tool results in same round`() {
+    fun `buildPromptRelevantMessages replays tool history before same-task assistant content`() {
         val entries = listOf(
             buildUserEntry(id = 1, entryId = "task-1-user", text = "请检查页面"),
             buildAssistantEntry(
@@ -398,8 +441,46 @@ class AgentConversationHistorySupportTest {
             messages.map { it.role }
         )
         assertEquals("browser_use", messages[1].toolCalls?.single()?.function?.name)
+        assertTrue(messages[2].content!!.jsonPrimitive.content.contains("\"summary\":\"抓取成功\""))
+        assertFalse(messages[2].content!!.jsonPrimitive.content.contains("rawResultJson"))
         assertEquals("页面标题是 Example", messages[3].content!!.jsonPrimitive.content)
         assertEquals("继续下一步", messages[4].content!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `buildPromptRelevantMessages truncates oversized tool replay fields`() {
+        val longSummary = "s".repeat(400)
+        val longTerminal = "t".repeat(1500)
+        val entry = AgentConversationEntry(
+            id = 1,
+            conversationId = 7,
+            conversationMode = "normal",
+            entryId = "task-1-tool-1",
+            entryType = AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT,
+            status = AgentConversationHistoryRepository.STATUS_SUCCESS,
+            summary = longSummary,
+            payloadJson = """
+                {
+                  "toolName":"terminal_execute",
+                  "displayName":"执行命令",
+                  "toolType":"terminal",
+                  "summary":"$longSummary",
+                  "terminalOutput":"$longTerminal",
+                  "resultPreviewJson":"{\"message\":\"ok\"}",
+                  "rawResultJson":"{\"message\":\"raw\"}",
+                  "success":true
+                }
+            """.trimIndent(),
+            createdAt = 1,
+            updatedAt = 1
+        )
+
+        val messages = AgentConversationHistorySupport.buildPromptRelevantMessages(listOf(entry))
+        val toolSummary = messages[1].content!!.jsonPrimitive.content
+
+        assertTrue(toolSummary.contains("\"summary\":\"${"s".repeat(240)}...\""))
+        assertTrue(toolSummary.contains("\"terminalOutput\":\"${"t".repeat(1200)}...\""))
+        assertFalse(toolSummary.contains("rawResultJson"))
     }
 
     @Test

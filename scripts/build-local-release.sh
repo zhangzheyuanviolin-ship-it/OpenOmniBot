@@ -160,7 +160,6 @@ fi
 
 echo "Building release artifact..."
 ./gradlew \
-  --parallel \
   --build-cache \
   --max-workers="$max_workers" \
   "$TASK" \

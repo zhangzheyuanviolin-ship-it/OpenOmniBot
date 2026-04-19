@@ -65,6 +65,7 @@ dependencies {
     // ML Kit for OCR
     implementation(libs.text.recognition.chinese)
 
+    testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

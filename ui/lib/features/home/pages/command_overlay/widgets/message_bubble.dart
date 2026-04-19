@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:ui/models/chat_link_preview.dart';
@@ -7,6 +8,8 @@ import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/widgets/image_preview_overlay.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
+import '../../../../../services/voice_playback_channel_service.dart';
+import '../../../../../services/voice_playback_coordinator.dart';
 import '../../../../../theme/theme_context.dart';
 import '../../../../../widgets/streaming_text.dart';
 import 'thinking_dots_indicator.dart';
@@ -15,6 +18,14 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 export 'package:ui/widgets/streaming_text.dart'
     show kThinkingText, kSummarizingText, kSummaryCompleteText;
+
+const String _kSpeechIconSvg = '''
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M8.8 20v-4.1l1.9.2a2.3 2.3 0 0 0 2.164-2.1V8.3A5.37 5.37 0 0 0 2 8.25c0 2.8.656 3.054 1 4.55a5.77 5.77 0 0 1 .029 2.758L2 20"/>
+  <path d="M19.8 17.8a7.5 7.5 0 0 0 .003-10.603"/>
+  <path d="M17 15a3.5 3.5 0 0 0-.025-4.975"/>
+</svg>
+''';
 
 /// 消息气泡组件
 ///
@@ -661,7 +672,7 @@ class MessageBubble extends StatelessWidget {
   }
 
   /// 构建AI文本（使用StreamingText组件）
-  Widget _buildAiText(BuildContext context, String text) {
+  Widget _buildAiText(BuildContext context, String text, {Widget? trailing}) {
     final aiPrimaryTextColor = _resolvedAiPrimaryTextColor(context);
     final aiSecondaryTextColor = _resolvedAiSecondaryTextColor(context);
     // 如果是 loading 状态，显示浮动三个点动画（左对齐，与回复文本位置一致）
@@ -693,6 +704,7 @@ class MessageBubble extends StatelessWidget {
             fullText: text,
             selectable: true,
             onDisplayedTextChanged: onStreamingTextLayoutChanged,
+            trailing: trailing,
             style: TextStyle(
               fontSize: _chatTextSize,
               color: aiPrimaryTextColor,
@@ -708,6 +720,7 @@ class MessageBubble extends StatelessWidget {
       fullText: text,
       selectable: true,
       onDisplayedTextChanged: onStreamingTextLayoutChanged,
+      trailing: trailing,
       style: TextStyle(
         fontSize: _chatTextSize,
         color: aiPrimaryTextColor,
@@ -718,24 +731,93 @@ class MessageBubble extends StatelessWidget {
 
   /// AI text with optional inference speed label
   Widget _buildAiTextWithSpeed(BuildContext context, String text) {
-    final aiText = _buildAiText(context, text);
     final speed = _decodeTokensPerSecond;
-    if (speed == null) return aiText;
+    final showVoiceButton = VoicePlaybackCoordinator.instance
+        .shouldShowVoiceButton(
+          user: message.user,
+          type: message.type,
+          text: text,
+        );
+    final aiText = _buildAiText(
+      context,
+      text,
+      trailing: showVoiceButton ? _buildVoiceAction(context, text) : null,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         aiText,
-        const SizedBox(height: 4),
-        Text(
-          '${speed.toStringAsFixed(1)} tok/s',
-          style: TextStyle(
-            fontSize: 11,
-            color: visualProfile.secondaryTextColor.withValues(alpha: 0.6),
-            fontWeight: FontWeight.w400,
+        if (speed != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            '${speed.toStringAsFixed(1)} tok/s',
+            style: TextStyle(
+              fontSize: 11,
+              color: visualProfile.secondaryTextColor.withValues(alpha: 0.6),
+              fontWeight: FontWeight.w400,
+            ),
           ),
-        ),
+        ],
       ],
+    );
+  }
+
+  Widget _buildVoiceAction(BuildContext context, String text) {
+    unawaited(VoicePlaybackCoordinator.instance.ensureInitialized());
+    return AnimatedBuilder(
+      animation: VoicePlaybackCoordinator.instance,
+      builder: (context, _) {
+        final playbackState = VoicePlaybackCoordinator.instance.stateFor(
+          message.id,
+        );
+        final iconColor = _resolvedAiSecondaryTextColor(context);
+        final status = playbackState.status;
+        final Widget icon = switch (status) {
+          VoicePlaybackStatus.synthesizing => SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2, color: iconColor),
+          ),
+          VoicePlaybackStatus.playing => Icon(
+            Icons.pause_rounded,
+            size: 20,
+            color: iconColor,
+          ),
+          VoicePlaybackStatus.paused => Icon(
+            Icons.play_arrow_rounded,
+            size: 20,
+            color: iconColor,
+          ),
+          _ => SvgPicture.string(
+            _kSpeechIconSvg,
+            width: 18,
+            height: 18,
+            colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+          ),
+        };
+        final Future<void> Function() action = switch (status) {
+          VoicePlaybackStatus.synthesizing =>
+            () => VoicePlaybackCoordinator.instance.stopPlayback(message.id),
+          _ => () => VoicePlaybackCoordinator.instance.togglePlayback(
+            messageId: message.id,
+            text: text,
+          ),
+        };
+        return IconButton(
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 22, height: 22),
+          splashRadius: 12,
+          tooltip: playbackState.error.isNotEmpty
+              ? playbackState.error
+              : (status == VoicePlaybackStatus.playing ? '暂停语音' : '播放语音'),
+          onPressed: () {
+            unawaited(action());
+          },
+          icon: icon,
+        );
+      },
     );
   }
 

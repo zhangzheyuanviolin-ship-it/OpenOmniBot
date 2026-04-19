@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
+import 'package:ui/features/home/pages/chat/utils/stream_text_merge.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/services/voice_playback_coordinator.dart';
 
 enum ThinkingStage {
   thinking(1),
@@ -127,7 +132,10 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
   void handleAgentThinkingUpdate(String thinking) {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
     if (taskId == null) return;
-    if (_shouldIgnoreRegressiveSnapshot(deepThinkingContent, thinking)) {
+    if (shouldIgnoreRegressiveStreamingSnapshot(
+      deepThinkingContent,
+      thinking,
+    )) {
       return;
     }
 
@@ -251,9 +259,12 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
         _resolvePendingAgentTextMessageId(taskId) ??
         _nextAgentTextMessageId(taskId);
     var didUpdateTextMessage = false;
+    var visibleText = '';
     setState(() {
       final index = messages.indexWhere((msg) => msg.id == aiTextMessageId);
       if (index == -1) {
+        final initialText = mergeAgentTextSnapshot('', message);
+        visibleText = initialText;
         messages.insert(
           0,
           ChatMessageModel(
@@ -261,7 +272,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
             type: 1,
             user: 2,
             content: {
-              'text': message,
+              'text': initialText,
               'id': aiTextMessageId,
               if (isFinal && prefillTokensPerSecond != null)
                 'prefillTokensPerSecond': prefillTokensPerSecond,
@@ -275,17 +286,16 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
         final existing = messages[index];
         final content = Map<String, dynamic>.from(existing.content ?? {});
         final currentText = (content['text'] ?? '').toString();
-        if (!_shouldIgnoreRegressiveSnapshot(currentText, message)) {
-          content['text'] = message;
-          if (isFinal && prefillTokensPerSecond != null) {
-            content['prefillTokensPerSecond'] = prefillTokensPerSecond;
-          }
-          if (isFinal && decodeTokensPerSecond != null) {
-            content['decodeTokensPerSecond'] = decodeTokensPerSecond;
-          }
-          messages[index] = existing.copyWith(content: content);
-          didUpdateTextMessage = true;
+        visibleText = mergeAgentTextSnapshot(currentText, message);
+        content['text'] = visibleText;
+        if (isFinal && prefillTokensPerSecond != null) {
+          content['prefillTokensPerSecond'] = prefillTokensPerSecond;
         }
+        if (isFinal && decodeTokensPerSecond != null) {
+          content['decodeTokensPerSecond'] = decodeTokensPerSecond;
+        }
+        messages[index] = existing.copyWith(content: content);
+        didUpdateTextMessage = true;
       }
       if (isFinal) {
         isAiResponding = false;
@@ -298,16 +308,18 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     if (isFinal && currentDispatchTaskId == null) {
       _lastAgentTaskId = null;
     }
+    if (visibleText.trim().isNotEmpty) {
+      unawaited(
+        VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
+          messageId: aiTextMessageId,
+          text: visibleText,
+          isFinal: isFinal,
+        ),
+      );
+    }
     if (isFinal) {
       _persistAgentConversationSafely();
     }
-  }
-
-  bool _shouldIgnoreRegressiveSnapshot(String current, String incoming) {
-    if (current.isEmpty || incoming.isEmpty) {
-      return false;
-    }
-    return incoming.length < current.length && current.startsWith(incoming);
   }
 
   void handleAgentClarifyRequired(String question, List<String> missingFields) {
@@ -425,14 +437,22 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
       );
     }
 
-    final message = error.trim().isEmpty
-        ? '抱歉，执行失败，请稍后重试。'
-        : '抱歉，执行失败：${error.trim()}';
     final textId =
         _resolvePendingAgentTextMessageId(taskId) ??
         _nextAgentTextMessageId(taskId);
+    final index = messages.indexWhere((msg) => msg.id == textId);
+    final existingText = index == -1
+        ? ''
+        : (messages[index].content?['text'] as String? ?? '');
+    final preservedText = existingText.trim();
+    final fallbackMessage = error.trim().isEmpty
+        ? (LegacyTextLocalizer.isEnglish
+              ? "I can't generate a reply right now. Please try again."
+              : '暂时无法生成回复，请重试。')
+        : (LegacyTextLocalizer.isEnglish
+              ? "I can't generate a reply right now. Please try again. ${error.trim()}"
+              : '暂时无法生成回复，请重试。${error.trim()}');
     setState(() {
-      final index = messages.indexWhere((msg) => msg.id == textId);
       if (index == -1) {
         messages.insert(
           0,
@@ -440,20 +460,36 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
             id: textId,
             type: 1,
             user: 2,
-            content: {'text': message, 'id': textId},
-            isError: true,
+            content: {
+              'text': preservedText.isNotEmpty
+                  ? preservedText
+                  : fallbackMessage,
+              'id': textId,
+            },
+            isError: preservedText.isEmpty,
           ),
         );
       } else {
         final existing = messages[index];
         messages[index] = existing.copyWith(
-          content: {'text': message, 'id': textId},
-          isError: true,
+          content: {
+            'text': preservedText.isNotEmpty ? preservedText : fallbackMessage,
+            'id': textId,
+          },
+          isError: preservedText.isEmpty,
         );
       }
       isAiResponding = false;
     });
     _pendingAgentTextTaskId = null;
+    if (preservedText.isNotEmpty) {
+      unawaited(
+        VoicePlaybackCoordinator.instance.onAssistantMessageCompleted(
+          messageId: textId,
+          text: preservedText,
+        ),
+      );
+    }
 
     clearAgentStreamSessionState();
     resetDispatchState();

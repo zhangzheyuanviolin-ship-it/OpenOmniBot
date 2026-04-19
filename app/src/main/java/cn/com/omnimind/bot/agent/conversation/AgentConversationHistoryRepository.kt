@@ -188,16 +188,36 @@ class AgentConversationHistoryRepository(
         DatabaseHelper.deleteAgentConversationThread(conversationId, conversationMode)
         ConversationSnapshotOrdering.prepareForStorage(messages).forEach { prepared ->
             val message = prepared.payload
-            val entryId = message["id"]?.toString()?.trim().orEmpty().ifEmpty {
+            val restoredToolPayload =
+                AgentConversationHistorySupport.restoreToolPayloadFromUiMessage(message)
+            val entryId = message["id"]?.toString()?.trim().orEmpty()
+                .ifEmpty { restoredToolPayload?.get("cardId")?.toString()?.trim().orEmpty() }
+                .ifEmpty {
                 "entry_${System.currentTimeMillis()}"
             }
             val type = when {
+                restoredToolPayload != null -> ENTRY_TYPE_TOOL_EVENT
                 (message["type"] as? Number)?.toInt() == 2 -> ENTRY_TYPE_UI_CARD
                 (message["user"] as? Number)?.toInt() == 1 -> ENTRY_TYPE_USER_MESSAGE
                 else -> ENTRY_TYPE_ASSISTANT_MESSAGE
             }
-            val status = if (message["isError"] == true) STATUS_ERROR else STATUS_SUCCESS
-            val summary = extractSummaryFromMessagePayload(message)
+            val status = when {
+                restoredToolPayload != null -> restoredToolPayload["status"]?.toString()?.trim()
+                    ?.ifEmpty { null }
+                    ?: if (message["isError"] == true) STATUS_ERROR else STATUS_SUCCESS
+                message["isError"] == true -> STATUS_ERROR
+                else -> STATUS_SUCCESS
+            }
+            val summary = when {
+                restoredToolPayload != null -> restoredToolPayload["summary"]?.toString()?.trim()
+                    .orEmpty()
+                else -> extractSummaryFromMessagePayload(message)
+            }
+            val payloadJson = if (restoredToolPayload != null) {
+                gson.toJson(restoredToolPayload)
+            } else {
+                gson.toJson(message)
+            }
             val insertedId = DatabaseHelper.upsertAgentConversationEntry(
                 AgentConversationEntry(
                     conversationId = conversationId,
@@ -206,7 +226,7 @@ class AgentConversationHistoryRepository(
                     entryType = type,
                     status = status,
                     summary = summary,
-                    payloadJson = gson.toJson(message),
+                    payloadJson = payloadJson,
                     createdAt = prepared.createdAt,
                     updatedAt = prepared.createdAt
                 )
@@ -431,8 +451,9 @@ class AgentConversationHistoryRepository(
         isError: Boolean,
         createdAt: Long
     ): Map<String, Any?> {
+        val safeText = AgentTextSanitizer.sanitizeUtf16(text)
         val content = linkedMapOf<String, Any?>(
-            "text" to text,
+            "text" to safeText,
             "id" to messageId
         )
         if (attachments.isNotEmpty()) {
@@ -551,17 +572,23 @@ class AgentConversationHistoryRepository(
             else -> {
                 val payload = readMap(entry.payloadJson)
                 val content = toStringAnyMap(payload["content"])
-                content["text"]?.toString()?.trim().orEmpty().ifEmpty { entry.summary }
+                AgentTextSanitizer.sanitizeUtf16(
+                    content["text"]?.toString()?.trim().orEmpty().ifEmpty { entry.summary }
+                )
             }
         }
     }
 
     private fun extractSummaryFromMessagePayload(message: Map<String, Any?>): String {
         val content = toStringAnyMap(message["content"])
-        val text = content["text"]?.toString()?.trim().orEmpty()
+        val text = AgentTextSanitizer.sanitizeUtf16(
+            content["text"]?.toString()?.trim().orEmpty()
+        )
         if (text.isNotEmpty()) return text
         val cardData = toStringAnyMap(content["cardData"])
-        return cardData["summary"]?.toString()?.trim().orEmpty()
+        return AgentTextSanitizer.sanitizeUtf16(
+            cardData["summary"]?.toString()?.trim().orEmpty()
+        )
     }
 
     private fun readMap(json: String): Map<String, Any?> {
