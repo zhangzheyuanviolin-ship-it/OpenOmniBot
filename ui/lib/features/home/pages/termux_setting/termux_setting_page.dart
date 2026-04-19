@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
@@ -13,14 +14,14 @@ class _EnvironmentDefinition {
   const _EnvironmentDefinition({
     required this.id,
     required this.title,
-    required this.description,
-    required this.group,
+    required this.descriptionKey,
+    required this.groupKey,
   });
 
   final String id;
   final String title;
-  final String description;
-  final String group;
+  final String descriptionKey;
+  final String groupKey;
 }
 
 class _EnvironmentViewModel {
@@ -40,56 +41,56 @@ const List<_EnvironmentDefinition> _environmentDefinitions =
       _EnvironmentDefinition(
         id: 'nodejs',
         title: 'nodejs',
-        description: 'Node.js 运行时',
-        group: '开发环境',
+        descriptionKey: 'alpineNodeJs',
+        groupKey: 'alpineDevEnv',
       ),
       _EnvironmentDefinition(
         id: 'npm',
         title: 'npm',
-        description: 'Node.js 包管理器',
-        group: '开发环境',
+        descriptionKey: 'alpineNpm',
+        groupKey: 'alpineDevEnv',
       ),
       _EnvironmentDefinition(
         id: 'git',
         title: 'git',
-        description: 'Git 版本控制',
-        group: '开发环境',
+        descriptionKey: 'alpineGit',
+        groupKey: 'alpineDevEnv',
       ),
       _EnvironmentDefinition(
         id: 'python',
         title: 'python',
-        description: 'Python 解释器',
-        group: '开发环境',
+        descriptionKey: 'alpinePython',
+        groupKey: 'alpineDevEnv',
       ),
       _EnvironmentDefinition(
         id: 'uv',
         title: 'uv',
-        description: 'Python 项目与包工具',
-        group: '开发环境',
+        descriptionKey: 'alpinePip',
+        groupKey: 'alpineDevEnv',
       ),
       _EnvironmentDefinition(
         id: 'pip',
         title: 'pip',
-        description: 'Python 包安装器',
-        group: '开发环境',
+        descriptionKey: 'alpinePipInstall',
+        groupKey: 'alpineDevEnv',
       ),
       _EnvironmentDefinition(
         id: 'ssh_client',
         title: 'ssh',
-        description: 'SSH 客户端',
-        group: 'SSH',
+        descriptionKey: 'alpineSshClient',
+        groupKey: 'alpineSsh',
       ),
       _EnvironmentDefinition(
         id: 'sshpass',
         title: 'sshpass',
-        description: 'SSH 密码辅助工具',
-        group: 'SSH',
+        descriptionKey: 'alpineSshpass',
+        groupKey: 'alpineSsh',
       ),
       _EnvironmentDefinition(
         id: 'openssh_server',
         title: 'sshd',
-        description: 'OpenSSH 服务器',
-        group: 'SSH',
+        descriptionKey: 'alpineOpenSshServer',
+        groupKey: 'alpineSsh',
       ),
     ];
 
@@ -153,6 +154,25 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   Color get _mutedSurfaceColor => _isDarkTheme
       ? context.omniPalette.surfaceSecondary
       : const Color(0xFFF8FAFC);
+
+  String _resolveL10nKey(String key) {
+    // Returns the localized string for a given ARB key.
+    final l10n = context.l10n;
+    switch (key) {
+      case 'alpineNodeJs': return l10n.alpineNodeJs;
+      case 'alpineNpm': return l10n.alpineNpm;
+      case 'alpineGit': return l10n.alpineGit;
+      case 'alpinePython': return l10n.alpinePython;
+      case 'alpinePip': return l10n.alpinePip;
+      case 'alpinePipInstall': return l10n.alpinePipInstall;
+      case 'alpineSshClient': return l10n.alpineSshClient;
+      case 'alpineSshpass': return l10n.alpineSshpass;
+      case 'alpineOpenSshServer': return l10n.alpineOpenSshServer;
+      case 'alpineDevEnv': return l10n.alpineDevEnv;
+      case 'alpineSsh': return 'SSH';
+      default: return key;
+    }
+  }
 
   @override
   void initState() {
@@ -219,7 +239,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
             .toSet();
         _hasInitializedSelection = true;
         _isDetecting = false;
-        _detectError = e.message ?? '检测 Alpine 环境失败';
+        _detectError = e.message ?? context.l10n.alpineDetectFailed;
       });
     } catch (_) {
       if (!mounted) {
@@ -232,7 +252,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
             .toSet();
         _hasInitializedSelection = true;
         _isDetecting = false;
-        _detectError = '检测 Alpine 环境失败';
+        _detectError = context.l10n.alpineDetectFailed;
       });
     }
   }
@@ -260,7 +280,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       setState(() {
         _autoStartTasks = const <EmbeddedTerminalAutoStartTask>[];
         _isAutoStartLoading = false;
-        _autoStartError = e.message ?? '读取自启动任务失败';
+        _autoStartError = e.message ?? context.l10n.alpineBootTasksLoadFailed;
       });
     } catch (_) {
       if (!mounted) {
@@ -269,7 +289,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       setState(() {
         _autoStartTasks = const <EmbeddedTerminalAutoStartTask>[];
         _isAutoStartLoading = false;
-        _autoStartError = '读取自启动任务失败';
+        _autoStartError = context.l10n.alpineBootTasksLoadFailed;
       });
     }
   }
@@ -287,9 +307,9 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         setupPackageIds: _selectedPackageIds.toList(growable: false),
       );
     } on PlatformException catch (e) {
-      showToast(e.message ?? '打开终端环境配置失败', type: ToastType.error);
+      showToast(e.message ?? context.l10n.alpineConfigOpenFailed, type: ToastType.error);
     } catch (_) {
-      showToast('打开终端环境配置失败', type: ToastType.error);
+      showToast(context.l10n.alpineConfigOpenFailed, type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -322,11 +342,11 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       );
       await _refreshAutoStartTasks();
       if (!mounted) return;
-      showToast(task == null ? '已新增自启动任务' : '已更新自启动任务');
+      showToast(task == null ? context.l10n.alpineBootTaskAdded : context.l10n.alpineBootTaskUpdated);
     } on PlatformException catch (e) {
-      showToast(e.message ?? '保存自启动任务失败', type: ToastType.error);
+      showToast(e.message ?? context.l10n.alpineBootTaskSaveFailed, type: ToastType.error);
     } catch (_) {
-      showToast('保存自启动任务失败', type: ToastType.error);
+      showToast(context.l10n.alpineBootTaskSaveFailed, type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -356,11 +376,11 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       );
       await _refreshAutoStartTasks();
       if (!mounted) return;
-      showToast(enabled ? '已开启应用启动时自启动' : '已关闭自动启动');
+      showToast(enabled ? context.l10n.alpineBootEnabled : context.l10n.alpineBootDisabled);
     } on PlatformException catch (e) {
-      showToast(e.message ?? '更新任务失败', type: ToastType.error);
+      showToast(e.message ?? context.l10n.alpineBootTaskUpdateFailed, type: ToastType.error);
     } catch (_) {
-      showToast('更新任务失败', type: ToastType.error);
+      showToast(context.l10n.alpineBootTaskUpdateFailed, type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -376,10 +396,10 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     }
     final confirmed = await AppDialog.confirm(
       context,
-      title: '删除自启动任务',
-      content: '确认删除“${task.name}”吗？',
-      cancelText: '取消',
-      confirmText: '删除',
+      title: context.l10n.alpineDeleteBootTask,
+      content: context.l10n.alpineDeleteBootTaskMsg(task.name),
+      cancelText: context.trLegacy('取消'),
+      confirmText: context.trLegacy('删除'),
     );
     if (confirmed != true || _isAutoStartBusy) {
       return;
@@ -391,11 +411,11 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       await deleteEmbeddedTerminalAutoStartTask(task.id);
       await _refreshAutoStartTasks();
       if (!mounted) return;
-      showToast('已删除自启动任务');
+      showToast(context.l10n.alpineBootTaskDeleted);
     } on PlatformException catch (e) {
-      showToast(e.message ?? '删除任务失败', type: ToastType.error);
+      showToast(e.message ?? context.l10n.alpineBootTaskDeleteFailed, type: ToastType.error);
     } catch (_) {
-      showToast('删除任务失败', type: ToastType.error);
+      showToast(context.l10n.alpineBootTaskDeleteFailed, type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -416,11 +436,11 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
       final result = await runEmbeddedTerminalAutoStartTask(task.id);
       await _refreshAutoStartTasks();
       if (!mounted) return;
-      showToast(result.message.isNotEmpty ? result.message : '启动命令已发送');
+      showToast(result.message.isNotEmpty ? result.message : context.l10n.alpineCommandSent);
     } on PlatformException catch (e) {
-      showToast(e.message ?? '启动任务失败', type: ToastType.error);
+      showToast(e.message ?? context.l10n.alpineStartFailed, type: ToastType.error);
     } catch (_) {
-      showToast('启动任务失败', type: ToastType.error);
+      showToast(context.l10n.alpineStartFailed, type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -446,16 +466,17 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   Widget build(BuildContext context) {
     final groupedItems = <String, List<_EnvironmentViewModel>>{};
     for (final item in _items) {
+      final group = _resolveL10nKey(item.definition.groupKey);
       groupedItems.putIfAbsent(
-        item.definition.group,
+        group,
         () => <_EnvironmentViewModel>[],
       );
-      groupedItems[item.definition.group]!.add(item);
+      groupedItems[group]!.add(item);
     }
 
     return Scaffold(
       backgroundColor: _pageBackground,
-      appBar: const CommonAppBar(title: 'Alpine 环境', primary: true),
+      appBar: CommonAppBar(title: context.l10n.settingsAlpineTitle, primary: true),
       body: SafeArea(
         top: false,
         child: RefreshIndicator(
@@ -509,10 +530,10 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                       : const Icon(Icons.terminal_rounded),
                   label: Text(
                     _isDetecting
-                        ? '正在检测环境'
+                        ? context.l10n.alpineDetecting
                         : _selectedLostCount > 0
-                        ? '开始配置（$_selectedLostCount 项）'
-                        : '全部已就绪',
+                        ? context.l10n.alpineStartConfig(_selectedLostCount)
+                        : context.l10n.alpineAllReady,
                   ),
                 ),
               ),
@@ -528,14 +549,14 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
   Widget _buildIntroCard() {
     final readyCount = _items.where((item) => item.ready).length;
     return _buildSectionCard(
-      title: '环境配置',
+      title: context.l10n.alpineEnvConfig,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             _isDetecting
-                ? '正在后台检测 Alpine 内常见开发环境的版本信息。'
-                : '已就绪 $readyCount/${_items.length} 项，可直接勾选缺失项并进入 ReTerminal 自动配置。',
+                ? context.l10n.alpineDetectingDesc
+                : context.l10n.alpineReadyCount(readyCount, _items.length),
             style: TextStyle(
               color: _secondaryTextColor,
               fontSize: 13,
@@ -572,12 +593,12 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
 
   Widget _buildAutoStartSection() {
     return _buildSectionCard(
-      title: '自启动任务',
+      title: context.l10n.alpineBootTasks,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '打开 Omnibot 时会在后台检查已启用的任务，并在对应 ReTerminal 会话内启动命令，适合常驻服务。',
+            context.l10n.alpineBootTasksDesc,
             style: TextStyle(
               color: _secondaryTextColor,
               fontSize: 13,
@@ -594,7 +615,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                       ? null
                       : () => _openAutoStartTaskDialog(),
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('新增任务'),
+                  label: Text(context.l10n.alpineAddTask),
                 ),
               ),
               const SizedBox(width: 10),
@@ -604,7 +625,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                       ? null
                       : () => openNativeTerminal(),
                   icon: const Icon(Icons.terminal_rounded),
-                  label: const Text('打开终端'),
+                  label: Text(context.l10n.alpineOpenTerminal),
                 ),
               ),
             ],
@@ -633,7 +654,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                 ),
               ),
               child: Text(
-                '暂无任务。你可以添加例如 `python app.py`、`node server.js`、`./start.sh` 之类的常驻命令。',
+                context.l10n.alpineNoTasksDesc,
                 style: TextStyle(
                   color: _secondaryTextColor,
                   fontSize: 12,
@@ -680,7 +701,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                     runSpacing: 8,
                     children: [
                       _buildLegendTag(
-                        label: task.enabled ? '开机打开 app 后启动' : '未启用',
+                        label: task.enabled ? context.l10n.alpineBootOnAppOpen : context.l10n.alpineNotEnabled,
                         backgroundColor: task.enabled
                             ? const Color(0xFFEAF2FF)
                             : const Color(0xFFF1F5F9),
@@ -768,7 +789,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
               if (workingDirectory != null && workingDirectory.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
-                  '工作目录：$workingDirectory',
+                  context.l10n.alpineWorkDirValue(workingDirectory),
                   style: TextStyle(
                     color: _secondaryTextColor,
                     fontSize: 11,
@@ -787,21 +808,21 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
                   ? null
                   : () => _runAutoStartTask(task),
               icon: const Icon(Icons.play_arrow_rounded, size: 18),
-              label: Text(task.running ? '已在运行' : '立即启动'),
+              label: Text(task.running ? context.l10n.alpineRunning : context.l10n.alpineStartNow),
             ),
             TextButton.icon(
               onPressed: _isAutoStartBusy
                   ? null
                   : () => _openAutoStartTaskDialog(task: task),
               icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('编辑'),
+              label: Text(context.l10n.alpineEdit),
             ),
             TextButton.icon(
               onPressed: _isAutoStartBusy
                   ? null
                   : () => _deleteAutoStartTask(task),
               icon: const Icon(Icons.delete_outline_rounded, size: 18),
-              label: const Text('删除'),
+              label: Text(context.trLegacy('删除')),
             ),
           ],
         ),
@@ -813,7 +834,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
     final selected = _selectedPackageIds.contains(item.definition.id);
     final versionText = item.version?.trim().isNotEmpty == true
         ? item.version!.trim()
-        : (item.ready ? '已检测到可用版本' : '未检测到');
+        : (item.ready ? context.l10n.alpineVersionDetected : context.l10n.alpineVersionNotFound);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -849,7 +870,7 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
               ),
               const SizedBox(height: 4),
               Text(
-                item.definition.description,
+                _resolveL10nKey(item.definition.descriptionKey),
                 style: TextStyle(
                   color: _secondaryTextColor,
                   fontSize: 12,
@@ -1015,11 +1036,11 @@ class _AutoStartTaskDialogState extends State<_AutoStartTaskDialog> {
     final command = _commandController.text.trim();
     final workingDirectory = _workingDirectoryController.text.trim();
     if (name.isEmpty) {
-      showToast('请输入任务名称', type: ToastType.error);
+      showToast(context.l10n.alpineTaskNameHint, type: ToastType.error);
       return;
     }
     if (command.isEmpty) {
-      showToast('请输入启动命令', type: ToastType.error);
+      showToast(context.l10n.alpineCommandHint, type: ToastType.error);
       return;
     }
     Navigator.of(context).pop(
@@ -1036,7 +1057,7 @@ class _AutoStartTaskDialogState extends State<_AutoStartTaskDialog> {
   Widget build(BuildContext context) {
     final editing = widget.task != null;
     return AlertDialog(
-      title: Text(editing ? '编辑自启动任务' : '新增自启动任务'),
+      title: Text(editing ? context.l10n.alpineEditBootTask : context.l10n.alpineAddBootTask),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1045,9 +1066,9 @@ class _AutoStartTaskDialogState extends State<_AutoStartTaskDialog> {
             TextField(
               controller: _nameController,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: '任务名称',
-                hintText: '例如：本地 API 服务',
+              decoration: InputDecoration(
+                labelText: context.l10n.alpineTaskName,
+                hintText: context.l10n.alpineTaskNameExample,
               ),
             ),
             const SizedBox(height: 12),
@@ -1055,17 +1076,17 @@ class _AutoStartTaskDialogState extends State<_AutoStartTaskDialog> {
               controller: _commandController,
               minLines: 3,
               maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: '启动命令',
-                hintText: '例如：python app.py 或 pnpm start',
+              decoration: InputDecoration(
+                labelText: context.l10n.alpineStartCommand,
+                hintText: context.l10n.alpineCommandExample,
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _workingDirectoryController,
               textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
-                labelText: '工作目录',
+              decoration: InputDecoration(
+                labelText: context.l10n.alpineWorkDir,
                 hintText: '/workspace',
               ),
             ),
@@ -1078,7 +1099,7 @@ class _AutoStartTaskDialogState extends State<_AutoStartTaskDialog> {
                   _enabled = value;
                 });
               },
-              title: const Text('打开小万时自动启动'),
+              title: Text(context.l10n.alpineBootAutoStart),
             ),
           ],
         ),
@@ -1086,9 +1107,9 @@ class _AutoStartTaskDialogState extends State<_AutoStartTaskDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(context.trLegacy('取消')),
         ),
-        FilledButton(onPressed: _submit, child: Text(editing ? '保存' : '创建')),
+        FilledButton(onPressed: _submit, child: Text(editing ? context.trLegacy('保存') : context.trLegacy('创建'))),
       ],
     );
   }

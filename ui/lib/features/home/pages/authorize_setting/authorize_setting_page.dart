@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_switch/flutter_switch.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/utils/cache_util.dart';
@@ -83,9 +84,7 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FA),
       appBar: CommonAppBar(
-        title: Localizations.localeOf(context).languageCode == 'en'
-            ? 'App Permission Authorization'
-            : '应用权限授权',
+        title: context.l10n.authorizePageTitle,
         primary: true,
       ),
       body: SafeArea(
@@ -98,12 +97,8 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
               // 通知设置组
               _buildSettingsCard([
                 _buildSwitchItem(
-                  title: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Receive message notifications'
-                      : '接收消息通知',
-                  subtitle: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Enable this to get task progress updates in time'
-                      : '打开后可以及时了解任务进展',
+                  title: context.l10n.authorizeReceiveNotifications,
+                  subtitle: context.l10n.authorizeNotificationsDesc,
                   value: notificationEnabled,
                   onChanged: (val) async {
                     await CacheUtil.cacheBool("notification_enabled", val);
@@ -119,12 +114,8 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
               // 权限设置组
               _buildSettingsCard([
                 _buildPermissionItem(
-                  title: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Background running permission'
-                      : '后台运行权限',
-                  subtitle: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Omnibot can better understand your preferences while assisting'
-                      : '小万可以在陪伴时更了解您的喜好',
+                  title: context.trLegacy('后台运行权限'),
+                  subtitle: context.trLegacy('小万可以在陪伴时更了解您的喜好'),
                   isEnabled: _backgroundRunning,
                   isTop: true,
                   onTap: () {
@@ -132,36 +123,24 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
                   },
                 ),
                 _buildPermissionItem(
-                  title: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Overlay permission'
-                      : '悬浮窗权限',
-                  subtitle: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Allow Omnibot to stay active on screen and assist anytime'
-                      : '小万可在屏幕中实时活动，随时给予陪伴',
+                  title: context.trLegacy('悬浮窗权限'),
+                  subtitle: context.trLegacy('小万可在屏幕中实时活动，随时给予陪伴'),
                   isEnabled: _overlayPermission,
                   onTap: () {
                     spePermission.invokeMethod('openOverlaySettings');
                   },
                 ),
                 _buildPermissionItem(
-                  title: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Installed apps access'
-                      : '应用列表读取',
-                  subtitle: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Help Omnibot know what tasks it can do for you'
-                      : '小万可以知道能帮你做什么事情',
+                  title: context.trLegacy('应用列表读取'),
+                  subtitle: context.trLegacy('小万可以知道能帮你做什么事情'),
                   isEnabled: _installedAppsPermission,
                   onTap: () {
                     spePermission.invokeMethod('openInstalledAppsSettings');
                   },
                 ),
                 _buildPermissionItem(
-                  title: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Accessibility permission'
-                      : '无障碍辅助权限',
-                  subtitle: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Required so Omnibot can operate when executing tasks'
-                      : '小万执行任务时，需要给予我操作的权限',
+                  title: context.trLegacy('无障碍辅助权限'),
+                  subtitle: context.trLegacy('小万执行任务时，需要给予我操作的权限'),
                   isEnabled: _accessibilityPermission,
                   isBottom: true,
                   onTap: () {
@@ -175,9 +154,7 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
               // 清除缓存
               _buildSettingsCard([
                 _buildSimpleItem(
-                  title: Localizations.localeOf(context).languageCode == 'en'
-                      ? 'Clear cache'
-                      : '清除缓存',
+                  title: context.trLegacy('清除缓存'),
                   isTop: true,
                   isBottom: true,
                   onTap: () {
@@ -316,9 +293,9 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    Localizations.localeOf(context).languageCode == 'en'
-                        ? (isEnabled ? 'Enabled' : 'Enable now')
-                        : (isEnabled ? '已开启' : '去开启'),
+                    isEnabled
+                        ? context.trLegacy('已开启')
+                        : context.trLegacy('去开启'),
                     style: TextStyle(
                       fontSize: 12,
                       color: isEnabled ? const Color(0xFF999999) : const Color(0xFF3B74FF),

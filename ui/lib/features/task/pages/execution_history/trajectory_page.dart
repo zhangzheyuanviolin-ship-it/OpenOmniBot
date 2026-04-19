@@ -415,7 +415,7 @@ class _TrajectoryPageState
   ) async {
     final goal = (suggestionData['goal'] as String?)?.trim() ?? '';
     if (goal.isEmpty) {
-      showToast('当前记录不支持执行', type: ToastType.error);
+      showToast('Current record does not support execution', type: ToastType.error);
       return;
     }
 
@@ -425,15 +425,15 @@ class _TrajectoryPageState
     );
     if (!mounted) return;
     if (success) {
-      showToast('任务开始执行', type: ToastType.success);
+      showToast('Task started', type: ToastType.success);
     } else {
-      showToast('任务执行失败', type: ToastType.error);
+      showToast('Task execution failed', type: ToastType.error);
     }
   }
 
   Future<void> _onSchedulePressed(ExecutionRecordListItemData record) async {
     if (record.suggestionData == null) {
-      showToast('当前记录不支持定时', type: ToastType.error);
+      showToast('Current record does not support scheduling', type: ToastType.error);
       return;
     }
 
@@ -464,7 +464,7 @@ class _TrajectoryPageState
     ScheduledTaskSchedulerService.scheduleTask(result);
     await _loadScheduledTaskKeys();
     if (mounted) {
-      showToast('定时任务已设置', type: ToastType.success);
+      showToast('Scheduled task set', type: ToastType.success);
     }
   }
 

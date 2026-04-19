@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/assists_core_service.dart';
@@ -57,7 +58,7 @@ class _ProviderModelItem {
   final _ProviderModelSource source;
 
   String get sourceLabel {
-    return source == _ProviderModelSource.manual ? '手动' : '自动';
+    return source == _ProviderModelSource.manual ? 'Manual' : 'Auto';
   }
 }
 
@@ -376,7 +377,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       );
     } catch (_) {
       if (!mounted) return;
-      showToast('加载模型提供商配置失败', type: ToastType.error);
+      showToast('Failed to load model provider config', type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -485,7 +486,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      showToast('切换提供商失败：$e', type: ToastType.error);
+      showToast('Failed to switch provider: $e', type: ToastType.error);
     } finally {
       _isSwitchingProfile = false;
     }
@@ -499,13 +500,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
 
     if (baseUrl.isEmpty) {
       if (!silentError) {
-        showToast('请先填写 Base URL', type: ToastType.warning);
+        showToast('Please fill in Base URL first', type: ToastType.warning);
       }
       return;
     }
     if (!ModelProviderConfigService.isValidApiBase(baseUrl)) {
       if (!silentError) {
-        showToast('Base URL 格式不正确，请输入 http(s) 地址', type: ToastType.error);
+        showToast('Invalid Base URL format, please enter http(s) address', type: ToastType.error);
       }
       return;
     }
@@ -523,13 +524,13 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       });
       if (!silentError) {
         showToast(
-          models.isEmpty ? '未获取到可用模型' : '已获取 ${models.length} 个模型',
+          models.isEmpty ? 'No models available' : 'Fetched ${models.length} models',
           type: models.isEmpty ? ToastType.warning : ToastType.success,
         );
       }
     } catch (e) {
       if (!mounted || silentError) return;
-      showToast('获取模型列表失败：$e', type: ToastType.error);
+      showToast('Failed to fetch model list: $e', type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() => _isFetchingModels = false);
@@ -551,10 +552,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     }
     final name = (await AppDialog.input(
       context,
-      title: '新增 Provider',
-      hintText: '例如：DeepSeek',
-      confirmText: '新增',
-      cancelText: '取消',
+      title: context.l10n.modelAddProviderTitle,
+      hintText: context.l10n.modelProviderNameHint,
+      confirmText: context.l10n.modelAddButton,
+      cancelText: context.trLegacy('取消'),
     ))?.trim();
     if (name == null || name.isEmpty) {
       return;
@@ -578,7 +579,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         if (!mounted) {
           return;
         }
-        showToast('已新增 Provider', type: ToastType.success);
+        showToast(context.l10n.modelProviderAdded, type: ToastType.success);
       });
     } catch (e) {
       if (!mounted) return;
@@ -586,7 +587,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         if (!mounted) {
           return;
         }
-        showToast('新增 Provider 失败：$e', type: ToastType.error);
+        showToast(context.l10n.modelProviderAddFailed(e), type: ToastType.error);
       });
     }
   }
@@ -600,16 +601,16 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('删除 Provider'),
-          content: Text('确定删除“${current.name}”吗？场景绑定会保留，但需要重新选择可用 Provider。'),
+          title: Text(context.l10n.modelDeleteProviderTitle),
+          content: Text(context.l10n.modelDeleteProviderMsg(current.name)),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
+              child: Text(context.trLegacy('取消')),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('删除'),
+              child: Text(context.l10n.skillDelete),
             ),
           ],
         );
@@ -639,10 +640,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         remoteModels: storedModels[1] as List<ProviderModelOption>,
         syncControllers: true,
       );
-      showToast('已删除 Provider', type: ToastType.success);
+      showToast(context.l10n.modelProviderDeleted, type: ToastType.success);
     } catch (e) {
       if (!mounted) return;
-      showToast('删除 Provider 失败：$e', type: ToastType.error);
+      showToast(context.l10n.modelProviderDeleteFailed(e), type: ToastType.error);
     }
   }
 
@@ -663,14 +664,14 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     }
     final normalized = modelId.trim();
     if (!ModelProviderConfigService.isValidModelName(normalized)) {
-      showToast('模型 ID 不能为空且不能以 scene. 开头', type: ToastType.error);
+      showToast(context.l10n.modelIdEmpty, type: ToastType.error);
       return;
     }
 
     final existsInManual = _manualModelIds.any((item) => item == normalized);
     final existsInRemote = _remoteModels.any((item) => item.id == normalized);
     if (existsInManual || existsInRemote) {
-      showToast('模型已存在', type: ToastType.warning);
+      showToast(context.l10n.modelAlreadyExists, type: ToastType.warning);
       return;
     }
 
@@ -683,7 +684,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       profileId: current.id,
       ids: nextManual,
     );
-    showToast('已添加模型', type: ToastType.success);
+    showToast(context.l10n.modelAdded, type: ToastType.success);
   }
 
   Future<void> _deleteModel(_ProviderModelItem item) async {
@@ -715,14 +716,14 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       ]);
 
       if (!mounted) return;
-      showToast('已删除模型', type: ToastType.success);
+      showToast(context.l10n.modelDeleted, type: ToastType.success);
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _manualModelIds = prevManual;
         _remoteModels = prevRemote;
       });
-      showToast('删除模型失败', type: ToastType.error);
+      showToast(context.l10n.modelDeleteFailed, type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -1143,8 +1144,8 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             current.statusText.isNotEmpty
                                 ? current.statusText
                                 : (current.ready
-                                      ? '内置 Provider'
-                                      : '内置 Provider 未就绪'),
+                                      ? context.l10n.modelBuiltinProvider
+                                      : '${context.l10n.modelBuiltinProvider} not ready'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -1242,7 +1243,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
 
     return Scaffold(
       backgroundColor: _pageBackground,
-      appBar: CommonAppBar(title: '模型提供商', primary: true),
+      appBar: CommonAppBar(title: context.l10n.settingsModelProviderTitle, primary: true),
       body: SafeArea(
         top: false,
         child: _isLoading
@@ -1250,9 +1251,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
                 children: [
-                  const SettingsSectionTitle(
-                    label: 'Provider 配置',
-                    subtitle: '新增、切换并维护模型服务提供商的名称、地址与密钥。',
+                  SettingsSectionTitle(
+                    label: context.l10n.modelProviderConfigTitle,
+                    subtitle: context.l10n.modelProviderConfigDesc,
                   ),
                   _buildCard(
                     child: Column(
@@ -1317,8 +1318,8 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           focusNode: _nameFocusNode,
                           enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
-                            label: 'Provider 名称',
-                            hint: '例如：DeepSeek',
+                            label: context.l10n.modelProviderName,
+                            hint: context.l10n.modelProviderNameHint,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -1328,7 +1329,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           enabled: !(_currentProfile?.readOnly ?? false),
                           decoration: _buildInputDecoration(
                             label: 'Base URL',
-                            hint: '末尾加 # 可禁用自动补全请求路径',
+                            hint: context.l10n.modelProviderBaseUrlHint,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -1357,7 +1358,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           obscureText: _obscureApiKey,
                           decoration: _buildInputDecoration(
                             label: 'API Key',
-                            hint: '例如：sk-xxxx',
+                            hint: 'e.g., sk-xxxx',
                             suffixIcon: IconButton(
                               splashRadius: 18,
                               onPressed: () {
@@ -1377,7 +1378,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '未填写 API Key 时，会以无鉴权方式请求 Provider。',
+                          context.l10n.modelProviderApiKeyHint,
                           style: TextStyle(
                             color: _tertiaryTextColor,
                             fontSize: 12,
@@ -1388,9 +1389,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const SettingsSectionTitle(
-                    label: '模型列表',
-                    subtitle: '支持手动补充模型，也可从当前 Provider 拉取远端模型清单。',
+                  SettingsSectionTitle(
+                    label: context.l10n.modelListTitle,
+                    subtitle: context.l10n.modelListDesc,
                   ),
                   _buildCard(
                     child: Column(
@@ -1400,7 +1401,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           children: [
                             Expanded(
                               child: Text(
-                                '共 ${modelItems.length} 个模型',
+                                context.l10n.modelListCount(modelItems.length),
                                 style: TextStyle(
                                   color: _secondaryTextColor,
                                   fontSize: 12,
@@ -1457,7 +1458,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                                         ),
                                         const SizedBox(height: 10),
                                         Text(
-                                          '请添加模型！',
+                                          context.l10n.modelAddPrompt,
                                           style: TextStyle(
                                             color: _secondaryTextColor,
                                             fontSize: 14,
@@ -1587,7 +1588,7 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
             ? Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  '暂无 Provider',
+                  'No providers',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
@@ -1755,18 +1756,18 @@ class _AddModelIdDialogState extends State<_AddModelIdDialog> {
         _close();
       },
       child: AlertDialog(
-        title: const Text('添加模型 ID'),
+        title: Text(context.l10n.modelIdHint),
         content: TextField(
           controller: _controller,
           focusNode: _focusNode,
-          decoration: const InputDecoration(hintText: '输入模型 ID'),
+          decoration: InputDecoration(hintText: context.l10n.modelIdHint),
           onSubmitted: (_) => _close(_controller.text.trim()),
         ),
         actions: [
-          TextButton(onPressed: () => _close(), child: const Text('取消')),
+          TextButton(onPressed: () => _close(), child: Text(context.trLegacy('取消'))),
           TextButton(
             onPressed: () => _close(_controller.text.trim()),
-            child: const Text('添加'),
+            child: Text(context.l10n.modelAddButton),
           ),
         ],
       ),
