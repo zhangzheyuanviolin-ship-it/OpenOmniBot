@@ -5,6 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:ui/models/chat_link_preview.dart';
 
+class _UrlCandidate {
+  const _UrlCandidate(this.index, this.raw);
+
+  final int index;
+  final String raw;
+}
+
 class LinkPreviewService {
   LinkPreviewService({http.Client? client}) : _client = client ?? http.Client();
 
@@ -39,19 +46,30 @@ class LinkPreviewService {
       return const <String>[];
     }
 
-    final matches = RegExp(
-      r'https?://[^\s<>"\]\[]+',
-      caseSensitive: false,
-    ).allMatches(text);
+    final matches = <_UrlCandidate>[
+      ...RegExp(r'https?://[^\s<>"\]\[]+', caseSensitive: false)
+          .allMatches(text)
+          .map((match) => _UrlCandidate(match.start, match.group(0) ?? '')),
+      ...RegExp(
+            r'(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z][a-z0-9-]{1,62}(?:/[^\s<>"\]\[]*)?',
+            caseSensitive: false,
+          )
+          .allMatches(text)
+          .where((match) {
+            final previous = match.start > 0 ? text[match.start - 1] : '';
+            return previous != '@' && previous != '/' && previous != '.';
+          })
+          .map((match) => _UrlCandidate(match.start, match.group(0) ?? '')),
+    ]..sort((left, right) => left.index.compareTo(right.index));
     final urls = <String>[];
     final seen = <String>{};
 
     for (final match in matches) {
-      final raw = match.group(0);
-      if (raw == null || raw.isEmpty) {
+      final raw = match.raw;
+      if (raw.isEmpty) {
         continue;
       }
-      // AI 经常用 Markdown 包住链接，先清洗尾部符号再去重。
+      // 消息文本经常用 Markdown 包住链接，先清洗尾部符号再去重。
       final normalized = _normalizeExtractedUrl(raw);
       if (normalized == null ||
           seen.contains(normalized) ||
@@ -277,6 +295,10 @@ class LinkPreviewService {
         break;
       }
       candidate = candidate.substring(0, candidate.length - 1);
+    }
+    if (candidate.isNotEmpty &&
+        !candidate.startsWith(RegExp(r'https?://', caseSensitive: false))) {
+      candidate = 'https://$candidate';
     }
     return candidate.isEmpty ? null : candidate;
   }

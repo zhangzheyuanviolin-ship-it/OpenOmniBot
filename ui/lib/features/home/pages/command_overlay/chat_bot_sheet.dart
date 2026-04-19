@@ -1228,7 +1228,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
 
     final message = _messages[index];
     if (message.type != 1 ||
-        message.user != 2 ||
+        (message.user != 1 && message.user != 2) ||
         message.isLoading ||
         message.isError ||
         message.isSummarizing) {
@@ -1719,6 +1719,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       _messageController.clear();
       _isAiResponding = true;
     });
+    _syncMessageLinkPreviews(userMessageId);
 
     return (userMessageId: userMessageId, aiMessageId: aiMessageId);
   }
