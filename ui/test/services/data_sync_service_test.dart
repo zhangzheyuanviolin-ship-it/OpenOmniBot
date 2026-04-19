@@ -46,7 +46,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           if (call.method == 'exportPairingPayload') {
-            expect((call.arguments as Map)['passphrase'], 'onetimer');
+            expect(call.arguments, isNull);
             return <String, dynamic>{
               'encodedPayload': 'payload-json',
               'namespace': 'demo',
@@ -56,10 +56,40 @@ void main() {
           return null;
         });
 
-    final payload = await DataSyncService.exportPairingPayload('onetimer');
+    final payload = await DataSyncService.exportPairingPayload();
 
     expect(payload.encodedPayload, 'payload-json');
     expect(payload.namespace, 'demo');
     expect(payload.createdAt, 1234);
   });
+
+  test(
+    'importPairingPayload sends encoded payload without passphrase',
+    () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'importPairingPayload') {
+              expect(call.arguments, <String, dynamic>{
+                'encodedPayload': 'payload-json',
+              });
+              return <String, dynamic>{
+                'enabled': true,
+                'configured': true,
+                'state': 'syncing',
+                'namespace': 'demo',
+                'deviceId': 'device-a',
+              };
+            }
+            return null;
+          });
+
+      final status = await DataSyncService.importPairingPayload(
+        encodedPayload: 'payload-json',
+      );
+
+      expect(status.enabled, isTrue);
+      expect(status.state, 'syncing');
+      expect(status.namespace, 'demo');
+    },
+  );
 }

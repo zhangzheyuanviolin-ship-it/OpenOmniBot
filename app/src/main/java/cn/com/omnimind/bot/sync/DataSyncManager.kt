@@ -125,7 +125,7 @@ class DataSyncManager private constructor(
         )
     }
 
-    fun exportPairingPayload(passphrase: String): DataSyncPairingPayload {
+    fun exportPairingPayload(): DataSyncPairingPayload {
         val config = configStore.getConfig()
         require(config.isConfigured()) { "Sync config is incomplete" }
         val exportMap = linkedMapOf(
@@ -141,15 +141,14 @@ class DataSyncManager private constructor(
             "sessionToken" to config.sessionToken,
             "forcePathStyle" to config.forcePathStyle
         )
-        return DataSyncCrypto.encryptPairingPayload(
+        return DataSyncCrypto.encodePairingPayload(
             json = dataSyncGson.toJson(exportMap),
-            passphrase = passphrase,
             namespace = config.namespace
         )
     }
 
-    suspend fun importPairingPayload(encodedPayload: String, passphrase: String): DataSyncStatus {
-        val json = DataSyncCrypto.decryptPairingPayload(encodedPayload, passphrase)
+    suspend fun importPairingPayload(encodedPayload: String): DataSyncStatus {
+        val json = DataSyncCrypto.decodePairingPayload(encodedPayload)
         @Suppress("UNCHECKED_CAST")
         val payload = dataSyncGson.fromJson(json, dataSyncMapType) as Map<String, Any?>
         val current = configStore.getConfig()
@@ -157,10 +156,10 @@ class DataSyncManager private constructor(
             "enabled" to true,
             "deviceId" to current.deviceId
         ))
-        saveConfig(imported.copy(enabled = true))
+        val savedConfig = saveConfig(imported.copy(enabled = true))
         val status = buildStatus(
             base = statusStore.read(),
-            config = imported.copy(enabled = true)
+            config = savedConfig
         ).copy(
             state = DataSyncState.SYNCING,
             lastMessage = "配对导入成功，正在执行首次全量同步",
@@ -169,7 +168,7 @@ class DataSyncManager private constructor(
         )
         statusStore.write(status)
         DataSyncScheduler.requestSyncNow(context, reason = "pairing_import", foreground = true)
-        return buildStatus(status, imported.copy(enabled = true))
+        return buildStatus(status, savedConfig)
     }
 
     suspend fun listConflicts(): List<DataSyncConflictItem> = withContext(Dispatchers.IO) {
@@ -239,16 +238,20 @@ class DataSyncManager private constructor(
             onProgress(progressFor("handshake", "正在建立安全连接…", 0, 0, 5))
             val handshake = apiClient.handshake(config)
             val existingCheckpoint = getCheckpoint()
-            val checkpoint = existingCheckpoint.copy(
-                remoteCursor = maxOf(existingCheckpoint.remoteCursor, handshake.remoteCursor),
-                updatedAt = System.currentTimeMillis()
-            )
-            database.syncCheckpointDao().upsert(checkpoint)
             onProgress(progressFor("handshake", "安全连接已建立", 1, 1, 10))
 
-            val shouldPullFirst = reason == "pairing_import" || (!hasMaterialLocalState() && checkpoint.remoteCursor > 0)
+            val shouldPullFirst =
+                reason == "pairing_import" ||
+                    (!hasMaterialLocalState() &&
+                        existingCheckpoint.remoteCursor <= 0L &&
+                        handshake.remoteCursor > 0L)
             if (!shouldPullFirst) {
-                collectLocalChanges(config = config, checkpoint = checkpoint, reason = reason, onProgress = onProgress)
+                collectLocalChanges(
+                    config = config,
+                    checkpoint = existingCheckpoint,
+                    reason = reason,
+                    onProgress = onProgress
+                )
                 pushOutbox(config, onProgress)
             }
             pullRemoteChanges(config, onProgress)

@@ -15,6 +15,7 @@ void main() {
   const channel = MethodChannel('cn.com.omnimind.bot/DataSync');
   late List<MethodCall> recordedCalls;
   late List<Map<String, dynamic>> getStatusQueue;
+  late Map<String, dynamic> currentConfig;
 
   Widget buildApp() {
     return MaterialApp(
@@ -36,6 +37,22 @@ void main() {
   setUp(() {
     DataSyncStatusCenter.instance.reset();
     recordedCalls = <MethodCall>[];
+    currentConfig = <String, dynamic>{
+      'enabled': true,
+      'configured': true,
+      'supabaseUrl': 'https://demo.supabase.co',
+      'anonKey': 'anon-key',
+      'namespace': 'demo',
+      'syncSecret': 'secret',
+      's3Endpoint': 'https://s3.example.com',
+      'region': 'auto',
+      'bucket': 'demo-bucket',
+      'accessKey': 'ak',
+      'secretKey': 'sk',
+      'sessionToken': '',
+      'forcePathStyle': true,
+      'deviceId': 'device-a',
+    };
     getStatusQueue = <Map<String, dynamic>>[
       <String, dynamic>{
         'enabled': true,
@@ -54,22 +71,7 @@ void main() {
           recordedCalls.add(call);
           switch (call.method) {
             case 'getConfig':
-              return <String, dynamic>{
-                'enabled': true,
-                'configured': true,
-                'supabaseUrl': 'https://demo.supabase.co',
-                'anonKey': 'anon-key',
-                'namespace': 'demo',
-                'syncSecret': 'secret',
-                's3Endpoint': 'https://s3.example.com',
-                'region': 'auto',
-                'bucket': 'demo-bucket',
-                'accessKey': 'ak',
-                'secretKey': 'sk',
-                'sessionToken': '',
-                'forcePathStyle': true,
-                'deviceId': 'device-a',
-              };
+              return currentConfig;
             case 'getStatus':
               if (getStatusQueue.length > 1) {
                 return getStatusQueue.removeAt(0);
@@ -89,6 +91,37 @@ void main() {
                   'stage': 'handshake',
                   'detail': '正在建立安全连接…',
                   'percent': 5,
+                },
+              };
+            case 'importPairingPayload':
+              currentConfig = <String, dynamic>{
+                ...currentConfig,
+                'enabled': true,
+                'configured': true,
+                'supabaseUrl': 'https://paired.supabase.co',
+                'anonKey': 'paired-anon-key',
+                'namespace': 'paired-demo',
+                'syncSecret': 'paired-secret',
+                's3Endpoint': 'https://paired-s3.example.com',
+                'region': 'us-east-1',
+                'bucket': 'paired-bucket',
+                'accessKey': 'paired-ak',
+                'secretKey': 'paired-sk',
+                'sessionToken': 'paired-session',
+                'forcePathStyle': false,
+              };
+              return <String, dynamic>{
+                'enabled': true,
+                'configured': true,
+                'state': 'syncing',
+                'namespace': 'paired-demo',
+                'deviceId': 'device-a',
+                'lastMessage': '配对导入成功，正在执行首次全量同步',
+                'currentStep': 'pairing_import',
+                'progress': <String, dynamic>{
+                  'stage': 'pull',
+                  'detail': '正在拉取远端变更',
+                  'percent': 18,
                 },
               };
             default:
@@ -325,5 +358,58 @@ void main() {
 
     hideToast();
     await tester.pump();
+  });
+
+  testWidgets('import pairing refreshes config fields immediately', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
+    await tester.pump();
+
+    final importFinder = find.text('导入配对二维码').evaluate().isNotEmpty
+        ? find.text('导入配对二维码')
+        : find.text('Import QR');
+    await tester.tap(importFinder);
+    await tester.pumpAndSettle();
+
+    final pasteFinder = find.text('粘贴导入串').evaluate().isNotEmpty
+        ? find.text('粘贴导入串')
+        : find.text('Paste payload');
+    await tester.tap(pasteFinder);
+    await tester.pumpAndSettle();
+
+    final importDialog = find.byType(AlertDialog);
+    final importInput = find.descendant(
+      of: importDialog,
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(importInput, '{"v":2,"payload":{}}');
+    final okFinder = find.text('确定').evaluate().isNotEmpty
+        ? find.text('确定')
+        : find.text('OK');
+    await tester.tap(okFinder);
+    await tester.pumpAndSettle();
+
+    await tester.fling(find.byType(ListView), const Offset(0, 2400), 2000);
+    await tester.pumpAndSettle();
+
+    final controllerValues = tester
+        .widgetList<TextFormField>(find.byType(TextFormField))
+        .map((field) => field.controller?.text ?? '')
+        .toSet();
+    expect(controllerValues, contains('https://paired.supabase.co'));
+    expect(controllerValues, contains('paired-demo'));
+    expect(
+      recordedCalls.where((call) => call.method == 'importPairingPayload'),
+      hasLength(1),
+    );
+    expect(
+      recordedCalls.where((call) => call.method == 'getConfig').length,
+      greaterThanOrEqualTo(2),
+    );
   });
 }

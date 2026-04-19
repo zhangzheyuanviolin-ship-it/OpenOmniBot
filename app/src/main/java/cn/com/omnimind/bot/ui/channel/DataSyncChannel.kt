@@ -48,14 +48,10 @@ class DataSyncChannel {
                         }
                         "syncNow" -> manager.requestSyncNow().toMap()
                         "getStatus" -> manager.getStatus().toMap()
-                        "exportPairingPayload" -> {
-                            val passphrase = call.argument<String>("passphrase").orEmpty()
-                            manager.exportPairingPayload(passphrase).toMap()
-                        }
+                        "exportPairingPayload" -> manager.exportPairingPayload().toMap()
                         "importPairingPayload" -> {
                             val encodedPayload = call.argument<String>("encodedPayload").orEmpty()
-                            val passphrase = call.argument<String>("passphrase").orEmpty()
-                            manager.importPairingPayload(encodedPayload, passphrase).toMap()
+                            manager.importPairingPayload(encodedPayload).toMap()
                         }
                         "listConflicts" -> manager.listConflicts().map { it.toMap() }
                         "ackConflict" -> {

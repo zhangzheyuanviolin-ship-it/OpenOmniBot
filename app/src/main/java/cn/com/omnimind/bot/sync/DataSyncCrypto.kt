@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.sync
 
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import java.io.File
 import java.io.FileInputStream
 import java.nio.charset.StandardCharsets
@@ -15,7 +16,8 @@ import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 object DataSyncCrypto {
-    private const val PAIRING_VERSION = 1
+    private const val PAIRING_VERSION = 2
+    private const val LEGACY_ENCRYPTED_PAIRING_VERSION = 1
     private const val PBKDF2_ITERATIONS = 120_000
     private const val KEY_LENGTH_BITS = 256
     private const val GCM_TAG_LENGTH_BITS = 128
@@ -67,6 +69,38 @@ object DataSyncCrypto {
         return hmacSha256Hex(secret, signingText)
     }
 
+    fun encodePairingPayload(json: String, namespace: String): DataSyncPairingPayload {
+        val createdAt = System.currentTimeMillis()
+        val payload = JsonObject().apply {
+            addProperty("v", PAIRING_VERSION)
+            addProperty("namespace", namespace)
+            addProperty("createdAt", createdAt)
+            add("payload", JsonParser.parseString(json))
+        }
+        return DataSyncPairingPayload(
+            encodedPayload = dataSyncGson.toJson(payload),
+            namespace = namespace,
+            createdAt = createdAt
+        )
+    }
+
+    fun decodePairingPayload(encodedPayload: String): String {
+        val payload = dataSyncGson.fromJson(encodedPayload, JsonObject::class.java)
+        val version = payload.get("v")?.asInt
+        if (version == LEGACY_ENCRYPTED_PAIRING_VERSION) {
+            error("This pairing payload was exported by an older version. Please re-export it from the source device.")
+        }
+        if (version != null && version != PAIRING_VERSION) {
+            error("Unsupported pairing payload version")
+        }
+        val rawPayload = payload.get("payload")
+        if (rawPayload != null) {
+            return rawPayload.toString()
+        }
+        return encodedPayload
+    }
+
+    @Deprecated("Pairing payloads are no longer encrypted")
     fun encryptPairingPayload(json: String, passphrase: String, namespace: String): DataSyncPairingPayload {
         val random = SecureRandom()
         val salt = ByteArray(16).also(random::nextBytes)
@@ -89,9 +123,10 @@ object DataSyncCrypto {
         )
     }
 
+    @Deprecated("Pairing payloads are no longer encrypted")
     fun decryptPairingPayload(encodedPayload: String, passphrase: String): String {
         val payload = dataSyncGson.fromJson(encodedPayload, JsonObject::class.java)
-        require(payload.get("v")?.asInt == PAIRING_VERSION) { "Unsupported pairing payload version" }
+        require(payload.get("v")?.asInt == LEGACY_ENCRYPTED_PAIRING_VERSION) { "Unsupported pairing payload version" }
         val salt = payload.get("salt")?.asString?.fromBase64()
             ?: error("Missing pairing payload salt")
         val iv = payload.get("iv")?.asString?.fromBase64()

@@ -1,7 +1,7 @@
 package cn.com.omnimind.bot.sync
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DataSyncCryptoTest {
@@ -24,20 +24,16 @@ class DataSyncCryptoTest {
     }
 
     @Test
-    fun pairingPayload_roundTripsWithSamePassphrase() {
-        val encrypted = DataSyncCrypto.encryptPairingPayload(
+    fun pairingPayload_roundTripsWithoutPassphrase() {
+        val encoded = DataSyncCrypto.encodePairingPayload(
             json = """{"namespace":"demo","syncSecret":"123"}""",
-            passphrase = "onetimer",
             namespace = "demo"
         )
 
-        val decrypted = DataSyncCrypto.decryptPairingPayload(
-            encrypted.encodedPayload,
-            "onetimer"
-        )
+        val decoded = DataSyncCrypto.decodePairingPayload(encoded.encodedPayload)
 
-        assertEquals("""{"namespace":"demo","syncSecret":"123"}""", decrypted)
-        assertNotEquals("", encrypted.encodedPayload)
+        assertEquals("""{"namespace":"demo","syncSecret":"123"}""", decoded)
+        assertTrue(encoded.encodedPayload.isNotBlank())
     }
 
     @Test

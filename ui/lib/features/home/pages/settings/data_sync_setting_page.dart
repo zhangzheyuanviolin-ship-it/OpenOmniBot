@@ -230,13 +230,8 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
       return;
     }
     await _saveConfig();
-    final passphrase = await _askPassphrase(
-      title: _t('导出配对二维码', 'Export pairing QR'),
-      subtitle: _t('请设置加密口令', 'Enter a passphrase to encrypt'),
-    );
-    if (passphrase == null || passphrase.isEmpty) return;
     await _guardBusy(() async {
-      final payload = await DataSyncService.exportPairingPayload(passphrase);
+      final payload = await DataSyncService.exportPairingPayload();
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -256,8 +251,8 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
                   const SizedBox(height: 12),
                   Text(
                     _t(
-                      '请在新设备上扫描二维码，并输入同一一次性口令。',
-                      'Scan this code on the new device and enter the same one-time passphrase.',
+                      '请在新设备上扫描二维码或粘贴导入串，即可导入同步配置。',
+                      'Scan this code on the new device or paste the payload to import the sync config.',
                     ),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -316,28 +311,21 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     } else {
       encodedPayload = await _askTextInput(
         title: _t('导入配对配置', 'Import pairing payload'),
-        hint: _t('请粘贴配对导入串', 'Paste the encrypted pairing payload'),
+        hint: _t('请粘贴配对导入串', 'Paste the pairing payload'),
       );
     }
     if (encodedPayload == null || encodedPayload.trim().isEmpty || !mounted)
       return;
-    final passphrase = await _askPassphrase(
-      title: _t('输入一次性口令', 'Enter one-time passphrase'),
-      subtitle: _t(
-        '请输入导出时设置的加密口令',
-        'Enter the passphrase used when exporting the payload',
-      ),
-    );
-    if (passphrase == null || passphrase.isEmpty) return;
     await _guardBusy(() async {
       final status = await DataSyncService.importPairingPayload(
         encodedPayload: encodedPayload!.trim(),
-        passphrase: passphrase,
       );
+      final config = await DataSyncService.getConfig();
       DataSyncStatusCenter.instance.observeStatus(status);
       if (!mounted) return;
+      _applyConfig(config);
       setState(() {
-        _enabled = true;
+        _enabled = config.enabled;
         _status = status;
       });
       showToast(
@@ -444,13 +432,6 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
         });
       }
     }
-  }
-
-  Future<String?> _askPassphrase({
-    required String title,
-    required String subtitle,
-  }) {
-    return _askTextInput(title: title, hint: subtitle, obscureText: true);
   }
 
   Future<String?> _askTextInput({

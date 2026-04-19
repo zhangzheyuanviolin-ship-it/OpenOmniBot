@@ -264,7 +264,9 @@ class DataSyncService {
   );
 
   static Future<DataSyncConfig> getConfig() async {
-    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getConfig');
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'getConfig',
+    );
     return DataSyncConfig.fromMap(result ?? const {});
   }
 
@@ -276,7 +278,9 @@ class DataSyncService {
     return DataSyncConfig.fromMap(result ?? const {});
   }
 
-  static Future<Map<String, dynamic>> testConnection(DataSyncConfig config) async {
+  static Future<Map<String, dynamic>> testConnection(
+    DataSyncConfig config,
+  ) async {
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'testConnection',
       config.toMap(),
@@ -295,32 +299,32 @@ class DataSyncService {
   }
 
   static Future<DataSyncStatus> syncNow() async {
-    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('syncNow');
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'syncNow',
+    );
     return DataSyncStatus.fromMap(result ?? const {});
   }
 
   static Future<DataSyncStatus> getStatus() async {
-    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getStatus');
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'getStatus',
+    );
     return DataSyncStatus.fromMap(result ?? const {});
   }
 
-  static Future<DataSyncPairingPayload> exportPairingPayload(
-    String passphrase,
-  ) async {
+  static Future<DataSyncPairingPayload> exportPairingPayload() async {
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'exportPairingPayload',
-      {'passphrase': passphrase},
     );
     return DataSyncPairingPayload.fromMap(result ?? const {});
   }
 
   static Future<DataSyncStatus> importPairingPayload({
     required String encodedPayload,
-    required String passphrase,
   }) async {
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'importPairingPayload',
-      {'encodedPayload': encodedPayload, 'passphrase': passphrase},
+      {'encodedPayload': encodedPayload},
     );
     return DataSyncStatus.fromMap(result ?? const {});
   }
@@ -328,7 +332,10 @@ class DataSyncService {
   static Future<List<DataSyncConflictItem>> listConflicts() async {
     final result = await _channel.invokeMethod<List<dynamic>>('listConflicts');
     return (result ?? const [])
-        .map((item) => DataSyncConflictItem.fromMap(Map<dynamic, dynamic>.from(item)))
+        .map(
+          (item) =>
+              DataSyncConflictItem.fromMap(Map<dynamic, dynamic>.from(item)),
+        )
         .toList();
   }
 
