@@ -50,7 +50,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Choose the display language for the app UI, agent prompts, and tool text';
 
   @override
-  String get languageFollowSystem => 'Follow System';
+  String get languageFollowSystem => 'System';
 
   @override
   String get languageZhHans => '简体中文';
