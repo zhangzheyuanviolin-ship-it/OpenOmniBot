@@ -88,6 +88,9 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
 
   Future<void> persistAgentConversation();
 
+  // Agent 文本消息更新后交给具体页面决定是否补充额外结构化内容。
+  void onAgentTextMessageUpdated(String messageId) {}
+
   void handleAgentThinkingStart() {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
     if (taskId == null) return;
@@ -247,6 +250,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     final aiTextMessageId =
         _resolvePendingAgentTextMessageId(taskId) ??
         _nextAgentTextMessageId(taskId);
+    var didUpdateTextMessage = false;
     setState(() {
       final index = messages.indexWhere((msg) => msg.id == aiTextMessageId);
       if (index == -1) {
@@ -266,6 +270,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
             },
           ),
         );
+        didUpdateTextMessage = true;
       } else {
         final existing = messages[index];
         final content = Map<String, dynamic>.from(existing.content ?? {});
@@ -279,12 +284,16 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
             content['decodeTokensPerSecond'] = decodeTokensPerSecond;
           }
           messages[index] = existing.copyWith(content: content);
+          didUpdateTextMessage = true;
         }
       }
       if (isFinal) {
         isAiResponding = false;
       }
     });
+    if (didUpdateTextMessage) {
+      onAgentTextMessageUpdated(aiTextMessageId);
+    }
     _pendingAgentTextTaskId = isFinal ? null : taskId;
     if (isFinal && currentDispatchTaskId == null) {
       _lastAgentTaskId = null;

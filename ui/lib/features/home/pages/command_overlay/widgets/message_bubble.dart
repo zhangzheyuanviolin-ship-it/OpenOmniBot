@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:ui/models/chat_link_preview.dart';
+import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/widgets/image_preview_overlay.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
 import '../../../../../theme/theme_context.dart';
@@ -9,7 +12,6 @@ import '../../../../../widgets/streaming_text.dart';
 import 'thinking_dots_indicator.dart';
 import 'cards/card_widget_factory.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:ui/widgets/image_preview_overlay.dart';
 
 export 'package:ui/widgets/streaming_text.dart'
     show kThinkingText, kSummarizingText, kSummaryCompleteText;
@@ -131,6 +133,7 @@ class MessageBubble extends StatelessWidget {
   Widget _buildTextMessage(BuildContext context, bool isUserMessage) {
     final text = message.text ?? '';
     final attachments = _extractAttachments();
+    final linkPreviews = message.linkPreviews;
 
     if (isUserMessage) {
       // 用户消息：整块气泡长按触发快捷操作。
@@ -163,6 +166,11 @@ class MessageBubble extends StatelessWidget {
                     if (text.isNotEmpty) const SizedBox(height: 8),
                     _buildUserAttachmentList(context, attachments),
                   ],
+                  if (linkPreviews.isNotEmpty) ...[
+                    if (text.isNotEmpty || attachments.isNotEmpty)
+                      const SizedBox(height: 8),
+                    _buildLinkPreviewList(context, linkPreviews),
+                  ],
                 ],
               ),
             ),
@@ -171,17 +179,25 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
-    if (attachments.isEmpty) {
+    if (attachments.isEmpty && linkPreviews.isEmpty) {
       // AI消息：简单文本样式，无背景
       return _buildAiTextWithSpeed(context, text);
     }
 
+    // AI 消息按“正文 -> 附件 -> 链接预览”顺序分块展示。
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (text.isNotEmpty) _buildAiTextWithSpeed(context, text),
-        if (text.isNotEmpty) const SizedBox(height: 8),
-        _buildUserAttachmentList(context, attachments),
+        if (attachments.isNotEmpty) ...[
+          if (text.isNotEmpty) const SizedBox(height: 8),
+          _buildUserAttachmentList(context, attachments),
+        ],
+        if (linkPreviews.isNotEmpty) ...[
+          if (text.isNotEmpty || attachments.isNotEmpty)
+            const SizedBox(height: 8),
+          _buildLinkPreviewList(context, linkPreviews),
+        ],
       ],
     );
   }
@@ -381,6 +397,166 @@ class MessageBubble extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // 链接预览是块级卡片，不塞进 Markdown 行内渲染，便于展示摘要和封面图。
+  Widget _buildLinkPreviewList(
+    BuildContext context,
+    List<ChatLinkPreview> previews,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: previews.asMap().entries.map((entry) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: entry.key == previews.length - 1 ? 0 : 8,
+          ),
+          child: _buildLinkPreviewCard(context, entry.value, entry.key),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildLinkPreviewCard(
+    BuildContext context,
+    ChatLinkPreview preview,
+    int index,
+  ) {
+    final isEnglish =
+        Localizations.maybeLocaleOf(context)?.languageCode == 'en';
+    final title = preview.title.trim();
+    final description = preview.description.trim();
+    final siteName = preview.displaySiteName.trim();
+    final hasImage =
+        preview.imageUrl.startsWith('http://') ||
+        preview.imageUrl.startsWith('https://');
+    final statusLabel = switch (preview.status) {
+      ChatLinkPreview.statusLoading => isEnglish ? 'Loading preview' : '加载预览中',
+      ChatLinkPreview.statusFailed =>
+        isEnglish ? 'Preview unavailable' : '预览暂不可用',
+      _ => '',
+    };
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: ValueKey('link-preview-card-$index'),
+        onTap: () {
+          if (preview.url.isEmpty) {
+            return;
+          }
+          OmnibotResourceService.handleLinkTap(preview.url);
+        },
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 360),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: visualProfile.attachmentSurfaceColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: visualProfile.attachmentBorderColor,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (siteName.isNotEmpty)
+                      Text(
+                        siteName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: visualProfile.secondaryTextColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    if (title.isNotEmpty) ...[
+                      if (siteName.isNotEmpty) const SizedBox(height: 4),
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: visualProfile.primaryTextColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                    if (description.isNotEmpty) ...[
+                      if (title.isNotEmpty || siteName.isNotEmpty)
+                        const SizedBox(height: 4),
+                      Text(
+                        description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: visualProfile.secondaryTextColor,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                    if (statusLabel.isNotEmpty &&
+                        preview.status != ChatLinkPreview.statusReady) ...[
+                      if (title.isNotEmpty ||
+                          description.isNotEmpty ||
+                          siteName.isNotEmpty)
+                        const SizedBox(height: 4),
+                      Text(
+                        statusLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: visualProfile.secondaryTextColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (hasImage) ...[
+                const SizedBox(width: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    preview.imageUrl,
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _buildLinkPreviewImageFallback(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLinkPreviewImageFallback() {
+    return Container(
+      width: 72,
+      height: 72,
+      color: visualProfile.attachmentSurfaceColor,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.link_outlined,
+        size: 18,
+        color: visualProfile.attachmentIconColor,
       ),
     );
   }

@@ -5,11 +5,13 @@ import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
 import 'package:ui/features/home/pages/command_overlay/constants/messages.dart';
 import 'package:ui/features/home/pages/chat/mixins/agent_stream_handler.dart';
+import 'package:ui/models/chat_link_preview.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
+import 'package:ui/services/link_preview_service.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/utils/data_parser.dart';
 
@@ -936,6 +938,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final index = runtime.messages.indexWhere(
       (msg) => msg.id == aiTextMessageId,
     );
+    var didUpdateTextMessage = false;
     if (index == -1) {
       runtime.messages.insert(
         0,
@@ -953,6 +956,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           },
         ),
       );
+      didUpdateTextMessage = true;
     } else {
       final existing = runtime.messages[index];
       final content = Map<String, dynamic>.from(existing.content ?? {});
@@ -966,7 +970,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           content['decodeTokensPerSecond'] = decodeTokensPerSecond;
         }
         runtime.messages[index] = existing.copyWith(content: content);
+        didUpdateTextMessage = true;
       }
+    }
+    if (didUpdateTextMessage) {
+      _syncMessageLinkPreviews(runtime, aiTextMessageId);
     }
     if (isFinal) {
       runtime.isAiResponding = false;
@@ -1629,6 +1637,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           isSummarizing: isSummarizing,
         ),
       );
+      _syncMessageLinkPreviews(runtime, taskId);
       return;
     }
 
@@ -1655,6 +1664,169 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       isError: isError,
       isSummarizing: isSummarizing,
     );
+    _syncMessageLinkPreviews(runtime, taskId);
+  }
+
+  // 将 AI 文本消息里的 URL 同步成 content.linkPreviews，UI 只负责展示该字段。
+  void _syncMessageLinkPreviews(
+    ChatConversationRuntimeState runtime,
+    String taskId,
+  ) {
+    final index = runtime.messages.indexWhere((msg) => msg.id == taskId);
+    if (index == -1) {
+      return;
+    }
+
+    final message = runtime.messages[index];
+    if (message.type != 1 ||
+        message.user != 2 ||
+        message.isLoading ||
+        message.isError ||
+        message.isSummarizing) {
+      return;
+    }
+
+    final content = Map<String, dynamic>.from(message.content ?? const {});
+    final nextPreviews = LinkPreviewService.instance.reconcilePreviewMaps(
+      text: message.text ?? '',
+      existing: content['linkPreviews'],
+    );
+    final currentPreviews = content['linkPreviews'];
+    var didUpdate = false;
+    if (!_previewMapListsEqual(currentPreviews, nextPreviews)) {
+      if (nextPreviews.isEmpty) {
+        content.remove('linkPreviews');
+      } else {
+        content['linkPreviews'] = nextPreviews;
+      }
+      runtime.messages[index] = message.copyWith(content: content);
+      didUpdate = true;
+    }
+    if (didUpdate &&
+        nextPreviews.any(
+          (item) =>
+              ChatLinkPreview.fromJson(item).status !=
+              ChatLinkPreview.statusLoading,
+        )) {
+      unawaited(
+        ConversationHistoryService.saveConversationMessages(
+          runtime.conversationId,
+          List<ChatMessageModel>.from(runtime.messages),
+          mode: _conversationModeFromRuntimeMode(
+            runtime.mode,
+            conversation: runtime.conversation,
+          ),
+        ),
+      );
+    }
+
+    // 先写 loading 占位，真实网页信息抓取完成后再局部回填。
+    for (final previewMap in nextPreviews) {
+      final preview = ChatLinkPreview.fromJson(previewMap);
+      if (preview.status != ChatLinkPreview.statusLoading ||
+          preview.url.isEmpty) {
+        continue;
+      }
+      unawaited(
+        _resolveMessageLinkPreview(
+          conversationId: runtime.conversationId,
+          mode: runtime.mode,
+          taskId: taskId,
+          url: preview.url,
+        ),
+      );
+    }
+  }
+
+  Future<void> _resolveMessageLinkPreview({
+    required int conversationId,
+    required String mode,
+    required String taskId,
+    required String url,
+  }) async {
+    final resolved = await LinkPreviewService.instance.loadPreview(url);
+    final runtime = runtimeFor(conversationId: conversationId, mode: mode);
+    if (runtime == null) {
+      return;
+    }
+    final index = runtime.messages.indexWhere((msg) => msg.id == taskId);
+    if (index == -1) {
+      return;
+    }
+
+    final message = runtime.messages[index];
+    final content = Map<String, dynamic>.from(message.content ?? const {});
+    final rawPreviews = content['linkPreviews'];
+    if (rawPreviews is! List) {
+      return;
+    }
+
+    // 只替换仍处于 loading 的同一 URL，避免覆盖历史 ready/failed 结果。
+    var changed = false;
+    final updatedPreviews = rawPreviews
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item.cast<String, dynamic>()))
+        .map((previewMap) {
+          final preview = ChatLinkPreview.fromJson(previewMap);
+          if (preview.url != url ||
+              preview.status != ChatLinkPreview.statusLoading) {
+            return previewMap;
+          }
+          changed = true;
+          return resolved.toJson();
+        })
+        .toList();
+    if (!changed) {
+      return;
+    }
+
+    content['linkPreviews'] = updatedPreviews;
+    runtime.messages[index] = message.copyWith(content: content);
+    notifyListeners();
+    schedulePersistRuntimeConversation(
+      conversationId: conversationId,
+      mode: mode,
+    );
+    await ConversationHistoryService.saveConversationMessages(
+      conversationId,
+      List<ChatMessageModel>.from(runtime.messages),
+      mode: _conversationModeFromRuntimeMode(
+        mode,
+        conversation: runtime.conversation,
+      ),
+    );
+  }
+
+  bool _previewMapListsEqual(dynamic left, List<Map<String, dynamic>> right) {
+    if (left is! List) {
+      return right.isEmpty;
+    }
+    final normalizedLeft = left
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item.cast<String, dynamic>()))
+        .toList();
+    if (normalizedLeft.length != right.length) {
+      return false;
+    }
+    for (var index = 0; index < normalizedLeft.length; index += 1) {
+      if (!_previewMapEquals(normalizedLeft[index], right[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _previewMapEquals(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    return left['url'] == right['url'] &&
+        left['domain'] == right['domain'] &&
+        left['siteName'] == right['siteName'] &&
+        left['title'] == right['title'] &&
+        left['description'] == right['description'] &&
+        left['imageUrl'] == right['imageUrl'] &&
+        left['status'] == right['status'];
   }
 
   List<Map<String, dynamic>> _parseAttachments(dynamic raw) {
