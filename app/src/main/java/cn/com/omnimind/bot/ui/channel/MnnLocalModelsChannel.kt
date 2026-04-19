@@ -156,7 +156,11 @@ class MnnLocalModelsChannel {
             }
 
             "startApiService" -> {
-                result.success(OmniInferModelsManager.startApiService(call.argument<String>("modelId")))
+                val modelId = call.argument<String>("modelId")
+                scope.launch(Dispatchers.IO) {
+                    val config = OmniInferModelsManager.startApiService(modelId)
+                    mainHandler.post { result.success(config) }
+                }
             }
 
             "stopApiService" -> result.success(OmniInferModelsManager.stopApiService())
@@ -239,7 +243,11 @@ class MnnLocalModelsChannel {
             }
 
             "startApiService" -> {
-                result.success(OmniInferMnnModelsManager.startApiService(call.argument<String>("modelId")))
+                val modelId = call.argument<String>("modelId")
+                scope.launch(Dispatchers.IO) {
+                    val config = OmniInferMnnModelsManager.startApiService(modelId)
+                    mainHandler.post { result.success(config) }
+                }
             }
 
             "stopApiService" -> result.success(OmniInferMnnModelsManager.stopApiService())

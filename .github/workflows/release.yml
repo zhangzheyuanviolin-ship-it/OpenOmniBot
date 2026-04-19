@@ -88,7 +88,7 @@ jobs:
 
       - name: Build production release APK
         env:
-          # Keep enough heap for R8 while still leaving room for parallel workers.
+          # Keep enough heap for R8 during release shrinking.
           GRADLE_OPTS: >-
             -Dorg.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 --enable-native-access=ALL-UNNAMED
         run: |
@@ -101,7 +101,7 @@ jobs:
             MAX_WORKERS=2
           fi
           echo "Using Gradle max workers: ${MAX_WORKERS}"
-          ./gradlew --no-daemon --parallel --build-cache --max-workers="${MAX_WORKERS}" assembleProductionRelease \
+          ./gradlew --no-daemon --build-cache --max-workers="${MAX_WORKERS}" assembleProductionRelease \
             -POMNI_RELEASE_STORE_FILE=${{ runner.temp }}/release.jks \
             -POMNI_RELEASE_STORE_PWD=${{ secrets.RELEASE_PASSWORD }} \
             -POMNI_RELEASE_KEY_ALIAS=${{ secrets.RELEASE_KEY_ALIAS }} \

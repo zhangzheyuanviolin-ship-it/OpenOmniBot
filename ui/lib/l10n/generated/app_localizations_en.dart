@@ -50,7 +50,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Choose the display language for the app UI, agent prompts, and tool text';
 
   @override
-  String get languageFollowSystem => 'Follow System';
+  String get languageFollowSystem => 'System';
 
   @override
   String get languageZhHans => '简体中文';
@@ -439,4 +439,808 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get rateLimitErrorMessage =>
       'Omnibot is busy right now. Please try again in a moment.';
+
+  @override
+  String get chatHistoryArchivedTitle => 'Archived Conversations';
+
+  @override
+  String get chatHistoryTitle => 'Chat History';
+
+  @override
+  String get chatHistoryNoArchived => 'No archived conversations';
+
+  @override
+  String get chatHistoryEmpty => 'No conversations yet';
+
+  @override
+  String get homeDrawerArchive => 'Archive';
+
+  @override
+  String get homeDrawerNewChat => 'New conversation';
+
+  @override
+  String get webchatNoChats => 'Start a new conversation';
+
+  @override
+  String get memoryCenterTitle => 'Memory Center';
+
+  @override
+  String get memoryNoShortTerm => 'No short-term memory yet';
+
+  @override
+  String get memoryNoShortTermDesc =>
+      'Process information from conversations settles into short-term memory and later gets organized into long-term memory.';
+
+  @override
+  String get memoryFilteredNoShortTerm =>
+      'No short-term memory under current filter';
+
+  @override
+  String get memoryFilteredNoShortTermDesc =>
+      'Check back later, new short-term memories will appear gradually.';
+
+  @override
+  String get memoryNoLongTerm => 'Long-term memory not yet initialized';
+
+  @override
+  String get memoryNoLongTermDesc =>
+      'Once memory capability is enabled, your cross-session long-term memories will accumulate here.';
+
+  @override
+  String get memoryDeleteConfirmTitle => 'Are you sure you want to delete?';
+
+  @override
+  String get memoryDeleteWarning => 'This action cannot be undone';
+
+  @override
+  String get memoryEditDisabled => 'Editing short-term memory is not supported';
+
+  @override
+  String get memoryDeleteDisabled =>
+      'Deleting short-term memory is not supported';
+
+  @override
+  String get memoryGreeting =>
+      'Hello!\nOmnibot will collect your memories here!';
+
+  @override
+  String memorySelectedCount(Object n) {
+    return '$n selected';
+  }
+
+  @override
+  String get memoryDeselectAll => 'Deselect all';
+
+  @override
+  String get memoryEditTitle => 'Edit Memory';
+
+  @override
+  String get memoryIdLabel => 'Memory ID';
+
+  @override
+  String get memoryMatchScore => 'Match Score';
+
+  @override
+  String get memoryAdditionalInfo => 'Additional Info';
+
+  @override
+  String get memoryAddLongTerm => 'Add Long-term Memory';
+
+  @override
+  String get memorySaveToLongTerm => 'Save to Long-term Memory';
+
+  @override
+  String get memoryLongTermAdded => 'Long-term memory added';
+
+  @override
+  String get memoryEditLongTerm => 'Edit Long-term Memory';
+
+  @override
+  String get memorySaveChanges => 'Save changes';
+
+  @override
+  String get memoryDeleteLongTermConfirm => 'Delete this long-term memory?';
+
+  @override
+  String get memoryLongTermDeleted => 'Long-term memory deleted';
+
+  @override
+  String memoryLongTermFailed(Object error) {
+    return 'Long-term memory operation failed: $error';
+  }
+
+  @override
+  String get memoryNoMemories => 'No memories';
+
+  @override
+  String get memoryNoMemoriesDesc => 'Start exploring and add content you like';
+
+  @override
+  String get skillStoreTitle => 'Skill Store';
+
+  @override
+  String get skillBuiltin => 'Built-in';
+
+  @override
+  String get skillUser => 'User';
+
+  @override
+  String get skillInstalled => 'Installed';
+
+  @override
+  String get skillNotInstalled => 'Not installed';
+
+  @override
+  String get skillEnabled => 'Enabled';
+
+  @override
+  String get skillDisabled => 'Disabled';
+
+  @override
+  String get skillInstall => 'Install';
+
+  @override
+  String get skillDelete => 'Delete';
+
+  @override
+  String get skillEmpty => 'No skills available';
+
+  @override
+  String get skillNoDescription => 'No description';
+
+  @override
+  String get skillBuiltinRemovedDesc =>
+      'This built-in skill has been removed from the workspace. You can reinstall it anytime.';
+
+  @override
+  String get skillDeleteTitle => 'Delete Skill';
+
+  @override
+  String skillDeleteConfirmMsg(Object name) {
+    return 'Delete \"$name\"?';
+  }
+
+  @override
+  String get skillDeleted => 'Deleted';
+
+  @override
+  String get skillDeleteFailed => 'Failed to delete';
+
+  @override
+  String skillInstalledMsg(Object name) {
+    return 'Installed $name';
+  }
+
+  @override
+  String get skillInstallFailed => 'Failed to install';
+
+  @override
+  String skillEnabledMsg(Object name) {
+    return 'Enabled $name';
+  }
+
+  @override
+  String skillDisabledMsg(Object name) {
+    return 'Disabled $name';
+  }
+
+  @override
+  String get skillToggleFailed => 'Failed to toggle';
+
+  @override
+  String get skillLoadFailed => 'Failed to load skills';
+
+  @override
+  String get trajectoryTitle => 'Trajectory';
+
+  @override
+  String get trajectoryNoRecords => 'No execution records';
+
+  @override
+  String get trajectoryNoRecordsDesc => 'VLM tasks will be displayed here';
+
+  @override
+  String get trajectoryAll => 'All';
+
+  @override
+  String get trajectoryTaskRecords => 'Task Records';
+
+  @override
+  String trajectorySelectedCount(Object n) {
+    return '$n selected';
+  }
+
+  @override
+  String get trajectoryUnknownDate => 'Unknown date';
+
+  @override
+  String get trajectoryThreeDaysAgo => '3 days ago';
+
+  @override
+  String get executionHistoryTitle => 'Execution History';
+
+  @override
+  String get executionHistorySubtitle => 'Recent 3 task executions';
+
+  @override
+  String get executionHistoryEmpty => 'No execution history';
+
+  @override
+  String executionHistoryTaskLabel(Object option) {
+    return '$option Tasks';
+  }
+
+  @override
+  String get modelProviderConfigTitle => 'Provider Configuration';
+
+  @override
+  String get modelProviderConfigDesc =>
+      'Add, switch, and maintain model service provider names, addresses, and keys.';
+
+  @override
+  String get modelProviderName => 'Provider Name';
+
+  @override
+  String get modelProviderNameHint => 'e.g., DeepSeek';
+
+  @override
+  String get modelProviderBaseUrlHint =>
+      'Append # to disable auto-complete request path';
+
+  @override
+  String get modelProviderApiKeyHint =>
+      'Requests will be made without authentication when API Key is not filled in.';
+
+  @override
+  String get modelListTitle => 'Model List';
+
+  @override
+  String get modelListDesc =>
+      'Supports manually adding models or fetching the remote model list from the current Provider.';
+
+  @override
+  String modelListCount(Object count) {
+    return '$count models in total';
+  }
+
+  @override
+  String get modelAddPrompt => 'Please add a model!';
+
+  @override
+  String get modelBuiltinProvider => 'Built-in Provider';
+
+  @override
+  String get modelIdEmpty =>
+      'Model ID cannot be empty and cannot start with \'scene.\'';
+
+  @override
+  String get modelAlreadyExists => 'Model already exists';
+
+  @override
+  String get modelAdded => 'Model added';
+
+  @override
+  String get modelDeleted => 'Model deleted';
+
+  @override
+  String get modelDeleteFailed => 'Failed to delete model';
+
+  @override
+  String get modelIdHint => 'Enter model ID';
+
+  @override
+  String get modelAddProviderTitle => 'Add Provider';
+
+  @override
+  String get modelAddButton => 'Add';
+
+  @override
+  String get modelProviderAdded => 'Provider added';
+
+  @override
+  String modelProviderAddFailed(Object error) {
+    return 'Failed to add Provider: $error';
+  }
+
+  @override
+  String get modelDeleteProviderTitle => 'Delete Provider';
+
+  @override
+  String modelDeleteProviderMsg(Object name) {
+    return 'Delete \"$name\"? Scene bindings will be preserved, but you need to reselect an available Provider.';
+  }
+
+  @override
+  String get modelProviderDeleted => 'Provider deleted';
+
+  @override
+  String modelProviderDeleteFailed(Object error) {
+    return 'Failed to delete Provider: $error';
+  }
+
+  @override
+  String get sceneModelMapping => 'Scene Mapping';
+
+  @override
+  String get sceneModelMappingDesc =>
+      'Bind Providers and models by scene. Unbound scenes will continue using the default model.';
+
+  @override
+  String get sceneModelRefreshList => 'Refresh model list';
+
+  @override
+  String get sceneModelSearchHint =>
+      'Click the button on the right to search, collapse, and select models by Provider; the top search bar stays fixed.';
+
+  @override
+  String get sceneModelNoScenes => 'No configurable scenes';
+
+  @override
+  String get localModelsTitle => 'Local Models';
+
+  @override
+  String get localModelsAutoPreheat => 'Auto preheat on app open';
+
+  @override
+  String get localModelsAutoPreheatDesc =>
+      'Automatically start local service and load the current model when entering the app.';
+
+  @override
+  String get localModelsInstalled => 'Installed Models';
+
+  @override
+  String get localModelsInstalledDesc =>
+      'Search, switch default model, or delete models on the current device.';
+
+  @override
+  String get localModelsSearchHint => 'Search model name, ID, or tag';
+
+  @override
+  String get localModelsEmpty => 'No local models available';
+
+  @override
+  String get localModelsEmptyDesc =>
+      'Download a model from the market, or manually place an MNN model directory.';
+
+  @override
+  String get alarmSaved => 'Alarm settings saved';
+
+  @override
+  String get alarmRingtoneSource => 'Ringtone Source';
+
+  @override
+  String get alarmSystemDefault => 'System Default';
+
+  @override
+  String get alarmSystemDefaultDesc =>
+      'No extra configuration needed, best compatibility';
+
+  @override
+  String get alarmLocalMp3 => 'Local MP3';
+
+  @override
+  String get alarmLocalMp3Desc =>
+      'Select an MP3 file on your phone as the alarm ringtone';
+
+  @override
+  String get alarmMp3Url => 'MP3 URL';
+
+  @override
+  String get alarmMp3UrlDesc => 'Use an HTTP(S) URL to play an online MP3';
+
+  @override
+  String get alarmAudioPermissionDenied => 'Audio read permission not granted';
+
+  @override
+  String get alarmInvalidFilePath => 'Invalid file path, please select again';
+
+  @override
+  String get alarmSelectLocalFirst => 'Please select a local MP3 file first';
+
+  @override
+  String get alarmEnterHttpsUrl => 'Please enter an HTTP(S) MP3 URL';
+
+  @override
+  String get alarmLocalFile => 'Local File';
+
+  @override
+  String get alarmSelectMp3 => 'Select MP3 File';
+
+  @override
+  String get authorizePageTitle => 'App Permission Authorization';
+
+  @override
+  String get authorizeReceiveNotifications => 'Receive message notifications';
+
+  @override
+  String get authorizeNotificationsDesc =>
+      'Enable this to get task progress updates in time';
+
+  @override
+  String get companionPermissionManagement => 'Companion Permission Management';
+
+  @override
+  String get companionPermissionDesc =>
+      'After revoking authorization, Omnibot will still be displayed but task execution content will be hidden';
+
+  @override
+  String get companionPermissionNote => 'Permission Notes';
+
+  @override
+  String get companionAuthorizedApps => 'Authorized Apps';
+
+  @override
+  String get storageUsageTitle => 'Storage Usage';
+
+  @override
+  String get storageUsageSubtitle =>
+      'View storage usage details and clean up by category';
+
+  @override
+  String get storageAnalyzeFailed =>
+      'Storage analysis failed, please try again';
+
+  @override
+  String storageCategoryCleaned(Object name, Object size) {
+    return 'Cleaned $name, freed $size';
+  }
+
+  @override
+  String get storageCleanFailed => 'Cleanup failed, please try again later';
+
+  @override
+  String storageCleanCategory(Object name) {
+    return 'Clean $name';
+  }
+
+  @override
+  String get storageCleanConfirmMsg => 'Confirm cleanup of this category?';
+
+  @override
+  String get storageCleanScope => 'Cleanup Scope';
+
+  @override
+  String get storageCleanAll => 'All';
+
+  @override
+  String get storageClean7Days => '7 days ago';
+
+  @override
+  String get storageClean30Days => '30 days ago';
+
+  @override
+  String storageStrategyName(Object name) {
+    return 'Strategy: $name';
+  }
+
+  @override
+  String storageStrategyDone(Object size) {
+    return 'Strategy completed, freed $size';
+  }
+
+  @override
+  String storageStrategyPartialDone(Object count, Object size) {
+    return 'Strategy completed, freed $size, $count items not fully successful';
+  }
+
+  @override
+  String get storageStrategyFailed => 'Strategy failed, please try again later';
+
+  @override
+  String get storageLoadFailed => 'Failed to load';
+
+  @override
+  String get storageReanalyze => 'Reanalyze';
+
+  @override
+  String get storageTotalUsage => 'Total Usage';
+
+  @override
+  String get storageAppSize => 'App Size';
+
+  @override
+  String get storageUserData => 'User Data';
+
+  @override
+  String get storageCleanable => 'Cleanable';
+
+  @override
+  String storageStatsSource(Object source) {
+    return 'Statistics source: $source';
+  }
+
+  @override
+  String storagePackageName(Object name) {
+    return 'Current package: $name';
+  }
+
+  @override
+  String get storageTrendFirst =>
+      'This is the first analysis. Usage trends will be shown in future analyses.';
+
+  @override
+  String get storageSmartCleanup => 'Smart Cleanup';
+
+  @override
+  String get storageExecute => 'Execute';
+
+  @override
+  String get storageUsageAnalysis => 'Usage Analysis';
+
+  @override
+  String get storageClean => 'Clean';
+
+  @override
+  String get storageRiskLow => 'Low Risk';
+
+  @override
+  String get storageRiskCaution => 'Caution';
+
+  @override
+  String get storageRiskHigh => 'High Risk';
+
+  @override
+  String get storageReadOnly => 'Read Only';
+
+  @override
+  String get storageSystemStats =>
+      'System statistics (closer to system settings)';
+
+  @override
+  String get storageDirectoryScan => 'Directory scan estimate';
+
+  @override
+  String get storageAdditionalInfo => 'Additional Info';
+
+  @override
+  String get aboutDescription =>
+      'Omnibot is an AI assistant app centered on\nintelligent conversation, using semantic understanding\nand continuous learning to help with information\nprocessing, decision support, and daily management.';
+
+  @override
+  String get workspaceMemoryLoadFailed =>
+      'Failed to load workspace memory config';
+
+  @override
+  String get workspaceSoulSaved => 'SOUL.md saved';
+
+  @override
+  String get workspaceSoulSaveFailed => 'Failed to save SOUL.md';
+
+  @override
+  String get workspaceChatSaved => 'CHAT.md saved';
+
+  @override
+  String get workspaceChatSaveFailed => 'Failed to save CHAT.md';
+
+  @override
+  String get workspaceMemorySaved => 'MEMORY.md saved';
+
+  @override
+  String get workspaceMemorySaveFailed => 'Failed to save MEMORY.md';
+
+  @override
+  String get workspaceEmbeddingToggleFailed =>
+      'Failed to update memory embedding toggle';
+
+  @override
+  String get workspaceRollupToggleFailed =>
+      'Failed to update nightly rollup toggle';
+
+  @override
+  String get workspaceRollupDone => 'Rollup completed';
+
+  @override
+  String get workspaceRollupFailed => 'Rollup failed';
+
+  @override
+  String get workspaceNone => 'None';
+
+  @override
+  String get workspaceMemoryTitle => 'Workspace Memory';
+
+  @override
+  String get workspaceMemoryCapability => 'Memory Capability';
+
+  @override
+  String get workspaceEmbeddingReady =>
+      'Configured, vector retrieval available';
+
+  @override
+  String get workspaceEmbeddingNotReady =>
+      'Not configured, will fall back to lexical retrieval';
+
+  @override
+  String get workspaceGoToConfig =>
+      'Go to scene model config to set up embedding model';
+
+  @override
+  String get workspaceNightlyRollup => 'Nightly Memory Rollup (22:00)';
+
+  @override
+  String workspaceLastRun(Object time) {
+    return 'Last run: $time';
+  }
+
+  @override
+  String workspaceNextRun(Object time) {
+    return 'Next run: $time';
+  }
+
+  @override
+  String get workspaceRollupNow => 'Rollup now';
+
+  @override
+  String get workspaceDocContent => 'Document Content';
+
+  @override
+  String get workspaceSoulMd => 'SOUL.md (Agent Soul)';
+
+  @override
+  String get workspaceChatMd => 'CHAT.md (Chat-only system prompt)';
+
+  @override
+  String get workspaceMemoryMd => 'MEMORY.md (Long-term Memory)';
+
+  @override
+  String get alpineNodeJs => 'Node.js Runtime';
+
+  @override
+  String get alpineNpm => 'Node.js Package Manager';
+
+  @override
+  String get alpineGit => 'Git Version Control';
+
+  @override
+  String get alpinePython => 'Python Interpreter';
+
+  @override
+  String get alpinePip => 'Python Projects & Packages';
+
+  @override
+  String get alpinePipInstall => 'Python Package Installer';
+
+  @override
+  String get alpineSshClient => 'SSH Client';
+
+  @override
+  String get alpineSshpass => 'SSH Password Helper';
+
+  @override
+  String get alpineOpenSshServer => 'OpenSSH Server';
+
+  @override
+  String get alpineDetectFailed => 'Failed to detect Alpine environment';
+
+  @override
+  String get alpineBootTasksLoadFailed => 'Failed to load boot tasks';
+
+  @override
+  String get alpineConfigOpenFailed =>
+      'Failed to open terminal environment config';
+
+  @override
+  String get alpineBootTaskAdded => 'Boot task added';
+
+  @override
+  String get alpineBootTaskUpdated => 'Boot task updated';
+
+  @override
+  String get alpineBootTaskSaveFailed => 'Failed to save boot task';
+
+  @override
+  String get alpineBootEnabled => 'Enabled auto-start on app launch';
+
+  @override
+  String get alpineBootDisabled => 'Disabled auto-start';
+
+  @override
+  String get alpineBootTaskUpdateFailed => 'Failed to update task';
+
+  @override
+  String get alpineDeleteBootTask => 'Delete Boot Task';
+
+  @override
+  String alpineDeleteBootTaskMsg(Object name) {
+    return 'Delete \"$name\"?';
+  }
+
+  @override
+  String get alpineBootTaskDeleted => 'Boot task deleted';
+
+  @override
+  String get alpineBootTaskDeleteFailed => 'Failed to delete task';
+
+  @override
+  String get alpineCommandSent => 'Start command sent';
+
+  @override
+  String get alpineStartFailed => 'Failed to start task';
+
+  @override
+  String get alpineDetecting => 'Detecting environment';
+
+  @override
+  String alpineStartConfig(Object count) {
+    return 'Start configuration ($count items)';
+  }
+
+  @override
+  String get alpineAllReady => 'All ready';
+
+  @override
+  String get alpineDetectingDesc =>
+      'Detecting version info of common development tools in Alpine in the background.';
+
+  @override
+  String alpineReadyCount(Object ready, Object total) {
+    return '$ready/$total items ready. Check missing items and auto-configure in ReTerminal.';
+  }
+
+  @override
+  String get alpineBootTasks => 'Boot Tasks';
+
+  @override
+  String get alpineBootTasksDesc =>
+      'When Omnibot opens, enabled tasks are checked in the background and commands are started in the corresponding ReTerminal session. Suitable for persistent services.';
+
+  @override
+  String get alpineAddTask => 'Add Task';
+
+  @override
+  String get alpineOpenTerminal => 'Open Terminal';
+
+  @override
+  String get alpineNoTasksDesc =>
+      'No tasks. You can add persistent commands like `python app.py`, `node server.js`, or `./start.sh`.';
+
+  @override
+  String get alpineBootOnAppOpen => 'Start after app opens on boot';
+
+  @override
+  String get alpineNotEnabled => 'Not enabled';
+
+  @override
+  String get alpineRunning => 'Running';
+
+  @override
+  String get alpineStartNow => 'Start Now';
+
+  @override
+  String get alpineEdit => 'Edit';
+
+  @override
+  String get alpineVersionDetected => 'Version detected';
+
+  @override
+  String get alpineVersionNotFound => 'Not detected';
+
+  @override
+  String get alpineTaskNameHint => 'Enter task name';
+
+  @override
+  String get alpineCommandHint => 'Enter start command';
+
+  @override
+  String get alpineEditBootTask => 'Edit Boot Task';
+
+  @override
+  String get alpineAddBootTask => 'Add Boot Task';
+
+  @override
+  String get alpineTaskName => 'Task Name';
+
+  @override
+  String get alpineTaskNameExample => 'e.g., Local API service';
+
+  @override
+  String get alpineStartCommand => 'Start Command';
+
+  @override
+  String get alpineCommandExample => 'e.g., python app.py or pnpm start';
+
+  @override
+  String get alpineWorkDir => 'Working Directory';
+
+  @override
+  String get alpineBootAutoStart => 'Auto-start when Omnibot opens';
 }

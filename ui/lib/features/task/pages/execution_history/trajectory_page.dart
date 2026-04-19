@@ -1,13 +1,12 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/core/mixins/page_lifecycle_mixin.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/memory/pages/memory_center/widgets/tag_section.dart';
-import 'package:ui/features/my/pages/my/widgets/memory_section.dart';
 import 'package:ui/features/task/pages/execution_history/task_execution_detail_page.dart';
 import 'package:ui/features/task/pages/scheduled_tasks/widgets/schedule_task_sheet.dart';
 import 'package:ui/models/task_execution_info.dart';
-import 'package:ui/models/title_count.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/scheduled_task_scheduler_service.dart';
 import 'package:ui/services/scheduled_task_storage_service.dart';
@@ -26,38 +25,28 @@ import 'package:ui/features/task/pages/execution_history/widgets/execution_recor
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/image/cached_image.dart';
 import 'package:ui/widgets/selection_bottom_bar.dart';
-import 'package:ui/services/storage_service.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/theme/theme_context.dart';
+import 'package:ui/features/task/pages/execution_history/widgets/activity_dashboard_card.dart';
 
-/// 执行总结的前三条记录ID存储key
-const String kExecutionSummaryTopThreeIdsKey =
-    'execution_summary_top_three_ids';
-
-/// 执行总结的存储key
-const String kExecutionSummaryKey = 'execution_summary';
-
-class TaskExecutionHistoryRecordPage extends StatefulWidget {
-  const TaskExecutionHistoryRecordPage({super.key});
+class TrajectoryPage extends StatefulWidget {
+  const TrajectoryPage({super.key});
 
   @override
-  State<TaskExecutionHistoryRecordPage> createState() =>
-      _TaskExecutionHistoryRecordPageState();
+  State<TrajectoryPage> createState() =>
+      _TrajectoryPageState();
 }
 
-class _TaskExecutionHistoryRecordPageState
-    extends State<TaskExecutionHistoryRecordPage>
+class _TrajectoryPageState
+    extends State<TrajectoryPage>
     with
-        SingleTickerProviderStateMixin,
         WidgetsBindingObserver,
-        PageLifecycleMixin<TaskExecutionHistoryRecordPage> {
+        PageLifecycleMixin<TrajectoryPage> {
   List<AppTag> executionTags = [];
 
   List<TaskExecutionInfo> taskExecutionInfos = [];
 
   List<ExecutionRecordListItemData> executionRecordViewModels = [];
-
-  MemorySummary? memorySummary;
 
   bool _isLoading = true;
   bool _hasLoadedOnce = false;
@@ -71,31 +60,11 @@ class _TaskExecutionHistoryRecordPageState
   Map<String, Map<String, dynamic>> _suggestionMap = {};
   Set<String> _scheduledTaskKeys = {};
 
-  // LLM 生成的执行总结
-  bool _isSummaryLoading = false;
-  late AnimationController _shimmerController;
-  // 用于跟踪上次生成总结时的前三条执行记录ID
-  List<String> _lastTopThreeExecutionIds = [];
-
   @override
   void initState() {
     super.initState();
-
-    // 初始化shimmer动画控制器
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-
     _loadData();
-    _loadMemorySummary();
     _loadScheduledTaskKeys();
-  }
-
-  @override
-  void dispose() {
-    _shimmerController.dispose();
-    super.dispose();
   }
 
   // ✅ 应用从后台回到前台时刷新
@@ -104,7 +73,6 @@ class _TaskExecutionHistoryRecordPageState
     if (_hasLoadedOnce) {
       print('✅ ExecutionRecordPage resumed - reloading data silently');
       _loadData(silent: true);
-      _loadMemorySummary();
       _loadScheduledTaskKeys();
     }
   }
@@ -178,203 +146,6 @@ class _TaskExecutionHistoryRecordPageState
     return '$nodeId|$suggestionId';
   }
 
-  Future<void> _loadMemorySummary() async {
-    try {
-      final executionCount = await CacheUtil.getExecutionRecordCountByTitle();
-      if (executionCount.isEmpty) {
-        if (mounted) {
-          setState(() {
-            memorySummary = null;
-          });
-        }
-        return;
-      }
-      // 将数据降序排列
-      executionCount.sort((a, b) => b.count.compareTo(a.count));
-
-      // 构建 tips 字符串,取前三多的title
-      String tips = executionCount
-          .take(3)
-          .map((item) => '· ${item.title} ${item.count} 次')
-          .join('\n');
-
-      final totalCount = executionCount.fold<int>(
-        0,
-        (sum, item) => sum + item.count,
-      );
-      final title = '本月共执行 $totalCount 件事，你可以在这查看';
-
-      setState(() {
-        memorySummary = MemorySummary(title: title, tips: tips, sum: '');
-      });
-
-      // 先加载持久化的总结
-      String? savedSummary;
-      try {
-        savedSummary = StorageService.getString(kExecutionSummaryKey);
-        print('加载持久化的执行总结: $savedSummary');
-      } catch (e) {
-        print('加载执行总结失败: $e');
-      }
-
-      // 检查前三条记录是否变化，只在变化时生成总结
-      final currentTopThreeIds = executionCount
-          .take(3)
-          .map((item) => '${item.title}_${item.count}')
-          .toList();
-
-      // 加载持久化的前三条记录ID
-      await _loadLastTopThreeExecutionIds();
-
-      final hasChanged = _hasTopThreeExecutionChanged(currentTopThreeIds);
-
-      if (hasChanged) {
-        _lastTopThreeExecutionIds = currentTopThreeIds;
-        // 保存到持久化存储
-        _saveLastTopThreeExecutionIds(currentTopThreeIds);
-        // 异步生成执行总结
-        _generateExecutionSummary(executionCount, title, tips);
-      } else {
-        // 如果没有持久化数据，使用默认总结
-        if (savedSummary == null) {
-          setState(() {
-            memorySummary = MemorySummary(
-              title: title,
-              tips: tips,
-              sum: '本月你是一个惜时如金的天命人~',
-            );
-          });
-        } else {
-          setState(() {
-            memorySummary = MemorySummary(
-              title: title,
-              tips: tips,
-              sum: savedSummary!,
-            );
-          });
-        }
-      }
-    } catch (e) {
-      print('Error loading memory summary: $e');
-    }
-  }
-
-  /// 从持久化存储加载上次的前三条执行记录ID
-  Future<void> _loadLastTopThreeExecutionIds() async {
-    try {
-      final savedIds = StorageService.getJson<List<dynamic>>(
-        kExecutionSummaryTopThreeIdsKey,
-      );
-      if (savedIds != null && savedIds.isNotEmpty) {
-        _lastTopThreeExecutionIds = savedIds.map((id) => id as String).toList();
-        print('加载持久化的前三条执行记录ID: $_lastTopThreeExecutionIds');
-      }
-    } catch (e) {
-      print('加载前三条执行记录ID失败: $e');
-    }
-  }
-
-  /// 保存前三条执行记录ID到持久化存储
-  Future<void> _saveLastTopThreeExecutionIds(List<String> ids) async {
-    try {
-      await StorageService.setJson(kExecutionSummaryTopThreeIdsKey, ids);
-      print('保存前三条执行记录ID到持久化存储: $ids');
-    } catch (e) {
-      print('保存前三条执行记录ID失败: $e');
-    }
-  }
-
-  /// 检查前三条执行记录是否变化
-  bool _hasTopThreeExecutionChanged(List<String> currentTopThreeIds) {
-    // 如果是第一次加载（_lastTopThreeExecutionIds为空），返回true
-    if (_lastTopThreeExecutionIds.isEmpty) {
-      return true;
-    }
-
-    // 如果数量不同，说明有变化
-    if (currentTopThreeIds.length != _lastTopThreeExecutionIds.length) {
-      return true;
-    }
-
-    // 逐个比较ID，如果有任何不同则返回true
-    for (int i = 0; i < currentTopThreeIds.length; i++) {
-      if (currentTopThreeIds[i] != _lastTopThreeExecutionIds[i]) {
-        return true;
-      }
-    }
-
-    // 完全相同，无需更新
-    return false;
-  }
-
-  /// 使用 LLM 生成执行总结
-  Future<void> _generateExecutionSummary(
-    List<TitleCount> executionCount,
-    String title,
-    String tips,
-  ) async {
-    // 显示加载状态
-    setState(() {
-      _isSummaryLoading = true;
-    });
-    // 如果没有执行记录，不生成总结
-    if (executionCount.isEmpty) {
-      return;
-    }
-
-    try {
-      // 取前三条执行记录
-      final topRecords = executionCount
-          .take(3)
-          .map((item) => {'title': item.title, 'count': item.count})
-          .toList();
-
-      const prompt = '''你是小万，一个温暖的AI助手。根据用户本月的任务执行记录，生成一句简短、温馨的总结语。
-
-要求：
-1. 总结语要简短（不超过30个字）
-2. 结合用户执行任务的特点，体现个性化
-3. 语气温暖友好、鼓励积极
-4. 可以适当幽默风趣
-5. 只输出总结语本身，不要加引号或其他说明
-
-用户的执行记录：
-''';
-
-      final recordsJson = topRecords
-          .map((r) => '任务: ${r['title']}, 执行次数: ${r['count']}')
-          .join('\n');
-
-      final response = await AssistsMessageService.postLLMChat(
-        text: prompt + recordsJson,
-        model: 'scene.compactor.context',
-      );
-
-      if (response != null && response.isNotEmpty && mounted) {
-        final summaryText = response.trim();
-        setState(() {
-          memorySummary = MemorySummary(
-            title: title,
-            tips: tips,
-            sum: summaryText,
-          );
-          _isSummaryLoading = false;
-        });
-        // 保存到持久化存储
-        StorageService.setString(kExecutionSummaryKey, summaryText);
-      } else {
-        setState(() {
-          _isSummaryLoading = false;
-        });
-      }
-    } catch (e) {
-      print('生成执行总结失败: $e');
-      setState(() {
-        _isSummaryLoading = false;
-      });
-    }
-  }
-
   // 加载执行记录信息
   Future<void> _loadTaskExecutionInfos() async {
     try {
@@ -397,7 +168,7 @@ class _TaskExecutionHistoryRecordPageState
       tagList.add(
         AppTag(
           id: 'all',
-          label: '全部',
+          label: context.l10n.trajectoryAll,
           count: totalCount,
           svgPath: 'assets/common/all_icon.svg',
           iconBgColor: Colors.black,
@@ -847,7 +618,7 @@ class _TaskExecutionHistoryRecordPageState
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) =>
-          BatchDeleteConfirmSheet(count: count, unit: ' 任务记录'),
+          BatchDeleteConfirmSheet(count: count, unit: ' ${context.l10n.trajectoryTaskRecords}'),
     );
 
     if (result == true) {
@@ -873,11 +644,11 @@ class _TaskExecutionHistoryRecordPageState
 
       // 重新加载标签统计
       await _loadExecutionTags();
-      _loadMemorySummary();
+
 
       // 显示删除结果
       if (successCount > 0) {
-        showToast('已删除', type: ToastType.success);
+        showToast(context.l10n.skillDeleted, type: ToastType.success);
       }
     }
   }
@@ -912,10 +683,10 @@ class _TaskExecutionHistoryRecordPageState
   void _deleteExecutionRecord(int recordId) {
     AppDialog.confirm(
       context,
-      title: '确定删除吗？',
-      content: '删除后该内容将不可找回',
-      cancelText: '取消',
-      confirmText: '删除',
+      title: context.l10n.memoryDeleteConfirmTitle,
+      content: context.l10n.memoryDeleteWarning,
+      cancelText: context.trLegacy('取消'),
+      confirmText: context.l10n.skillDelete,
       confirmButtonColor: AppColors.alertRed,
     ).then((result) async {
       if (result == true) {
@@ -929,7 +700,7 @@ class _TaskExecutionHistoryRecordPageState
     try {
       bool success = await CacheUtil.deleteExecutionRecordById(recordId);
       if (!success) {
-        showToast('删除失败', type: ToastType.error);
+        showToast(context.l10n.skillDeleteFailed, type: ToastType.error);
         return;
       }
 
@@ -938,14 +709,14 @@ class _TaskExecutionHistoryRecordPageState
         taskExecutionInfos.removeWhere((record) => record.id == recordId);
       });
 
-      showToast('删除成功', type: ToastType.success);
+      showToast(context.l10n.skillDeleted, type: ToastType.success);
 
       // 重新加载标签统计
       await _loadExecutionTags();
-      _loadMemorySummary();
+
     } catch (e) {
       print('Error deleting card: $e');
-      showToast('删除失败', type: ToastType.error);
+      showToast(context.l10n.skillDeleteFailed, type: ToastType.error);
     }
   }
 
@@ -967,7 +738,7 @@ class _TaskExecutionHistoryRecordPageState
           : AppColors.background,
       appBar: _isSelectionMode
           ? _buildSelectionAppBar(filterRecords)
-          : const CommonAppBar(title: '任务记录', showAiBadge: true, primary: true),
+          : CommonAppBar(title: context.l10n.trajectoryTitle, showAiBadge: false, primary: true),
       body: SafeArea(
         top: false,
         child: Column(
@@ -975,8 +746,6 @@ class _TaskExecutionHistoryRecordPageState
             Expanded(
               child: _isLoading
                   ? _buildLoadingIndicator()
-                  : allRecords.isEmpty
-                  ? _buildEmptyState()
                   : SingleChildScrollView(
                       child: Column(
                         children: [
@@ -988,21 +757,26 @@ class _TaskExecutionHistoryRecordPageState
                             child: Column(
                               children: [
                                 SizedBox(height: 14),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                  ),
-                                  child: MemorySection(
-                                    memorySummary: memorySummary,
-                                    isSummaryLoading: _isSummaryLoading,
-                                    animationController: _shimmerController,
-                                  ),
-                                ),
+                                const ActivityDashboardCard(),
                                 SizedBox(height: 12),
                               ],
                             ),
                           ),
-                          SizedBox(height: 12),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '任务记录',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: context.omniPalette.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 10),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: TagSection(
@@ -1012,20 +786,23 @@ class _TaskExecutionHistoryRecordPageState
                               maxCollapsedRows: 1,
                             ),
                           ),
-                          SizedBox(height: 8),
-                          ExecutionRecordList(
-                            records: filterRecords,
-                            onDelete: _deleteExecutionRecord,
-                            onMore: _showContextMenu,
-                            onLongPress: (vm) => _enterSelectionMode(vm),
-                            onTap: (vm) => _navigateToDetail(vm),
-                            isSelectionMode: _isSelectionMode,
-                            selectedKeys: _selectedRecordKeys,
-                            onToggleSelection: _toggleRecordSelection,
-                            getRecordKey: _getRecordKey,
-                            onSchedulePressed: _onSchedulePressed,
-                            scheduledTaskKeys: _scheduledTaskKeys,
-                          ),
+                          if (allRecords.isNotEmpty) ...[
+                            SizedBox(height: 8),
+                            ExecutionRecordList(
+                              records: filterRecords,
+                              onDelete: _deleteExecutionRecord,
+                              onMore: _showContextMenu,
+                              onLongPress: (vm) => _enterSelectionMode(vm),
+                              onTap: (vm) => _navigateToDetail(vm),
+                              isSelectionMode: _isSelectionMode,
+                              selectedKeys: _selectedRecordKeys,
+                              onToggleSelection: _toggleRecordSelection,
+                              getRecordKey: _getRecordKey,
+                              onSchedulePressed: _onSchedulePressed,
+                              scheduledTaskKeys: _scheduledTaskKeys,
+                            ),
+                          ] else
+                            _buildEmptyRecordsHint(),
                         ],
                       ),
                     ),
@@ -1053,7 +830,7 @@ class _TaskExecutionHistoryRecordPageState
         filterRecords.isNotEmpty;
     return CommonAppBar(
       primary: true,
-      title: '已选择${_selectedRecordKeys.length}项',
+      title: context.l10n.trajectorySelectedCount(_selectedRecordKeys.length),
       titleStyle: TextStyle(
         fontSize: 17,
         fontWeight: FontWeight.w600,
@@ -1064,7 +841,7 @@ class _TaskExecutionHistoryRecordPageState
       leading: TextButton(
         onPressed: _exitSelectionMode,
         child: Text(
-          '取消',
+          context.trLegacy('取消'),
           style: TextStyle(
             color: palette.accentPrimary,
             fontSize: 14,
@@ -1078,7 +855,7 @@ class _TaskExecutionHistoryRecordPageState
           child: TextButton(
             onPressed: () => _toggleSelectAll(filterRecords),
             child: Text(
-              isAllSelected ? '全不选' : '全选',
+              isAllSelected ? context.l10n.memoryDeselectAll : context.trLegacy('全选'),
               style: TextStyle(
                 color: palette.accentPrimary,
                 fontSize: 14,
@@ -1091,11 +868,11 @@ class _TaskExecutionHistoryRecordPageState
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyRecordsHint() {
     final palette = context.omniPalette;
-    return Center(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SvgPicture.asset(
             'assets/common/empty_record.svg',
@@ -1109,34 +886,20 @@ class _TaskExecutionHistoryRecordPageState
             ),
           ),
           const SizedBox(height: 12),
+          
           Text(
-            '暂无执行记录',
+            context.l10n.trajectoryNoRecordsDesc,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: AppTextStyles.fontSizeH3,
-              fontWeight: AppTextStyles.fontWeightMedium,
+              fontSize: AppTextStyles.fontSizeMain,
+              fontWeight: AppTextStyles.fontWeightRegular,
               color: context.isDarkTheme
-                  ? palette.textPrimary
-                  : AppColors.primaryBlue,
-              height: AppTextStyles.lineHeightH1,
+                  ? palette.textSecondary
+                  : AppColors.text20,
+              height: AppTextStyles.lineHeightH2,
               letterSpacing: AppTextStyles.letterSpacingWide,
-            ),
-          ),
-          const SizedBox(height: 9),
-          Container(
-            alignment: Alignment.center,
-            width: 192,
-            child: Text(
-              '小万为你执行的任务，后续都会在此展示',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: AppTextStyles.fontSizeMain,
-                fontWeight: AppTextStyles.fontWeightRegular,
-                color: context.isDarkTheme
-                    ? palette.textSecondary
-                    : AppColors.text20,
-                height: AppTextStyles.lineHeightH2,
-                letterSpacing: AppTextStyles.letterSpacingWide,
-              ),
             ),
           ),
         ],
@@ -1145,30 +908,35 @@ class _TaskExecutionHistoryRecordPageState
   }
 
   String _getSection(int timestamp) {
-    String section = '未知日期';
+    String section = context.l10n.trajectoryUnknownDate;
     final today = DateTime.now();
     final recordDate = DateTime.fromMillisecondsSinceEpoch(timestamp);
     if (recordDate.year == today.year &&
         recordDate.month == today.month &&
         recordDate.day == today.day) {
-      section = '今天';
+      section = context.trLegacy('今天');
     } else if (recordDate.year == today.year &&
         recordDate.month == today.month &&
         recordDate.day == today.day - 1) {
-      section = '昨天';
+      section = context.trLegacy('昨天');
     } else {
-      section = '三天前';
+      section = context.l10n.trajectoryThreeDaysAgo;
     }
     return section;
   }
 
   String _getTimeLabel(String section, int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    final today = DateTime.now();
 
-    if (section == '今天') {
-      return '今天 ' + DateFormat('HH:mm').format(date);
-    } else if (section == '昨天') {
-      return '昨天 ' + DateFormat('HH:mm').format(date);
+    if (date.year == today.year &&
+        date.month == today.month &&
+        date.day == today.day) {
+      return '${context.trLegacy('今天')} ' + DateFormat('HH:mm').format(date);
+    } else if (date.year == today.year &&
+        date.month == today.month &&
+        date.day == today.day - 1) {
+      return '${context.trLegacy('昨天')} ' + DateFormat('HH:mm').format(date);
     } else {
       return DateFormat('yyyy/MM/dd HH:mm').format(date);
     }

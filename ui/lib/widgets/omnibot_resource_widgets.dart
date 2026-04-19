@@ -9,6 +9,7 @@ import 'package:ui/services/office_preview_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/pdf_preview_service.dart';
 import 'package:ui/widgets/image_preview_overlay.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:video_player/video_player.dart';
 
 class OmnibotInlineResourceEmbed extends StatelessWidget {
@@ -209,7 +210,7 @@ class _OmnibotInlineImageCard extends StatelessWidget {
                     errorBuilder: (_, __, ___) => _MissingResourceCard(
                       metadata: metadata,
                       icon: Icons.broken_image_outlined,
-                      subtitle: '图片加载失败',
+                      subtitle: LegacyTextLocalizer.isEnglish ? 'Failed to load image' : '图片加载失败',
                       plainStyle: plainStyle,
                     ),
                   ),
@@ -217,7 +218,7 @@ class _OmnibotInlineImageCard extends StatelessWidget {
               : _MissingResourceCard(
                   metadata: metadata,
                   icon: Icons.image_not_supported_outlined,
-                  subtitle: '图片不存在或暂不可读',
+                  subtitle: LegacyTextLocalizer.isEnglish ? 'Image does not exist or is not readable' : '图片不存在或暂不可读',
                   plainStyle: plainStyle,
                 ),
         ),
@@ -293,7 +294,9 @@ class _OmnibotInlineAudioPlayerState extends State<_OmnibotInlineAudioPlayer> {
       return _MissingResourceCard(
         metadata: widget.metadata,
         icon: Icons.audio_file_outlined,
-        subtitle: _error == null ? '音频不存在或暂不可读' : '音频加载失败',
+        subtitle: _error == null
+            ? (LegacyTextLocalizer.isEnglish ? 'Audio does not exist or is not readable' : '音频不存在或暂不可读')
+            : (LegacyTextLocalizer.isEnglish ? 'Failed to load audio' : '音频加载失败'),
         plainStyle: widget.plainStyle,
       );
     }
@@ -345,7 +348,9 @@ class _OmnibotInlineAudioPlayerState extends State<_OmnibotInlineAudioPlayer> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      _duration == null ? '音频资源' : _formatDuration(_duration!),
+                      _duration == null
+                          ? (LegacyTextLocalizer.isEnglish ? 'Audio' : '音频资源')
+                          : _formatDuration(_duration!),
                       style: const TextStyle(
                         fontSize: 11,
                         color: Color(0xFF64748B),
@@ -355,7 +360,7 @@ class _OmnibotInlineAudioPlayerState extends State<_OmnibotInlineAudioPlayer> {
                 ),
               ),
               IconButton(
-                tooltip: '打开预览',
+                tooltip: LegacyTextLocalizer.isEnglish ? 'Open preview' : '打开预览',
                 onPressed: () => _openMetadata(widget.metadata),
                 icon: const Icon(Icons.open_in_new_rounded),
               ),
@@ -445,7 +450,9 @@ class _OmnibotInlineVideoPlayerState extends State<_OmnibotInlineVideoPlayer> {
       return _MissingResourceCard(
         metadata: widget.metadata,
         icon: Icons.video_file_outlined,
-        subtitle: _error == null ? '视频不存在或暂不可读' : '视频加载失败',
+        subtitle: _error == null
+            ? (LegacyTextLocalizer.isEnglish ? 'Video does not exist or is not readable' : '视频不存在或暂不可读')
+            : (LegacyTextLocalizer.isEnglish ? 'Failed to load video' : '视频加载失败'),
         plainStyle: widget.plainStyle,
       );
     }
@@ -535,7 +542,7 @@ class _OmnibotInlinePdfCard extends StatelessWidget {
       return _MissingResourceCard(
         metadata: metadata,
         icon: Icons.picture_as_pdf_outlined,
-        subtitle: 'PDF 不存在或暂不可读',
+        subtitle: LegacyTextLocalizer.isEnglish ? 'PDF does not exist or is not readable' : 'PDF 不存在或暂不可读',
         plainStyle: plainStyle,
       );
     }
@@ -665,7 +672,7 @@ class _OmnibotPdfScrollablePreviewState
                   return _MissingResourceCard(
                     metadata: widget.metadata,
                     icon: Icons.picture_as_pdf_outlined,
-                    subtitle: 'PDF 预览失败',
+                    subtitle: LegacyTextLocalizer.isEnglish ? 'PDF preview failed' : 'PDF 预览失败',
                     plainStyle: widget.plainStyle,
                   );
                 }
@@ -780,7 +787,9 @@ class _PdfPagePlaceholder extends StatelessWidget {
           const CircularProgressIndicator(),
           const SizedBox(height: 10),
           Text(
-            '第 ${pageIndex + 1} 页加载中',
+            LegacyTextLocalizer.isEnglish
+                ? 'Page ${pageIndex + 1} loading'
+                : '第 ${pageIndex + 1} 页加载中',
             style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
           ),
         ],
@@ -805,7 +814,9 @@ class _PdfPageError extends StatelessWidget {
           const Icon(Icons.error_outline_rounded, color: Color(0xFFB45309)),
           const SizedBox(height: 8),
           Text(
-            '第 ${pageIndex + 1} 页渲染失败',
+            LegacyTextLocalizer.isEnglish
+                ? 'Page ${pageIndex + 1} render failed'
+                : '第 ${pageIndex + 1} 页渲染失败',
             style: const TextStyle(fontSize: 12, color: Color(0xFF92400E)),
           ),
         ],
@@ -906,7 +917,7 @@ class _OmnibotInlineHtmlCardState extends State<_OmnibotInlineHtmlCard> {
       return _MissingResourceCard(
         metadata: widget.metadata,
         icon: Icons.language_outlined,
-        subtitle: 'HTML 文件不存在或暂不可读',
+        subtitle: LegacyTextLocalizer.isEnglish ? 'HTML file does not exist or is not readable' : 'HTML 文件不存在或暂不可读',
         plainStyle: widget.plainStyle,
       );
     }
@@ -916,9 +927,9 @@ class _OmnibotInlineHtmlCardState extends State<_OmnibotInlineHtmlCard> {
       builder: (context, snapshot) {
         final preview = snapshot.data;
         final subtitle = <String>[
-          'HTML 页面',
+          LegacyTextLocalizer.isEnglish ? 'HTML page' : 'HTML 页面',
           if (preview != null && preview.lineCount > 0)
-            '${preview.lineCount} 行',
+            '${preview.lineCount} ${LegacyTextLocalizer.isEnglish ? 'lines' : '行'}',
           _fileSizeLabel(widget.metadata.path),
         ].where((item) => item.isNotEmpty).join(' · ');
 
@@ -1020,7 +1031,7 @@ class _OmnibotInlineHtmlCardState extends State<_OmnibotInlineHtmlCard> {
                           ],
                           Text(
                             preview == null || preview.snippet.isEmpty
-                                ? '已识别为 HTML 页面，可在 WebView 中查看完整内容。'
+                                ? (LegacyTextLocalizer.isEnglish ? 'Recognized as HTML page. View full content in WebView.' : '已识别为 HTML 页面，可在 WebView 中查看完整内容。')
                                 : preview.snippet,
                             maxLines: 4,
                             overflow: TextOverflow.ellipsis,
@@ -1045,7 +1056,7 @@ class _OmnibotInlineHtmlCardState extends State<_OmnibotInlineHtmlCard> {
                   OutlinedButton.icon(
                     onPressed: () => _openMetadata(widget.metadata),
                     icon: const Icon(Icons.visibility_outlined),
-                    label: const Text('查看文件'),
+                    label: Text(LegacyTextLocalizer.isEnglish ? 'View file' : '查看文件'),
                   ),
                 ],
               ),
@@ -1103,7 +1114,7 @@ class _OmnibotInlineOfficePreviewCardState
       return _MissingResourceCard(
         metadata: widget.metadata,
         icon: _officeIconForKind(widget.metadata.previewKind),
-        subtitle: '文件不存在或暂不可读',
+        subtitle: LegacyTextLocalizer.isEnglish ? 'File does not exist or is not readable' : '文件不存在或暂不可读',
         plainStyle: widget.plainStyle,
       );
     }
@@ -1173,7 +1184,7 @@ class _OmnibotInlineOfficePreviewCardState
                   ),
                 ),
                 IconButton(
-                  tooltip: '打开预览',
+                  tooltip: LegacyTextLocalizer.isEnglish ? 'Open preview' : '打开预览',
                   onPressed: () => _openMetadata(widget.metadata),
                   icon: const Icon(Icons.open_in_new_rounded),
                 ),
@@ -1197,7 +1208,7 @@ class _OmnibotInlineOfficePreviewCardState
                   }
                   if (snapshot.hasError || !snapshot.hasData) {
                     return _OfficePreviewErrorView(
-                      message: snapshot.error?.toString() ?? 'Office 预览失败',
+                      message: snapshot.error?.toString() ?? (LegacyTextLocalizer.isEnglish ? 'Office preview failed' : 'Office 预览失败'),
                       onOpen: () => _openMetadata(widget.metadata),
                     );
                   }
@@ -1241,7 +1252,7 @@ class _OfficePreviewBody extends StatelessWidget {
           if (data.truncated) ...[
             const SizedBox(height: 12),
             Text(
-              '内容较多，当前仅展示前面一部分。',
+              LegacyTextLocalizer.isEnglish ? 'Content is too long. Only showing the first part.' : '内容较多，当前仅展示前面一部分。',
               style: TextStyle(
                 fontSize: 11,
                 color: Colors.blueGrey.withValues(alpha: 0.78),
@@ -1415,7 +1426,7 @@ class _OfficePreviewErrorView extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onOpen,
               icon: const Icon(Icons.open_in_new_rounded),
-              label: const Text('打开文件'),
+              label: Text(LegacyTextLocalizer.isEnglish ? 'Open file' : '打开文件'),
             ),
           ],
         ),
@@ -1579,9 +1590,9 @@ IconData _officeIconForKind(String previewKind) {
 
 String _officeKindLabel(String previewKind) {
   return switch (previewKind) {
-    'office_word' => 'Word 文档',
-    'office_sheet' => 'Excel 表格',
-    'office_slide' => 'PowerPoint 演示文稿',
-    _ => 'Office 文件',
+    'office_word' => LegacyTextLocalizer.isEnglish ? 'Word Document' : 'Word 文档',
+    'office_sheet' => LegacyTextLocalizer.isEnglish ? 'Excel Spreadsheet' : 'Excel 表格',
+    'office_slide' => LegacyTextLocalizer.isEnglish ? 'PowerPoint Presentation' : 'PowerPoint 演示文稿',
+    _ => LegacyTextLocalizer.isEnglish ? 'Office File' : 'Office 文件',
   };
 }

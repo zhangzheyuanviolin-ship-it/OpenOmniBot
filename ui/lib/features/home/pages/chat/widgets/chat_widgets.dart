@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/theme/theme_context.dart';
 import '../../../../../models/chat_message_model.dart';
@@ -65,7 +66,6 @@ const List<Color> _kDarkChatAccentGradient = <Color>[
   Color(0xFF8FA38A),
 ];
 
-const Color _kDarkChatAccentShadow = Color(0x2610110F);
 const double _kChatAppBarMenuButtonSize = 50;
 const double _kChatAppBarAccessoryButtonSize = 40;
 const double _kChatAppBarAccessoryGap = 12;
@@ -247,9 +247,27 @@ class ChatAppBar extends StatelessWidget {
                               : _chatAppBarPureChatIconSvg,
                           tooltip: isPureChatToggleLocked
                               ? (isPureChatSelected
-                                    ? '当前线程已锁定为纯聊天'
-                                    : '当前线程模式已锁定')
-                              : (isPureChatSelected ? '关闭纯聊天' : '开启纯聊天'),
+                                    ? (Localizations.localeOf(context)
+                                                  .languageCode ==
+                                              'en'
+                                          ? 'Current thread is locked to pure chat'
+                                          : '当前线程已锁定为纯聊天')
+                                    : (Localizations.localeOf(context)
+                                                  .languageCode ==
+                                              'en'
+                                          ? 'Current thread mode is locked'
+                                          : '当前线程模式已锁定'))
+                              : (isPureChatSelected
+                                    ? (Localizations.localeOf(context)
+                                                  .languageCode ==
+                                              'en'
+                                          ? 'Disable pure chat'
+                                          : '关闭纯聊天')
+                                    : (Localizations.localeOf(context)
+                                                  .languageCode ==
+                                              'en'
+                                          ? 'Enable pure chat'
+                                          : '开启纯聊天')),
                           selected: isPureChatSelected,
                           disabled: isPureChatToggleLocked,
                           onTap: isPureChatToggleLocked
@@ -502,7 +520,7 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
   String get _modelLabel {
     final text = (widget.activeModelId ?? '').trim();
     if (text.isEmpty) {
-      return '未设置模型';
+      return LegacyTextLocalizer.isEnglish ? 'No model set' : '未设置模型';
     }
     return text;
   }
@@ -679,25 +697,11 @@ class _ChatModeModelSwitcherState extends State<_ChatModeModelSwitcher> {
           opacity: 0.78,
         ),
         borderRadius: BorderRadius.circular(999),
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(
-                    alpha: widget.translucent ? 0.18 : 0.14,
-                  ),
-                  blurRadius: widget.translucent ? 18 : 14,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(
-                    alpha: widget.translucent ? 0.2 : 0.12,
-                  ),
-                  blurRadius: widget.translucent ? 22 : 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+        border: Border.all(
+          color: widget.translucent
+              ? widget.visualProfile.islandBorderColor
+              : palette.borderSubtle.withValues(alpha: 0.72),
+        ),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
@@ -799,9 +803,6 @@ class _ChatToolSlider extends StatelessWidget {
     final activeGradient = context.isDarkTheme
         ? _kDarkChatAccentGradient
         : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
-    final activeShadowColor = context.isDarkTheme
-        ? _kDarkChatAccentShadow
-        : const Color(0x291930D9);
     return SizedBox(
       height: 32,
       child: Container(
@@ -828,13 +829,6 @@ class _ChatToolSlider extends StatelessWidget {
                       colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: activeShadowColor,
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
                   ),
                 ),
               ),
@@ -848,7 +842,7 @@ class _ChatToolSlider extends StatelessWidget {
                     key: const ValueKey('chat-island-terminal-button'),
                     isSelected: _isTerminalActive,
                     isEnabled: true,
-                    tooltip: '打开终端',
+                    tooltip: LegacyTextLocalizer.isEnglish ? 'Open terminal' : '打开终端',
                     onTap: onTerminalTap,
                     child: SvgPicture.string(
                       terminalIconSvg,
@@ -863,7 +857,9 @@ class _ChatToolSlider extends StatelessWidget {
                     key: const ValueKey('chat-island-browser-button'),
                     isSelected: _isBrowserActive,
                     isEnabled: isBrowserEnabled,
-                    tooltip: isBrowserEnabled ? '打开当前会话浏览器' : '当前会话还没有可用的浏览器会话',
+                    tooltip: isBrowserEnabled
+                        ? (LegacyTextLocalizer.isEnglish ? 'Open browser for current session' : '打开当前会话浏览器')
+                        : (LegacyTextLocalizer.isEnglish ? 'No browser session available' : '当前会话还没有可用的浏览器会话'),
                     onTap: onBrowserTap,
                     child: SvgPicture.string(
                       browserIconSvg,
@@ -887,7 +883,9 @@ class _ChatToolSlider extends StatelessWidget {
     return Builder(
       builder: (anchorContext) {
         return Tooltip(
-          message: '管理终端环境变量',
+          message: LegacyTextLocalizer.isEnglish
+            ? 'Manage terminal environment variables'
+            : '管理终端环境变量',
           child: InkWell(
             key: const ValueKey('chat-island-terminal-env-button'),
             onTap: () {
@@ -1024,9 +1022,6 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
     final activeGradient = context.isDarkTheme
         ? _kDarkChatAccentGradient
         : const <Color>[Color(0xFF2DA5F0), Color(0xFF1930D9)];
-    final activeShadowColor = context.isDarkTheme
-        ? _kDarkChatAccentShadow
-        : const Color(0x291930D9);
     final alignment = _activeVisibleModeIndex == 0
         ? Alignment.centerLeft
         : Alignment.centerRight;
@@ -1076,13 +1071,6 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
                       colors: activeGradient,
                     ),
                     borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: activeShadowColor,
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
                   ),
                 ),
               ),
@@ -1170,6 +1158,9 @@ class ChatMessageList extends StatefulWidget {
 
 class _ChatMessageListState extends State<ChatMessageList> {
   bool _stickToBottomScheduled = false;
+  bool _autoStickToLatest = true;
+  bool _outerScrollWasUserDriven = false;
+  static const double _latestEdgeTolerance = 48.0;
 
   @override
   void initState() {
@@ -1180,20 +1171,45 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   void didUpdateWidget(covariant ChatMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_isNearBottom()) {
-      _scheduleStickToBottom();
+    if (oldWidget.scrollController != widget.scrollController) {
+      _autoStickToLatest = true;
+      _outerScrollWasUserDriven = false;
+    }
+    if (_autoStickToLatest || _isNearLatest()) {
+      _autoStickToLatest = true;
+      _scheduleStickToLatest();
     }
   }
 
-  bool _isNearBottom() {
+  bool _isNearLatest([ScrollMetrics? metrics]) {
+    final resolvedMetrics = metrics;
+    if (resolvedMetrics != null) {
+      return _distanceToLatest(resolvedMetrics) <= _latestEdgeTolerance;
+    }
     if (!widget.scrollController.hasClients) {
       return true;
     }
     final position = widget.scrollController.position;
-    return (position.maxScrollExtent - position.pixels).abs() <= 24;
+    return _distanceToLatest(position) <= _latestEdgeTolerance;
   }
 
-  void _scheduleStickToBottom() {
+  double _latestOffset(ScrollMetrics metrics) {
+    return switch (metrics.axisDirection) {
+      AxisDirection.down || AxisDirection.right => metrics.maxScrollExtent,
+      AxisDirection.up || AxisDirection.left => metrics.minScrollExtent,
+    };
+  }
+
+  double _distanceToLatest(ScrollMetrics metrics) {
+    return (metrics.pixels - _latestOffset(metrics)).abs();
+  }
+
+  void _scheduleStickToBottom() => _scheduleStickToLatest();
+
+  void _scheduleStickToLatest() {
+    if (!_autoStickToLatest) {
+      return;
+    }
     if (_stickToBottomScheduled) {
       return;
     }
@@ -1206,13 +1222,50 @@ class _ChatMessageListState extends State<ChatMessageList> {
         }
         return;
       }
+      if (!_autoStickToLatest) {
+        return;
+      }
       final position = widget.scrollController.position;
-      final target = position.maxScrollExtent;
+      final target = _latestOffset(position);
       if ((target - position.pixels).abs() < 0.5) {
         return;
       }
       widget.scrollController.jumpTo(target);
     });
+  }
+
+  void _handleStreamingTextLayoutChanged() {
+    if (_autoStickToLatest) {
+      _scheduleStickToLatest();
+    }
+  }
+
+  void _handleParentScrollHandoff() {
+    _autoStickToLatest = false;
+    _outerScrollWasUserDriven = false;
+  }
+
+  bool _handleListScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    final isUserDrivenUpdate =
+        (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null) ||
+        (notification is OverscrollNotification &&
+            notification.dragDetails != null);
+    if (isUserDrivenUpdate) {
+      _outerScrollWasUserDriven = true;
+      _autoStickToLatest = _isNearLatest(notification.metrics);
+      return false;
+    }
+    if (notification is ScrollEndNotification) {
+      if (_outerScrollWasUserDriven && _isNearLatest(notification.metrics)) {
+        _autoStickToLatest = true;
+      }
+      _outerScrollWasUserDriven = false;
+    }
+    return false;
   }
 
   @override
@@ -1236,7 +1289,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
           padding: EdgeInsets.only(bottom: emptyStateBottomInset),
           child: Center(
             child: Text(
-              '有什么可以帮助你的？',
+              Localizations.localeOf(context).languageCode == 'en'
+                  ? 'How can I help you?'
+                  : '有什么可以帮助你的？',
               style: TextStyle(
                 color:
                     !widget.appearanceConfig.isActive &&
@@ -1254,46 +1309,52 @@ class _ChatMessageListState extends State<ChatMessageList> {
       content = ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
-          child: ListView.builder(
-            controller: widget.scrollController,
-            reverse: false,
-            shrinkWrap: true,
-            physics: const ClampingScrollPhysics(),
-            clipBehavior: Clip.hardEdge,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            itemCount: widget.messages.length,
-            itemBuilder: (context, index) {
-              final dataIndex = widget.messages.length - 1 - index;
-              final message = widget.messages[dataIndex];
-              final isNewestMessage = dataIndex == 0;
-              final isOldestMessage = dataIndex == widget.messages.length - 1;
-              final bottomPadding = isNewestMessage
-                  ? widget.bottomOverlayInset
-                  : 0.0;
-              final needTopPadding = isOldestMessage && message.user != 1;
-              return Padding(
-                key: ValueKey('chat-message-list-item-$dataIndex'),
-                padding: EdgeInsets.only(
-                  top: needTopPadding ? 24.0 : 0.0,
-                  bottom: bottomPadding,
-                ),
-                child: MessageBubble(
-                  message: message,
-                  key: ValueKey(
-                    message.dbId ?? message.contentId ?? message.id,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _handleListScrollNotification,
+            child: ListView.builder(
+              controller: widget.scrollController,
+              reverse: false,
+              shrinkWrap: true,
+              physics: const ClampingScrollPhysics(),
+              clipBehavior: Clip.hardEdge,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              itemCount: widget.messages.length,
+              itemBuilder: (context, index) {
+                final dataIndex = widget.messages.length - 1 - index;
+                final message = widget.messages[dataIndex];
+                final isNewestMessage = dataIndex == 0;
+                final isOldestMessage = dataIndex == widget.messages.length - 1;
+                final bottomPadding = isNewestMessage
+                    ? widget.bottomOverlayInset
+                    : 0.0;
+                final needTopPadding = isOldestMessage && message.user != 1;
+                return Padding(
+                  key: ValueKey('chat-message-list-item-$dataIndex'),
+                  padding: EdgeInsets.only(
+                    top: needTopPadding ? 24.0 : 0.0,
+                    bottom: bottomPadding,
                   ),
-                  onBeforeTaskExecute: widget.onBeforeTaskExecute,
-                  onCancelTask: widget.onCancelTask,
-                  enableThinkingCollapse: true,
-                  parentScrollController: widget.scrollController,
-                  onRequestAuthorize: widget.onRequestAuthorize,
-                  onUserMessageLongPressStart:
-                      widget.onUserMessageLongPressStart,
-                  visualProfile: widget.visualProfile,
-                  appearanceConfig: widget.appearanceConfig,
-                ),
-              );
-            },
+                  child: MessageBubble(
+                    message: message,
+                    key: ValueKey(
+                      message.dbId ?? message.contentId ?? message.id,
+                    ),
+                    onBeforeTaskExecute: widget.onBeforeTaskExecute,
+                    onCancelTask: widget.onCancelTask,
+                    enableThinkingCollapse: true,
+                    parentScrollController: widget.scrollController,
+                    onParentScrollHandoff: _handleParentScrollHandoff,
+                    onRequestAuthorize: widget.onRequestAuthorize,
+                    onUserMessageLongPressStart:
+                        widget.onUserMessageLongPressStart,
+                    onStreamingTextLayoutChanged:
+                        _handleStreamingTextLayoutChanged,
+                    visualProfile: widget.visualProfile,
+                    appearanceConfig: widget.appearanceConfig,
+                  ),
+                );
+              },
+            ),
           ),
         ),
       );
@@ -1336,9 +1397,11 @@ class VlmInfoPrompt extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '需要你的确认',
-            style: TextStyle(
+          Text(
+            Localizations.localeOf(context).languageCode == 'en'
+                ? 'Need your confirmation'
+                : '需要你的确认',
+            style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: Color(0xFF1D3E7B),
@@ -1353,11 +1416,16 @@ class VlmInfoPrompt extends StatelessWidget {
           TextField(
             controller: controller,
             maxLines: 2,
-            decoration: const InputDecoration(
-              hintText: '可选：补充你的操作说明，默认发送"已完成操作，继续执行"',
+            decoration: InputDecoration(
+              hintText: Localizations.localeOf(context).languageCode == 'en'
+                  ? 'Optional: add details. Default sends: Completed action, continue execution'
+                  : '可选：补充你的操作说明，默认发送"已完成操作，继续执行"',
               isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              border: OutlineInputBorder(),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 10),
@@ -1366,14 +1434,26 @@ class VlmInfoPrompt extends StatelessWidget {
               Expanded(
                 child: OutlinedButton(
                   onPressed: isSubmitting ? null : onDismiss,
-                  child: const Text('稍后再说'),
+                  child: Text(
+                    Localizations.localeOf(context).languageCode == 'en'
+                        ? 'Later'
+                        : '稍后再说',
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
                   onPressed: isSubmitting ? null : onSubmit,
-                  child: Text(isSubmitting ? '发送中...' : '继续执行'),
+                  child: Text(
+                    isSubmitting
+                        ? (Localizations.localeOf(context).languageCode == 'en'
+                              ? 'Sending...'
+                              : '发送中...')
+                        : (Localizations.localeOf(context).languageCode == 'en'
+                              ? 'Continue'
+                              : '继续执行'),
+                  ),
                 ),
               ),
             ],

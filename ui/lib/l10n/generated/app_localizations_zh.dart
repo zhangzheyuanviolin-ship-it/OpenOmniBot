@@ -407,4 +407,776 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get rateLimitErrorMessage => '小万忙不过来了，等会儿再试试吧';
+
+  @override
+  String get chatHistoryArchivedTitle => '归档对话';
+
+  @override
+  String get chatHistoryTitle => '聊天记录';
+
+  @override
+  String get chatHistoryNoArchived => '暂无归档对话';
+
+  @override
+  String get chatHistoryEmpty => '暂无聊天记录';
+
+  @override
+  String get homeDrawerArchive => '归档对话';
+
+  @override
+  String get homeDrawerNewChat => '新对话';
+
+  @override
+  String get webchatNoChats => '开始一个新的对话吧';
+
+  @override
+  String get memoryCenterTitle => '记忆中心';
+
+  @override
+  String get memoryNoShortTerm => '还没有短期记忆';
+
+  @override
+  String get memoryNoShortTermDesc => '会话中的过程性信息会沉淀到短期记忆，并在后续整理后转入长期记忆。';
+
+  @override
+  String get memoryFilteredNoShortTerm => '当前筛选下还没有短期记忆';
+
+  @override
+  String get memoryFilteredNoShortTermDesc => '稍后再来看看，新的短期记忆会逐步出现。';
+
+  @override
+  String get memoryNoLongTerm => '长期记忆还未初始化';
+
+  @override
+  String get memoryNoLongTermDesc => '记忆能力启用后，你的跨会话长期记忆会在这里持续沉淀。';
+
+  @override
+  String get memoryDeleteConfirmTitle => '确定删除吗？';
+
+  @override
+  String get memoryDeleteWarning => '删除后该内容将不可找回';
+
+  @override
+  String get memoryEditDisabled => '短期记忆暂不支持编辑';
+
+  @override
+  String get memoryDeleteDisabled => '短期记忆暂不支持删除';
+
+  @override
+  String get memoryGreeting => '你好呀，\n小万会在这里收集你的记忆！';
+
+  @override
+  String memorySelectedCount(Object n) {
+    return '已选择$n项';
+  }
+
+  @override
+  String get memoryDeselectAll => '全不选';
+
+  @override
+  String get memoryEditTitle => '编辑记忆';
+
+  @override
+  String get memoryIdLabel => '记忆 ID';
+
+  @override
+  String get memoryMatchScore => '匹配度';
+
+  @override
+  String get memoryAdditionalInfo => '附加信息';
+
+  @override
+  String get memoryAddLongTerm => '新增长期记忆';
+
+  @override
+  String get memorySaveToLongTerm => '保存到长期记忆';
+
+  @override
+  String get memoryLongTermAdded => '长期记忆已新增';
+
+  @override
+  String get memoryEditLongTerm => '编辑长期记忆';
+
+  @override
+  String get memorySaveChanges => '保存修改';
+
+  @override
+  String get memoryDeleteLongTermConfirm => '删除这条长期记忆？';
+
+  @override
+  String get memoryLongTermDeleted => '长期记忆已删除';
+
+  @override
+  String memoryLongTermFailed(Object error) {
+    return '长期记忆操作失败：$error';
+  }
+
+  @override
+  String get memoryNoMemories => '暂无记忆';
+
+  @override
+  String get memoryNoMemoriesDesc => '快去探索，添加喜欢的内容吧';
+
+  @override
+  String get skillStoreTitle => '技能仓库';
+
+  @override
+  String get skillBuiltin => '内置';
+
+  @override
+  String get skillUser => '用户';
+
+  @override
+  String get skillInstalled => '已安装';
+
+  @override
+  String get skillNotInstalled => '未安装';
+
+  @override
+  String get skillEnabled => '启用中';
+
+  @override
+  String get skillDisabled => '已禁用';
+
+  @override
+  String get skillInstall => '安装';
+
+  @override
+  String get skillDelete => '删除';
+
+  @override
+  String get skillEmpty => '暂无已接入的技能';
+
+  @override
+  String get skillNoDescription => '暂无描述';
+
+  @override
+  String get skillBuiltinRemovedDesc => '该内置技能已从工作区移除，可随时重新安装。';
+
+  @override
+  String get skillDeleteTitle => '删除技能';
+
+  @override
+  String skillDeleteConfirmMsg(Object name) {
+    return '确认删除\"$name\"？';
+  }
+
+  @override
+  String get skillDeleted => '已删除';
+
+  @override
+  String get skillDeleteFailed => '删除失败';
+
+  @override
+  String skillInstalledMsg(Object name) {
+    return '已安装 $name';
+  }
+
+  @override
+  String get skillInstallFailed => '安装失败';
+
+  @override
+  String skillEnabledMsg(Object name) {
+    return '已启用 $name';
+  }
+
+  @override
+  String skillDisabledMsg(Object name) {
+    return '已禁用 $name';
+  }
+
+  @override
+  String get skillToggleFailed => '切换失败';
+
+  @override
+  String get skillLoadFailed => '加载技能仓库失败';
+
+  @override
+  String get trajectoryTitle => '轨迹';
+
+  @override
+  String get trajectoryNoRecords => '暂无执行记录';
+
+  @override
+  String get trajectoryNoRecordsDesc => '小万为你执行的视觉任务，都会在此展示';
+
+  @override
+  String get trajectoryAll => '全部';
+
+  @override
+  String get trajectoryTaskRecords => '任务记录';
+
+  @override
+  String trajectorySelectedCount(Object n) {
+    return '已选择$n项';
+  }
+
+  @override
+  String get trajectoryUnknownDate => '未知日期';
+
+  @override
+  String get trajectoryThreeDaysAgo => '三天前';
+
+  @override
+  String get executionHistoryTitle => '执行历史';
+
+  @override
+  String get executionHistorySubtitle => '近3次任务执行历史';
+
+  @override
+  String get executionHistoryEmpty => '暂无执行历史';
+
+  @override
+  String executionHistoryTaskLabel(Object option) {
+    return '$option任务';
+  }
+
+  @override
+  String get modelProviderConfigTitle => 'Provider 配置';
+
+  @override
+  String get modelProviderConfigDesc => '新增、切换并维护模型服务提供商的名称、地址与密钥。';
+
+  @override
+  String get modelProviderName => 'Provider 名称';
+
+  @override
+  String get modelProviderNameHint => '例如：DeepSeek';
+
+  @override
+  String get modelProviderBaseUrlHint => '末尾加 # 可禁用自动补全请求路径';
+
+  @override
+  String get modelProviderApiKeyHint => '未填写 API Key 时，会以无鉴权方式请求 Provider。';
+
+  @override
+  String get modelListTitle => '模型列表';
+
+  @override
+  String get modelListDesc => '支持手动补充模型，也可从当前 Provider 拉取远端模型清单。';
+
+  @override
+  String modelListCount(Object count) {
+    return '共 $count 个模型';
+  }
+
+  @override
+  String get modelAddPrompt => '请添加模型！';
+
+  @override
+  String get modelBuiltinProvider => '内置 Provider';
+
+  @override
+  String get modelIdEmpty => '模型 ID 不能为空且不能以 scene. 开头';
+
+  @override
+  String get modelAlreadyExists => '模型已存在';
+
+  @override
+  String get modelAdded => '已添加模型';
+
+  @override
+  String get modelDeleted => '已删除模型';
+
+  @override
+  String get modelDeleteFailed => '删除模型失败';
+
+  @override
+  String get modelIdHint => '请输入模型 ID';
+
+  @override
+  String get modelAddProviderTitle => '新增 Provider';
+
+  @override
+  String get modelAddButton => '新增';
+
+  @override
+  String get modelProviderAdded => '已新增 Provider';
+
+  @override
+  String modelProviderAddFailed(Object error) {
+    return '新增 Provider 失败：$error';
+  }
+
+  @override
+  String get modelDeleteProviderTitle => '删除 Provider';
+
+  @override
+  String modelDeleteProviderMsg(Object name) {
+    return '确定删除\"$name\"吗？场景绑定会保留，但需要重新选择可用 Provider。';
+  }
+
+  @override
+  String get modelProviderDeleted => '已删除 Provider';
+
+  @override
+  String modelProviderDeleteFailed(Object error) {
+    return '删除 Provider 失败：$error';
+  }
+
+  @override
+  String get sceneModelMapping => '场景映射';
+
+  @override
+  String get sceneModelMappingDesc => '按场景绑定 Provider 与模型，未绑定的场景会继续使用默认模型。';
+
+  @override
+  String get sceneModelRefreshList => '刷新模型列表';
+
+  @override
+  String get sceneModelSearchHint =>
+      '点击右侧按钮后，可按 Provider 搜索、折叠并选择模型；顶部搜索框固定不随列表滚动。';
+
+  @override
+  String get sceneModelNoScenes => '暂无可配置场景';
+
+  @override
+  String get localModelsTitle => '本地模型';
+
+  @override
+  String get localModelsAutoPreheat => '打开 App 时自动预热';
+
+  @override
+  String get localModelsAutoPreheatDesc => '进入应用后自动启动本地服务，并直接加载当前模型。';
+
+  @override
+  String get localModelsInstalled => '已安装模型';
+
+  @override
+  String get localModelsInstalledDesc => '搜索、切换默认模型或删除当前设备上的模型。';
+
+  @override
+  String get localModelsSearchHint => '搜索模型名称、ID 或标签';
+
+  @override
+  String get localModelsEmpty => '还没有可用的本地模型';
+
+  @override
+  String get localModelsEmptyDesc => '先去模型市场下载一个模型，或者手动放置 MNN 模型目录。';
+
+  @override
+  String get alarmSaved => '闹钟设置已保存';
+
+  @override
+  String get alarmRingtoneSource => '铃声来源';
+
+  @override
+  String get alarmSystemDefault => '系统默认铃声';
+
+  @override
+  String get alarmSystemDefaultDesc => '无需额外配置，兼容性最好';
+
+  @override
+  String get alarmLocalMp3 => '本地 mp3';
+
+  @override
+  String get alarmLocalMp3Desc => '选择手机内 mp3 作为闹钟铃声';
+
+  @override
+  String get alarmMp3Url => 'mp3 直链';
+
+  @override
+  String get alarmMp3UrlDesc => '使用 http(s) 直链播放在线 mp3';
+
+  @override
+  String get alarmAudioPermissionDenied => '读取音频权限未授予';
+
+  @override
+  String get alarmInvalidFilePath => '文件路径无效，请重新选择';
+
+  @override
+  String get alarmSelectLocalFirst => '请先选择本地 mp3 文件';
+
+  @override
+  String get alarmEnterHttpsUrl => '请输入 http(s) 开头的 mp3 直链';
+
+  @override
+  String get alarmLocalFile => '本地文件';
+
+  @override
+  String get alarmSelectMp3 => '选择 mp3 文件';
+
+  @override
+  String get authorizePageTitle => '应用权限授权';
+
+  @override
+  String get authorizeReceiveNotifications => '接收消息通知';
+
+  @override
+  String get authorizeNotificationsDesc => '打开后可以及时了解任务进展';
+
+  @override
+  String get companionPermissionManagement => '陪伴权限管理';
+
+  @override
+  String get companionPermissionDesc => '关闭对应的授权后，小万仍会显示，但不会展示任务执行内容';
+
+  @override
+  String get companionPermissionNote => '权限说明';
+
+  @override
+  String get companionAuthorizedApps => '授权应用';
+
+  @override
+  String get storageUsageTitle => '存储占用';
+
+  @override
+  String get storageUsageSubtitle => '查看空间占用明细，支持分项清理';
+
+  @override
+  String get storageAnalyzeFailed => '存储分析失败，请重试';
+
+  @override
+  String storageCategoryCleaned(Object name, Object size) {
+    return '已清理$name，释放 $size';
+  }
+
+  @override
+  String get storageCleanFailed => '清理失败，请稍后重试';
+
+  @override
+  String storageCleanCategory(Object name) {
+    return '清理$name';
+  }
+
+  @override
+  String get storageCleanConfirmMsg => '确认清理该分类数据吗？';
+
+  @override
+  String get storageCleanScope => '清理范围';
+
+  @override
+  String get storageCleanAll => '全部';
+
+  @override
+  String get storageClean7Days => '7天前';
+
+  @override
+  String get storageClean30Days => '30天前';
+
+  @override
+  String storageStrategyName(Object name) {
+    return '执行策略：$name';
+  }
+
+  @override
+  String storageStrategyDone(Object size) {
+    return '策略执行完成，释放 $size';
+  }
+
+  @override
+  String storageStrategyPartialDone(Object count, Object size) {
+    return '策略完成，释放 $size，$count 项未完全成功';
+  }
+
+  @override
+  String get storageStrategyFailed => '策略执行失败，请稍后重试';
+
+  @override
+  String get storageLoadFailed => '加载失败';
+
+  @override
+  String get storageReanalyze => '重新分析';
+
+  @override
+  String get storageTotalUsage => '总占用';
+
+  @override
+  String get storageAppSize => '应用大小';
+
+  @override
+  String get storageUserData => '用户数据';
+
+  @override
+  String get storageCleanable => '可清理';
+
+  @override
+  String storageStatsSource(Object source) {
+    return '统计口径：$source';
+  }
+
+  @override
+  String storagePackageName(Object name) {
+    return '当前包名：$name';
+  }
+
+  @override
+  String get storageTrendFirst => '这是首次分析，后续将展示占用变化趋势';
+
+  @override
+  String get storageSmartCleanup => '智能清理策略';
+
+  @override
+  String get storageExecute => '执行';
+
+  @override
+  String get storageUsageAnalysis => '占用分析';
+
+  @override
+  String get storageClean => '清理';
+
+  @override
+  String get storageRiskLow => '低风险';
+
+  @override
+  String get storageRiskCaution => '谨慎';
+
+  @override
+  String get storageRiskHigh => '高风险';
+
+  @override
+  String get storageReadOnly => '只读';
+
+  @override
+  String get storageSystemStats => '系统统计（与系统设置更接近）';
+
+  @override
+  String get storageDirectoryScan => '目录扫描估算';
+
+  @override
+  String get storageAdditionalInfo => '附加信息';
+
+  @override
+  String get aboutDescription =>
+      '小万，是一款以智能对话为核心的手机AI助\n手，通过语义理解与持续学习能力，协助用户\n完成信息处理、决策辅助和日常管理。';
+
+  @override
+  String get workspaceMemoryLoadFailed => '加载 workspace 记忆配置失败';
+
+  @override
+  String get workspaceSoulSaved => 'SOUL.md 已保存';
+
+  @override
+  String get workspaceSoulSaveFailed => 'SOUL.md 保存失败';
+
+  @override
+  String get workspaceChatSaved => 'CHAT.md 已保存';
+
+  @override
+  String get workspaceChatSaveFailed => 'CHAT.md 保存失败';
+
+  @override
+  String get workspaceMemorySaved => 'MEMORY.md 已保存';
+
+  @override
+  String get workspaceMemorySaveFailed => 'MEMORY.md 保存失败';
+
+  @override
+  String get workspaceEmbeddingToggleFailed => '记忆嵌入开关更新失败';
+
+  @override
+  String get workspaceRollupToggleFailed => '夜间整理开关更新失败';
+
+  @override
+  String get workspaceRollupDone => '整理完成';
+
+  @override
+  String get workspaceRollupFailed => '立即整理失败';
+
+  @override
+  String get workspaceNone => '暂无';
+
+  @override
+  String get workspaceMemoryTitle => 'Workspace 记忆';
+
+  @override
+  String get workspaceMemoryCapability => '记忆能力';
+
+  @override
+  String get workspaceEmbeddingReady => '已配置，可使用向量检索';
+
+  @override
+  String get workspaceEmbeddingNotReady => '未配置，将自动降级为词法检索';
+
+  @override
+  String get workspaceGoToConfig => '去场景模型配置记忆嵌入模型';
+
+  @override
+  String get workspaceNightlyRollup => '夜间记忆整理（22:00）';
+
+  @override
+  String workspaceLastRun(Object time) {
+    return '最近运行：$time';
+  }
+
+  @override
+  String workspaceNextRun(Object time) {
+    return '下次运行：$time';
+  }
+
+  @override
+  String get workspaceRollupNow => '立即整理一次';
+
+  @override
+  String get workspaceDocContent => '文档内容';
+
+  @override
+  String get workspaceSoulMd => 'SOUL.md（Agent 灵魂）';
+
+  @override
+  String get workspaceChatMd => 'CHAT.md（纯聊天系统提示词）';
+
+  @override
+  String get workspaceMemoryMd => 'MEMORY.md（长期记忆）';
+
+  @override
+  String get alpineNodeJs => 'Node.js 运行时';
+
+  @override
+  String get alpineNpm => 'Node.js 包管理器';
+
+  @override
+  String get alpineGit => 'Git 版本控制';
+
+  @override
+  String get alpinePython => 'Python 解释器';
+
+  @override
+  String get alpinePip => 'Python 项目与包工具';
+
+  @override
+  String get alpinePipInstall => 'Python 包安装器';
+
+  @override
+  String get alpineSshClient => 'SSH 客户端';
+
+  @override
+  String get alpineSshpass => 'SSH 密码辅助工具';
+
+  @override
+  String get alpineOpenSshServer => 'OpenSSH 服务器';
+
+  @override
+  String get alpineDetectFailed => '检测 Alpine 环境失败';
+
+  @override
+  String get alpineBootTasksLoadFailed => '读取自启动任务失败';
+
+  @override
+  String get alpineConfigOpenFailed => '打开终端环境配置失败';
+
+  @override
+  String get alpineBootTaskAdded => '已新增自启动任务';
+
+  @override
+  String get alpineBootTaskUpdated => '已更新自启动任务';
+
+  @override
+  String get alpineBootTaskSaveFailed => '保存自启动任务失败';
+
+  @override
+  String get alpineBootEnabled => '已开启应用启动时自启动';
+
+  @override
+  String get alpineBootDisabled => '已关闭自动启动';
+
+  @override
+  String get alpineBootTaskUpdateFailed => '更新任务失败';
+
+  @override
+  String get alpineDeleteBootTask => '删除自启动任务';
+
+  @override
+  String alpineDeleteBootTaskMsg(Object name) {
+    return '确认删除\"$name\"吗？';
+  }
+
+  @override
+  String get alpineBootTaskDeleted => '已删除自启动任务';
+
+  @override
+  String get alpineBootTaskDeleteFailed => '删除任务失败';
+
+  @override
+  String get alpineCommandSent => '启动命令已发送';
+
+  @override
+  String get alpineStartFailed => '启动任务失败';
+
+  @override
+  String get alpineDetecting => '正在检测环境';
+
+  @override
+  String alpineStartConfig(Object count) {
+    return '开始配置（$count 项）';
+  }
+
+  @override
+  String get alpineAllReady => '全部已就绪';
+
+  @override
+  String get alpineDetectingDesc => '正在后台检测 Alpine 内常见开发环境的版本信息。';
+
+  @override
+  String alpineReadyCount(Object ready, Object total) {
+    return '已就绪 $ready/$total 项，可直接勾选缺失项并进入 ReTerminal 自动配置。';
+  }
+
+  @override
+  String get alpineBootTasks => '自启动任务';
+
+  @override
+  String get alpineBootTasksDesc =>
+      '打开 Omnibot 时会在后台检查已启用的任务，并在对应 ReTerminal 会话内启动命令，适合常驻服务。';
+
+  @override
+  String get alpineAddTask => '新增任务';
+
+  @override
+  String get alpineOpenTerminal => '打开终端';
+
+  @override
+  String get alpineNoTasksDesc =>
+      '暂无任务。你可以添加例如 `python app.py`、`node server.js`、`./start.sh` 之类的常驻命令。';
+
+  @override
+  String get alpineBootOnAppOpen => '开机打开 app 后启动';
+
+  @override
+  String get alpineNotEnabled => '未启用';
+
+  @override
+  String get alpineRunning => '已在运行';
+
+  @override
+  String get alpineStartNow => '立即启动';
+
+  @override
+  String get alpineEdit => '编辑';
+
+  @override
+  String get alpineVersionDetected => '已检测到可用版本';
+
+  @override
+  String get alpineVersionNotFound => '未检测到';
+
+  @override
+  String get alpineTaskNameHint => '请输入任务名称';
+
+  @override
+  String get alpineCommandHint => '请输入启动命令';
+
+  @override
+  String get alpineEditBootTask => '编辑自启动任务';
+
+  @override
+  String get alpineAddBootTask => '新增自启动任务';
+
+  @override
+  String get alpineTaskName => '任务名称';
+
+  @override
+  String get alpineTaskNameExample => '例如：本地 API 服务';
+
+  @override
+  String get alpineStartCommand => '启动命令';
+
+  @override
+  String get alpineCommandExample => '例如：python app.py 或 pnpm start';
+
+  @override
+  String get alpineWorkDir => '工作目录';
+
+  @override
+  String get alpineBootAutoStart => '打开小万时自动启动';
 }

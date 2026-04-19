@@ -4,11 +4,6 @@
   </picture>
 </p>
 
-<p align="center">
-  <a href="README.md"><b>English</b></a> |
-  <a href="README.zh-CN.md"><b>简体中文</b></a>
-</p>
-
 <h3 align="center">
 Your On-Device AI Assistant
 </h3>
@@ -33,6 +28,10 @@ Your On-Device AI Assistant
 <a href="https://github.com/omnimind-ai/OpenOmniBot/releases"><b>Release</b></a>
 |
 <a href="https://github.com/omnimind-ai/OpenOmniBot/issues"><b>Issues</b></a>
+|
+<a href="README.md"><b>English</b></a> 
+|
+<a href="README.zh-CN.md"><b>简体中文</b></a>
 |
 </p>
 
@@ -72,7 +71,7 @@ Then open the scenario model settings:
 Note: `Memory embedding` requires an embedding model. For the best overall experience, the other scenarios should use multimodal or vision-capable models whenever possible.
 
 <p align="center">
-  <img src="docs/tutorial/five.jpg" alt="Alpine environment" width="260" />
+  <img src="docs/tutorial/five.png" alt="Alpine environment" width="260" />
 </p>
 
 The app usually initializes the Alpine environment automatically on startup, and you can also manage that environment from the same settings area.
@@ -189,7 +188,7 @@ Special thanks to these open-source projects:
 <table align="center">
   <tr>
     <td align="center">
-      <img src="docs/pic/wechat.png" alt="WeChat Group" width="220"/><br/>
+      <img src="docs/pic/wechat.jpg" alt="WeChat Group" width="220"/><br/>
       <b>WeChat Group</b>
     </td>
   </tr>

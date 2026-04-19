@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/storage_service.dart';
 
 enum AppBackgroundSourceType { none, local, remote }
@@ -133,14 +134,14 @@ class AppBackgroundVisualProfile {
       usesLightText ? const Color(0xFFA9F0B6) : const Color(0xFF52C41A);
 
   String get previewToneLabel => usesCustomTextColor
-      ? (StorageService.getResolvedLocale().languageCode == 'en'
+      ? (LegacyTextLocalizer.isEnglish
             ? 'Custom Color'
             : '自定义颜色')
       : usesLightText
-      ? (StorageService.getResolvedLocale().languageCode == 'en'
+      ? (LegacyTextLocalizer.isEnglish
             ? 'Light Text'
             : '浅色文本')
-      : (StorageService.getResolvedLocale().languageCode == 'en'
+      : (LegacyTextLocalizer.isEnglish
             ? 'Dark Text'
             : '深色文本');
 
@@ -436,7 +437,9 @@ class AppBackgroundService {
   static Future<String> importLocalImage(String sourcePath) async {
     final sourceFile = File(sourcePath);
     if (!await sourceFile.exists()) {
-      throw Exception('所选图片不存在');
+      throw Exception(LegacyTextLocalizer.isEnglish
+          ? 'Selected image does not exist'
+          : '所选图片不存在');
     }
     final directory = await _backgroundDirectory();
     final extension = _normalizedExtension(sourcePath);

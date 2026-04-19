@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
@@ -49,13 +51,20 @@ const String _kDrawerSkillStoreIconSvg =
     '</svg>';
 
 const String _kDrawerTaskHistoryIconSvg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
-    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-    'stroke-linecap="round" stroke-linejoin="round" '
-    'class="lucide lucide-history-icon lucide-history">'
-    '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>'
-    '<path d="M3 3v5h5"/>'
-    '<path d="M12 7v5l4 2"/>'
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<rect x="0.5" y="18" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="0.5" y="12" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="6.5" y="18" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="6.5" y="12" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="6.5" y="6" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="6.5" y="0" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="12.5" y="18" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="12.5" y="12" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="12.5" y="6" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="18.5" y="18" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="18.5" y="12" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="18.5" y="6" width="5" height="5" rx="1.5" fill="currentColor"/>'
+    '<rect x="18.5" y="0" width="5" height="5" rx="1.5" fill="currentColor"/>'
     '</svg>';
 
 /// 首页侧边栏
@@ -104,71 +113,116 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
 
   Map<String, String> _getGreetingByTime() {
     final hour = DateTime.now().hour;
+    final isEnglish = Localizations.localeOf(context).languageCode == 'en';
 
     if (hour >= 2 && hour < 6) {
-      final greetings = [
-        {'title': '凌晨啦', 'subtitle': '还没休息吗？'},
-        {'title': '天还没亮', 'subtitle': '早起的你辛苦啦～'},
-        {'title': '深夜的时光很静', 'subtitle': '但也要记得给身体留些休息呀～'},
-      ];
+      final greetings = isEnglish
+          ? [
+              {'title': 'Late night', 'subtitle': 'Still awake?'},
+              {'title': 'Before dawn', 'subtitle': 'Early bird, take care!'},
+              {'title': 'Quiet midnight', 'subtitle': 'Remember to get some rest.'},
+            ]
+          : [
+              {'title': '凌晨啦', 'subtitle': '还没休息吗？'},
+              {'title': '天还没亮', 'subtitle': '早起的你辛苦啦～'},
+              {'title': '深夜的时光很静', 'subtitle': '但也要记得给身体留些休息呀～'},
+            ];
       return greetings[DateTime.now().minute % greetings.length];
     }
 
     if (hour >= 6 && hour < 8) {
-      final greetings = [
-        {'title': '早安！', 'subtitle': '开启元气一天'},
-        {'title': '早呀！', 'subtitle': '新的一天开始啦'},
-      ];
+      final greetings = isEnglish
+          ? [
+              {'title': 'Good morning!', 'subtitle': 'Start your day with energy'},
+              {'title': 'Morning!', 'subtitle': 'A new day has begun'},
+            ]
+          : [
+              {'title': '早安！', 'subtitle': '开启元气一天'},
+              {'title': '早呀！', 'subtitle': '新的一天开始啦'},
+            ];
       return greetings[DateTime.now().minute % greetings.length];
     }
 
     if (hour >= 8 && hour < 12) {
-      final greetings = [
-        {'title': '上午好！', 'subtitle': '再忙也别忘了活动下肩膀'},
-        {'title': '上午的效率超棒！', 'subtitle': '继续加油'},
-      ];
+      final greetings = isEnglish
+          ? [
+              {'title': 'Good forenoon!', 'subtitle': 'Take a quick shoulder stretch'},
+              {'title': 'Great momentum!', 'subtitle': 'Keep it going'},
+            ]
+          : [
+              {'title': '上午好！', 'subtitle': '再忙也别忘了活动下肩膀'},
+              {'title': '上午的效率超棒！', 'subtitle': '继续加油'},
+            ];
       return greetings[DateTime.now().minute % greetings.length];
     }
 
     if (hour >= 12 && hour < 14) {
-      final greetings = [
-        {'title': '午饭时间到！', 'subtitle': '好好吃饭，别凑合'},
-        {'title': '午安～', 'subtitle': '吃完记得歇会儿'},
-        {'title': '午餐不知道吃什么？', 'subtitle': '让小万帮你推荐吧！'},
-      ];
+      final greetings = isEnglish
+          ? [
+              {'title': 'Lunch time!', 'subtitle': 'Have a proper meal'},
+              {'title': 'Good noon~', 'subtitle': 'Take a short break after lunch'},
+              {'title': 'Not sure what to eat?', 'subtitle': 'Let Omnibot recommend for you'},
+            ]
+          : [
+              {'title': '午饭时间到！', 'subtitle': '好好吃饭，别凑合'},
+              {'title': '午安～', 'subtitle': '吃完记得歇会儿'},
+              {'title': '午餐不知道吃什么？', 'subtitle': '让小万帮你推荐吧！'},
+            ];
       return greetings[DateTime.now().minute % greetings.length];
     }
 
     if (hour >= 14 && hour < 18) {
-      final greetings = [
-        {'title': '喝杯茶提提神', 'subtitle': '剩下的任务也能轻松搞定～'},
-        {'title': '工作间隙看看窗外', 'subtitle': '让眼睛歇一歇～'},
-      ];
+      final greetings = isEnglish
+          ? [
+              {'title': 'Tea break', 'subtitle': 'You can finish the rest with ease'},
+              {'title': 'Look outside for a minute', 'subtitle': 'Give your eyes a rest'},
+            ]
+          : [
+              {'title': '喝杯茶提提神', 'subtitle': '剩下的任务也能轻松搞定～'},
+              {'title': '工作间隙看看窗外', 'subtitle': '让眼睛歇一歇～'},
+            ];
       return greetings[DateTime.now().minute % greetings.length];
     }
 
     if (hour >= 18 && hour < 20) {
-      final greetings = [
-        {'title': '回家路上慢点', 'subtitle': '今晚好好放松～'},
-        {'title': '傍晚了', 'subtitle': '吹来的晚风很舒服呀！～'},
-        {'title': '忙了一天', 'subtitle': '吃顿好的犒劳自己～'},
-      ];
+      final greetings = isEnglish
+          ? [
+              {'title': 'Take it easy on the way home', 'subtitle': 'Relax tonight'},
+              {'title': 'Evening breeze', 'subtitle': 'Feels nice, doesn’t it?'},
+              {'title': 'Long day today', 'subtitle': 'Treat yourself to a good meal'},
+            ]
+          : [
+              {'title': '回家路上慢点', 'subtitle': '今晚好好放松～'},
+              {'title': '傍晚了', 'subtitle': '吹来的晚风很舒服呀！～'},
+              {'title': '忙了一天', 'subtitle': '吃顿好的犒劳自己～'},
+            ];
       return greetings[DateTime.now().minute % greetings.length];
     }
 
     if (hour >= 20 && hour < 22) {
-      final greetings = [
-        {'title': '晚上好！', 'subtitle': '享受属于自己的时光吧～'},
-        {'title': '夜色渐浓', 'subtitle': '准备下早点休息啦～'},
-        {'title': '该休息了', 'subtitle': '让小万帮你定个闹钟吧！'},
-      ];
+      final greetings = isEnglish
+          ? [
+              {'title': 'Good evening!', 'subtitle': 'Enjoy your own time'},
+              {'title': 'Night is settling in', 'subtitle': 'Get ready to rest earlier'},
+              {'title': 'Time to rest', 'subtitle': 'Let Omnibot set an alarm for you'},
+            ]
+          : [
+              {'title': '晚上好！', 'subtitle': '享受属于自己的时光吧～'},
+              {'title': '夜色渐浓', 'subtitle': '准备下早点休息啦～'},
+              {'title': '该休息了', 'subtitle': '让小万帮你定个闹钟吧！'},
+            ];
       return greetings[DateTime.now().minute % greetings.length];
     }
 
-    final greetings = [
-      {'title': '放下手机早点睡', 'subtitle': '明天才能元气满满～'},
-      {'title': '深夜了', 'subtitle': '好好和今天说晚安～'},
-    ];
+    final greetings = isEnglish
+        ? [
+            {'title': 'Put the phone down and sleep earlier', 'subtitle': 'Recharge for tomorrow'},
+            {'title': 'It is late', 'subtitle': 'Say good night to today'},
+          ]
+        : [
+            {'title': '放下手机早点睡', 'subtitle': '明天才能元气满满～'},
+            {'title': '深夜了', 'subtitle': '好好和今天说晚安～'},
+          ];
     return greetings[DateTime.now().minute % greetings.length];
   }
 
@@ -694,7 +748,10 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            greeting['title'] ?? '你好！',
+            greeting['title'] ??
+                (Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Hello!'
+                    : '你好！'),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w400,
@@ -703,7 +760,10 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             ),
           ),
           Text(
-            greeting['subtitle'] ?? '欢迎使用小万',
+            greeting['subtitle'] ??
+                (Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Welcome to Omnibot'
+                    : '欢迎使用小万'),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w400,
@@ -736,13 +796,13 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
               const SizedBox(width: 10),
               _buildSectionActionButton(
                 iconPath: 'assets/home/archive_icon.svg',
-                tooltip: '归档对话',
+                tooltip: context.l10n.homeDrawerArchive,
                 onTap: () => _navigateTo('/home/archived_conversations'),
               ),
               const SizedBox(width: 10),
               _buildSectionActionButton(
                 iconPath: 'assets/home/chat_add_icon.svg',
-                tooltip: '新对话',
+                tooltip: context.l10n.homeDrawerNewChat,
                 onTap: _openNewConversation,
                 isPrimary: true,
               ),
@@ -798,7 +858,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '暂无聊天记录',
+              LegacyTextLocalizer.isEnglish ? 'No conversations yet' : '暂无聊天记录',
               style: TextStyle(fontSize: 14, color: _drawerSecondaryTextColor),
             ),
             const SizedBox(height: 12),
@@ -814,7 +874,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '开始对话',
+                  LegacyTextLocalizer.isEnglish ? 'Start a conversation' : '开始对话',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
@@ -846,7 +906,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           ),
           const SizedBox(height: 14),
           Text(
-            '正在搜索对话内容…',
+            LegacyTextLocalizer.isEnglish ? 'Searching conversations...' : '正在搜索对话内容…',
             style: TextStyle(
               fontSize: 14,
               color: _drawerSecondaryTextColor,
@@ -884,7 +944,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             ),
             const SizedBox(height: 14),
             Text(
-              '没有找到相关对话',
+              LegacyTextLocalizer.isEnglish ? 'No matching conversations found' : '没有找到相关对话',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -894,7 +954,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             ),
             const SizedBox(height: 6),
             Text(
-              '试试更短的关键词，或换一种说法',
+              LegacyTextLocalizer.isEnglish ? 'Try shorter keywords or rephrase your search' : '试试更短的关键词，或换一种说法',
               style: TextStyle(
                 fontSize: 12,
                 color: _drawerSecondaryTextColor,
@@ -917,7 +977,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                   border: Border.all(color: palette.borderSubtle),
                 ),
                 child: Text(
-                  '清空搜索',
+                  LegacyTextLocalizer.isEnglish ? 'Clear search' : '清空搜索',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
@@ -949,7 +1009,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             ),
             const SizedBox(width: 6),
             Text(
-              '搜索结果',
+              LegacyTextLocalizer.isEnglish ? 'Search results' : '搜索结果',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
@@ -960,7 +1020,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
             ),
             const Spacer(),
             Text(
-              '${results.length} 条',
+              '${results.length} ${LegacyTextLocalizer.isEnglish ? 'results' : '条'}',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
@@ -1109,27 +1169,27 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   Widget _buildFooterShortcutBar() {
     final items = <_DrawerShortcutAction>[
       _DrawerShortcutAction(
-        label: '设置',
+        label: LegacyTextLocalizer.isEnglish ? 'Settings' : '设置',
         assetPath: 'assets/home/setting_icon.svg',
         onTap: () => _navigateTo('/home/settings'),
       ),
       _DrawerShortcutAction(
-        label: '记忆中心',
+        label: LegacyTextLocalizer.isEnglish ? 'Memory' : '记忆中心',
         svgString: _kDrawerMemoryIconSvg,
         onTap: () => _navigateTo('/memory/memory_center_page'),
       ),
       _DrawerShortcutAction(
-        label: '技能仓库',
+        label: LegacyTextLocalizer.isEnglish ? 'Skills' : '技能仓库',
         svgString: _kDrawerSkillStoreIconSvg,
         onTap: () => _navigateTo('/home/skill_store'),
       ),
       _DrawerShortcutAction(
-        label: '任务记录',
+        label: '轨迹',
         svgString: _kDrawerTaskHistoryIconSvg,
         onTap: () => _navigateTo('/task/execution_history'),
       ),
       _DrawerShortcutAction(
-        label: '定时',
+        label: LegacyTextLocalizer.isEnglish ? 'Scheduled' : '定时',
         assetPath: 'assets/common/schedule_icon.svg',
         onTap: () => _navigateTo('/task/scheduled_tasks'),
       ),
@@ -1258,7 +1318,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     });
 
     showToast(
-      deleted ? '已删除' : '删除失败',
+      deleted
+          ? (LegacyTextLocalizer.isEnglish ? 'Deleted' : '已删除')
+          : (LegacyTextLocalizer.isEnglish ? 'Delete failed' : '删除失败'),
       type: deleted ? ToastType.success : ToastType.error,
     );
   }
@@ -1300,7 +1362,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     });
 
     showToast(
-      archived ? '已归档' : '归档失败',
+      archived
+          ? (LegacyTextLocalizer.isEnglish ? 'Archived' : '已归档')
+          : (LegacyTextLocalizer.isEnglish ? 'Archive failed' : '归档失败'),
       type: archived ? ToastType.success : ToastType.error,
     );
   }
@@ -1342,7 +1406,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     });
 
     showToast(
-      restored ? '已取消归档' : '取消归档失败',
+      restored
+          ? (LegacyTextLocalizer.isEnglish ? 'Unarchived' : '已取消归档')
+          : (LegacyTextLocalizer.isEnglish ? 'Unarchive failed' : '取消归档失败'),
       type: restored ? ToastType.success : ToastType.error,
     );
   }
@@ -1402,7 +1468,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return title;
     }
     final summary = (conversation.summary ?? '').trim();
-    return summary.isNotEmpty ? summary : '未命名对话';
+    return summary.isNotEmpty
+        ? summary
+        : (LegacyTextLocalizer.isEnglish ? 'Untitled' : '未命名对话');
   }
 
   Widget _buildSwipeConversationItem(
@@ -1505,7 +1573,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           Icon(Icons.archive_outlined, size: 11, color: palette.textSecondary),
           const SizedBox(width: 4),
           Text(
-            '已归档',
+            LegacyTextLocalizer.isEnglish ? 'Archived' : '已归档',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,

@@ -26,6 +26,7 @@ class CardWidgetFactory {
     void Function(String taskId)? onCancelTask,
     bool enableThinkingCollapse = false,
     ScrollController? parentScrollController,
+    VoidCallback? onParentScrollHandoff,
     AppBackgroundConfig appearanceConfig = AppBackgroundConfig.defaults,
     AppBackgroundVisualProfile visualProfile =
         AppBackgroundVisualProfile.defaultProfile,
@@ -48,6 +49,7 @@ class CardWidgetFactory {
         );
         final thinkingText = _asString(cardData['thinkingContent']);
         final taskID = _asNullableString(cardData['taskID']);
+        final cardId = _asNullableString(cardData['cardId']);
         final startTime = _asInt(cardData['startTime']);
         final endTime = _asInt(cardData['endTime']);
         final isExecutable = _asBool(cardData['isExecutable']);
@@ -70,8 +72,13 @@ class CardWidgetFactory {
           isExecutable: isExecutable,
           isCollapsible: isCollapsible,
           parentScrollController: parentScrollController,
+          onParentScrollHandoff: onParentScrollHandoff,
           textScale: resolvedChatTextScale(appearanceConfig),
           textColor: visualProfile.primaryTextColor,
+          showStatusAvatar: _shouldShowDeepThinkingAvatar(
+            taskID: taskID,
+            cardId: cardId,
+          ),
         );
       case 'stage_hint':
         final hint = cardData['hint'] as String? ?? '';
@@ -140,6 +147,16 @@ class CardWidgetFactory {
     if (text == 'true') return true;
     if (text == 'false') return false;
     return fallback;
+  }
+
+  static bool _shouldShowDeepThinkingAvatar({
+    required String? taskID,
+    required String? cardId,
+  }) {
+    if (taskID == null || cardId == null) {
+      return true;
+    }
+    return cardId == '$taskID-thinking';
   }
 }
 

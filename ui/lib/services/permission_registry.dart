@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/constants/storage_keys.dart';
 import 'package:ui/features/welcome/pages/welcome_page/widgets/auto_start_guide_bottom_sheet.dart';
@@ -95,8 +96,8 @@ class PermissionRegistry {
         iconPath: 'assets/welcome/permission_overlay.svg',
         iconWidth: 32.0,
         iconHeight: 32.0,
-        name: '悬浮窗权限',
-        description: '桌面悬浮显示，快速唤起小万',
+        name: LegacyTextLocalizer.isEnglish ? 'Overlay Permission' : '悬浮窗权限',
+        description: LegacyTextLocalizer.isEnglish ? 'Desktop overlay for quick access' : '桌面悬浮显示，快速唤起小万',
         openMethod: 'openOverlaySettings',
         checkMethod: 'isOverlayPermission',
       ),
@@ -105,8 +106,8 @@ class PermissionRegistry {
         iconPath: 'assets/welcome/permission_battery.svg',
         iconWidth: 32.0,
         iconHeight: 32.0,
-        name: '允许后台运行',
-        description: '后台持续运行，切出APP不中断服务',
+        name: LegacyTextLocalizer.isEnglish ? 'Allow background running' : '允许后台运行',
+        description: LegacyTextLocalizer.isEnglish ? 'Keep running in background' : '后台持续运行，切出APP不中断服务',
         openMethod: 'openBatteryOptimizationSettings',
         checkMethod: 'isIgnoringBatteryOptimizations',
       ),
@@ -115,8 +116,8 @@ class PermissionRegistry {
         iconPath: 'assets/welcome/permission_installed_apps.svg',
         iconWidth: 32.0,
         iconHeight: 32.0,
-        name: '应用列表读取',
-        description: '支持跨应用自动操作',
+        name: LegacyTextLocalizer.isEnglish ? 'Installed Apps Access' : '应用列表读取',
+        description: LegacyTextLocalizer.isEnglish ? 'Enable cross-app automation' : '支持跨应用自动操作',
         openMethod: 'openInstalledAppsSettings',
         checkMethod: 'isInstalledAppsPermissionGranted',
       ),
@@ -125,11 +126,11 @@ class PermissionRegistry {
         iconPath: 'assets/welcome/permission_accessibility.svg',
         iconWidth: 30.0,
         iconHeight: 30.0,
-        name: '无障碍辅助权限',
-        description: '持久化自动操作，轻松完成复杂任务',
+        name: LegacyTextLocalizer.isEnglish ? 'Accessibility' : '无障碍辅助权限',
+        description: LegacyTextLocalizer.isEnglish ? 'Persistent automation for complex tasks' : '持久化自动操作，轻松完成复杂任务',
         openMethod: 'openAccessibilitySettings',
         checkMethod: 'isAccessibilityServiceEnabled',
-        infoLabel: '持久化',
+        infoLabel: LegacyTextLocalizer.isEnglish ? 'Persistent' : '持久化',
       ),
     ];
 
@@ -153,8 +154,8 @@ class PermissionRegistry {
             iconPath: 'assets/welcome/permission_autostart.svg',
             iconWidth: 32.0,
             iconHeight: 32.0,
-            name: '应用启动管理',
-            description: '防止小万被系统关闭',
+            name: LegacyTextLocalizer.isEnglish ? 'App launch management' : '应用启动管理',
+            description: LegacyTextLocalizer.isEnglish ? 'Prevent Omnibot from being killed by system' : '防止小万被系统关闭',
             openMethod: 'openAutoStartSettings',
             applicableLevels: const {
               PermissionLevel.companionAutomation,

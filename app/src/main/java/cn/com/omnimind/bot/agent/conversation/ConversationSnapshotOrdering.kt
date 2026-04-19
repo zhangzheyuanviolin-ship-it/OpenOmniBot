@@ -111,10 +111,9 @@ internal object ConversationSnapshotOrdering {
         return when {
             type == 1 && user == 1 -> 0
             type == 2 && cardType == "deep_thinking" -> 1
-            type == 2 && cardType == "agent_tool_summary" -> 2
-            type == 1 && user == 2 -> 3
-            type == 2 -> 4
-            else -> 5
+            type == 1 && user == 2 -> 2
+            type == 2 -> 3
+            else -> 4
         }
     }
 

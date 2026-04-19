@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
 
-/// 思考中的加载文案
+/// 思考中的加载文案（原始中文值，用于数据比较）
 const String kThinkingText = '小万正在思考...';
 
-/// 总结中的加载文案
-const String kSummarizingText = '总结中';
+/// 思考中的加载文案（本地化显示用）
+String get kThinkingTextLocalized =>
+    LegacyTextLocalizer.localize(kThinkingText);
 
-/// 总结完成的提示文案
-const String kSummaryCompleteText = '总结如下';
+/// 总结中的加载文案（本地化显示用）
+String get kSummarizingText => LegacyTextLocalizer.localize('总结中');
+
+/// 总结完成的提示文案（本地化显示用）
+String get kSummaryCompleteText => LegacyTextLocalizer.localize('总结如下');
 
 /// 流式文本显示组件，支持平滑渐显效果
 ///
@@ -37,12 +42,20 @@ class StreamingText extends StatefulWidget {
   /// 是否可被选择
   final bool selectable;
 
+  /// 文本流式显示发生布局变化时回调
+  final VoidCallback? onDisplayedTextChanged;
+
+  /// 尾随在文本末尾的内联组件
+  final Widget? trailing;
+
   const StreamingText({
     super.key,
     required this.fullText,
     required this.style,
     this.enableMarkdown = false,
     this.selectable = false,
+    this.onDisplayedTextChanged,
+    this.trailing,
   });
 
   @override
@@ -53,13 +66,47 @@ class _StreamingTextState extends State<StreamingText> {
   String _previousFullText = '';
   bool _isFirstBuild = true;
   String? _lastSelectedContent; // 跟踪最后选中的内容
+  int? _lastNotifiedDisplayLength;
 
   @override
   void didUpdateWidget(StreamingText oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.fullText != widget.fullText) {
-      _previousFullText = oldWidget.fullText;
+      _previousFullText = _resolveAnimationStartText(
+        previousText: oldWidget.fullText,
+        nextText: widget.fullText,
+      );
+      _lastNotifiedDisplayLength = null;
     }
+  }
+
+  String _resolveAnimationStartText({
+    required String previousText,
+    required String nextText,
+  }) {
+    if (previousText == kThinkingText) {
+      return previousText;
+    }
+    if (nextText.startsWith(previousText)) {
+      return previousText;
+    }
+    return nextText;
+  }
+
+  void _notifyDisplayedTextChanged(int displayLength) {
+    if (_lastNotifiedDisplayLength == displayLength) {
+      return;
+    }
+    _lastNotifiedDisplayLength = displayLength;
+    final callback = widget.onDisplayedTextChanged;
+    if (callback == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        callback();
+      }
+    });
   }
 
   @override
@@ -72,13 +119,14 @@ class _StreamingTextState extends State<StreamingText> {
 
     // 如果是思考中文案，直接显示，不做动画
     if (widget.fullText == kThinkingText) {
+      final localizedText = kThinkingTextLocalized;
       Widget child = widget.enableMarkdown
           ? OmnibotMarkdownBody(
-              data: widget.fullText,
+              data: localizedText,
               baseStyle: widget.style,
               inlineResourcePlainStyle: true,
             )
-          : Text(widget.fullText, style: widget.style);
+          : Text(localizedText, style: widget.style);
 
       return widget.selectable
           ? SelectionArea(
@@ -117,11 +165,12 @@ class _StreamingTextState extends State<StreamingText> {
       curve: Curves.easeOut,
       builder: (context, value, child) {
         // 计算当前应该显示的字符数
-        final displayLength = value.round();
-        final displayText = widget.fullText.substring(
-          0,
-          displayLength.clamp(0, widget.fullText.length),
+        final displayLength = _clampToCodePointBoundary(
+          widget.fullText,
+          value.round(),
         );
+        final displayText = widget.fullText.substring(0, displayLength);
+        _notifyDisplayedTextChanged(displayText.length);
 
         // 如果启用Markdown，直接渲染Markdown内容
         if (widget.enableMarkdown) {
@@ -129,6 +178,7 @@ class _StreamingTextState extends State<StreamingText> {
             data: displayText,
             baseStyle: widget.style,
             inlineResourcePlainStyle: true,
+            trailingInline: widget.trailing,
           );
 
           return widget.selectable
@@ -151,7 +201,12 @@ class _StreamingTextState extends State<StreamingText> {
 
         Widget child = RichText(
           text: TextSpan(
-            children: _buildTextSpans(displayText, previousLength, progress),
+            children: _buildTextSpans(
+              displayText,
+              previousLength,
+              progress,
+              widget.trailing,
+            ),
             style: widget.style,
           ),
         );
@@ -176,13 +231,14 @@ class _StreamingTextState extends State<StreamingText> {
   /// [displayText] 当前要显示的文本
   /// [previousLength] 之前已显示的文本长度
   /// [progress] 动画进度 (0.0 到 1.0)
-  List<TextSpan> _buildTextSpans(
+  List<InlineSpan> _buildTextSpans(
     String displayText,
     int previousLength,
     double progress,
+    Widget? trailing,
   ) {
     if (displayText.length <= previousLength) {
-      return [TextSpan(text: displayText)];
+      return _appendTrailingSpan([TextSpan(text: displayText)], trailing);
     }
 
     final oldText = displayText.substring(0, previousLength);
@@ -192,7 +248,7 @@ class _StreamingTextState extends State<StreamingText> {
     // 使用easeIn曲线使渐入更平滑
     final opacity = 0.3 + (0.7 * progress);
 
-    return [
+    return _appendTrailingSpan([
       // 已显示的旧文本，完全不透明
       if (oldText.isNotEmpty) TextSpan(text: oldText),
       // 新增的文本，使用渐变透明度
@@ -205,6 +261,42 @@ class _StreamingTextState extends State<StreamingText> {
             ),
           ),
         ),
+    ], trailing);
+  }
+
+  int _clampToCodePointBoundary(String text, int requestedLength) {
+    var safeLength = requestedLength.clamp(0, text.length);
+    if (safeLength <= 0 || safeLength >= text.length) {
+      return safeLength;
+    }
+    final currentUnit = text.codeUnitAt(safeLength);
+    final previousUnit = text.codeUnitAt(safeLength - 1);
+    final isCurrentLowSurrogate =
+        currentUnit >= 0xDC00 && currentUnit <= 0xDFFF;
+    final isPreviousHighSurrogate =
+        previousUnit >= 0xD800 && previousUnit <= 0xDBFF;
+    if (isCurrentLowSurrogate && isPreviousHighSurrogate) {
+      safeLength -= 1;
+    }
+    return safeLength;
+  }
+
+  List<InlineSpan> _appendTrailingSpan(
+    List<InlineSpan> spans,
+    Widget? trailing,
+  ) {
+    if (trailing == null) {
+      return spans;
+    }
+    return [
+      ...spans,
+      WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: trailing,
+        ),
+      ),
     ];
   }
 
@@ -217,14 +309,14 @@ class _StreamingTextState extends State<StreamingText> {
       buttonItems: [
         // 全选按钮
         ContextMenuButtonItem(
-          label: '全选',
+          label: LegacyTextLocalizer.localize('全选'),
           onPressed: () {
             selectableRegionState.selectAll(SelectionChangedCause.toolbar);
           },
         ),
         // 复制按钮 - 使用 native channel 复制
         ContextMenuButtonItem(
-          label: '复制',
+          label: LegacyTextLocalizer.localize('复制'),
           onPressed: () {
             // 使用 onSelectionChanged 回调跟踪到的选中内容
             final selectedText = _lastSelectedContent;

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail_gesture_gate.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import './bot_status.dart';
@@ -39,8 +40,10 @@ class DeepThinkingCard extends StatefulWidget {
 
   /// 外层消息列表滚动控制器，用于内外滚动联动
   final ScrollController? parentScrollController;
+  final VoidCallback? onParentScrollHandoff;
   final double textScale;
   final Color textColor;
+  final bool showStatusAvatar;
 
   const DeepThinkingCard({
     super.key,
@@ -55,8 +58,10 @@ class DeepThinkingCard extends StatefulWidget {
     this.isExecutable = false,
     this.isCollapsible = false,
     this.parentScrollController,
+    this.onParentScrollHandoff,
     this.textScale = 1,
     this.textColor = const Color(0x80353E53),
+    this.showStatusAvatar = true,
   });
 
   @override
@@ -67,8 +72,12 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
   Timer? _timer;
   int _elapsedSeconds = 0;
   final ScrollController _scrollController = ScrollController();
+  final Set<int> _heldPointerIds = <int>{};
   bool _showGradient = false;
+  bool _gradientUpdateScheduled = false;
+  bool? _pendingGradientVisibility;
   bool _isCollapsed = false;
+  bool _autoScrollToLatest = true;
   bool _hasAutoCollapsedForCurrentCompletion = false;
   static const double _bottomTolerance = 1.0;
 
@@ -113,6 +122,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     // 如果从完成/取消状态变回非完成状态，重新启动计时器并展开内容
     if (becameThinking) {
       _startTimer();
+      _autoScrollToLatest = true;
       _hasAutoCollapsedForCurrentCompletion = false;
     }
 
@@ -182,15 +192,51 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     final isAtBottom = distanceToBottom <= _bottomTolerance;
     final shouldShowGradient = hasOverflow && !isAtBottom;
 
-    if (shouldShowGradient != _showGradient) {
-      setState(() => _showGradient = shouldShowGradient);
+    if (shouldShowGradient == _showGradient &&
+        _pendingGradientVisibility == null) {
+      return;
     }
+
+    _pendingGradientVisibility = shouldShowGradient;
+    if (_gradientUpdateScheduled) {
+      return;
+    }
+
+    _gradientUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _gradientUpdateScheduled = false;
+      final nextVisibility = _pendingGradientVisibility;
+      _pendingGradientVisibility = null;
+
+      if (!mounted ||
+          nextVisibility == null ||
+          nextVisibility == _showGradient) {
+        return;
+      }
+
+      setState(() => _showGradient = nextVisibility);
+    });
+  }
+
+  bool _isInnerNearLatest([ScrollMetrics? metrics]) {
+    final resolvedMetrics = metrics;
+    if (resolvedMetrics != null) {
+      return (resolvedMetrics.maxScrollExtent - resolvedMetrics.pixels).abs() <=
+          _bottomTolerance;
+    }
+    if (!_scrollController.hasClients) {
+      return true;
+    }
+    final position = _scrollController.position;
+    return (position.maxScrollExtent - position.pixels).abs() <=
+        _bottomTolerance;
   }
 
   void _scrollToLatestIfNeeded({bool force = false}) {
     if (!mounted || !_scrollController.hasClients) return;
     if (_isCollapsed || widget.stage == 5) return;
     if (!force && widget.stage == 4) return;
+    if (!_autoScrollToLatest) return;
 
     final position = _scrollController.position;
     final maxExtent = position.maxScrollExtent;
@@ -224,10 +270,28 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
         _hasAutoCollapsedForCurrentCompletion = true;
       }
     });
+
+    if (!collapsed && _shouldResetScrollPositionOnExpand()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) {
+          return;
+        }
+        final position = _scrollController.position;
+        final top = position.minScrollExtent;
+        if ((position.pixels - top).abs() > _bottomTolerance) {
+          _scrollController.jumpTo(top);
+        }
+        _checkOverflow();
+      });
+    }
   }
 
   bool _shouldAutoCollapse(DeepThinkingCard widget) {
     return widget.isCollapsible && widget.stage == 4 && !widget.isLoading;
+  }
+
+  bool _shouldResetScrollPositionOnExpand() {
+    return widget.stage == 4 && widget.isCollapsible;
   }
 
   bool _isCompletedStage(int stage) => stage == 4 || stage == 5;
@@ -235,8 +299,31 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
   @override
   void dispose() {
     _timer?.cancel();
+    _releaseHeldPointers();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleContentPointerDown(int pointer) {
+    if (_heldPointerIds.add(pointer)) {
+      ToolCardDetailGestureGate.holdPointer(pointer);
+    }
+  }
+
+  void _handleContentPointerEnd(int pointer) {
+    if (_heldPointerIds.remove(pointer)) {
+      ToolCardDetailGestureGate.releasePointer(pointer);
+    }
+  }
+
+  void _releaseHeldPointers() {
+    if (_heldPointerIds.isEmpty) {
+      return;
+    }
+    for (final pointer in _heldPointerIds.toList(growable: false)) {
+      ToolCardDetailGestureGate.releasePointer(pointer);
+    }
+    _heldPointerIds.clear();
   }
 
   String _formatTime(int seconds) {
@@ -279,9 +366,6 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
         : resolvedTextColor.withValues(alpha: 0.68);
     final bool hasContent = widget.thinkingText.isNotEmpty;
     final bool canCollapse = widget.isCollapsible && widget.stage == 4;
-    final sizeAnimationDuration = canCollapse
-        ? const Duration(milliseconds: 180)
-        : Duration.zero;
 
     // 根据阶段显示不同的文案
     String hintText;
@@ -320,6 +404,8 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                           : BotStatusType.hint,
                       hintText: hintText,
                       costTime: _formatTime(_elapsedSeconds),
+                      showAvatar: widget.showStatusAvatar,
+                      shimmerText: widget.stage != 4 && widget.stage != 5,
                       textStyle: TextStyle(
                         color: secondaryTextColor,
                         fontSize: 12 * widget.textScale,
@@ -348,6 +434,8 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                 : BotStatusType.hint,
             hintText: hintText,
             costTime: _formatTime(_elapsedSeconds),
+            showAvatar: widget.showStatusAvatar,
+            shimmerText: widget.stage != 4 && widget.stage != 5,
             textStyle: TextStyle(
               color: secondaryTextColor,
               fontSize: 12 * widget.textScale,
@@ -357,32 +445,35 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
               letterSpacing: 0.33,
             ),
           );
-    final content = AnimatedSize(
-      duration: sizeAnimationDuration,
-      curve: Curves.easeInOut,
-      alignment: Alignment.topLeft,
-      child:
-          (hasContent && widget.stage != 5 && (!canCollapse || !_isCollapsed))
-          ? Container(
-              width: double.infinity,
-              constraints: BoxConstraints(maxHeight: widget.maxHeight),
-              margin: const EdgeInsets.only(top: 8.0),
-              decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(
-                    color: context.isDarkTheme
-                        ? palette.borderSubtle
-                        : AppColors.text10,
-                    width: 1.0,
-                  ),
+    final contentChild =
+        (hasContent && widget.stage != 5 && (!canCollapse || !_isCollapsed))
+        ? Container(
+            width: double.infinity,
+            constraints: BoxConstraints(maxHeight: widget.maxHeight),
+            margin: const EdgeInsets.only(top: 8.0),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(
+                  color: context.isDarkTheme
+                      ? palette.borderSubtle
+                      : AppColors.text10,
+                  width: 1.0,
                 ),
               ),
-              child: Stack(
-                children: [
-                  NotificationListener<ScrollNotification>(
+            ),
+            child: Stack(
+              children: [
+                Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: (event) =>
+                      _handleContentPointerDown(event.pointer),
+                  onPointerUp: (event) =>
+                      _handleContentPointerEnd(event.pointer),
+                  onPointerCancel: (event) =>
+                      _handleContentPointerEnd(event.pointer),
+                  child: NotificationListener<ScrollNotification>(
                     onNotification: (notification) {
-                      _checkOverflow();
-                      return _forwardScrollToParent(
+                      return _handleThinkingScrollNotification(
                         notification,
                         parentScrollPosition,
                       );
@@ -401,45 +492,53 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                       ),
                     ),
                   ),
-                  if (_showGradient)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: 40,
-                      child: IgnorePointer(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: const BorderRadius.only(
-                              bottomLeft: Radius.circular(4),
-                              bottomRight: Radius.circular(4),
-                            ),
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                (context.isDarkTheme
-                                        ? palette.surfacePrimary
-                                        : const Color(0xCCF1F8FF))
-                                    .withValues(alpha: 0.0),
-                                (context.isDarkTheme
-                                        ? palette.surfacePrimary
-                                        : const Color(0xCCF1F8FF))
-                                    .withValues(alpha: 0.8),
-                                context.isDarkTheme
-                                    ? palette.surfacePrimary
-                                    : const Color(0xCCF1F8FF),
-                              ],
-                            ),
+                ),
+                if (_showGradient)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 40,
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.only(
+                            bottomLeft: Radius.circular(4),
+                            bottomRight: Radius.circular(4),
+                          ),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              (context.isDarkTheme
+                                      ? palette.surfacePrimary
+                                      : const Color(0xCCF1F8FF))
+                                  .withValues(alpha: 0.0),
+                              (context.isDarkTheme
+                                      ? palette.surfacePrimary
+                                      : const Color(0xCCF1F8FF))
+                                  .withValues(alpha: 0.8),
+                              context.isDarkTheme
+                                  ? palette.surfacePrimary
+                                  : const Color(0xCCF1F8FF),
+                            ],
                           ),
                         ),
                       ),
                     ),
-                ],
-              ),
-            )
-          : const SizedBox.shrink(),
-    );
+                  ),
+              ],
+            ),
+          )
+        : const SizedBox.shrink();
+    final content = canCollapse
+        ? AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topLeft,
+            child: contentChild,
+          )
+        : contentChild;
     final footer = widget.stage == 4 && widget.isExecutable
         ? Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -498,19 +597,45 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     );
   }
 
-  bool _forwardScrollToParent(
+  bool _handleThinkingScrollNotification(
     ScrollNotification notification,
     ScrollPosition? parentPosition,
   ) {
-    if (parentPosition == null || !parentPosition.hasPixels) {
+    _checkOverflow();
+    final isUserDrivenUpdate =
+        (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null) ||
+        (notification is OverscrollNotification &&
+            notification.dragDetails != null);
+    if (isUserDrivenUpdate) {
+      _autoScrollToLatest = _isInnerNearLatest(notification.metrics);
+    } else if (notification is ScrollEndNotification &&
+        _isInnerNearLatest(notification.metrics)) {
+      _autoScrollToLatest = true;
+    }
+    return _forwardOverscrollToParent(notification, parentPosition);
+  }
+
+  bool _forwardOverscrollToParent(
+    ScrollNotification notification,
+    ScrollPosition? parentPosition,
+  ) {
+    if (parentPosition == null ||
+        !parentPosition.hasPixels ||
+        notification is! OverscrollNotification ||
+        notification.dragDetails == null) {
       return false;
     }
 
-    final pointerDelta = _resolvePointerDelta(notification);
-    if (pointerDelta == null || pointerDelta.abs() < 0.5) {
+    final overscroll = notification.overscroll;
+    if (overscroll.abs() < 0.5) {
       return false;
     }
 
+    final pointerDelta = _scrollDeltaToPointerDelta(
+      overscroll,
+      notification.metrics.axisDirection,
+    );
     final parentDelta = _pointerDeltaToScrollDelta(
       pointerDelta,
       parentPosition.axisDirection,
@@ -523,43 +648,13 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     final min = parentPosition.minScrollExtent;
     final max = parentPosition.maxScrollExtent;
     final next = (current + parentDelta).clamp(min, max).toDouble();
-
     if ((next - current).abs() < 0.5) {
       return false;
     }
 
     parentPosition.jumpTo(next);
+    widget.onParentScrollHandoff?.call();
     return true;
-  }
-
-  double? _resolvePointerDelta(ScrollNotification notification) {
-    final dragDelta = switch (notification) {
-      OverscrollNotification(:final dragDetails?) => _primaryDelta(
-        dragDetails.delta,
-        notification.metrics.axis,
-      ),
-      _ => null,
-    };
-    if (dragDelta != null) {
-      return dragDelta;
-    }
-
-    final scrollDelta = switch (notification) {
-      OverscrollNotification(:final overscroll) => overscroll,
-      _ => null,
-    };
-    if (scrollDelta == null || scrollDelta.abs() < 0.5) {
-      return null;
-    }
-
-    return _scrollDeltaToPointerDelta(
-      scrollDelta,
-      notification.metrics.axisDirection,
-    );
-  }
-
-  double _primaryDelta(Offset offset, Axis axis) {
-    return axis == Axis.vertical ? offset.dy : offset.dx;
   }
 
   double _scrollDeltaToPointerDelta(

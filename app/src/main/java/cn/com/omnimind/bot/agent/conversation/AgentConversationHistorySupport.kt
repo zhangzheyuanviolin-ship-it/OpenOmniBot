@@ -111,7 +111,7 @@ internal object AgentConversationHistorySupport {
     }
 
     fun buildContextSummaryUserMessage(summary: String): ChatCompletionMessage {
-        val normalizedSummary = summary.trim()
+        val normalizedSummary = AgentTextSanitizer.sanitizeUtf16(summary).trim()
         val content = if (normalizedSummary.isEmpty()) {
             CONTEXT_SUMMARY_USER_PREFIX
         } else {
@@ -422,7 +422,7 @@ internal object AgentConversationHistorySupport {
         val toolMessage = ChatCompletionMessage(
             role = "tool",
             toolCallId = toolCallId,
-            content = JsonPrimitive(buildToolSummaryContent(entry, payload))
+            content = JsonPrimitive(buildCompactToolReplayContent(entry, payload))
         )
         return listOf(assistantMessage, toolMessage)
     }
@@ -445,32 +445,39 @@ internal object AgentConversationHistorySupport {
         return entryId.substring(0, index).takeIf { it.isNotBlank() }
     }
 
-    private fun buildToolSummaryContent(
+    private fun buildCompactToolReplayContent(
         entry: AgentConversationEntry,
         payload: Map<String, Any?>
     ): String {
+        val status = payload["status"]?.toString()?.trim().orEmpty().ifEmpty { entry.status }
         val preview = parseJsonMap(payload["resultPreviewJson"]?.toString().orEmpty())
         val content = linkedMapOf<String, Any?>(
             "toolName" to payload["toolName"]?.toString().orEmpty(),
             "displayName" to payload["displayName"]?.toString().orEmpty(),
+            "toolTitle" to payload["toolTitle"]?.toString()?.trim()?.takeIf { it.isNotEmpty() },
             "toolType" to payload["toolType"]?.toString().orEmpty().ifEmpty { "builtin" },
-            "status" to entry.status,
-            "success" to parseBoolean(payload["success"], default = entry.status == AgentConversationHistoryRepository.STATUS_SUCCESS),
+            "status" to status,
+            "success" to parseBoolean(
+                payload["success"],
+                default = status == AgentConversationHistoryRepository.STATUS_SUCCESS
+            ),
             "summary" to trimText(
                 payload["summary"]?.toString()?.trim().orEmpty().ifEmpty { entry.summary.trim() },
                 MAX_TOOL_SUMMARY_CHARS
             )
         )
-        payload["interruptedBy"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            content["interruptedBy"] = it
-        }
-        payload["interruptionReason"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            content["interruptionReason"] = it
+        payload["progress"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["progress"] = trimText(it, MAX_TOOL_SUMMARY_CHARS)
         }
         payload["serverName"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
             content["serverName"] = it
         }
-
+        payload["interruptedBy"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["interruptedBy"] = it
+        }
+        payload["interruptionReason"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["interruptionReason"] = trimText(it, MAX_TOOL_SUMMARY_CHARS)
+        }
         listOf("message", "question", "taskId", "goal").forEach { key ->
             preview[key]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
                 content[key] = trimText(value, MAX_TOOL_PREVIEW_CHARS)
@@ -482,7 +489,6 @@ internal object AgentConversationHistorySupport {
                 content[key] = values
             }
         }
-
         payload["resultPreviewJson"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { raw ->
             content["previewJson"] = trimText(raw, MAX_TOOL_PREVIEW_CHARS)
         }
@@ -498,15 +504,76 @@ internal object AgentConversationHistorySupport {
         if (payload["timedOut"] == true) {
             content["timedOut"] = true
         }
+        return gson.toJson(content.filterValues { value -> value != null })
+    }
 
-        return gson.toJson(content)
+    fun restoreToolPayloadFromUiMessage(
+        message: Map<String, Any?>
+    ): Map<String, Any?>? {
+        val type = (message["type"] as? Number)?.toInt()
+        if (type != 2) return null
+
+        val content = toStringAnyMap(message["content"])
+        val cardData = toStringAnyMap(content["cardData"])
+        if (cardData["type"]?.toString()?.trim() != "agent_tool_summary") {
+            return null
+        }
+
+        val toolName = cardData["toolName"]?.toString()?.trim().orEmpty()
+        if (toolName.isEmpty()) return null
+
+        val rawPayload = linkedMapOf<String, Any?>(
+            "taskId" to cardData["taskId"]?.toString()?.trim()?.takeIf { it.isNotEmpty() },
+            "cardId" to cardData["cardId"]?.toString()?.trim().orEmpty(),
+            "toolName" to toolName,
+            "displayName" to cardData["displayName"]?.toString()?.trim().orEmpty(),
+            "toolTitle" to cardData["toolTitle"]?.toString()?.trim().orEmpty(),
+            "toolType" to cardData["toolType"]?.toString()?.trim().orEmpty().ifEmpty { "builtin" },
+            "serverName" to cardData["serverName"],
+            "status" to cardData["status"]?.toString()?.trim().orEmpty(),
+            "summary" to cardData["summary"]?.toString()?.trim().orEmpty(),
+            "progress" to cardData["progress"]?.toString()?.trim().orEmpty(),
+            "args" to cardData["argsJson"]?.toString().orEmpty(),
+            "argsJson" to cardData["argsJson"]?.toString().orEmpty(),
+            "resultPreviewJson" to cardData["resultPreviewJson"]?.toString().orEmpty(),
+            "rawResultJson" to cardData["rawResultJson"]?.toString().orEmpty(),
+            "terminalOutput" to cardData["terminalOutput"]?.toString().orEmpty(),
+            "terminalOutputDelta" to cardData["terminalOutputDelta"]?.toString().orEmpty(),
+            "terminalSessionId" to cardData["terminalSessionId"],
+            "terminalStreamState" to cardData["terminalStreamState"]?.toString()?.trim().orEmpty(),
+            "interruptedBy" to cardData["interruptedBy"]?.toString()?.trim().orEmpty(),
+            "interruptionReason" to cardData["interruptionReason"]?.toString()?.trim().orEmpty(),
+            "timedOut" to parseBoolean(cardData["timedOut"], default = false),
+            "workspaceId" to cardData["workspaceId"],
+            "artifacts" to toListOfStringAnyMap(cardData["artifacts"]),
+            "actions" to toListOfStringAnyMap(cardData["actions"]),
+            "success" to parseBoolean(
+                cardData["success"],
+                default = cardData["status"]?.toString()?.trim() ==
+                    AgentConversationHistoryRepository.STATUS_SUCCESS
+            )
+        )
+        val fallbackStatus = rawPayload["status"]?.toString()?.trim()
+            ?.ifEmpty { null }
+            ?: if (message["isError"] == true) {
+                AgentConversationHistoryRepository.STATUS_ERROR
+            } else {
+                AgentConversationHistoryRepository.STATUS_SUCCESS
+            }
+        val fallbackSummary = rawPayload["summary"]?.toString()?.trim().orEmpty()
+        return mergeToolPayload(
+            existing = emptyMap(),
+            incoming = rawPayload,
+            fallbackStatus = fallbackStatus,
+            fallbackSummary = fallbackSummary
+        )
     }
 
     private fun buildPromptContentFromMessagePayload(
         payload: Map<String, Any?>
     ): JsonElement? {
         val content = toStringAnyMap(payload["content"])
-        val text = content["text"]?.toString().orEmpty()
+        val text = AgentTextSanitizer.sanitizeUtf16(content["text"]?.toString().orEmpty())
         val attachments = toListOfStringAnyMap(content["attachments"])
         val imageBlocks = attachments.mapNotNull { attachment ->
             val imageUrl = resolveImageAttachmentUrl(attachment)
@@ -554,7 +621,7 @@ internal object AgentConversationHistorySupport {
         }
     }
 
-    private fun parseJsonMap(json: String): Map<String, Any?> {
+    private fun readMap(json: String): Map<String, Any?> {
         if (json.isBlank()) return emptyMap()
         return runCatching {
             gson.fromJson<Map<String, Any?>>(
@@ -562,10 +629,6 @@ internal object AgentConversationHistorySupport {
                 object : TypeToken<Map<String, Any?>>() {}.type
             )
         }.getOrElse { emptyMap() }
-    }
-
-    private fun readMap(json: String): Map<String, Any?> {
-        return parseJsonMap(json)
     }
 
     private fun toStringAnyMap(value: Any?): Map<String, Any?> {
@@ -580,6 +643,10 @@ internal object AgentConversationHistorySupport {
         return value.mapNotNull { item -> item?.let(::toStringAnyMap).takeIf { !it.isNullOrEmpty() } }
     }
 
+    private fun parseJsonMap(json: String): Map<String, Any?> {
+        return readMap(json)
+    }
+
     private fun toStringList(value: Any?): List<String> {
         if (value !is List<*>) return emptyList()
         return value.mapNotNull { item ->
@@ -588,8 +655,11 @@ internal object AgentConversationHistorySupport {
     }
 
     private fun trimText(value: String, maxChars: Int): String {
-        val normalized = value.trim()
-        return if (normalized.length <= maxChars) normalized else normalized.take(maxChars) + "..."
+        val normalized = AgentTextSanitizer.sanitizeUtf16(value).trim()
+        if (normalized.length <= maxChars) {
+            return normalized
+        }
+        return AgentTextSanitizer.sanitizeUtf16(normalized.take(maxChars)).trimEnd() + "..."
     }
 
     private fun normalizeStaleThinkingEntries(

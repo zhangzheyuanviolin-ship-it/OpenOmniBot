@@ -103,6 +103,12 @@ class AssistsCoreChannel {
                 "clearSceneModelBinding" -> {
                     assistsCoreManager!!.clearSceneModelBinding(call, result)
                 }
+                "getSceneVoiceConfig" -> {
+                    assistsCoreManager!!.getSceneVoiceConfig(call, result)
+                }
+                "saveSceneVoiceConfig" -> {
+                    assistsCoreManager!!.saveSceneVoiceConfig(call, result)
+                }
                 "getSceneModelOverrides" -> {
                     assistsCoreManager!!.getSceneModelOverrides(call, result)
                 }
@@ -309,6 +315,9 @@ class AssistsCoreChannel {
                 }
                 "hideScheduledTaskReminder" -> {
                     assistsCoreManager!!.hideScheduledTaskReminder(call, result)
+                }
+                "getTokenUsageRecords" -> {
+                    assistsCoreManager!!.getTokenUsageRecords(call, result)
                 }
                 "getConversations" -> {
                     assistsCoreManager!!.getConversations(call, result)

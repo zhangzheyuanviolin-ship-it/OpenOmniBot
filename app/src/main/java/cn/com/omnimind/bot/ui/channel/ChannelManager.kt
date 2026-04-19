@@ -13,6 +13,7 @@ class ChannelManager {
     private var httpChannel: HttpChannel = HttpChannel()
     private var cacheChannel: CacheChannel = CacheChannel()
     private var speechRecognitionChannel: SpeechRecognitionChannel = SpeechRecognitionChannel()
+    private var voicePlaybackChannel: VoicePlaybackChannel = VoicePlaybackChannel()
     private var deviceInfoChannel: DeviceInfoChannel = DeviceInfoChannel()
     private var appStateChannel: AppStateChannel = AppStateChannel()
     private var fileSaveChannel: FileSaveChannel = FileSaveChannel()
@@ -27,6 +28,7 @@ class ChannelManager {
     private var remoteMcpConfigChannel: RemoteMcpConfigChannel = RemoteMcpConfigChannel()
     private var overlayChannel: OverlayChannel = OverlayChannel()
     private var browserSessionChannel: BrowserSessionChannel = BrowserSessionChannel()
+    private var storageUsageChannel: StorageUsageChannel = StorageUsageChannel()
     fun getUIRouterChannel(): UIRouterChannel {
         return uiRouterChannel
     }
@@ -41,6 +43,7 @@ class ChannelManager {
         httpChannel.setChannel(flutterEngine)
         cacheChannel.setChannel(flutterEngine);
         speechRecognitionChannel.setChannel(flutterEngine)
+        voicePlaybackChannel.setChannel(flutterEngine)
         deviceInfoChannel.setChannel(flutterEngine)
         appStateChannel.setChannel(flutterEngine)
         fileSaveChannel.setChannel(flutterEngine)
@@ -53,12 +56,14 @@ class ChannelManager {
         remoteMcpConfigChannel.setChannel(flutterEngine)
         overlayChannel.setChannel(flutterEngine)
         browserSessionChannel.setChannel(flutterEngine)
+        storageUsageChannel.setChannel(flutterEngine)
     }
 
     fun onCreate(context: Context) {
         specialPermissionChannel.onCreate(context)
         assistsCoreChannel.onCreate(context)
         speechRecognitionChannel.onCreate(context)
+        voicePlaybackChannel.onCreate(context)
         deviceInfoChannel.onCreate(context)
         appStateChannel.onCreate(context)
         fileSaveChannel.onCreate(context)
@@ -68,12 +73,14 @@ class ChannelManager {
         mnnLocalModelsChannel.onCreate(context)
         mcpServerChannel.onCreate(context)
         remoteMcpConfigChannel.onCreate()
+        storageUsageChannel.onCreate(context)
     }
 
     fun clearChannel() {
         specialPermissionChannel.clear()
         assistsCoreChannel.clear()
         speechRecognitionChannel.clear()
+        voicePlaybackChannel.clear()
         deviceInfoChannel.clear()
         appStateChannel.clear()
         fileSaveChannel.clear()
@@ -88,6 +95,7 @@ class ChannelManager {
         remoteMcpConfigChannel.clear()
         overlayChannel.clear()
         browserSessionChannel.clear()
+        storageUsageChannel.clear()
     }
 
 
