@@ -91,7 +91,7 @@ class AgentConversationHistorySupportTest {
     }
 
     @Test
-    fun `buildPromptSeedFromEntries replays full tool history in chronological order`() {
+    fun `buildPromptSeedFromEntries replays compact tool history in chronological order`() {
         val userEntry = AgentConversationEntry(
             id = 1,
             conversationId = 7,
@@ -194,21 +194,21 @@ class AgentConversationHistorySupportTest {
         val firstToolSummary = seed.historyMessages[3].content!!.jsonPrimitive.content
         assertTrue(firstToolSummary.contains("浏览器自动化"))
         assertTrue(firstToolSummary.contains("抓取成功"))
-        assertTrue(firstToolSummary.contains("resultPreviewJson"))
-        assertTrue(firstToolSummary.contains("rawResultJson"))
+        assertTrue(firstToolSummary.contains("previewJson"))
+        assertFalse(firstToolSummary.contains("rawResultJson"))
 
         val secondToolSummary = seed.historyMessages[5].content!!.jsonPrimitive.content
         assertTrue(secondToolSummary.contains("执行命令"))
         assertTrue(secondToolSummary.contains("执行命令失败"))
         assertTrue(secondToolSummary.contains("terminalOutput"))
-        assertTrue(secondToolSummary.contains("rawResultJson"))
+        assertFalse(secondToolSummary.contains("rawResultJson"))
 
         val allReplayText = seed.historyMessages.joinToString("\n") {
             it.content?.toString().orEmpty()
         }
         assertTrue(allReplayText.contains("assistant should start being replayed"))
-        assertTrue(allReplayText.contains("super long raw payload"))
-        assertTrue(allReplayText.contains("super long raw payload terminal"))
+        assertFalse(allReplayText.contains("super long raw payload"))
+        assertFalse(allReplayText.contains("super long raw payload terminal"))
     }
 
     @Test
@@ -443,7 +443,44 @@ class AgentConversationHistorySupportTest {
         assertEquals("页面标题是 Example", messages[1].content!!.jsonPrimitive.content)
         assertEquals("browser_use", messages[2].toolCalls?.single()?.function?.name)
         assertTrue(messages[3].content!!.jsonPrimitive.content.contains("\"summary\":\"抓取成功\""))
+        assertFalse(messages[3].content!!.jsonPrimitive.content.contains("rawResultJson"))
         assertEquals("继续下一步", messages[4].content!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `buildPromptRelevantMessages truncates oversized tool replay fields`() {
+        val longSummary = "s".repeat(400)
+        val longTerminal = "t".repeat(1500)
+        val entry = AgentConversationEntry(
+            id = 1,
+            conversationId = 7,
+            conversationMode = "normal",
+            entryId = "task-1-tool-1",
+            entryType = AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT,
+            status = AgentConversationHistoryRepository.STATUS_SUCCESS,
+            summary = longSummary,
+            payloadJson = """
+                {
+                  "toolName":"terminal_execute",
+                  "displayName":"执行命令",
+                  "toolType":"terminal",
+                  "summary":"$longSummary",
+                  "terminalOutput":"$longTerminal",
+                  "resultPreviewJson":"{\"message\":\"ok\"}",
+                  "rawResultJson":"{\"message\":\"raw\"}",
+                  "success":true
+                }
+            """.trimIndent(),
+            createdAt = 1,
+            updatedAt = 1
+        )
+
+        val messages = AgentConversationHistorySupport.buildPromptRelevantMessages(listOf(entry))
+        val toolSummary = messages[1].content!!.jsonPrimitive.content
+
+        assertTrue(toolSummary.contains("\"summary\":\"${"s".repeat(240)}...\""))
+        assertTrue(toolSummary.contains("\"terminalOutput\":\"${"t".repeat(1200)}...\""))
+        assertFalse(toolSummary.contains("rawResultJson"))
     }
 
     @Test

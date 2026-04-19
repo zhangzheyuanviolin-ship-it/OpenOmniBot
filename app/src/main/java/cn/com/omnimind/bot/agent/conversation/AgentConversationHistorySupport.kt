@@ -32,6 +32,9 @@ internal object AgentConversationHistorySupport {
         val messagesToCompact: List<ChatCompletionMessage>
     )
 
+    private const val MAX_TOOL_SUMMARY_CHARS = 240
+    private const val MAX_TOOL_PREVIEW_CHARS = 800
+    private const val MAX_TOOL_TERMINAL_CHARS = 1200
     private const val LEGACY_CONTEXT_SUMMARY_SYSTEM_PREFIX = """
 以下是同一会话较早历史的压缩总结。它替代了压缩点之前的原始消息，请在后续对话中将其视为既有上下文。
 如果总结与压缩点之后的新消息冲突，应以后续原始消息为准。
@@ -374,21 +377,71 @@ internal object AgentConversationHistorySupport {
         val toolMessage = ChatCompletionMessage(
             role = "tool",
             toolCallId = toolCallId,
-            content = JsonPrimitive(
-                gson.toJson(
-                    linkedMapOf<String, Any?>().apply {
-                        putAll(payload)
-                        if ((this["status"]?.toString()?.trim() ?: "").isEmpty()) {
-                            this["status"] = entry.status
-                        }
-                        if ((this["summary"]?.toString()?.trim() ?: "").isEmpty()) {
-                            this["summary"] = entry.summary.trim()
-                        }
-                    }
-                )
-            )
+            content = JsonPrimitive(buildCompactToolReplayContent(entry, payload))
         )
         return listOf(assistantMessage, toolMessage)
+    }
+
+    private fun buildCompactToolReplayContent(
+        entry: AgentConversationEntry,
+        payload: Map<String, Any?>
+    ): String {
+        val status = payload["status"]?.toString()?.trim().orEmpty().ifEmpty { entry.status }
+        val preview = parseJsonMap(payload["resultPreviewJson"]?.toString().orEmpty())
+        val content = linkedMapOf<String, Any?>(
+            "toolName" to payload["toolName"]?.toString().orEmpty(),
+            "displayName" to payload["displayName"]?.toString().orEmpty(),
+            "toolTitle" to payload["toolTitle"]?.toString()?.trim()?.takeIf { it.isNotEmpty() },
+            "toolType" to payload["toolType"]?.toString().orEmpty().ifEmpty { "builtin" },
+            "status" to status,
+            "success" to parseBoolean(
+                payload["success"],
+                default = status == AgentConversationHistoryRepository.STATUS_SUCCESS
+            ),
+            "summary" to trimText(
+                payload["summary"]?.toString()?.trim().orEmpty().ifEmpty { entry.summary.trim() },
+                MAX_TOOL_SUMMARY_CHARS
+            )
+        )
+        payload["progress"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["progress"] = trimText(it, MAX_TOOL_SUMMARY_CHARS)
+        }
+        payload["serverName"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["serverName"] = it
+        }
+        payload["interruptedBy"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["interruptedBy"] = it
+        }
+        payload["interruptionReason"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["interruptionReason"] = trimText(it, MAX_TOOL_SUMMARY_CHARS)
+        }
+        listOf("message", "question", "taskId", "goal").forEach { key ->
+            preview[key]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
+                content[key] = trimText(value, MAX_TOOL_PREVIEW_CHARS)
+            }
+        }
+        listOf("missing", "missingFields").forEach { key ->
+            val values = toStringList(preview[key])
+            if (values.isNotEmpty()) {
+                content[key] = values
+            }
+        }
+        payload["resultPreviewJson"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { raw ->
+            content["previewJson"] = trimText(raw, MAX_TOOL_PREVIEW_CHARS)
+        }
+        payload["terminalOutput"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { raw ->
+            content["terminalOutput"] = trimText(raw, MAX_TOOL_TERMINAL_CHARS)
+        }
+        payload["terminalStreamState"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["terminalStreamState"] = it
+        }
+        payload["terminalSessionId"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            content["terminalSessionId"] = it
+        }
+        if (payload["timedOut"] == true) {
+            content["timedOut"] = true
+        }
+        return gson.toJson(content.filterValues { value -> value != null })
     }
 
     fun restoreToolPayloadFromUiMessage(
@@ -525,6 +578,25 @@ internal object AgentConversationHistorySupport {
     private fun toListOfStringAnyMap(value: Any?): List<Map<String, Any?>> {
         if (value !is List<*>) return emptyList()
         return value.mapNotNull { item -> item?.let(::toStringAnyMap).takeIf { !it.isNullOrEmpty() } }
+    }
+
+    private fun parseJsonMap(json: String): Map<String, Any?> {
+        return readMap(json)
+    }
+
+    private fun toStringList(value: Any?): List<String> {
+        if (value !is List<*>) return emptyList()
+        return value.mapNotNull { item ->
+            item?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        }
+    }
+
+    private fun trimText(value: String, maxChars: Int): String {
+        val normalized = AgentTextSanitizer.sanitizeUtf16(value).trim()
+        if (normalized.length <= maxChars) {
+            return normalized
+        }
+        return AgentTextSanitizer.sanitizeUtf16(normalized.take(maxChars)).trimEnd() + "..."
     }
 
     private fun normalizeStaleThinkingEntries(
