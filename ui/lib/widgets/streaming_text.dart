@@ -72,9 +72,25 @@ class _StreamingTextState extends State<StreamingText> {
   void didUpdateWidget(StreamingText oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.fullText != widget.fullText) {
-      _previousFullText = oldWidget.fullText;
+      _previousFullText = _resolveAnimationStartText(
+        previousText: oldWidget.fullText,
+        nextText: widget.fullText,
+      );
       _lastNotifiedDisplayLength = null;
     }
+  }
+
+  String _resolveAnimationStartText({
+    required String previousText,
+    required String nextText,
+  }) {
+    if (previousText == kThinkingText) {
+      return previousText;
+    }
+    if (nextText.startsWith(previousText)) {
+      return previousText;
+    }
+    return nextText;
   }
 
   void _notifyDisplayedTextChanged(int displayLength) {
@@ -149,11 +165,11 @@ class _StreamingTextState extends State<StreamingText> {
       curve: Curves.easeOut,
       builder: (context, value, child) {
         // 计算当前应该显示的字符数
-        final displayLength = value.round();
-        final displayText = widget.fullText.substring(
-          0,
-          displayLength.clamp(0, widget.fullText.length),
+        final displayLength = _clampToCodePointBoundary(
+          widget.fullText,
+          value.round(),
         );
+        final displayText = widget.fullText.substring(0, displayLength);
         _notifyDisplayedTextChanged(displayText.length);
 
         // 如果启用Markdown，直接渲染Markdown内容
@@ -246,6 +262,23 @@ class _StreamingTextState extends State<StreamingText> {
           ),
         ),
     ], trailing);
+  }
+
+  int _clampToCodePointBoundary(String text, int requestedLength) {
+    var safeLength = requestedLength.clamp(0, text.length);
+    if (safeLength <= 0 || safeLength >= text.length) {
+      return safeLength;
+    }
+    final currentUnit = text.codeUnitAt(safeLength);
+    final previousUnit = text.codeUnitAt(safeLength - 1);
+    final isCurrentLowSurrogate =
+        currentUnit >= 0xDC00 && currentUnit <= 0xDFFF;
+    final isPreviousHighSurrogate =
+        previousUnit >= 0xD800 && previousUnit <= 0xDBFF;
+    if (isCurrentLowSurrogate && isPreviousHighSurrogate) {
+      safeLength -= 1;
+    }
+    return safeLength;
   }
 
   List<InlineSpan> _appendTrailingSpan(

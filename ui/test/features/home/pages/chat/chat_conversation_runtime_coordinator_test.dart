@@ -116,6 +116,99 @@ void main() {
     expect(runtimeB.messages, isEmpty);
   });
 
+  test('replaces divergent agent snapshots instead of concatenating', () async {
+    const conversationId = 1003;
+    const taskId = 'agent-task-divergent-snapshot';
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = taskId;
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+      'taskId': taskId,
+      'message': '第一版：正在分析问题。',
+      'isFinal': false,
+    });
+    await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+      'taskId': taskId,
+      'message': '最终版：已经定位到根因并准备修复。',
+      'isFinal': false,
+    });
+
+    expect(runtime.messages, hasLength(1));
+    expect(runtime.messages.single.text, '最终版：已经定位到根因并准备修复。');
+  });
+
+  test('keeps visible agent text when a later agent error arrives', () async {
+    const conversationId = 1004;
+    const taskId = 'agent-task-error-after-content';
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = taskId;
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+      'taskId': taskId,
+      'message': '这是一段已经成功生成的正文。',
+      'isFinal': false,
+    });
+    await emitPlatformEvent('onAgentError', <String, dynamic>{
+      'taskId': taskId,
+      'error':
+          'Agent execution failed: length=140; regionStart=0; bytePairLength=138',
+    });
+
+    expect(runtime.messages, hasLength(1));
+    expect(runtime.messages.single.text, '这是一段已经成功生成的正文。');
+    expect(runtime.messages.single.isError, isFalse);
+  });
+
+  test(
+    'shows an error bubble when agent fails before any visible text',
+    () async {
+      const conversationId = 1005;
+      const taskId = 'agent-task-empty-error';
+
+      final runtime = coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      runtime.currentDispatchTaskId = taskId;
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onAgentError', <String, dynamic>{
+        'taskId': taskId,
+        'error':
+            'Agent execution failed: length=140; regionStart=0; bytePairLength=138',
+      });
+
+      expect(runtime.messages, hasLength(1));
+      expect(
+        runtime.messages.single.text,
+        contains('length=140; regionStart=0; bytePairLength=138'),
+      );
+      expect(runtime.messages.single.isError, isTrue);
+    },
+  );
+
   test('routes chat task chunks to the bound conversation only', () async {
     const conversationA = 2001;
     const conversationB = 2002;
