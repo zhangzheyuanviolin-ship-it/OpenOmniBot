@@ -11,6 +11,7 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/features/home/pages/command_overlay/services/chat_service.dart';
 import 'package:ui/features/home/pages/command_overlay/constants/messages.dart';
 import 'package:ui/features/home/pages/command_overlay/utils/deep_thinking_parser.dart';
+import 'package:ui/features/home/pages/chat/utils/stream_text_merge.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/services/screen_dialog_service.dart';
@@ -1023,7 +1024,10 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     } else {
       final text = extractChatTaskText(content, fallbackToRawText: false);
       if (text.isNotEmpty) {
-        _currentAiMessages[taskId] = (_currentAiMessages[taskId] ?? '') + text;
+        _currentAiMessages[taskId] = mergeLegacyStreamingText(
+          _currentAiMessages[taskId] ?? '',
+          text,
+        );
       }
       messageText = _currentAiMessages[taskId] ?? '';
       isError = false;
