@@ -34,12 +34,11 @@ class Loading {
 
     final context = navigatorState.overlay!.context;
     _overlayEntry = OverlayEntry(
-      builder: (_) =>
-          Center(
-            child: _CustomLoadingWidget(
-              message: LegacyTextLocalizer.localize(message ?? '加载中'),
-            ),
-          ),
+      builder: (_) => Center(
+        child: _CustomLoadingWidget(
+          message: LegacyTextLocalizer.localize(message ?? '加载中'),
+        ),
+      ),
     );
     Navigator.of(context).overlay!.insert(_overlayEntry!);
   }
@@ -348,10 +347,54 @@ class _ProgressToastHostState extends State<_ProgressToastHost>
   }
 }
 
-class _ProgressToastCard extends StatelessWidget {
+class _ProgressToastCard extends StatefulWidget {
   const _ProgressToastCard({required this.data});
 
   final _ProgressToastData data;
+
+  @override
+  State<_ProgressToastCard> createState() => _ProgressToastCardState();
+}
+
+class _ProgressToastCardState extends State<_ProgressToastCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _indeterminateController;
+
+  _ProgressToastData get data => widget.data;
+
+  @override
+  void initState() {
+    super.initState();
+    _indeterminateController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    _syncIndeterminateAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProgressToastCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data.indeterminate != data.indeterminate) {
+      _syncIndeterminateAnimation();
+    }
+  }
+
+  @override
+  void dispose() {
+    _indeterminateController.dispose();
+    super.dispose();
+  }
+
+  void _syncIndeterminateAnimation() {
+    if (data.indeterminate) {
+      _indeterminateController.repeat();
+      return;
+    }
+    _indeterminateController
+      ..stop()
+      ..value = 0;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -366,14 +409,12 @@ class _ProgressToastCard extends StatelessWidget {
         .clamp(260.0, 380.0)
         .toDouble();
     final body = data.message.trim();
+    final radius = BorderRadius.circular(999);
+    final textColor = surfaceColors.textColor;
 
     return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxWidth: maxWidth,
-        minWidth: 260,
-      ),
+      constraints: BoxConstraints(maxWidth: maxWidth, minWidth: 260),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: ShapeDecoration(
           gradient: LinearGradient(
             begin: const Alignment(0.25, 0.21),
@@ -386,76 +427,165 @@ class _ProgressToastCard extends StatelessWidget {
           ),
           shadows: surfaceColors.shadows,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 1),
-                  child: Icon(
-                    colors.icon,
-                    color: colors.color,
-                    size: 16,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    data.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: surfaceColors.textColor,
-                      fontSize: 14,
-                      fontFamily: 'PingFang SC',
-                      fontWeight: FontWeight.w500,
-                      height: 1.2,
-                      decoration: TextDecoration.none,
+        child: ClipRRect(
+          borderRadius: radius,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        colors.color.withValues(alpha: 0.06),
+                        colors.color.withValues(alpha: 0.12),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  data.indeterminate ? '...' : '${data.progress}%',
-                  style: TextStyle(
-                    color: surfaceColors.textColor.withValues(alpha: 0.74),
-                    fontSize: 12,
-                    fontFamily: 'PingFang SC',
-                    fontWeight: FontWeight.w500,
-                    decoration: TextDecoration.none,
-                  ),
+              ),
+              Positioned.fill(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (data.indeterminate) {
+                      final segmentWidth = constraints.maxWidth * 0.32;
+                      return AnimatedBuilder(
+                        animation: _indeterminateController,
+                        builder: (context, child) {
+                          final left =
+                              (constraints.maxWidth + segmentWidth) *
+                                  _indeterminateController.value -
+                              segmentWidth;
+                          return Stack(
+                            children: [
+                              Positioned(
+                                left: left,
+                                top: 0,
+                                bottom: 0,
+                                width: segmentWidth,
+                                child: child!,
+                              ),
+                            ],
+                          );
+                        },
+                        child: _ProgressToastFill(
+                          colors: colors,
+                          borderRadius: radius,
+                        ),
+                      );
+                    }
+                    return TweenAnimationBuilder<double>(
+                      tween: Tween<double>(
+                        begin: 0,
+                        end: data.progress.clamp(0, 100) / 100.0,
+                      ),
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, child) {
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: SizedBox(
+                            width: constraints.maxWidth * value,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: _ProgressToastFill(
+                        colors: colors,
+                        borderRadius: radius,
+                      ),
+                    );
+                  },
                 ),
-              ],
-            ),
-            if (body.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                body,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: surfaceColors.textColor.withValues(alpha: 0.78),
-                  fontSize: 13,
-                  fontFamily: 'PingFang SC',
-                  fontWeight: FontWeight.w400,
-                  height: 1.25,
-                  decoration: TextDecoration.none,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(colors.icon, color: colors.color, size: 16),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            data.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 14,
+                              fontFamily: 'PingFang SC',
+                              fontWeight: FontWeight.w600,
+                              height: 1.2,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                          if (body.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              body,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: textColor.withValues(alpha: 0.76),
+                                fontSize: 12,
+                                fontFamily: 'PingFang SC',
+                                fontWeight: FontWeight.w400,
+                                height: 1.2,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      data.indeterminate ? '...' : '${data.progress}%',
+                      style: TextStyle(
+                        color: textColor.withValues(alpha: 0.82),
+                        fontSize: 12,
+                        fontFamily: 'PingFang SC',
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                minHeight: 6,
-                value: data.indeterminate ? null : data.progress / 100.0,
-                backgroundColor: colors.color.withValues(alpha: 0.14),
-                valueColor: AlwaysStoppedAnimation<Color>(colors.color),
-              ),
-            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProgressToastFill extends StatelessWidget {
+  const _ProgressToastFill({required this.colors, required this.borderRadius});
+
+  final _ToastColors colors;
+  final BorderRadius borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            colors.color.withValues(alpha: 0.26),
+            colors.color.withValues(alpha: 0.14),
           ],
         ),
       ),
@@ -841,7 +971,8 @@ class AppDialog {
   /// 加载对话框 - 显示loading状态
   static void loading(
     BuildContext context, {
-    String title = '加载中', // Will be localized via LegacyTextLocalizer.localize in widget
+    String title =
+        '加载中', // Will be localized via LegacyTextLocalizer.localize in widget
     dynamic content,
     bool barrierDismissible = false,
   }) {

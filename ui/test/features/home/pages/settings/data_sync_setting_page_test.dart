@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/pages/settings/data_sync_setting_page.dart';
+import 'package:ui/services/data_sync_status_center.dart';
 import 'package:ui/theme/app_theme.dart';
 import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/data_sync_progress_toast_listener.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -18,11 +20,19 @@ void main() {
       locale: const Locale('zh'),
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      home: const DataSyncSettingPage(),
+      builder: (context, child) => Stack(
+        fit: StackFit.expand,
+        children: [
+          child ?? const SizedBox.shrink(),
+          const DataSyncProgressToastListener(),
+        ],
+      ),
+      home: const Scaffold(body: DataSyncSettingPage()),
     );
   }
 
   setUp(() {
+    DataSyncStatusCenter.instance.reset();
     recordedCalls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -80,6 +90,7 @@ void main() {
   });
 
   tearDown(() {
+    DataSyncStatusCenter.instance.reset();
     hideToast();
     hideProgressToast();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -98,21 +109,13 @@ void main() {
     );
     expect(find.text('Supabase URL'), findsOneWidget);
     expect(find.text('sync namespace'), findsOneWidget);
-    expect(
-      find.text('同步完成').evaluate().isNotEmpty ||
-          find.text('Sync completed').evaluate().isNotEmpty ||
-          find.text('Last sync succeeded').evaluate().isNotEmpty,
-      isTrue,
-    );
+    expect(find.byType(LinearProgressIndicator), findsNothing);
     final exportButtonFinder = find.text('导出配对二维码').evaluate().isNotEmpty
         ? find.text('导出配对二维码')
         : find.text('Export QR');
     await tester.drag(find.byType(ListView), const Offset(0, -1200));
     await tester.pump();
-    expect(
-      exportButtonFinder.evaluate().isNotEmpty,
-      isTrue,
-    );
+    expect(exportButtonFinder.evaluate().isNotEmpty, isTrue);
     expect(
       find.text('导入配对二维码').evaluate().isNotEmpty ||
           find.text('Import QR').evaluate().isNotEmpty,
@@ -138,7 +141,7 @@ void main() {
     );
   });
 
-  testWidgets('shows progress toast after tapping sync now', (tester) async {
+  testWidgets('shows sync start toast after tapping sync now', (tester) async {
     await tester.pumpWidget(buildApp());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
@@ -158,13 +161,41 @@ void main() {
       isTrue,
     );
     expect(
-      find.text('正在建立安全连接…').evaluate().isNotEmpty ||
-          find.text('Establishing secure sync connection…').evaluate().isNotEmpty,
-      isTrue,
-    );
-    expect(
       recordedCalls.where((call) => call.method == 'syncNow'),
       hasLength(1),
     );
+
+    hideToast();
+    await tester.pump();
+  });
+
+  testWidgets('sync start toast does not become a persistent progress toast', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.drag(find.byType(ListView), const Offset(0, -900));
+    await tester.pump();
+    final syncNowFinder = find.text('立即同步').evaluate().isNotEmpty
+        ? find.text('立即同步')
+        : find.text('Sync Now');
+    await tester.tap(syncNowFinder);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    GoRouterManager.rootNavigatorKey.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Other Page')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Other Page'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+
+    hideToast();
+    await tester.pump();
   });
 }

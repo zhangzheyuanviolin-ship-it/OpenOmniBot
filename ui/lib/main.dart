@@ -12,6 +12,7 @@ import 'package:ui/services/storage_service.dart';
 import 'package:ui/theme/app_theme_controller.dart';
 import 'package:ui/theme/app_theme_mode.dart';
 import 'package:ui/theme/app_theme.dart';
+import 'package:ui/widgets/data_sync_progress_toast_listener.dart';
 import 'package:ui/widgets/embedded_terminal_init_overlay.dart';
 
 import 'core/router/go_router_manager.dart';
@@ -177,6 +178,7 @@ class _MyAppState extends ConsumerState<MyApp> {
               fit: StackFit.expand,
               children: [
                 child ?? const SizedBox.shrink(),
+                const DataSyncProgressToastListener(),
                 const EmbeddedTerminalInitToastListener(),
               ],
             ),

@@ -1,10 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:ui/services/data_sync_service.dart';
+import 'package:ui/services/data_sync_status_center.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -34,7 +33,6 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
   bool _loading = true;
   bool _busy = false;
   DataSyncStatus _status = const DataSyncStatus();
-  Timer? _pollTimer;
 
   bool get _isEnglish => Localizations.localeOf(context).languageCode == 'en';
 
@@ -51,13 +49,18 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     _accessKeyController = TextEditingController();
     _secretKeyController = TextEditingController();
     _sessionTokenController = TextEditingController();
+    DataSyncStatusCenter.instance.start();
+    DataSyncStatusCenter.instance.listenable.addListener(
+      _handleSyncStatusChanged,
+    );
     _load();
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
-    hideProgressToast();
+    DataSyncStatusCenter.instance.listenable.removeListener(
+      _handleSyncStatusChanged,
+    );
     _supabaseUrlController.dispose();
     _anonKeyController.dispose();
     _namespaceController.dispose();
@@ -78,7 +81,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     try {
       final results = await Future.wait([
         DataSyncService.getConfig(),
-        DataSyncService.getStatus(),
+        DataSyncStatusCenter.instance.refresh(),
       ]);
       final config = results[0] as DataSyncConfig;
       final status = results[1] as DataSyncStatus;
@@ -88,8 +91,6 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
         _status = status;
         _loading = false;
       });
-      _ensurePolling(status);
-      _syncProgressToastForStatus(status);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -139,7 +140,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     await _guardBusy(() async {
       final saved = await DataSyncService.saveConfig(_buildConfig());
       _applyConfig(saved);
-      final status = await DataSyncService.getStatus();
+      final status = await DataSyncStatusCenter.instance.refresh();
       if (!mounted) return;
       setState(() {
         _enabled = saved.enabled;
@@ -158,14 +159,16 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     }
     await _guardBusy(() async {
       final status = await DataSyncService.setEnabled(value);
+      DataSyncStatusCenter.instance.observeStatus(status);
       if (!mounted) return;
       setState(() {
         _enabled = value;
         _status = status;
       });
-      _ensurePolling(status);
       showToast(
-        value ? _t('数据同步已启用', 'Data sync enabled') : _t('数据同步已停用', 'Data sync disabled'),
+        value
+            ? _t('数据同步已启用', 'Data sync enabled')
+            : _t('数据同步已停用', 'Data sync disabled'),
       );
     });
   }
@@ -176,25 +179,27 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     }
     await _guardBusy(() async {
       final result = await DataSyncService.testConnection(_buildConfig());
-      showToast(result['message']?.toString() ?? _t('连接成功', 'Connection succeeded'));
+      showToast(
+        result['message']?.toString() ?? _t('连接成功', 'Connection succeeded'),
+      );
     });
   }
 
   Future<void> _syncNow() async {
     await _guardBusy(() async {
       final status = await DataSyncService.syncNow();
+      DataSyncStatusCenter.instance.observeStatus(status);
       if (!mounted) return;
       setState(() {
         _status = status;
       });
-      _ensurePolling(status);
-      _syncProgressToastForStatus(status, forceShow: true);
     });
   }
 
   Future<void> _reindex() async {
     await _guardBusy(() async {
       final status = await DataSyncService.reindexLocalSnapshot();
+      DataSyncStatusCenter.instance.observeStatus(status);
       if (!mounted) return;
       setState(() {
         _status = status;
@@ -297,10 +302,14 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
         hint: _t('请粘贴配对导入串', 'Paste the encrypted pairing payload'),
       );
     }
-    if (encodedPayload == null || encodedPayload.trim().isEmpty || !mounted) return;
+    if (encodedPayload == null || encodedPayload.trim().isEmpty || !mounted)
+      return;
     final passphrase = await _askPassphrase(
       title: _t('输入一次性口令', 'Enter one-time passphrase'),
-      subtitle: _t('请输入导出时设置的加密口令', 'Enter the passphrase used when exporting the payload'),
+      subtitle: _t(
+        '请输入导出时设置的加密口令',
+        'Enter the passphrase used when exporting the payload',
+      ),
     );
     if (passphrase == null || passphrase.isEmpty) return;
     await _guardBusy(() async {
@@ -308,14 +317,17 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
         encodedPayload: encodedPayload!.trim(),
         passphrase: passphrase,
       );
+      DataSyncStatusCenter.instance.observeStatus(status);
       if (!mounted) return;
       setState(() {
         _enabled = true;
         _status = status;
       });
-      _ensurePolling(status);
       showToast(
-        _t('配对配置已导入，正在执行首次全量同步', 'Pairing imported, starting the first full sync'),
+        _t(
+          '配对配置已导入，正在执行首次全量同步',
+          'Pairing imported, starting the first full sync',
+        ),
       );
     });
   }
@@ -338,18 +350,20 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
                     subtitle: Text(
                       conflicts.isEmpty
                           ? _t('当前没有未处理冲突', 'No unresolved conflicts')
-                          : _t('共 ${conflicts.length} 条记录', '${conflicts.length} records'),
+                          : _t(
+                              '共 ${conflicts.length} 条记录',
+                              '${conflicts.length} records',
+                            ),
                     ),
                   ),
                   const Divider(height: 1),
                   Expanded(
                     child: conflicts.isEmpty
-                        ? Center(
-                            child: Text(_t('暂无冲突', 'No conflicts')),
-                          )
+                        ? Center(child: Text(_t('暂无冲突', 'No conflicts')))
                         : ListView.separated(
                             itemCount: conflicts.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final item = conflicts[index];
                               return ListTile(
@@ -362,7 +376,9 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
                                 trailing: item.status == 'open'
                                     ? TextButton(
                                         onPressed: () async {
-                                          await DataSyncService.ackConflict(item.id);
+                                          await DataSyncService.ackConflict(
+                                            item.id,
+                                          );
                                           if (!context.mounted) return;
                                           Navigator.of(context).pop();
                                           _showConflicts();
@@ -383,76 +399,14 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     });
   }
 
-  Future<void> _refreshStatus() async {
-    try {
-      final status = await DataSyncService.getStatus();
-      if (!mounted) return;
-      final previousStatus = _status;
-      setState(() {
-        _status = status;
-      });
-      _ensurePolling(status);
-      _syncProgressToastForStatus(
-        status,
-        completedFromSync: previousStatus.isSyncing && !status.isSyncing,
-      );
-    } catch (_) {}
-  }
-
-  void _ensurePolling(DataSyncStatus status) {
-    if (!status.isSyncing) {
-      _pollTimer?.cancel();
-      _pollTimer = null;
+  void _handleSyncStatusChanged() {
+    if (!mounted) {
       return;
     }
-    _pollTimer ??= Timer.periodic(const Duration(seconds: 2), (_) {
-      _refreshStatus();
+    final status = DataSyncStatusCenter.instance.currentStatus;
+    setState(() {
+      _status = status;
     });
-  }
-
-  void _syncProgressToastForStatus(
-    DataSyncStatus status, {
-    bool forceShow = false,
-    bool completedFromSync = false,
-  }) {
-    if (status.isSyncing || forceShow) {
-      showProgressToast(
-        title: forceShow
-            ? _t('已开始同步', 'Sync started')
-            : _t('同步进行中', 'Sync in progress'),
-        message: _progressToastMessage(status),
-        progress: status.progress.percent.clamp(0, 100),
-        indeterminate: status.progress.percent <= 0 && status.progress.detail.isEmpty,
-      );
-      return;
-    }
-
-    hideProgressToast();
-    if (!completedFromSync) {
-      return;
-    }
-    if (status.state == 'success') {
-      showToast(_t('同步完成', 'Sync completed'), type: ToastType.success);
-    } else if (status.state == 'error') {
-      showToast(
-        status.lastError.isNotEmpty
-            ? status.lastError
-            : _t('同步失败', 'Sync failed'),
-        type: ToastType.error,
-      );
-    }
-  }
-
-  String _progressToastMessage(DataSyncStatus status) {
-    final detail = status.progress.detail.trim();
-    if (detail.isNotEmpty) {
-      return detail;
-    }
-    final message = status.lastMessage.trim();
-    if (message.isNotEmpty) {
-      return message;
-    }
-    return _t('正在安全同步聊天、workspace 与附件', 'Securely syncing chats, workspace, and attachments');
   }
 
   Future<void> _guardBusy(Future<void> Function() action) async {
@@ -479,11 +433,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     required String title,
     required String subtitle,
   }) {
-    return _askTextInput(
-      title: title,
-      hint: subtitle,
-      obscureText: true,
-    );
+    return _askTextInput(title: title, hint: subtitle, obscureText: true);
   }
 
   Future<String?> _askTextInput({
@@ -511,7 +461,8 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
               child: Text(_t('取消', 'Cancel')),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
               child: Text(_t('确定', 'OK')),
             ),
           ],
@@ -549,10 +500,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
     final palette = context.omniPalette;
     return Scaffold(
       backgroundColor: palette.pageBackground,
-      appBar: CommonAppBar(
-        title: _t('数据同步', 'Data Sync'),
-        primary: true,
-      ),
+      appBar: CommonAppBar(title: _t('数据同步', 'Data Sync'), primary: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(
@@ -588,14 +536,8 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
                       label: 'S3 endpoint',
                       hint: 'https://s3.example.com',
                     ),
-                    _buildField(
-                      controller: _regionController,
-                      label: 'region',
-                    ),
-                    _buildField(
-                      controller: _bucketController,
-                      label: 'bucket',
-                    ),
+                    _buildField(controller: _regionController, label: 'region'),
+                    _buildField(controller: _bucketController, label: 'bucket'),
                     _buildField(
                       controller: _accessKeyController,
                       label: 'access key',
@@ -608,7 +550,10 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
                     ),
                     _buildField(
                       controller: _sessionTokenController,
-                      label: _t('session token（可选）', 'session token (optional)'),
+                      label: _t(
+                        'session token（可选）',
+                        'session token (optional)',
+                      ),
                       required: false,
                       obscureText: true,
                     ),
@@ -617,7 +562,10 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('path-style'),
                       subtitle: Text(
-                        _t('兼容 MinIO / R2 等 S3-compatible 存储', 'Use path-style URLs for MinIO / R2 and other S3-compatible storage'),
+                        _t(
+                          '兼容 MinIO / R2 等 S3-compatible 存储',
+                          'Use path-style URLs for MinIO / R2 and other S3-compatible storage',
+                        ),
                       ),
                       onChanged: _busy
                           ? null
@@ -633,7 +581,10 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
                       contentPadding: EdgeInsets.zero,
                       title: Text(_t('启用数据同步', 'Enable data sync')),
                       subtitle: Text(
-                        _t('采用本地优先 + 快照差异 + 幂等 push/pull，同步聊天、workspace、附件与跨设备设置。', 'Use local-first sync with snapshot diff and idempotent push/pull for chats, workspace, attachments, and cross-device settings.'),
+                        _t(
+                          '采用本地优先 + 快照差异 + 幂等 push/pull，同步聊天、workspace、附件与跨设备设置。',
+                          'Use local-first sync with snapshot diff and idempotent push/pull for chats, workspace, attachments, and cross-device settings.',
+                        ),
                       ),
                       onChanged: _busy ? null : _toggleEnabled,
                     ),
@@ -699,9 +650,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
   Widget _buildStatusCard(BuildContext context) {
     final theme = Theme.of(context);
     final percent = _status.progress.percent.clamp(0, 100);
-    final double? progressValue = _status.isSyncing
-        ? percent.toDouble() / 100.0
-        : null;
+    final progressValue = percent > 0 ? percent.toDouble() / 100.0 : null;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -726,9 +675,58 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
             ),
             const SizedBox(height: 8),
             Text(_statusText(), style: theme.textTheme.bodyMedium),
-            const SizedBox(height: 12),
-            LinearProgressIndicator(value: progressValue),
-            const SizedBox(height: 12),
+            if (_status.isSyncing) ...[
+              const SizedBox(height: 12),
+              if (progressValue != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LinearProgressIndicator(value: progressValue),
+                    const SizedBox(height: 8),
+                    Text(
+                      _t('整体进度 $percent%', 'Overall progress $percent%'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer.withValues(
+                      alpha: 0.45,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.sync_rounded,
+                        size: 16,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _t(
+                            '正在准备同步，待拿到可量化进度后再显示百分比',
+                            'Preparing sync. Percent will appear once measurable progress is available.',
+                          ),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+            ],
             Wrap(
               spacing: 12,
               runSpacing: 8,
@@ -749,10 +747,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
                   label: _t('冲突', 'Conflicts'),
                   value: '${_status.openConflictCount}',
                 ),
-                _InfoPill(
-                  label: 'Cursor',
-                  value: '${_status.remoteCursor}',
-                ),
+                _InfoPill(label: 'Cursor', value: '${_status.remoteCursor}'),
               ],
             ),
           ],
@@ -764,10 +759,7 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
   Widget _buildSectionTitle(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
+      child: Text(text, style: Theme.of(context).textTheme.titleMedium),
     );
   }
 
@@ -853,10 +845,7 @@ class _DataSyncQrScannerPageState extends State<_DataSyncQrScannerPage> {
           if (_handled) return;
           final code = capture.barcodes
               .map((item) => item.rawValue?.trim() ?? '')
-              .firstWhere(
-                (item) => item.isNotEmpty,
-                orElse: () => '',
-              );
+              .firstWhere((item) => item.isNotEmpty, orElse: () => '');
           if (code.isEmpty) return;
           _handled = true;
           Navigator.of(context).pop(code);

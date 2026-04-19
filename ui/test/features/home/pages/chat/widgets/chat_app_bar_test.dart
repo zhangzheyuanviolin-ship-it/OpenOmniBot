@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 import 'package:ui/features/home/pages/chat/widgets/chat_widgets.dart';
+import 'package:ui/services/data_sync_service.dart';
+import 'package:ui/services/data_sync_status_center.dart';
 
 class _SvgTestAssetBundle extends CachingAssetBundle {
   static final Uint8List _svgBytes = Uint8List.fromList(
@@ -633,6 +635,14 @@ void _setTestViewport(WidgetTester tester, Size size) {
 }
 
 void main() {
+  setUp(() {
+    DataSyncStatusCenter.instance.reset();
+  });
+
+  tearDown(() {
+    DataSyncStatusCenter.instance.reset();
+  });
+
   testWidgets('keeps model layer visible by default in normal chat', (
     tester,
   ) async {
@@ -909,6 +919,81 @@ void main() {
 
     expect(find.byType(ChatModeSlider), findsNothing);
     expect(find.text('gpt-5.4'), findsOneWidget);
+  });
+
+  testWidgets('shows sync progress ring in app action slot while syncing', (
+    tester,
+  ) async {
+    DataSyncStatusCenter.instance.observeStatus(
+      const DataSyncStatus(
+        enabled: true,
+        configured: true,
+        state: 'syncing',
+        currentStep: 'push',
+        progress: DataSyncProgress(detail: '正在上传 workspace', percent: 42),
+      ),
+    );
+
+    await tester.pumpWidget(const _ChatAppBarHarness());
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('chat-app-sync-progress-button')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('chat-app-update-button')), findsNothing);
+    expect(find.text('gpt-5.4'), findsOneWidget);
+
+    DataSyncStatusCenter.instance.reset();
+    await tester.pump();
+  });
+
+  testWidgets('hides update indicator while sync progress is active', (
+    tester,
+  ) async {
+    DataSyncStatusCenter.instance.observeStatus(
+      const DataSyncStatus(
+        enabled: true,
+        configured: true,
+        state: 'syncing',
+        currentStep: 'pull',
+        progress: DataSyncProgress(detail: '正在拉取聊天记录', percent: 68),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: _SvgTestAssetBundle(),
+          child: Scaffold(
+            body: ChatAppBar(
+              onMenuTap: () {},
+              onCompanionTap: () {},
+              activeMode: ChatSurfaceMode.normal,
+              onModeChanged: (_) {},
+              activeModelId: 'gpt-5.4',
+              displayLayer: ChatIslandDisplayLayer.model,
+              onDisplayLayerChanged: (_) {},
+              onTerminalEnvironmentTap: (_) {},
+              onTerminalTap: () {},
+              onBrowserTap: () {},
+              showAppUpdateIndicator: true,
+              onAppUpdateTap: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('chat-app-sync-progress-button')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('chat-app-update-button')), findsNothing);
+
+    DataSyncStatusCenter.instance.reset();
+    await tester.pump();
   });
 
   testWidgets(

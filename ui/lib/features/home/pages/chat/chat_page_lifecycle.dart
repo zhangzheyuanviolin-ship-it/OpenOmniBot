@@ -6,6 +6,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     super.initState();
 
     WidgetsBinding.instance.addObserver(this);
+    DataSyncStatusCenter.instance.start();
     _loadHdPadPanePreferences();
     _checkCompanionTaskState();
     AssistsMessageService.setOnTaskFinishCallback(() {
@@ -572,6 +573,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   }
 
   Future<void> _handleDidPopNext() async {
+    await DataSyncStatusCenter.instance.refresh();
     await checkConversationExists();
     if (!mounted) return;
     await _loadNormalChatModelContext();
@@ -870,6 +872,8 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       });
     }
     if (state == AppLifecycleState.resumed) {
+      DataSyncStatusCenter.instance.start();
+      unawaited(DataSyncStatusCenter.instance.refresh());
       _notifySummarySheetReadyIfNeeded();
       unawaited(_checkCompanionTaskState());
       unawaited(AppUpdateService.refreshIfNeeded());
