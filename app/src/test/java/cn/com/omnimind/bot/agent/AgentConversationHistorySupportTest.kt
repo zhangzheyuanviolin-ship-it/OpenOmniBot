@@ -417,7 +417,7 @@ class AgentConversationHistorySupportTest {
     }
 
     @Test
-    fun `buildPromptRelevantMessages preserves stored order around tool history`() {
+    fun `buildPromptRelevantMessages replays tool history before same-task assistant content`() {
         val entries = listOf(
             buildUserEntry(id = 1, entryId = "task-1-user", text = "请检查页面"),
             buildAssistantEntry(
@@ -437,13 +437,13 @@ class AgentConversationHistorySupportTest {
         val messages = AgentConversationHistorySupport.buildPromptRelevantMessages(entries)
 
         assertEquals(
-            listOf("user", "assistant", "assistant", "tool", "user"),
+            listOf("user", "assistant", "tool", "assistant", "user"),
             messages.map { it.role }
         )
-        assertEquals("页面标题是 Example", messages[1].content!!.jsonPrimitive.content)
-        assertEquals("browser_use", messages[2].toolCalls?.single()?.function?.name)
-        assertTrue(messages[3].content!!.jsonPrimitive.content.contains("\"summary\":\"抓取成功\""))
-        assertFalse(messages[3].content!!.jsonPrimitive.content.contains("rawResultJson"))
+        assertEquals("browser_use", messages[1].toolCalls?.single()?.function?.name)
+        assertTrue(messages[2].content!!.jsonPrimitive.content.contains("\"summary\":\"抓取成功\""))
+        assertFalse(messages[2].content!!.jsonPrimitive.content.contains("rawResultJson"))
+        assertEquals("页面标题是 Example", messages[3].content!!.jsonPrimitive.content)
         assertEquals("继续下一步", messages[4].content!!.jsonPrimitive.content)
     }
 

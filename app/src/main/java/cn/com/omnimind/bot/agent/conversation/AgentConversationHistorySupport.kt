@@ -65,25 +65,49 @@ internal object AgentConversationHistorySupport {
         entries: List<AgentConversationEntry>,
         cutoffEntryDbId: Long? = null
     ): List<ChatCompletionMessage> {
-        return entries
+        val relevantEntries = entries
             .asSequence()
             .filter(::isPromptRelevantEntry)
             .filter { entry -> cutoffEntryDbId == null || entry.id > cutoffEntryDbId }
-            .flatMap { entry ->
-                when (entry.entryType) {
-                    AgentConversationHistoryRepository.ENTRY_TYPE_USER_MESSAGE ->
-                        buildUserPromptMessages(entry).asSequence()
-
-                    AgentConversationHistoryRepository.ENTRY_TYPE_ASSISTANT_MESSAGE ->
-                        buildAssistantPromptMessages(entry).asSequence()
-
-                    AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT ->
-                        buildToolReplayMessages(entry).asSequence()
-
-                    else -> emptySequence()
-                }
-            }
             .toList()
+
+        val replayMessages = mutableListOf<ChatCompletionMessage>()
+        val deferredAssistantEntries = mutableListOf<AgentConversationEntry>()
+
+        fun flushDeferredAssistantEntries() {
+            if (deferredAssistantEntries.isEmpty()) return
+            deferredAssistantEntries.forEach { assistantEntry ->
+                replayMessages += buildAssistantPromptMessages(assistantEntry)
+            }
+            deferredAssistantEntries.clear()
+        }
+
+        relevantEntries.forEachIndexed { index, entry ->
+            when (entry.entryType) {
+                AgentConversationHistoryRepository.ENTRY_TYPE_USER_MESSAGE -> {
+                    flushDeferredAssistantEntries()
+                    replayMessages += buildUserPromptMessages(entry)
+                }
+
+                AgentConversationHistoryRepository.ENTRY_TYPE_ASSISTANT_MESSAGE -> {
+                    if (shouldReplayAssistantContentAfterTools(relevantEntries, index, entry)) {
+                        deferredAssistantEntries += entry
+                    } else {
+                        flushDeferredAssistantEntries()
+                        replayMessages += buildAssistantPromptMessages(entry)
+                    }
+                }
+
+                AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT -> {
+                    replayMessages += buildToolReplayMessages(entry)
+                }
+
+                else -> Unit
+            }
+        }
+
+        flushDeferredAssistantEntries()
+        return replayMessages
     }
 
     fun buildContextSummaryUserMessage(summary: String): ChatCompletionMessage {
@@ -355,6 +379,27 @@ internal object AgentConversationHistorySupport {
         )
     }
 
+    private fun shouldReplayAssistantContentAfterTools(
+        entries: List<AgentConversationEntry>,
+        assistantIndex: Int,
+        assistantEntry: AgentConversationEntry
+    ): Boolean {
+        val assistantTaskId = extractAssistantReplayTaskId(assistantEntry.entryId) ?: return false
+        for (index in assistantIndex + 1 until entries.size) {
+            val nextEntry = entries[index]
+            if (nextEntry.entryType == AgentConversationHistoryRepository.ENTRY_TYPE_USER_MESSAGE) {
+                break
+            }
+            if (nextEntry.entryType != AgentConversationHistoryRepository.ENTRY_TYPE_TOOL_EVENT) {
+                continue
+            }
+            if (extractToolReplayTaskId(nextEntry.entryId) == assistantTaskId) {
+                return true
+            }
+        }
+        return false
+    }
+
     private fun buildToolReplayMessages(entry: AgentConversationEntry): List<ChatCompletionMessage> {
         val payload = readMap(entry.payloadJson)
         val toolName = payload["toolName"]?.toString()?.trim().orEmpty()
@@ -380,6 +425,24 @@ internal object AgentConversationHistorySupport {
             content = JsonPrimitive(buildCompactToolReplayContent(entry, payload))
         )
         return listOf(assistantMessage, toolMessage)
+    }
+
+    private fun extractAssistantReplayTaskId(entryId: String): String? {
+        val marker = "-assistant"
+        val index = entryId.lastIndexOf(marker)
+        if (index <= 0 || index + marker.length != entryId.length) {
+            return null
+        }
+        return entryId.substring(0, index).takeIf { it.isNotBlank() }
+    }
+
+    private fun extractToolReplayTaskId(entryId: String): String? {
+        val marker = "-tool-"
+        val index = entryId.indexOf(marker)
+        if (index <= 0) {
+            return null
+        }
+        return entryId.substring(0, index).takeIf { it.isNotBlank() }
     }
 
     private fun buildCompactToolReplayContent(
