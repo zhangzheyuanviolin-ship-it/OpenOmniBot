@@ -188,11 +188,28 @@ class _DataSyncSettingPageState extends State<DataSyncSettingPage> {
   Future<void> _syncNow() async {
     await _guardBusy(() async {
       final status = await DataSyncService.syncNow();
+      if (status.isSyncing) {
+        DataSyncStatusCenter.instance.armManualSyncFeedback();
+      } else {
+        DataSyncStatusCenter.instance.clearManualSyncFeedback();
+      }
       DataSyncStatusCenter.instance.observeStatus(status);
       if (!mounted) return;
       setState(() {
         _status = status;
       });
+      if (status.isSyncing) {
+        showToast(_t('已开始同步', 'Sync started'), type: ToastType.info);
+      } else if (status.state == 'success') {
+        showToast(_t('同步完成', 'Sync completed'), type: ToastType.success);
+      } else if (status.state == 'error') {
+        showToast(
+          status.lastError.isNotEmpty
+              ? status.lastError
+              : _t('同步失败', 'Sync failed'),
+          type: ToastType.error,
+        );
+      }
     });
   }
 

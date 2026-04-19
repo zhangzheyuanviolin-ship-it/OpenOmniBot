@@ -65,19 +65,17 @@ class _DataSyncProgressToastListenerState
     final previousStatus = _lastHandledStatus;
     _lastHandledStatus = status;
 
-    if (status.isSyncing) {
-      hideProgressToast();
-      if (!previousStatus.isSyncing) {
-        showToast(_t('已开始同步', 'Sync started'), type: ToastType.info);
-      }
-      return;
-    }
-
     hideProgressToast();
-    if (!previousStatus.isSyncing) {
+
+    if (!_statusCenter.hasPendingManualSyncFeedback) {
       return;
     }
 
+    if (status.isSyncing || !previousStatus.isSyncing) {
+      return;
+    }
+
+    _statusCenter.clearManualSyncFeedback();
     if (status.state == 'success') {
       showToast(_t('同步完成', 'Sync completed'), type: ToastType.success);
       return;

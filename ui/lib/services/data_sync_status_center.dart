@@ -16,10 +16,21 @@ class DataSyncStatusCenter {
   Duration? _pollInterval;
   bool _started = false;
   bool _refreshing = false;
+  bool _manualSyncFeedbackActive = false;
 
   ValueListenable<DataSyncStatus> get listenable => _notifier;
 
   DataSyncStatus get currentStatus => _notifier.value;
+
+  bool get hasPendingManualSyncFeedback => _manualSyncFeedbackActive;
+
+  void armManualSyncFeedback() {
+    _manualSyncFeedbackActive = true;
+  }
+
+  void clearManualSyncFeedback() {
+    _manualSyncFeedbackActive = false;
+  }
 
   void start() {
     if (_started) {
@@ -58,6 +69,7 @@ class DataSyncStatusCenter {
     _started = false;
     _refreshing = false;
     if (clearState) {
+      _manualSyncFeedbackActive = false;
       _notifier.value = const DataSyncStatus();
     }
   }

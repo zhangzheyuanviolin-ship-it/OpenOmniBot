@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/features/home/pages/settings/data_sync_setting_page.dart';
+import 'package:ui/services/data_sync_service.dart';
 import 'package:ui/services/data_sync_status_center.dart';
 import 'package:ui/theme/app_theme.dart';
 import 'package:ui/utils/ui.dart';
@@ -13,6 +14,7 @@ void main() {
 
   const channel = MethodChannel('cn.com.omnimind.bot/DataSync');
   late List<MethodCall> recordedCalls;
+  late List<Map<String, dynamic>> getStatusQueue;
 
   Widget buildApp() {
     return MaterialApp(
@@ -34,6 +36,19 @@ void main() {
   setUp(() {
     DataSyncStatusCenter.instance.reset();
     recordedCalls = <MethodCall>[];
+    getStatusQueue = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'enabled': true,
+        'configured': true,
+        'state': 'success',
+        'namespace': 'demo',
+        'deviceId': 'device-a',
+        'pendingOutboxCount': 2,
+        'openConflictCount': 1,
+        'lastMessage': '同步完成',
+        'progress': <String, dynamic>{'percent': 100},
+      },
+    ];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           recordedCalls.add(call);
@@ -56,17 +71,10 @@ void main() {
                 'deviceId': 'device-a',
               };
             case 'getStatus':
-              return <String, dynamic>{
-                'enabled': true,
-                'configured': true,
-                'state': 'success',
-                'namespace': 'demo',
-                'deviceId': 'device-a',
-                'pendingOutboxCount': 2,
-                'openConflictCount': 1,
-                'lastMessage': '同步完成',
-                'progress': <String, dynamic>{'percent': 100},
-              };
+              if (getStatusQueue.length > 1) {
+                return getStatusQueue.removeAt(0);
+              }
+              return getStatusQueue.first;
             case 'testConnection':
               return <String, dynamic>{'success': true, 'message': '连接成功'};
             case 'syncNow':
@@ -194,6 +202,126 @@ void main() {
 
     expect(find.text('Other Page'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing);
+
+    hideToast();
+    await tester.pump();
+  });
+
+  testWidgets('does not show sync start toast when app resumes', (
+    tester,
+  ) async {
+    getStatusQueue = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'enabled': true,
+        'configured': true,
+        'state': 'success',
+        'namespace': 'demo',
+        'deviceId': 'device-a',
+        'pendingOutboxCount': 0,
+        'openConflictCount': 0,
+        'lastMessage': '同步完成',
+        'progress': <String, dynamic>{'percent': 100},
+      },
+      <String, dynamic>{
+        'enabled': true,
+        'configured': true,
+        'state': 'syncing',
+        'namespace': 'demo',
+        'deviceId': 'device-a',
+        'currentStep': 'pull',
+        'lastMessage': '同步进行中',
+        'progress': <String, dynamic>{
+          'stage': 'pull',
+          'detail': '正在拉取变更',
+          'percent': 15,
+        },
+      },
+    ];
+
+    await tester.pumpWidget(buildApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('已开始同步'), findsNothing);
+    expect(find.text('Sync started'), findsNothing);
+  });
+
+  testWidgets('does not show completion toast for automatic sync', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    DataSyncStatusCenter.instance.observeStatus(
+      const DataSyncStatus(
+        enabled: true,
+        configured: true,
+        state: 'syncing',
+        namespace: 'demo',
+        deviceId: 'device-a',
+        currentStep: 'pull',
+        progress: DataSyncProgress(percent: 12),
+      ),
+    );
+    await tester.pump();
+
+    DataSyncStatusCenter.instance.observeStatus(
+      const DataSyncStatus(
+        enabled: true,
+        configured: true,
+        state: 'success',
+        namespace: 'demo',
+        deviceId: 'device-a',
+        lastMessage: '同步完成',
+        progress: DataSyncProgress(percent: 100),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
+  });
+
+  testWidgets('shows completion toast for manual sync only', (tester) async {
+    await tester.pumpWidget(buildApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    DataSyncStatusCenter.instance.armManualSyncFeedback();
+    DataSyncStatusCenter.instance.observeStatus(
+      const DataSyncStatus(
+        enabled: true,
+        configured: true,
+        state: 'syncing',
+        namespace: 'demo',
+        deviceId: 'device-a',
+        currentStep: 'push',
+        progress: DataSyncProgress(percent: 48),
+      ),
+    );
+    await tester.pump();
+
+    DataSyncStatusCenter.instance.observeStatus(
+      const DataSyncStatus(
+        enabled: true,
+        configured: true,
+        state: 'success',
+        namespace: 'demo',
+        deviceId: 'device-a',
+        lastMessage: '同步完成',
+        progress: DataSyncProgress(percent: 100),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
 
     hideToast();
     await tester.pump();
