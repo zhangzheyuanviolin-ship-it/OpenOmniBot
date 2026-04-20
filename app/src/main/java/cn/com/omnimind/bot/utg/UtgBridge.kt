@@ -65,8 +65,10 @@ object UtgBridge {
     private const val PREF_OMNIFLOW_AUTO_START = "utg_omniflow_auto_start"
     private const val PREF_OMNIFLOW_START_COMMAND = "utg_omniflow_start_command"
     private const val PREF_OMNIFLOW_WORKING_DIRECTORY = "utg_omniflow_working_directory"
+    private const val PREF_USE_EMBEDDED_PROVIDER = "utg_use_embedded_provider"
     private const val PREF_VLM_TASK_RUN_LOG_PREFIX = "utg_vlm_task_run_log_"
     private const val DEFAULT_OMNIFLOW_BASE_URL = "http://127.0.0.1:19070"
+    private const val EMBEDDED_PROVIDER_PORT = 19070
     private const val DEFAULT_PROVIDER_SESSION_NAME = EXPECTED_PROVIDER_ID
     private const val DEFAULT_PROVIDER_START_TIMEOUT_SECONDS = 20
     private const val DEFAULT_PROVIDER_HEALTH_RETRY_COUNT = 8
@@ -241,11 +243,26 @@ object UtgBridge {
         }
     }
 
+    fun isUseEmbeddedProvider(): Boolean {
+        // 如果用户显式设置了，使用用户设置
+        if (mmkv.containsKey(PREF_USE_EMBEDDED_PROVIDER)) {
+            return mmkv.decodeBool(PREF_USE_EMBEDDED_PROVIDER, false)
+        }
+        // 默认：如果没有配置 Termux start command，则使用内置模式
+        return providerStartCommand().isBlank()
+    }
+
+    fun setUseEmbeddedProvider(enabled: Boolean) {
+        mmkv.encode(PREF_USE_EMBEDDED_PROVIDER, enabled)
+    }
+
     @Suppress("UNUSED_PARAMETER")
     suspend fun snapshotConfig(context: Context): Map<String, Any?> {
         val configuredStartCommand = providerStartCommand()
         val providerHealth = fetchProviderHealth()
         val providerHealthy = isCompatibleProviderHealth(providerHealth)
+        val useEmbedded = isUseEmbeddedProvider()
+        val embeddedStatus = if (useEmbedded) OmniFlowPackageManager.getStatusSummary(context) else null
         return linkedMapOf(
             "utgEnabled" to isUtgEnabled(),
             "omniflowBaseUrl" to omniFlowBaseUrl(),
@@ -255,6 +272,8 @@ object UtgBridge {
             "providerStartCommand" to configuredStartCommand,
             "providerStartCommandConfigured" to configuredStartCommand.isNotBlank(),
             "providerWorkingDirectory" to providerWorkingDirectory(),
+            "useEmbeddedProvider" to useEmbedded,
+            "embeddedProviderStatus" to embeddedStatus,
             "providerHealthy" to providerHealthy,
             "providerHealth" to providerHealth,
             "providerHealthStatus" to providerHealthStatus(providerHealth),
@@ -274,37 +293,7 @@ object UtgBridge {
         }
         val success = when (normalizedAction) {
             "start" -> ensureProviderReady(context, ignoreAutoStartPolicy = true)
-            "stop" -> {
-                val command = providerStartCommand().trim()
-                val shellCommand = buildString {
-                    append("if command -v tmux >/dev/null 2>&1; then\n")
-                    append("  tmux kill-session -t ")
-                    append(DEFAULT_PROVIDER_SESSION_NAME)
-                    append(" 2>/dev/null || true\n")
-                    append("else\n")
-                    if (command.isNotBlank()) {
-                        append("  pkill -f ")
-                        append(shellQuote(command))
-                        append(" 2>/dev/null || true\n")
-                    }
-                    append("fi")
-                }
-                val result = TermuxCommandRunner.execute(
-                    context = context,
-                    spec = TermuxCommandSpec(
-                        command = shellCommand,
-                        timeoutSeconds = DEFAULT_PROVIDER_START_TIMEOUT_SECONDS,
-                    ),
-                )
-                if (!result.success) {
-                    OmniLog.w(
-                        TAG,
-                        "UTG provider stop failed: ${result.errorMessage ?: result.stderr.ifBlank { result.stdout }}"
-                    )
-                }
-                delay(500L)
-                !isProviderHealthy()
-            }
+            "stop" -> stopProvider(context)
             else -> {
                 controlProvider(context, "stop")
                 ensureProviderReady(context, ignoreAutoStartPolicy = true)
@@ -319,6 +308,46 @@ object UtgBridge {
             else -> "provider_${normalizedAction}_failed"
         }
         return snapshot
+    }
+
+    private suspend fun stopProvider(context: Context): Boolean {
+        // 内置模式
+        if (isUseEmbeddedProvider()) {
+            OmniFlowPackageManager.stopProvider(context)
+            delay(500L)
+            return !isProviderHealthy()
+        }
+
+        // Termux 模式
+        val command = providerStartCommand().trim()
+        val shellCommand = buildString {
+            append("if command -v tmux >/dev/null 2>&1; then\n")
+            append("  tmux kill-session -t ")
+            append(DEFAULT_PROVIDER_SESSION_NAME)
+            append(" 2>/dev/null || true\n")
+            append("else\n")
+            if (command.isNotBlank()) {
+                append("  pkill -f ")
+                append(shellQuote(command))
+                append(" 2>/dev/null || true\n")
+            }
+            append("fi")
+        }
+        val result = TermuxCommandRunner.execute(
+            context = context,
+            spec = TermuxCommandSpec(
+                command = shellCommand,
+                timeoutSeconds = DEFAULT_PROVIDER_START_TIMEOUT_SECONDS,
+            ),
+        )
+        if (!result.success) {
+            OmniLog.w(
+                TAG,
+                "UTG provider stop failed: ${result.errorMessage ?: result.stderr.ifBlank { result.stdout }}"
+            )
+        }
+        delay(500L)
+        return !isProviderHealthy()
     }
 
     suspend fun restoreProviderIfEnabled(context: Context) {
@@ -728,6 +757,63 @@ object UtgBridge {
         if (!ignoreAutoStartPolicy && !isProviderAutoStartEnabled()) {
             return false
         }
+
+        // 优先使用内置 Alpine Provider
+        if (isUseEmbeddedProvider()) {
+            return ensureEmbeddedProviderReady(context)
+        }
+
+        // 回退到传统 Termux 模式
+        return ensureTermuxProviderReady(context)
+    }
+
+    private suspend fun ensureEmbeddedProviderReady(context: Context): Boolean {
+        OmniLog.i(TAG, "Ensuring embedded OmniFlow provider is ready...")
+
+        // 1. 确保 OmniFlow 包已安装
+        val installResult = OmniFlowPackageManager.ensureInstalled(context)
+        if (!installResult.success) {
+            OmniLog.e(TAG, "Failed to install OmniFlow package: ${installResult.message}")
+            return false
+        }
+        OmniLog.i(TAG, "OmniFlow package ready: ${installResult.message}")
+
+        // 2. 检查 Provider 是否已在运行
+        if (OmniFlowPackageManager.isProviderRunning(context)) {
+            OmniLog.d(TAG, "Embedded provider already running, checking health...")
+            if (isProviderHealthy()) {
+                return true
+            }
+            // Provider 进程在但不健康，停止后重启
+            OmniFlowPackageManager.stopProvider(context)
+            delay(500)
+        }
+
+        // 3. 启动 Provider
+        val launchResult = OmniFlowPackageManager.startProvider(
+            context = context,
+            port = EMBEDDED_PROVIDER_PORT
+        )
+        if (!launchResult.started && !launchResult.alreadyRunning) {
+            OmniLog.e(TAG, "Failed to start embedded provider: ${launchResult.message}")
+            return false
+        }
+        OmniLog.i(TAG, "Embedded provider launch result: ${launchResult.message}")
+
+        // 4. 等待健康检查通过
+        repeat(DEFAULT_PROVIDER_HEALTH_RETRY_COUNT) {
+            if (isProviderHealthy()) {
+                OmniLog.i(TAG, "Embedded OmniFlow provider is healthy")
+                return true
+            }
+            delay(DEFAULT_PROVIDER_HEALTH_RETRY_DELAY_MS)
+        }
+
+        OmniLog.w(TAG, "Embedded provider started but /health still unavailable")
+        return isProviderHealthy()
+    }
+
+    private suspend fun ensureTermuxProviderReady(context: Context): Boolean {
         val command = providerStartCommand()
         if (command.isBlank()) {
             OmniLog.w(TAG, "UTG provider auto-start skipped: empty startup command")
