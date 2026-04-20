@@ -465,6 +465,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get memoryCenterTitle => 'Memory Center';
 
   @override
+  String get memoryShortTermTitle => 'Short-term Memory';
+
+  @override
+  String get memoryLongTermTitle => 'Long-term Memory';
+
+  @override
   String get memoryNoShortTerm => 'No short-term memory yet';
 
   @override
@@ -803,6 +809,229 @@ class AppLocalizationsEn extends AppLocalizations {
       'Download a model from the market, or manually place an MNN model directory.';
 
   @override
+  String get localModelsServiceControl => 'Service Control';
+
+  @override
+  String get localModelsServiceControlDesc =>
+      'Switch inference backend, current model, and listening port.';
+
+  @override
+  String get localModelsInferenceBackend => 'Inference Backend';
+
+  @override
+  String get localModelsCurrentModel => 'Current Model';
+
+  @override
+  String get localModelsCurrentModelHint =>
+      'The selected model will be loaded when the service starts.';
+
+  @override
+  String get localModelsNoAvailableModels => 'No models available';
+
+  @override
+  String get localModelsSelectModel => 'Select a model';
+
+  @override
+  String get localModelsServicePort => 'Service Port';
+
+  @override
+  String get localModelsServicePortHint => 'Enter port number';
+
+  @override
+  String get localModelsCurrentlyLoaded => 'Currently Loaded';
+
+  @override
+  String get localModelsAutoPreheatSection => 'Auto Preheat';
+
+  @override
+  String get localModelsAutoPreheatSectionDesc =>
+      'Automatically start the local service and load the current model when the app opens.';
+
+  @override
+  String get localModelsLocalInference => 'Local Inference Model';
+
+  @override
+  String get localModelsStopping => 'Stopping…';
+
+  @override
+  String get localModelsStarting => 'Starting…';
+
+  @override
+  String get localModelsStopService => 'Stop Service';
+
+  @override
+  String get localModelsStartService => 'Start Service';
+
+  @override
+  String get localModelsConfigLoadFailed => 'Failed to load local model config';
+
+  @override
+  String get localModelsConfigLoadFailedDesc => 'Please try again later.';
+
+  @override
+  String get localModelsInstalledLoadFailed =>
+      'Failed to load installed models';
+
+  @override
+  String get localModelsMarketLoadFailed => 'Failed to load model market';
+
+  @override
+  String get localModelsSwitchBackendFailed =>
+      'Failed to switch inference backend';
+
+  @override
+  String get localModelsActiveModelUpdated => 'Current model updated';
+
+  @override
+  String get localModelsSetActiveFailed => 'Failed to set current model';
+
+  @override
+  String get localModelsPortInvalid => 'Invalid port number';
+
+  @override
+  String get localModelsPortUpdated => 'Service port updated';
+
+  @override
+  String get localModelsPortSaveFailed => 'Failed to save port';
+
+  @override
+  String get localModelsAutoPreheatSaveFailed =>
+      'Failed to save auto preheat setting';
+
+  @override
+  String get localModelsDownloadSourceSwitchFailed =>
+      'Failed to switch download source';
+
+  @override
+  String get localModelsServiceStarted => 'Local service started';
+
+  @override
+  String get localModelsStartFailed => 'Failed to start service';
+
+  @override
+  String get localModelsStopFailed => 'Failed to stop service';
+
+  @override
+  String get localModelsServiceStopped => 'Local service stopped';
+
+  @override
+  String get localModelsDownloadStartFailed => 'Failed to start download';
+
+  @override
+  String get localModelsDownloadPauseFailed => 'Failed to pause download';
+
+  @override
+  String get localModelsFilterAndSource => 'Filter & Source';
+
+  @override
+  String get localModelsFilterAndSourceDesc =>
+      'Switch inference backend and download source; affects the current market list.';
+
+  @override
+  String get localModelsDownloadSource => 'Download Source';
+
+  @override
+  String get localModelsSelectDownloadSource => 'Select download source';
+
+  @override
+  String get localModelsMarketModels => 'Market Models';
+
+  @override
+  String get localModelsMarketModelsDesc =>
+      'Search, download, pause, or delete models from the market.';
+
+  @override
+  String get localModelsMarketSearchHint =>
+      'Search market model name, description, or tag';
+
+  @override
+  String get localModelsMarketEmpty => 'Model market is temporarily empty';
+
+  @override
+  String get localModelsMarketEmptyDesc =>
+      'Please check the download source, or pull down to refresh and try again.';
+
+  @override
+  String get localModelsCurrentDefault => 'Default';
+
+  @override
+  String get localModelsLoaded => 'Loaded';
+
+  @override
+  String get localModelsFileSize => 'File Size';
+
+  @override
+  String get localModelsModelDir => 'Model Directory';
+
+  @override
+  String get localModelsManualDir =>
+      'This is a manually placed directory. Deletion is not available in-app.';
+
+  @override
+  String get localModelsOmniInferLoadable =>
+      'This model can be loaded directly by OmniInfer.';
+
+  @override
+  String get localModelsSetAsCurrent => 'Set as Current';
+
+  @override
+  String get localModelsDelete => 'Delete';
+
+  @override
+  String get localModelsHasUpdate => 'Update';
+
+  @override
+  String get localModelsStage => 'Stage';
+
+  @override
+  String get localModelsErrorInfo => 'Error Info';
+
+  @override
+  String get localModelsResumeDownload => 'Resume Download';
+
+  @override
+  String get localModelsRetryDownload => 'Retry Download';
+
+  @override
+  String get localModelsDownloadModel => 'Download Model';
+
+  @override
+  String get localModelsPause => 'Pause';
+
+  @override
+  String get localModelsDeleteOldVersion => 'Delete Old Version';
+
+  @override
+  String get localModelsTabService => 'Service';
+
+  @override
+  String get localModelsTabMarket => 'Market';
+
+  @override
+  String get localModelsRefresh => 'Refresh';
+
+  @override
+  String get localModelsDownloadPreparing => 'Preparing';
+
+  @override
+  String get localModelsDownloading => 'Downloading';
+
+  @override
+  String get localModelsDownloadPaused => 'Paused';
+
+  @override
+  String get localModelsDownloadCompleted => 'Completed';
+
+  @override
+  String get localModelsDownloadFailed => 'Download Failed';
+
+  @override
+  String get localModelsDownloadCancelled => 'Cancelled';
+
+  @override
+  String get localModelsNotDownloaded => 'Not Downloaded';
+
+  @override
   String get alarmSaved => 'Alarm settings saved';
 
   @override
@@ -991,6 +1220,242 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get storageAdditionalInfo => 'Additional Info';
+
+  @override
+  String get storageCatAppBinary => 'App Binary';
+
+  @override
+  String get storageCatAppBinaryDesc => 'Installed app files (APK/AAB split)';
+
+  @override
+  String get storageCatCache => 'Cache';
+
+  @override
+  String get storageCatCacheDesc =>
+      'Temporary files and image cache, safe to clean';
+
+  @override
+  String get storageCatCacheHint =>
+      'Will regenerate automatically during use after cleanup';
+
+  @override
+  String get storageCatConversation => 'Conversation History';
+
+  @override
+  String get storageCatConversationDesc =>
+      'Chat and tool execution history (estimated)';
+
+  @override
+  String get storageCatConversationHint =>
+      'Will delete historical message records and cannot be recovered';
+
+  @override
+  String get storageCatDatabaseOther => 'Other Database';
+
+  @override
+  String get storageCatDatabaseOtherDesc => 'Indexes and system tables';
+
+  @override
+  String get storageCatWorkspaceBrowser => 'Workspace Browser Artifacts';
+
+  @override
+  String get storageCatWorkspaceBrowserDesc =>
+      'Browser screenshots, downloads, and intermediate files';
+
+  @override
+  String get storageCatWorkspaceBrowserHint =>
+      'Will delete browser tool intermediate files';
+
+  @override
+  String get storageCatWorkspaceOffloads => 'Workspace Offloads';
+
+  @override
+  String get storageCatWorkspaceOffloadsDesc =>
+      'Tool offline outputs and temporary files';
+
+  @override
+  String get storageCatWorkspaceOffloadsHint =>
+      'Only deletes offline artifacts, does not affect core functionality';
+
+  @override
+  String get storageCatWorkspaceAttachments => 'Workspace Attachments';
+
+  @override
+  String get storageCatWorkspaceAttachmentsDesc =>
+      'Attachment files used by historical tasks';
+
+  @override
+  String get storageCatWorkspaceAttachmentsHint =>
+      'May affect viewing attachments in historical tasks';
+
+  @override
+  String get storageCatWorkspaceShared => 'Workspace Shared';
+
+  @override
+  String get storageCatWorkspaceSharedDesc =>
+      'Shared workspace files across tasks';
+
+  @override
+  String get storageCatWorkspaceSharedHint =>
+      'May affect subsequent tasks reusing shared files';
+
+  @override
+  String get storageCatWorkspaceMemory => 'Workspace Memory Data';
+
+  @override
+  String get storageCatWorkspaceMemoryDesc =>
+      'Long/short-term memory and index data';
+
+  @override
+  String get storageCatWorkspaceUserFiles => 'Workspace User Files';
+
+  @override
+  String get storageCatWorkspaceUserFilesDesc =>
+      'Files manually saved to workspace by user';
+
+  @override
+  String get storageCatLocalModelsFiles => 'Local Model Files';
+
+  @override
+  String get storageCatLocalModelsFilesDesc => 'Model files under .mnnmodels';
+
+  @override
+  String get storageCatLocalModelsFilesHint =>
+      'Will delete model files, need to re-download later';
+
+  @override
+  String get storageCatLocalModelsCache => 'Model Inference Cache';
+
+  @override
+  String get storageCatLocalModelsCacheDesc =>
+      'mmap and local inference temporary directories';
+
+  @override
+  String get storageCatLocalModelsCacheHint =>
+      'Will regenerate during inference after cleanup';
+
+  @override
+  String get storageCatTerminalLocal => 'Terminal Runtime (local)';
+
+  @override
+  String get storageCatTerminalLocalDesc =>
+      'Alpine terminal local runtime directory';
+
+  @override
+  String get storageCatTerminalLocalHint =>
+      'Will delete terminal local directory, needs re-initialization';
+
+  @override
+  String get storageCatTerminalBootstrap => 'Terminal Runtime (bootstrap)';
+
+  @override
+  String get storageCatTerminalBootstrapDesc =>
+      'proot/lib/alpine bootstrap files';
+
+  @override
+  String get storageCatTerminalBootstrapHint =>
+      'Will delete terminal bootstrap files, needs re-initialization';
+
+  @override
+  String get storageCatSharedDrafts => 'Shared Drafts';
+
+  @override
+  String get storageCatSharedDraftsDesc =>
+      'Draft cache from external sharing imports';
+
+  @override
+  String get storageCatSharedDraftsHint =>
+      'Will delete unsent draft attachments';
+
+  @override
+  String get storageCatMcpInbox => 'MCP Inbox';
+
+  @override
+  String get storageCatMcpInboxDesc => 'MCP file transfer receive directory';
+
+  @override
+  String get storageCatMcpInboxHint => 'Will delete files in MCP inbox';
+
+  @override
+  String get storageCatLegacyWorkspace => 'Legacy Data';
+
+  @override
+  String get storageCatLegacyWorkspaceDesc =>
+      'Old workspace directories possibly left after upgrade';
+
+  @override
+  String get storageCatLegacyWorkspaceHint =>
+      'Confirm it is no longer needed before cleanup';
+
+  @override
+  String get storageCatOtherUserData => 'Other Data';
+
+  @override
+  String get storageCatOtherUserDataDesc =>
+      'Data not matched to any category rule';
+
+  @override
+  String get storageStrategySafeQuick => 'Safe Quick Cleanup';
+
+  @override
+  String get storageStrategySafeQuickDesc =>
+      'Prioritize cleaning low-risk cache and temporary artifacts';
+
+  @override
+  String get storageStrategyBalanceDeep => 'Balanced Deep Cleanup';
+
+  @override
+  String get storageStrategyBalanceDeepDesc =>
+      'Free more space while keeping core models and user files';
+
+  @override
+  String get storageStrategyFree1gb => 'Target Free 1GB';
+
+  @override
+  String get storageStrategyFree1gbDesc =>
+      'Clean in high-value order, aiming for 1GB release target';
+
+  @override
+  String get storageHintConversation =>
+      'If history is not released, re-enter the page and run \"Reanalyze\"';
+
+  @override
+  String get storageHintLocalModels =>
+      'After models are cleaned, you can re-download from the Local Model Service page';
+
+  @override
+  String get storageHintTerminal =>
+      'After terminal runtime is cleaned, you can re-initialize from the Alpine Environment page';
+
+  @override
+  String get storageHintGeneral =>
+      'If cleanup fails, try again later or restart the app';
+
+  @override
+  String get storageHintNotCleanable =>
+      'This category is currently not cleanable';
+
+  @override
+  String get storageHintSkipped => 'This category was skipped (optional)';
+
+  @override
+  String storageCleanPartialFailed(Object hint) {
+    return 'Some cleanup failed: $hint';
+  }
+
+  @override
+  String get storageCleanPartialFailedGeneric =>
+      'Some files failed to clean up, please try again later';
+
+  @override
+  String storageTrendVsLast(Object cleanable, Object total) {
+    return 'Vs last analysis: total $total, cleanable $cleanable';
+  }
+
+  @override
+  String storageLastAnalyzed(Object time) {
+    return 'Last analyzed: $time';
+  }
 
   @override
   String get aboutDescription =>
@@ -1243,4 +1708,167 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alpineBootAutoStart => 'Auto-start when Omnibot opens';
+
+  @override
+  String get alpineDevEnv => 'Dev Environment';
+
+  @override
+  String get alpineEnvConfig => 'Environment Config';
+
+  @override
+  String alpineWorkDirValue(Object dir) {
+    return 'Working directory: $dir';
+  }
+
+  @override
+  String get workspaceEmbeddingRetrieval => 'Memory Embedding Retrieval';
+
+  @override
+  String get chatHistoryStartConversation => 'Start a conversation';
+
+  @override
+  String get homeDrawerSearching => 'Searching conversations...';
+
+  @override
+  String get homeDrawerNoResults => 'No matching conversations found';
+
+  @override
+  String get homeDrawerSearchHint2 =>
+      'Try shorter keywords or rephrase your search';
+
+  @override
+  String get homeDrawerSearchResults => 'Search results';
+
+  @override
+  String get homeDrawerResultCount => 'results';
+
+  @override
+  String get homeDrawerScheduled => 'Scheduled';
+
+  @override
+  String get homeDrawerGreeting => 'Hello!';
+
+  @override
+  String get homeDrawerWelcome => 'Welcome to Omnibot';
+
+  @override
+  String get homeDrawerDawnGreeting => 'Late night';
+
+  @override
+  String get homeDrawerDawnSub => 'Still awake?';
+
+  @override
+  String get homeDrawerDawnGreeting2 => 'Before dawn';
+
+  @override
+  String get homeDrawerDawnSub2 => 'Early bird, take care!';
+
+  @override
+  String get homeDrawerDawnGreeting3 => 'Quiet midnight';
+
+  @override
+  String get homeDrawerDawnSub3 => 'Remember to get some rest.';
+
+  @override
+  String get homeDrawerMorningGreeting => 'Good morning!';
+
+  @override
+  String get homeDrawerMorningSub => 'Start your day with energy';
+
+  @override
+  String get homeDrawerMorningGreeting2 => 'Morning!';
+
+  @override
+  String get homeDrawerMorningSub2 => 'A new day has begun';
+
+  @override
+  String get homeDrawerForenoonGreeting => 'Good forenoon!';
+
+  @override
+  String get homeDrawerForenoonSub => 'Take a quick shoulder stretch';
+
+  @override
+  String get homeDrawerForenoonGreeting2 => 'Great momentum!';
+
+  @override
+  String get homeDrawerForenoonSub2 => 'Keep it going';
+
+  @override
+  String get homeDrawerLunchGreeting => 'Lunch time!';
+
+  @override
+  String get homeDrawerLunchSub => 'Have a proper meal';
+
+  @override
+  String get homeDrawerLunchGreeting2 => 'Good noon~';
+
+  @override
+  String get homeDrawerLunchSub2 => 'Take a short break after lunch';
+
+  @override
+  String get homeDrawerLunchGreeting3 => 'Not sure what to eat?';
+
+  @override
+  String get homeDrawerLunchSub3 => 'Let Omnibot recommend for you';
+
+  @override
+  String get homeDrawerAfternoonGreeting => 'Tea break';
+
+  @override
+  String get homeDrawerAfternoonSub => 'You can finish the rest with ease';
+
+  @override
+  String get homeDrawerAfternoonGreeting2 => 'Look outside for a minute';
+
+  @override
+  String get homeDrawerAfternoonSub2 => 'Give your eyes a rest';
+
+  @override
+  String get homeDrawerEveningGreeting => 'Take it easy on the way home';
+
+  @override
+  String get homeDrawerEveningSub => 'Relax tonight';
+
+  @override
+  String get homeDrawerEveningGreeting2 => 'Evening breeze';
+
+  @override
+  String get homeDrawerEveningSub2 => 'Feels nice, doesn\'t it?';
+
+  @override
+  String get homeDrawerEveningGreeting3 => 'Long day today';
+
+  @override
+  String get homeDrawerEveningSub3 => 'Treat yourself to a good meal';
+
+  @override
+  String get homeDrawerNightGreeting => 'Good evening!';
+
+  @override
+  String get homeDrawerNightSub => 'Enjoy your own time';
+
+  @override
+  String get homeDrawerNightGreeting2 => 'Night is settling in';
+
+  @override
+  String get homeDrawerNightSub2 => 'Get ready to rest earlier';
+
+  @override
+  String get homeDrawerNightGreeting3 => 'Time to rest';
+
+  @override
+  String get homeDrawerNightSub3 => 'Let Omnibot set an alarm for you';
+
+  @override
+  String get homeDrawerLateNightGreeting =>
+      'Put the phone down and sleep earlier';
+
+  @override
+  String get homeDrawerLateNightSub => 'Recharge for tomorrow';
+
+  @override
+  String get homeDrawerLateNightGreeting2 => 'It is late';
+
+  @override
+  String get homeDrawerLateNightSub2 => 'Say good night to today';
 }

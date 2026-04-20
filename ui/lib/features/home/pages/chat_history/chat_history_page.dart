@@ -185,7 +185,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     });
 
     showToast(
-      success ? (archived ? '已归档' : '已取消归档') : (archived ? '归档失败' : '取消归档失败'),
+      success ? (archived ? 'Archived' : 'Unarchived') : (archived ? 'Failed to archive' : 'Failed to unarchive'),
       type: success ? ToastType.success : ToastType.error,
     );
   }
@@ -373,7 +373,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     }
 
     return Text(
-      '左滑聊天记录即可归档',
+      'Swipe left on a conversation to archive',
       style: TextStyle(
         fontSize: 13,
         color: context.isDarkTheme ? palette.textSecondary : Colors.grey[500],

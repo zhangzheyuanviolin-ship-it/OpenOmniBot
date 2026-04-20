@@ -122,7 +122,8 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
           type: ToastType.success,
         );
       } else {
-        final hint = (result.manualActionHint ?? '').trim();
+        final rawHint = (result.manualActionHint ?? '').trim();
+        final hint = _translateHint(rawHint);
         showToast(
           hint.isNotEmpty
               ? _t(context, '部分清理失败：$hint', 'Some cleanup failed: $hint')
@@ -741,6 +742,16 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
         }).toList(),
       ),
     );
+  }
+
+  String _translateHint(String raw) {
+    final l = context.l10n;
+    if (raw.contains('历史未释放') || raw.contains('conversation_history')) return l.storageHintConversation;
+    if (raw.contains('模型被清理后') || raw.contains('local_models')) return l.storageHintLocalModels;
+    if (raw.contains('终端运行时被清理') || raw.contains('terminal')) return l.storageHintTerminal;
+    if (raw.contains('当前不可清理')) return l.storageHintNotCleanable;
+    if (raw.contains('已跳过') || raw.contains('skipped')) return l.storageHintSkipped;
+    return l.storageHintGeneral;
   }
 
   Widget _buildCard({required Widget child, EdgeInsetsGeometry? padding}) {
