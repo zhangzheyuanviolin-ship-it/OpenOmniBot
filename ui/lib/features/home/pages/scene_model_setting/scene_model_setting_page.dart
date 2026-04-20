@@ -43,6 +43,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
 
   static const List<String> _sceneOrder = [
     'scene.dispatch.model',
+    'scene.voice',
     'scene.vlm.operation.primary',
     'scene.compactor.context',
     'scene.compactor.context.chat',
@@ -53,6 +54,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
 
   static const Map<String, String> _sceneDisplayNameMap = {
     'scene.dispatch.model': 'Agent',
+    'scene.voice': 'Voice',
     'scene.vlm.operation.primary': 'Operation',
     'scene.compactor.context': 'Compactor',
     'scene.compactor.context.chat': 'Chat Compactor',
@@ -63,6 +65,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
 
   static const Map<String, String> _sceneTooltipMap = {
     'scene.dispatch.model': 'Responsible for task understanding and dispatch decisions',
+    'scene.voice': '负责 AI 回复文本的语音合成与播放',
     'scene.vlm.operation.primary': 'Responsible for executing the main UI operation chain',
     'scene.compactor.context': 'Responsible for context compression and error correction in the VLM execution chain',
     'scene.compactor.context.chat': 'Responsible for compressing and summarizing chat history',
@@ -73,17 +76,36 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
 
   bool _isLoading = true;
   bool _isRefreshingModels = false;
+  bool _isSavingVoiceConfig = false;
 
   List<SceneCatalogItem> _catalog = const [];
   List<SceneModelBindingEntry> _bindings = const [];
   List<ModelProviderProfileSummary> _profiles = const [];
   Map<String, List<ProviderModelOption>> _providerModelsByProfileId = {};
   Set<String> _savingSceneIds = <String>{};
+  Set<String> _expandedSceneIds = <String>{};
+  SceneVoiceConfig _voiceConfig = const SceneVoiceConfig();
+  late final TextEditingController _voiceIdController;
+  late final TextEditingController _voiceCustomStyleController;
+  Timer? _voiceConfigSaveDebounce;
+  SceneVoiceConfig? _pendingVoiceConfig;
+  DateTime? _suppressExternalReloadUntil;
   StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
+  static const List<String> _voiceStylePresets = <String>[
+    '默认',
+    '自然对话',
+    '温柔陪伴',
+    '专业播报',
+    '活泼元气',
+    '睡前轻声',
+    '唱歌',
+  ];
 
   @override
   void initState() {
     super.initState();
+    _voiceIdController = TextEditingController();
+    _voiceCustomStyleController = TextEditingController();
     _loadData();
     _configChangedSubscription = AssistsMessageService
         .agentAiConfigChangedStream
@@ -91,13 +113,20 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
           if ((event.source != 'file' && event.source != 'store') || !mounted) {
             return;
           }
-          unawaited(_loadData());
+          final suppressUntil = _suppressExternalReloadUntil;
+          if (suppressUntil != null && DateTime.now().isBefore(suppressUntil)) {
+            return;
+          }
+          unawaited(_loadData(showLoading: false, refreshProviderModels: false));
         });
   }
 
   @override
   void dispose() {
     _configChangedSubscription?.cancel();
+    _voiceConfigSaveDebounce?.cancel();
+    _voiceIdController.dispose();
+    _voiceCustomStyleController.dispose();
     super.dispose();
   }
 
@@ -154,19 +183,63 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     return sceneId == 'scene.dispatch.model';
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  bool _isVoiceScene(String sceneId) {
+    return sceneId == 'scene.voice';
+  }
+
+  void _syncVoiceControllers(SceneVoiceConfig config) {
+    if (_voiceIdController.text != config.voiceId) {
+      _voiceIdController.value = TextEditingValue(
+        text: config.voiceId,
+        selection: TextSelection.collapsed(offset: config.voiceId.length),
+      );
+    }
+    if (_voiceCustomStyleController.text != config.customStyle) {
+      _voiceCustomStyleController.value = TextEditingValue(
+        text: config.customStyle,
+        selection: TextSelection.collapsed(offset: config.customStyle.length),
+      );
+    }
+  }
+
+  void _updateVoiceConfig(
+    SceneVoiceConfig nextConfig, {
+    bool saveImmediately = false,
+  }) {
+    if (_voiceConfig == nextConfig) {
+      return;
+    }
+    setState(() => _voiceConfig = nextConfig);
+    if (saveImmediately) {
+      unawaited(_enqueueVoiceConfigSave(nextConfig));
+      return;
+    }
+    _voiceConfigSaveDebounce?.cancel();
+    _voiceConfigSaveDebounce = Timer(const Duration(milliseconds: 450), () {
+      unawaited(_enqueueVoiceConfigSave(nextConfig));
+    });
+  }
+
+  Future<void> _loadData({
+    bool showLoading = true,
+    bool refreshProviderModels = true,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() => _isLoading = true);
+    }
     try {
       final results = await Future.wait<dynamic>([
         SceneModelConfigService.getSceneCatalog(),
         SceneModelConfigService.getSceneModelBindings(),
         ModelProviderConfigService.listProfiles(),
+        SceneModelConfigService.getSceneVoiceConfig(),
       ]);
       if (!mounted) return;
 
       final catalog = results[0] as List<SceneCatalogItem>;
       final bindings = results[1] as List<SceneModelBindingEntry>;
       final profilesPayload = results[2] as ModelProviderProfilesPayload;
+      final voiceConfig = results[3] as SceneVoiceConfig;
       final providerModelsByProfileId = <String, List<ProviderModelOption>>{};
       for (final profile in profilesPayload.profiles) {
         providerModelsByProfileId[profile.id] =
@@ -185,15 +258,17 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         _bindings = bindings;
         _profiles = profilesPayload.profiles;
         _providerModelsByProfileId = enriched;
+        _voiceConfig = voiceConfig;
       });
-      if (_profiles.any((profile) => profile.configured)) {
+      _syncVoiceControllers(voiceConfig);
+      if (refreshProviderModels && _profiles.any((profile) => profile.configured)) {
         unawaited(_refreshProviderModels());
       }
     } catch (_) {
       if (!mounted) return;
       showToast('Failed to load scene config', type: ToastType.error);
     } finally {
-      if (mounted) {
+      if (showLoading && mounted) {
         setState(() => _isLoading = false);
       }
     }
@@ -364,7 +439,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         _bindings = bindings;
       });
       showToast(
-        '${_sceneDisplayName(sceneId)} restored to default model',
+        '${_sceneDisplayName(sceneId)} 已恢复默认模型',
         type: ToastType.success,
       );
     } catch (e) {
@@ -380,6 +455,60 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         });
       }
     }
+  }
+
+  void _toggleSceneExpanded(String sceneId) {
+    if (!_isVoiceScene(sceneId)) {
+      return;
+    }
+    setState(() {
+      if (_expandedSceneIds.contains(sceneId)) {
+        _expandedSceneIds.remove(sceneId);
+      } else {
+        _expandedSceneIds = <String>{sceneId};
+      }
+    });
+  }
+
+  Future<void> _saveVoiceConfig(SceneVoiceConfig nextConfig) async {
+    _voiceConfigSaveDebounce?.cancel();
+    if (_isSavingVoiceConfig) {
+      _pendingVoiceConfig = nextConfig;
+      return;
+    }
+    _suppressExternalReloadUntil = DateTime.now().add(
+      const Duration(seconds: 2),
+    );
+    setState(() => _isSavingVoiceConfig = true);
+    try {
+      final saved = await SceneModelConfigService.saveSceneVoiceConfig(
+        nextConfig,
+      );
+      if (!mounted) return;
+      if (_voiceConfig == nextConfig || _voiceConfig == saved) {
+        setState(() {
+          _voiceConfig = saved;
+        });
+        _syncVoiceControllers(saved);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showToast('保存 Voice 配置失败：$e', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingVoiceConfig = false);
+      }
+      final pending = _pendingVoiceConfig;
+      _pendingVoiceConfig = null;
+      if (pending != null && pending != nextConfig) {
+        unawaited(_saveVoiceConfig(pending));
+      }
+    }
+  }
+
+  Future<void> _enqueueVoiceConfigSave(SceneVoiceConfig nextConfig) async {
+    _pendingVoiceConfig = nextConfig;
+    await _saveVoiceConfig(nextConfig);
   }
 
   Future<void> _openSceneSelector(
@@ -453,7 +582,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   String _selectionLabel(SceneCatalogItem scene) {
     final binding = _bindingMap[scene.sceneId];
     if (binding == null) {
-      return 'Default: ${scene.defaultModel}';
+      return '默认：${scene.defaultModel}';
     }
     final profile = _profiles.where(
       (item) => item.id == binding.providerProfileId,
@@ -462,93 +591,278 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     return '$profileName / ${binding.modelId}';
   }
 
-  Widget _buildSceneRow(SceneCatalogItem scene) {
+  Widget _buildSceneLabel(SceneCatalogItem scene) {
+    return Tooltip(
+      message: _sceneTooltip(scene),
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 3),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              _sceneDisplayName(scene.sceneId),
+              style: TextStyle(
+                color: _primaryTextColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'PingFang SC',
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 6),
+          if (_isAgentScene(scene.sceneId)) ...[
+            const AgentAvatarButton(size: 30, showEditBadge: true),
+            const SizedBox(width: 6),
+          ],
+          Icon(Icons.info_outline, size: 15, color: _tertiaryTextColor),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSceneSelectorField(
+    SceneCatalogItem scene, {
+    required bool isSaving,
+  }) {
+    return Builder(
+      builder: (fieldContext) {
+        return InkWell(
+          onTap: isSaving
+              ? null
+              : () => _openSceneSelector(scene, fieldContext),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+            decoration: BoxDecoration(
+              color: _cardColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _isDarkTheme
+                    ? context.omniPalette.borderSubtle
+                    : const Color(0x1A000000),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _selectionLabel(scene),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _primaryTextColor,
+                      fontSize: 13,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: _tertiaryTextColor,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVoiceSettings() {
+    final isSinging = _voiceConfig.stylePreset == '唱歌';
+    final borderColor = _isDarkTheme
+        ? context.omniPalette.borderSubtle
+        : const Color(0x1A000000);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'AI 响应完成后自动播放',
+                style: TextStyle(
+                  color: _primaryTextColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Switch(
+              value: _voiceConfig.autoPlay,
+              onChanged: (value) {
+                final next = _voiceConfig.copyWith(autoPlay: value);
+                _updateVoiceConfig(next, saveImmediately: true);
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '音色',
+          style: TextStyle(
+            color: _primaryTextColor,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('voice-scene-voice-id-field'),
+          controller: _voiceIdController,
+          maxLines: 1,
+          decoration: InputDecoration(
+            hintText: '例如：default_zh / mimo_default / default_en',
+            border: const OutlineInputBorder(),
+            isDense: true,
+            suffixIcon: _isSavingVoiceConfig
+                ? const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
+          ),
+          onChanged: (value) {
+            final next = _voiceConfig.copyWith(voiceId: value);
+            _updateVoiceConfig(next);
+          },
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '风格',
+          style: TextStyle(
+            color: _primaryTextColor,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < _voiceStylePresets.length; i++) ...[
+                _buildVoiceStyleOption(_voiceStylePresets[i]),
+                if (i != _voiceStylePresets.length - 1)
+                  Divider(height: 1, thickness: 1, color: borderColor),
+              ],
+              Divider(height: 1, thickness: 1, color: borderColor),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '自定义补充',
+                      style: TextStyle(
+                        color: _primaryTextColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      key: const Key('voice-scene-custom-style-field'),
+                      controller: _voiceCustomStyleController,
+                      enabled: !isSinging,
+                      maxLines: 2,
+                      minLines: 1,
+                      decoration: InputDecoration(
+                        hintText: isSinging
+                            ? '唱歌模式下不支持附加风格'
+                            : '例如：更温柔、节奏慢一点、偏播客感',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onChanged: (value) {
+                        final next = _voiceConfig.copyWith(customStyle: value);
+                        _updateVoiceConfig(next);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVoiceStyleOption(String preset) {
+    final selected = _voiceConfig.stylePreset == preset;
+    return InkWell(
+      key: Key('voice-style-option-$preset'),
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        final next = _voiceConfig.copyWith(
+          stylePreset: preset,
+          customStyle: preset == '唱歌' ? '' : _voiceCustomStyleController.text,
+        );
+        if (preset == '唱歌' && _voiceCustomStyleController.text.isNotEmpty) {
+          _syncVoiceControllers(next);
+        }
+        _updateVoiceConfig(next, saveImmediately: true);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
+              size: 18,
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : _tertiaryTextColor,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                preset,
+                style: TextStyle(
+                  color: _primaryTextColor,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDefaultSceneRow(SceneCatalogItem scene) {
     final isSaving = _isSavingScene(scene.sceneId);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Expanded(
-            flex: 4,
-            child: Tooltip(
-              message: _sceneTooltip(scene),
-              triggerMode: TooltipTriggerMode.tap,
-              showDuration: const Duration(seconds: 3),
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      _sceneDisplayName(scene.sceneId),
-                      style: TextStyle(
-                        color: _primaryTextColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'PingFang SC',
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  if (_isAgentScene(scene.sceneId)) ...[
-                    const AgentAvatarButton(size: 30, showEditBadge: true),
-                    const SizedBox(width: 6),
-                  ],
-                  Icon(Icons.info_outline, size: 15, color: _tertiaryTextColor),
-                ],
-              ),
-            ),
-          ),
+          Expanded(flex: 4, child: _buildSceneLabel(scene)),
           const SizedBox(width: 10),
           Expanded(
             flex: 6,
-            child: Builder(
-              builder: (fieldContext) {
-                return InkWell(
-                  onTap: isSaving
-                      ? null
-                      : () => _openSceneSelector(scene, fieldContext),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 11,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _cardColor,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: _isDarkTheme
-                            ? context.omniPalette.borderSubtle
-                            : const Color(0x1A000000),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _selectionLabel(scene),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: _primaryTextColor,
-                              fontSize: 13,
-                              fontFamily: 'PingFang SC',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          size: 18,
-                          color: _tertiaryTextColor,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+            child: _buildSceneSelectorField(scene, isSaving: isSaving),
           ),
           if (isSaving) ...[
             const SizedBox(width: 8),
@@ -561,6 +875,102 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildVoiceSceneRow(SceneCatalogItem scene) {
+    final isSaving = _isSavingScene(scene.sceneId);
+    final isExpanded = _expandedSceneIds.contains(scene.sceneId);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 4,
+                child: Row(
+                  children: [
+                    Expanded(child: _buildSceneLabel(scene)),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      key: const Key('voice-scene-expand-button'),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 22,
+                        height: 22,
+                      ),
+                      splashRadius: 14,
+                      tooltip: isExpanded ? '收起语音设置' : '展开语音设置',
+                      onPressed: () => _toggleSceneExpanded(scene.sceneId),
+                      icon: Icon(
+                        isExpanded
+                            ? Icons.expand_less_rounded
+                            : Icons.tune_rounded,
+                        size: 18,
+                        color: _tertiaryTextColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 6,
+                child: _buildSceneSelectorField(scene, isSaving: isSaving),
+              ),
+              if (isSaving) ...[
+                const SizedBox(width: 8),
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (isExpanded)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 2, bottom: 6),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            decoration: BoxDecoration(
+              color: _cardColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isDarkTheme
+                    ? context.omniPalette.borderSubtle
+                    : const Color(0x14000000),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _sceneTooltip(scene),
+                  style: TextStyle(
+                    color: _secondaryTextColor,
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildVoiceSettings(),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSceneRow(SceneCatalogItem scene) {
+    if (_isVoiceScene(scene.sceneId)) {
+      return _buildVoiceSceneRow(scene);
+    }
+    return _buildDefaultSceneRow(scene);
   }
 
   @override
@@ -605,7 +1015,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                         if (_showManualRefreshButton)
                           const SizedBox(height: 12),
                         Text(
-                          context.l10n.sceneModelSearchHint,
+                          '点击右侧按钮后，可按 Provider 搜索、折叠并选择模型；顶部搜索框固定不随列表滚动。',
                           style: TextStyle(
                             color: _secondaryTextColor,
                             fontSize: 12,
@@ -805,6 +1215,9 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
 
   Widget _buildRestoreDefaultTile() {
     final selected = widget.currentBinding == null;
+    final label = widget.scene.sceneId == 'scene.voice'
+        ? '清除绑定'
+        : '恢复默认（${widget.scene.defaultModel}）';
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 4),
       child: InkWell(
@@ -825,7 +1238,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
             children: [
               Expanded(
                 child: Text(
-                  'Restore default (${widget.scene.defaultModel})',
+                  '恢复默认（${widget.scene.defaultModel}）',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
