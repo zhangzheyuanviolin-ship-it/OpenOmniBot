@@ -18,6 +18,7 @@ import cn.com.omnimind.bot.ui.halfScreen.HalfScreenListenerImpl
 import cn.com.omnimind.bot.ui.platformview.AgentBrowserPlatformViewFactory
 import cn.com.omnimind.bot.ui.platformview.EmbeddedTerminalPlatformViewFactory
 import cn.com.omnimind.bot.update.AppUpdateManager
+import cn.com.omnimind.bot.utg.UtgBridge
 import cn.com.omnimind.bot.util.AssistsUtil
 import cn.com.omnimind.bot.util.SchemeUtil
 import io.flutter.embedding.android.FlutterActivity
@@ -79,6 +80,13 @@ class MainActivity : FlutterActivity() {
                 OmniInferLocalRuntime.handleAppOpen(this@MainActivity)
             }.onFailure { error ->
                 OmniLog.e(TAG, "MainActivity auto-start local model service failed", error)
+            }
+        }
+        lifecycleScope.launch {
+            runCatching {
+                UtgBridge.restoreProviderIfEnabled(this@MainActivity)
+            }.onFailure { error ->
+                OmniLog.e(TAG, "MainActivity auto-start UTG provider failed", error)
             }
         }
         if (savedInstanceState == null) {
