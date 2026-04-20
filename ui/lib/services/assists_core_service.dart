@@ -226,8 +226,8 @@ class EmbeddedProviderInstallResult {
   }
 }
 
-class UtgPathSummary {
-  final String pathId;
+class UtgFunctionSummary {
+  final String functionId;
   final String description;
   final int stepCount;
   final List<String> parameterNames;
@@ -246,16 +246,16 @@ class UtgPathSummary {
   final String syncOrigin;
   final String cloudBaseUrl;
   final String lastSyncedAt;
-  final String pathKind;
+  final String assetKind;
   final String assetState;
-  final String derivedFromRawPathId;
+  final String derivedFromRawFunctionId;
   final int runCount;
   final int successCount;
   final int failCount;
   final Map<String, dynamic> lastRun;
 
-  const UtgPathSummary({
-    required this.pathId,
+  const UtgFunctionSummary({
+    required this.functionId,
     required this.description,
     required this.stepCount,
     required this.parameterNames,
@@ -274,19 +274,19 @@ class UtgPathSummary {
     required this.syncOrigin,
     required this.cloudBaseUrl,
     required this.lastSyncedAt,
-    required this.pathKind,
+    required this.assetKind,
     required this.assetState,
-    required this.derivedFromRawPathId,
+    required this.derivedFromRawFunctionId,
     required this.runCount,
     required this.successCount,
     required this.failCount,
     required this.lastRun,
   });
 
-  factory UtgPathSummary.fromMap(Map<dynamic, dynamic>? map) {
+  factory UtgFunctionSummary.fromMap(Map<dynamic, dynamic>? map) {
     final raw = map ?? const {};
-    return UtgPathSummary(
-      pathId: (raw['path_id'] ?? '').toString(),
+    return UtgFunctionSummary(
+      functionId: (raw['function_id'] ?? '').toString(),
       description: (raw['description'] ?? '').toString(),
       stepCount: raw['step_count'] is num
           ? (raw['step_count'] as num).toInt()
@@ -315,9 +315,10 @@ class UtgPathSummary {
       syncOrigin: (raw['sync_origin'] ?? '').toString(),
       cloudBaseUrl: (raw['cloud_base_url'] ?? '').toString(),
       lastSyncedAt: (raw['last_synced_at'] ?? '').toString(),
-      pathKind: (raw['path_kind'] ?? '').toString(),
+      assetKind: (raw['function_kind'] ?? raw['asset_kind'] ?? '').toString(),
       assetState: (raw['asset_state'] ?? '').toString(),
-      derivedFromRawPathId: (raw['derived_from_raw_path_id'] ?? '').toString(),
+      derivedFromRawFunctionId: (raw['derived_from_raw_function_id'] ?? '')
+          .toString(),
       runCount: ((raw['run_stats'] as Map?)?['run_count'] is num)
           ? (((raw['run_stats'] as Map?)?['run_count'] as num).toInt())
           : int.tryParse(
@@ -348,30 +349,30 @@ class UtgPathSummary {
   }
 }
 
-class UtgPathsSnapshot {
+class UtgFunctionsSnapshot {
   final bool success;
   final int count;
-  final List<UtgPathSummary> paths;
+  final List<UtgFunctionSummary> functions;
   final String provider;
 
-  const UtgPathsSnapshot({
+  const UtgFunctionsSnapshot({
     required this.success,
     required this.count,
-    required this.paths,
+    required this.functions,
     required this.provider,
   });
 
-  factory UtgPathsSnapshot.fromMap(Map<String, dynamic> map) {
-    return UtgPathsSnapshot(
+  factory UtgFunctionsSnapshot.fromMap(Map<String, dynamic> map) {
+    return UtgFunctionsSnapshot(
       success: map['success'] == true,
       count: map['count'] is num
           ? (map['count'] as num).toInt()
           : int.tryParse((map['count'] ?? '0').toString()) ?? 0,
-      paths:
-          (map['paths'] as List<dynamic>?)
-              ?.map((e) => UtgPathSummary.fromMap(e as Map?))
+      functions:
+          (map['functions'] as List<dynamic>?)
+              ?.map((e) => UtgFunctionSummary.fromMap(e as Map?))
               .toList() ??
-          const <UtgPathSummary>[],
+          const <UtgFunctionSummary>[],
       provider: (map['provider'] ?? '').toString(),
     );
   }
@@ -408,7 +409,7 @@ class UtgBridgeExecutionContext {
 class UtgManualRunResult {
   final bool success;
   final String goal;
-  final String pathId;
+  final String functionId;
   final String? errorCode;
   final String? errorMessage;
   final Map<String, dynamic> terminalState;
@@ -419,7 +420,7 @@ class UtgManualRunResult {
   const UtgManualRunResult({
     required this.success,
     required this.goal,
-    required this.pathId,
+    required this.functionId,
     required this.errorCode,
     required this.errorMessage,
     required this.terminalState,
@@ -432,7 +433,7 @@ class UtgManualRunResult {
     return UtgManualRunResult(
       success: map['success'] == true,
       goal: (map['goal'] ?? '').toString(),
-      pathId: (map['path_id'] ?? map['function_id'] ?? '').toString(),
+      functionId: (map['function_id'] ?? '').toString(),
       errorCode: map['error_code']?.toString(),
       errorMessage: map['error_message']?.toString(),
       terminalState:
@@ -447,10 +448,10 @@ class UtgManualRunResult {
   }
 }
 
-class UtgPathMutationResult {
+class UtgFunctionMutationResult {
   final bool success;
-  final String pathId;
-  final String createdPathId;
+  final String functionId;
+  final String createdFunctionId;
   final String? errorCode;
   final String? errorMessage;
   final bool deleted;
@@ -458,15 +459,15 @@ class UtgPathMutationResult {
   final bool alreadyExists;
   final int count;
   final String? cloudBaseUrl;
-  final String pathKind;
+  final String assetKind;
   final String assetState;
-  final String derivedFromRawPathId;
+  final String derivedFromRawFunctionId;
   final Map<String, dynamic> rawJson;
 
-  const UtgPathMutationResult({
+  const UtgFunctionMutationResult({
     required this.success,
-    required this.pathId,
-    required this.createdPathId,
+    required this.functionId,
+    required this.createdFunctionId,
     required this.errorCode,
     required this.errorMessage,
     required this.deleted,
@@ -474,17 +475,18 @@ class UtgPathMutationResult {
     required this.alreadyExists,
     required this.count,
     required this.cloudBaseUrl,
-    required this.pathKind,
+    required this.assetKind,
     required this.assetState,
-    required this.derivedFromRawPathId,
+    required this.derivedFromRawFunctionId,
     required this.rawJson,
   });
 
-  factory UtgPathMutationResult.fromMap(Map<String, dynamic> map) {
-    return UtgPathMutationResult(
+  factory UtgFunctionMutationResult.fromMap(Map<String, dynamic> map) {
+    return UtgFunctionMutationResult(
       success: map['success'] == true,
-      pathId: (map['path_id'] ?? '').toString(),
-      createdPathId: (map['created_path_id'] ?? '').toString(),
+      functionId: (map['function_id'] ?? '').toString(),
+      createdFunctionId:
+          (map['created_function_id'] ?? map['function_id'] ?? '').toString(),
       errorCode: map['error_code']?.toString(),
       errorMessage: map['error_message']?.toString(),
       deleted: map['deleted'] == true,
@@ -494,9 +496,10 @@ class UtgPathMutationResult {
           ? (map['count'] as num).toInt()
           : int.tryParse((map['count'] ?? '0').toString()) ?? 0,
       cloudBaseUrl: map['cloud_base_url']?.toString(),
-      pathKind: (map['path_kind'] ?? '').toString(),
+      assetKind: (map['function_kind'] ?? map['asset_kind'] ?? '').toString(),
       assetState: (map['asset_state'] ?? '').toString(),
-      derivedFromRawPathId: (map['derived_from_raw_path_id'] ?? '').toString(),
+      derivedFromRawFunctionId: (map['derived_from_raw_function_id'] ?? '')
+          .toString(),
       rawJson: Map<String, dynamic>.from(map),
     );
   }
@@ -542,9 +545,9 @@ class UtgRunLogSummary {
   final num? durationMs;
   final String toolName;
   final String compileStatus;
-  final String compilePathId;
+  final String compileFunctionId;
   final String compileMode;
-  final String actPathId;
+  final String actFunctionId;
   final String source;
   final String compileSummary;
   final String operationDescription;
@@ -565,9 +568,9 @@ class UtgRunLogSummary {
     required this.durationMs,
     required this.toolName,
     required this.compileStatus,
-    required this.compilePathId,
+    required this.compileFunctionId,
     required this.compileMode,
-    required this.actPathId,
+    required this.actFunctionId,
     required this.source,
     required this.compileSummary,
     required this.operationDescription,
@@ -593,9 +596,9 @@ class UtgRunLogSummary {
       durationMs: raw['duration_ms'] as num?,
       toolName: (raw['tool_name'] ?? '').toString(),
       compileStatus: (raw['compile_status'] ?? '').toString(),
-      compilePathId: (raw['compile_path_id'] ?? '').toString(),
+      compileFunctionId: (raw['compile_function_id'] ?? '').toString(),
       compileMode: (raw['compile_mode'] ?? '').toString(),
-      actPathId: (raw['act_path_id'] ?? '').toString(),
+      actFunctionId: (raw['act_function_id'] ?? '').toString(),
       source: (raw['source'] ?? '').toString(),
       compileSummary: (raw['compile_summary'] ?? '').toString(),
       operationDescription: (raw['operation_description'] ?? '').toString(),
@@ -689,7 +692,7 @@ class UtgRunLogDetail {
 class UtgRunLogImportResult {
   final bool success;
   final String runId;
-  final String createdPathId;
+  final String createdFunctionId;
   final String? errorCode;
   final String? errorMessage;
   final int pathsCreated;
@@ -698,14 +701,14 @@ class UtgRunLogImportResult {
   final int functionsCreated;
   final List<String> warnings;
   final String runLogPath;
-  final String pathKind;
+  final String assetKind;
   final String assetState;
   final Map<String, dynamic> rawJson;
 
   const UtgRunLogImportResult({
     required this.success,
     required this.runId,
-    required this.createdPathId,
+    required this.createdFunctionId,
     required this.errorCode,
     required this.errorMessage,
     required this.pathsCreated,
@@ -714,7 +717,7 @@ class UtgRunLogImportResult {
     required this.functionsCreated,
     required this.warnings,
     required this.runLogPath,
-    required this.pathKind,
+    required this.assetKind,
     required this.assetState,
     required this.rawJson,
   });
@@ -723,9 +726,8 @@ class UtgRunLogImportResult {
     return UtgRunLogImportResult(
       success: map['success'] == true,
       runId: (map['run_id'] ?? '').toString(),
-      createdPathId:
-          (map['created_path_id'] ?? map['function_id'] ?? map['path_id'] ?? '')
-              .toString(),
+      createdFunctionId:
+          (map['created_function_id'] ?? map['function_id'] ?? '').toString(),
       errorCode: map['error_code']?.toString(),
       errorMessage: map['error_message']?.toString(),
       pathsCreated: map['paths_created'] is num
@@ -746,50 +748,55 @@ class UtgRunLogImportResult {
               .toList() ??
           const <String>[],
       runLogPath: (map['run_log_path'] ?? '').toString(),
-      pathKind: (map['path_kind'] ?? '').toString(),
+      assetKind: (map['function_kind'] ?? map['asset_kind'] ?? '').toString(),
       assetState: (map['asset_state'] ?? '').toString(),
       rawJson: Map<String, dynamic>.from(map),
     );
   }
 }
 
-class UtgAppendRunLogResult {
-  final bool success;
-  final String runId;
-  final String runLogPath;
-  final String provider;
-  final String? errorCode;
-  final String? errorMessage;
-  final Map<String, dynamic> runLog;
+/// VLM 预处理钩子结果
+/// execution_route: "utg" (使用缓存), "vlm" (使用 planner), "blocked" (中止)
+class UtgVlmPreHookResult {
+  final String kind; // hit, miss, disabled_or_fallback, hard_fail
+  final String summary;
+  final String? functionId;
+  final List<Map<String, dynamic>> tools;
+  final String plannerGuidance;
+  final bool fallbackAllowed;
+  final String executionRoute; // utg, vlm, blocked
   final Map<String, dynamic> rawJson;
 
-  const UtgAppendRunLogResult({
-    required this.success,
-    required this.runId,
-    required this.runLogPath,
-    required this.provider,
-    required this.errorCode,
-    required this.errorMessage,
-    required this.runLog,
+  const UtgVlmPreHookResult({
+    required this.kind,
+    required this.summary,
+    required this.functionId,
+    required this.tools,
+    required this.plannerGuidance,
+    required this.fallbackAllowed,
+    required this.executionRoute,
     required this.rawJson,
   });
 
-  factory UtgAppendRunLogResult.fromMap(Map<String, dynamic> map) {
-    return UtgAppendRunLogResult(
-      success: map['success'] == true,
-      runId: (map['run_id'] ?? '').toString(),
-      runLogPath: (map['run_log_path'] ?? '').toString(),
-      provider: (map['provider'] ?? '').toString(),
-      errorCode: map['error_code']?.toString(),
-      errorMessage: map['error_message']?.toString(),
-      runLog: Map<String, dynamic>.from(
-        (map['run_log'] as Map<dynamic, dynamic>? ?? const {}).map(
-          (k, v) => MapEntry(k.toString(), v),
-        ),
-      ),
+  factory UtgVlmPreHookResult.fromMap(Map<String, dynamic> map) {
+    final toolsList = (map['tools'] as List<dynamic>? ?? [])
+        .map((t) => t is Map ? Map<String, dynamic>.from(t) : <String, dynamic>{})
+        .toList();
+    return UtgVlmPreHookResult(
+      kind: (map['kind'] ?? '').toString(),
+      summary: (map['summary'] ?? '').toString(),
+      functionId: map['function_id']?.toString(),
+      tools: toolsList,
+      plannerGuidance: (map['planner_guidance'] ?? '').toString(),
+      fallbackAllowed: map['fallback_allowed'] == true,
+      executionRoute: (map['execution_route'] ?? 'vlm').toString(),
       rawJson: Map<String, dynamic>.from(map),
     );
   }
+
+  bool get isHit => executionRoute == 'utg';
+  bool get shouldFallbackToVlm => executionRoute == 'vlm';
+  bool get isBlocked => executionRoute == 'blocked';
 }
 
 class AgentToolEventData {
@@ -1695,17 +1702,17 @@ class AssistsMessageService {
     return UtgRunLogImportResult.fromMap(decoded);
   }
 
-  static Future<UtgAppendRunLogResult> ingestTraceRunLog({
-    required Map<String, dynamic> ingestPayload,
+  /// 获取 run log 时间线数据（用于可视化）
+  static Future<Map<String, dynamic>> getRunLogTimeline({
+    required String runId,
     String? baseUrl,
   }) async {
     final decoded = await _requestUtgJson(
-      method: 'POST',
-      path: '/run_logs/import_trace',
+      method: 'GET',
+      path: '/run_logs/${Uri.encodeComponent(runId.trim())}/timeline_payload',
       baseUrl: baseUrl,
-      payload: ingestPayload,
     );
-    return UtgAppendRunLogResult.fromMap(decoded);
+    return Map<String, dynamic>.from(decoded);
   }
 
   static Future<UtgManualRunResult> replayUtgRunLog({
@@ -1732,22 +1739,44 @@ class AssistsMessageService {
     return UtgManualRunResult.fromMap(decoded);
   }
 
-  static Future<UtgPathsSnapshot> getUtgPaths({String? baseUrl}) async {
+  static Future<UtgFunctionsSnapshot> getUtgFunctions({String? baseUrl}) async {
     final decoded = await _requestUtgJson(
       method: 'GET',
       path: '/functions',
       baseUrl: baseUrl,
     );
-    return UtgPathsSnapshot.fromMap(decoded);
+    return UtgFunctionsSnapshot.fromMap(decoded);
   }
 
-  static Future<Map<String, dynamic>> getUtgPathBundle({
-    required String pathId,
+  /// VLM 预处理钩子 - 检查目标是否可以使用 UTG 缓存
+  /// 返回 execution_route: "utg" (命中缓存), "vlm" (需要 planner), "blocked" (中止)
+  static Future<UtgVlmPreHookResult> vlmPreHook({
+    required String goal,
+    String? currentPackageName,
+    bool fallbackAllowed = true,
+    String? baseUrl,
+  }) async {
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/vlm/pre_hook',
+      baseUrl: baseUrl,
+      payload: {
+        'goal': goal.trim(),
+        if (currentPackageName != null && currentPackageName.trim().isNotEmpty)
+          'current_package_name': currentPackageName.trim(),
+        'fallback_allowed': fallbackAllowed,
+      },
+    );
+    return UtgVlmPreHookResult.fromMap(decoded);
+  }
+
+  static Future<Map<String, dynamic>> getUtgFunctionBundle({
+    required String functionId,
     String? baseUrl,
   }) async {
     final decoded = await _requestUtgJson(
       method: 'GET',
-      path: '/functions/$pathId/bundle',
+      path: '/functions/$functionId/bundle',
       baseUrl: baseUrl,
     );
     final normalized = jsonDecode(jsonEncode(decoded));
@@ -1757,35 +1786,37 @@ class AssistsMessageService {
     if (normalized is Map) {
       return Map<String, dynamic>.from(normalized);
     }
-    throw Exception('OmniFlow 轨迹详情响应格式错误');
+    throw Exception('OmniFlow 资产详情响应格式错误');
   }
 
-  static Future<UtgPathMutationResult> deleteUtgPath({
-    required String pathId,
+  static Future<UtgFunctionMutationResult> deleteUtgFunction({
+    required String functionId,
     String? baseUrl,
   }) async {
     final decoded = await _requestUtgJson(
       method: 'DELETE',
-      path: '/functions/$pathId',
+      path: '/functions/$functionId',
       baseUrl: baseUrl,
     );
-    return UtgPathMutationResult.fromMap(decoded);
+    return UtgFunctionMutationResult.fromMap(decoded);
   }
 
-  static Future<UtgPathMutationResult> distillUtgPath({
-    required String pathId,
+  /// 导入 run_log 为持久化 function
+  static Future<UtgFunctionMutationResult> importRunLog({
+    required String runId,
     String? baseUrl,
   }) async {
     final decoded = await _requestUtgJson(
       method: 'POST',
-      path: '/functions/$pathId/distill',
+      path: '/run_logs/import',
       baseUrl: baseUrl,
+      payload: {'run_id': runId},
     );
-    return UtgPathMutationResult.fromMap(decoded);
+    return UtgFunctionMutationResult.fromMap(decoded);
   }
 
-  static Future<UtgPathMutationResult> downloadCloudUtgPath({
-    String pathId = '',
+  static Future<UtgFunctionMutationResult> downloadCloudUtgFunction({
+    String functionId = '',
     required String cloudBaseUrl,
     String? baseUrl,
   }) async {
@@ -1795,14 +1826,14 @@ class AssistsMessageService {
       baseUrl: baseUrl,
       payload: {
         'cloud_base_url': cloudBaseUrl.trim(),
-        'path_id': pathId.trim(),
+        'function_id': functionId.trim(),
       },
     );
-    return UtgPathMutationResult.fromMap(decoded);
+    return UtgFunctionMutationResult.fromMap(decoded);
   }
 
-  static Future<UtgPathMutationResult> uploadCloudUtgPath({
-    required String pathId,
+  static Future<UtgFunctionMutationResult> uploadCloudUtgFunction({
+    required String functionId,
     required String cloudBaseUrl,
     String? baseUrl,
   }) async {
@@ -1812,14 +1843,14 @@ class AssistsMessageService {
       baseUrl: baseUrl,
       payload: {
         'cloud_base_url': cloudBaseUrl.trim(),
-        'path_id': pathId.trim(),
+        'function_id': functionId.trim(),
       },
     );
-    return UtgPathMutationResult.fromMap(decoded);
+    return UtgFunctionMutationResult.fromMap(decoded);
   }
 
-  static Future<UtgManualRunResult> runUtgPath({
-    required String pathId,
+  static Future<UtgManualRunResult> runUtgFunction({
+    required String functionId,
     Map<String, String> arguments = const {},
     String? baseUrl,
   }) async {
@@ -1833,8 +1864,8 @@ class AssistsMessageService {
       path: '/functions/execute',
       baseUrl: baseUrl,
       payload: {
-        'goal': 'manual_utg_path_run:$pathId',
-        'path_id': pathId,
+        'goal': 'manual_utg_function_run:$functionId',
+        'function_id': functionId,
         'arguments': arguments,
         'bridge_base_url': executionContext.bridgeBaseUrl,
         'bridge_token': executionContext.bridgeToken,
