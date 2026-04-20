@@ -71,9 +71,11 @@ class LinkPreviewService {
       }
       // 消息文本经常用 Markdown 包住链接，先清洗尾部符号再去重。
       final normalized = _normalizeExtractedUrl(raw);
-      if (normalized == null ||
-          seen.contains(normalized) ||
-          _looksLikeImageUrl(normalized)) {
+      if (normalized == null || _looksLikeImageUrl(normalized)) {
+        continue;
+      }
+      final previewKey = _canonicalPreviewKey(normalized);
+      if (previewKey == null || seen.contains(previewKey)) {
         continue;
       }
       final uri = Uri.tryParse(normalized);
@@ -82,7 +84,7 @@ class LinkPreviewService {
           uri.host.trim().isEmpty) {
         continue;
       }
-      seen.add(normalized);
+      seen.add(previewKey);
       urls.add(normalized);
       if (urls.length >= maxCount) {
         break;
@@ -103,15 +105,14 @@ class LinkPreviewService {
     }
 
     final existingPreviews = _parsePreviewMaps(existing);
-    final existingByUrl = <String, ChatLinkPreview>{
-      for (final preview in existingPreviews) preview.url: preview,
-    };
+    final existingByUrl = _previewByCanonicalUrl(existingPreviews);
 
     // 保留历史里已完成/失败的预览，只给新链接创建 loading 占位。
     return urls.map((url) {
+      final previewKey = _canonicalPreviewKey(url);
       final preview =
-          existingByUrl[url] ??
-          _memoryCache[url] ??
+          (previewKey == null ? null : existingByUrl[previewKey]) ??
+          (previewKey == null ? null : _cachedPreviewForKey(previewKey)) ??
           ChatLinkPreview.loading(url);
       return preview.toJson();
     }).toList();
@@ -162,6 +163,29 @@ class LinkPreviewService {
   ChatLinkPreview _storeAndReturn(ChatLinkPreview preview) {
     _memoryCache[preview.url] = preview;
     return preview;
+  }
+
+  Map<String, ChatLinkPreview> _previewByCanonicalUrl(
+    List<ChatLinkPreview> previews,
+  ) {
+    final result = <String, ChatLinkPreview>{};
+    for (final preview in previews) {
+      final key = _canonicalPreviewKey(preview.url);
+      if (key == null || result.containsKey(key)) {
+        continue;
+      }
+      result[key] = preview;
+    }
+    return result;
+  }
+
+  ChatLinkPreview? _cachedPreviewForKey(String key) {
+    for (final entry in _memoryCache.entries) {
+      if (_canonicalPreviewKey(entry.key) == key) {
+        return entry.value;
+      }
+    }
+    return null;
   }
 
   ChatLinkPreview _parseHtml(String url, String html) {
@@ -301,6 +325,36 @@ class LinkPreviewService {
       candidate = 'https://$candidate';
     }
     return candidate.isEmpty ? null : candidate;
+  }
+
+  String? _canonicalPreviewKey(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || uri.host.trim().isEmpty) {
+      return null;
+    }
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme != 'http' && scheme != 'https') {
+      return null;
+    }
+    final host = _canonicalPreviewHost(uri.host);
+    final port =
+        (uri.hasPort &&
+            !((scheme == 'http' && uri.port == 80) ||
+                (scheme == 'https' && uri.port == 443)))
+        ? ':${uri.port}'
+        : '';
+    var path = uri.path;
+    while (path.length > 1 && path.endsWith('/')) {
+      path = path.substring(0, path.length - 1);
+    }
+    return '$scheme://$host$port$path${uri.hasQuery ? '?${uri.query}' : ''}';
+  }
+
+  String _canonicalPreviewHost(String host) {
+    final lowerHost = host.toLowerCase();
+    return lowerHost.startsWith('www.')
+        ? lowerHost.substring('www.'.length)
+        : lowerHost;
   }
 
   bool _isTrailingPunctuation(String char) {

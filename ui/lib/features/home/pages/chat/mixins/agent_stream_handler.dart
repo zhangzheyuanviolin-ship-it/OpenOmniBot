@@ -94,7 +94,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
   Future<void> persistAgentConversation();
 
   // Agent 文本消息更新后交给具体页面决定是否补充额外结构化内容。
-  void onAgentTextMessageUpdated(String messageId) {}
+  void onAgentTextMessageUpdated(String messageId, {bool isFinal = true}) {}
 
   void handleAgentThinkingStart() {
     final taskId = currentDispatchTaskId ?? _lastAgentTaskId;
@@ -301,8 +301,8 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
         isAiResponding = false;
       }
     });
-    if (didUpdateTextMessage) {
-      onAgentTextMessageUpdated(aiTextMessageId);
+    if (didUpdateTextMessage || isFinal) {
+      onAgentTextMessageUpdated(aiTextMessageId, isFinal: isFinal);
     }
     _pendingAgentTextTaskId = isFinal ? null : taskId;
     if (isFinal && currentDispatchTaskId == null) {

@@ -743,6 +743,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     if (messageText.isNotEmpty && index != -1) {
       final existing = runtime.messages[index];
       runtime.messages[index] = existing.copyWith(content: existing.content);
+      _syncMessageLinkPreviews(runtime, taskId);
     }
     if (!isErrorMessage && messageText.trim().isNotEmpty) {
       unawaited(
@@ -995,7 +996,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       runtime.messages[index] = existing.copyWith(content: content);
       didUpdateTextMessage = true;
     }
-    if (didUpdateTextMessage) {
+    if (isFinal &&
+        (didUpdateTextMessage ||
+            runtime.messages.any((msg) => msg.id == aiTextMessageId))) {
       _syncMessageLinkPreviews(runtime, aiTextMessageId);
     }
     if (isFinal) {
@@ -1673,7 +1676,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           isSummarizing: isSummarizing,
         ),
       );
-      _syncMessageLinkPreviews(runtime, taskId);
       return;
     }
 
@@ -1700,7 +1702,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       isError: isError,
       isSummarizing: isSummarizing,
     );
-    _syncMessageLinkPreviews(runtime, taskId);
   }
 
   // 将 AI 文本消息里的 URL 同步成 content.linkPreviews，UI 只负责展示该字段。

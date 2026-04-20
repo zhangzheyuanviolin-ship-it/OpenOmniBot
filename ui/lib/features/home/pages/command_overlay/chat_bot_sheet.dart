@@ -227,8 +227,10 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
   Future<void> persistAgentConversation() => _saveConversationToDb();
 
   @override
-  void onAgentTextMessageUpdated(String messageId) {
-    _syncMessageLinkPreviews(messageId);
+  void onAgentTextMessageUpdated(String messageId, {bool isFinal = true}) {
+    if (isFinal) {
+      _syncMessageLinkPreviews(messageId);
+    }
   }
 
   @override
@@ -1210,7 +1212,6 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
             isSummarizing: isSummarizing,
           ),
         );
-        _syncMessageLinkPreviews(taskId);
       } else {
         final existing = _messages[index];
         final content = Map<String, dynamic>.from(existing.content ?? {});
@@ -1228,7 +1229,6 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
           isError: isError,
           isSummarizing: isSummarizing,
         );
-        _syncMessageLinkPreviews(taskId);
       }
     });
   }
@@ -1395,6 +1395,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       setState(() {
         final existing = _messages[index];
         _messages[index] = existing.copyWith(content: existing.content);
+        _syncMessageLinkPreviews(taskId);
       });
     }
     if (!isErrorMessage && messageText.trim().isNotEmpty) {

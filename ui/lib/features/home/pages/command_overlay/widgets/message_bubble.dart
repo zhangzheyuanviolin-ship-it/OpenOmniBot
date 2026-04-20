@@ -90,6 +90,27 @@ class MessageBubble extends StatelessWidget {
         : visualProfile.secondaryTextColor;
   }
 
+  bool _usesThemeDrivenUserBubble() {
+    return !appearanceConfig.isActive &&
+        appearanceConfig.chatTextColorMode != AppBackgroundTextColorMode.custom;
+  }
+
+  Color _resolvedUserBubbleColor(BuildContext context) {
+    return _usesThemeDrivenUserBubble()
+        ? context.omniPalette.accentPrimary
+        : visualProfile.userBubbleColor;
+  }
+
+  Color _resolvedUserTextColor(BuildContext context) {
+    if (!_usesThemeDrivenUserBubble()) {
+      return visualProfile.primaryTextColor;
+    }
+    final bubbleColor = _resolvedUserBubbleColor(context);
+    return bubbleColor.computeLuminance() > 0.45
+        ? const Color(0xFF152033)
+        : Colors.white;
+  }
+
   @override
   Widget build(BuildContext context) {
     // user: 1=用户, 2=AI, 3=系统
@@ -161,18 +182,24 @@ class MessageBubble extends StatelessWidget {
                 ? null
                 : (details) => onUserMessageLongPressStart!(message, details),
             child: Container(
+              key: ValueKey('user-message-bubble-${message.id}'),
               constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: ShapeDecoration(
-                color: visualProfile.userBubbleColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
+                color: _resolvedUserBubbleColor(context),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(18),
+                    topRight: Radius.circular(8),
+                    bottomLeft: Radius.circular(18),
+                    bottomRight: Radius.circular(18),
+                  ),
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (text.isNotEmpty) _buildUserText(text),
+                  if (text.isNotEmpty) _buildUserText(context, text),
                   if (attachments.isNotEmpty) ...[
                     if (text.isNotEmpty) const SizedBox(height: 8),
                     _buildUserAttachmentList(context, attachments),
@@ -656,11 +683,11 @@ class MessageBubble extends StatelessWidget {
   }
 
   /// 构建用户文本（不使用流式效果）
-  Widget _buildUserText(String text) {
+  Widget _buildUserText(BuildContext context, String text) {
     return Text(
       text,
       style: TextStyle(
-        color: visualProfile.primaryTextColor,
+        color: _resolvedUserTextColor(context),
         fontSize: _chatTextSize,
         fontFamily: 'PingFang SC',
         fontWeight: FontWeight.w400,
