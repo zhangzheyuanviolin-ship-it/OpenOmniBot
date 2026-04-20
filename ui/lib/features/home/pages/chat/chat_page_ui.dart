@@ -602,6 +602,21 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       onUserMessageLongPressStart: mode == ChatPageMode.normal
           ? _handleUserMessageLongPressStart
           : null,
+      editingUserMessageId: mode == ChatPageMode.normal
+          ? _editingUserMessageIdByMode[mode]
+          : null,
+      userMessageEditController: mode == ChatPageMode.normal
+          ? _userMessageEditControllerForMode(mode)
+          : null,
+      onUserMessageEditRequested: mode == ChatPageMode.normal
+          ? _startEditingLatestUserMessage
+          : null,
+      onUserMessageEditCancelled: mode == ChatPageMode.normal
+          ? _cancelUserMessageEditing
+          : null,
+      onUserMessageEditSaved: mode == ChatPageMode.normal
+          ? _saveAndResendEditedUserMessage
+          : null,
       visualProfile: visualProfile,
       appearanceConfig: appearanceConfig,
     );
@@ -1545,12 +1560,75 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   }
 
   bool _canRetryUserMessage(ChatMessageModel message) {
+    return _isLatestUserMessage(message);
+  }
+
+  bool _isLatestUserMessage(ChatMessageModel message) {
     if (message.user != 1) return false;
     for (final item in _messages) {
       if (item.user != 1) continue;
       return item.id == message.id;
     }
     return false;
+  }
+
+  void _startEditingLatestUserMessage(ChatMessageModel message) {
+    if (!_isLatestUserMessage(message)) {
+      showToast(
+        'Only the latest user message can be edited',
+        type: ToastType.warning,
+      );
+      return;
+    }
+    final originalText = message.text ?? '';
+    setState(() {
+      _editingUserMessageId = message.id;
+      _editingUserMessageController.value = TextEditingValue(
+        text: originalText,
+        selection: TextSelection.collapsed(offset: originalText.length),
+      );
+    });
+  }
+
+  void _cancelUserMessageEditing() {
+    if (_editingUserMessageId == null &&
+        _editingUserMessageController.text.isEmpty) {
+      return;
+    }
+    setState(() {
+      _editingUserMessageId = null;
+      _editingUserMessageController.clear();
+    });
+  }
+
+  Future<void> _saveAndResendEditedUserMessage(ChatMessageModel message) async {
+    if (_editingUserMessageId != message.id) return;
+    if (!_isLatestUserMessage(message)) {
+      _cancelUserMessageEditing();
+      showToast(
+        'Only the latest user message can be edited',
+        type: ToastType.warning,
+      );
+      return;
+    }
+
+    final editedText = _editingUserMessageController.text.trim();
+    final attachments = _extractRetryAttachments(message);
+    if (editedText.isEmpty && attachments.isEmpty) {
+      showToast(
+        'No content to send after editing',
+        type: ToastType.warning,
+      );
+      return;
+    }
+
+    _cancelUserMessageEditing();
+    if (!mounted) return;
+
+    await _clearRetriedMessageRound(message);
+    if (!mounted) return;
+
+    await _retryUserMessageText(editedText, attachments: attachments);
   }
 
   int _retryMessageRoundLength(ChatMessageModel message) {
@@ -1569,7 +1647,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final removeCount = _retryMessageRoundLength(message);
     if (removeCount <= 0) return;
 
+    final shouldClearEditState = _editingUserMessageId == message.id;
     setState(() {
+      if (shouldClearEditState) {
+        _editingUserMessageId = null;
+        _editingUserMessageController.clear();
+      }
       _messages.removeRange(0, removeCount);
     });
 
@@ -1612,6 +1695,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
 
     if (text.isNotEmpty) {
       await AssistsMessageService.copyToClipboard(text);
+      if (!mounted) return;
+    }
+
+    if (_editingUserMessageId == message.id) {
+      _cancelUserMessageEditing();
       if (!mounted) return;
     }
 

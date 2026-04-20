@@ -1136,6 +1136,11 @@ class ChatMessageList extends StatefulWidget {
   final double bottomOverlayInset;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
+  final String? editingUserMessageId;
+  final TextEditingController? userMessageEditController;
+  final ValueChanged<ChatMessageModel>? onUserMessageEditRequested;
+  final VoidCallback? onUserMessageEditCancelled;
+  final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
 
@@ -1148,6 +1153,11 @@ class ChatMessageList extends StatefulWidget {
     this.onRequestAuthorize,
     this.bottomOverlayInset = 0,
     this.onUserMessageLongPressStart,
+    this.editingUserMessageId,
+    this.userMessageEditController,
+    this.onUserMessageEditRequested,
+    this.onUserMessageEditCancelled,
+    this.onUserMessageEditSaved,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
   });
@@ -1306,6 +1316,13 @@ class _ChatMessageListState extends State<ChatMessageList> {
         ),
       );
     } else {
+      String? latestUserMessageId;
+      for (final item in widget.messages) {
+        if (item.user == 1) {
+          latestUserMessageId = item.id;
+          break;
+        }
+      }
       content = ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
@@ -1322,6 +1339,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
               itemBuilder: (context, index) {
                 final dataIndex = widget.messages.length - 1 - index;
                 final message = widget.messages[dataIndex];
+                final canShowEditAction =
+                    widget.onUserMessageEditRequested != null &&
+                    message.user == 1 &&
+                    message.id == latestUserMessageId;
+                final isEditingUserMessage =
+                    canShowEditAction &&
+                    widget.editingUserMessageId == message.id &&
+                    widget.userMessageEditController != null;
                 final isNewestMessage = dataIndex == 0;
                 final isOldestMessage = dataIndex == widget.messages.length - 1;
                 final bottomPadding = isNewestMessage
@@ -1347,6 +1372,20 @@ class _ChatMessageListState extends State<ChatMessageList> {
                     onRequestAuthorize: widget.onRequestAuthorize,
                     onUserMessageLongPressStart:
                         widget.onUserMessageLongPressStart,
+                    showUserEditButton: canShowEditAction,
+                    isUserMessageEditing: isEditingUserMessage,
+                    userMessageEditController: isEditingUserMessage
+                        ? widget.userMessageEditController
+                        : null,
+                    onUserEditTap: canShowEditAction
+                        ? () => widget.onUserMessageEditRequested?.call(message)
+                        : null,
+                    onCancelUserEdit: isEditingUserMessage
+                        ? widget.onUserMessageEditCancelled
+                        : null,
+                    onSaveUserEdit: isEditingUserMessage
+                        ? () => widget.onUserMessageEditSaved?.call(message)
+                        : null,
                     onStreamingTextLayoutChanged:
                         _handleStreamingTextLayoutChanged,
                     visualProfile: widget.visualProfile,

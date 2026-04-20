@@ -49,6 +49,12 @@ class MessageBubble extends StatelessWidget {
   final OnRequestAuthorize? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
+  final bool showUserEditButton;
+  final bool isUserMessageEditing;
+  final TextEditingController? userMessageEditController;
+  final VoidCallback? onUserEditTap;
+  final VoidCallback? onCancelUserEdit;
+  final VoidCallback? onSaveUserEdit;
   final VoidCallback? onStreamingTextLayoutChanged;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
@@ -63,6 +69,12 @@ class MessageBubble extends StatelessWidget {
     this.onParentScrollHandoff,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
+    this.showUserEditButton = false,
+    this.isUserMessageEditing = false,
+    this.userMessageEditController,
+    this.onUserEditTap,
+    this.onCancelUserEdit,
+    this.onSaveUserEdit,
     this.onStreamingTextLayoutChanged,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
@@ -154,7 +166,8 @@ class MessageBubble extends StatelessWidget {
           final maxBubbleWidth = availableWidth * 0.78;
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onLongPressStart: onUserMessageLongPressStart == null
+            onLongPressStart:
+                isUserMessageEditing || onUserMessageLongPressStart == null
                 ? null
                 : (details) => onUserMessageLongPressStart!(message, details),
             child: Container(
@@ -169,10 +182,40 @@ class MessageBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (text.isNotEmpty) _buildUserText(text),
-                  if (attachments.isNotEmpty) ...[
-                    if (text.isNotEmpty) const SizedBox(height: 8),
-                    _buildUserAttachmentList(context, attachments),
+                  if (isUserMessageEditing && userMessageEditController != null)
+                    _buildUserEditComposer(
+                      context,
+                      userMessageEditController!,
+                      attachments,
+                    )
+                  else ...[
+                    if (text.isNotEmpty) _buildUserText(text),
+                    if (attachments.isNotEmpty) ...[
+                      if (text.isNotEmpty) const SizedBox(height: 8),
+                      _buildUserAttachmentList(context, attachments),
+                    ],
+                    if (showUserEditButton && onUserEditTap != null)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: IconButton(
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 28,
+                            height: 28,
+                          ),
+                          padding: EdgeInsets.zero,
+                          splashRadius: 16,
+                          tooltip: 'Edit message',
+                          onPressed: onUserEditTap,
+                          icon: Icon(
+                            Icons.edit_outlined,
+                            size: 16,
+                            color: visualProfile.primaryTextColor.withValues(
+                              alpha: 0.82,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ],
               ),
@@ -480,6 +523,71 @@ class MessageBubble extends StatelessWidget {
   }
 
   /// 构建用户文本（不使用流式效果）
+  Widget _buildUserEditComposer(
+    BuildContext context,
+    TextEditingController controller,
+    List<Map<String, dynamic>> attachments,
+  ) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final hasText = value.text.trim().isNotEmpty;
+        final canSave = hasText || attachments.isNotEmpty;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              minLines: 1,
+              maxLines: 6,
+              autofocus: true,
+              style: TextStyle(
+                color: visualProfile.primaryTextColor,
+                fontSize: _chatTextSize,
+                fontFamily: 'PingFang SC',
+                fontWeight: FontWeight.w400,
+                height: 1.43,
+                letterSpacing: 0.33,
+              ),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+                hintText: 'Edit your message',
+                hintStyle: TextStyle(
+                  color: visualProfile.primaryTextColor.withValues(alpha: 0.6),
+                  fontSize: _chatTextSize,
+                ),
+              ),
+            ),
+            if (attachments.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _buildUserAttachmentList(context, attachments),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: onCancelUserEdit,
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: canSave ? onSaveUserEdit : null,
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('Save & send'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildUserText(String text) {
     return Text(
       text,
