@@ -21,30 +21,32 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   final TextEditingController _workingDirectoryController =
       TextEditingController();
   final TextEditingController _cloudBaseUrlController = TextEditingController();
-  final TextEditingController _cloudPathIdController = TextEditingController();
-  final TextEditingController _pathSearchController = TextEditingController();
+  final TextEditingController _cloudFunctionIdController =
+      TextEditingController();
+  final TextEditingController _functionSearchController =
+      TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
-  bool _loadingPaths = false;
+  bool _loadingFunctions = false;
   bool _loadingRunLogs = false;
-  bool _downloadingCloudPath = false;
+  bool _downloadingCloudFunction = false;
   bool _utgEnabled = true;
   bool _providerAutoStartEnabled = true;
-  String? _runningPathId;
-  String? _deletingPathId;
-  String? _distillingPathId;
-  String? _uploadingPathId;
-  String? _expandedPathId;
+  String? _runningFunctionId;
+  String? _deletingFunctionId;
+  String? _distillingFunctionId;
+  String? _uploadingFunctionId;
+  String? _expandedFunctionId;
   String? _expandedRunId;
-  String? _viewingPathId;
+  String? _viewingFunctionId;
   String? _importingRunId;
   String? _providerControlAction;
-  String? _highlightedPathId;
+  String? _highlightedFunctionId;
   bool _runLogsExpanded = false;
   String _runLogFilter = 'all';
-  final Map<String, Map<String, dynamic>> _pathBundleCache = {};
-  final Map<String, String> _pathBundleErrorById = {};
+  final Map<String, Map<String, dynamic>> _functionBundleCache = {};
+  final Map<String, String> _functionBundleErrorById = {};
   final Map<String, UtgRunLogDetail> _runLogDetailCache = {};
   final Map<String, String> _runLogDetailErrorById = {};
   final Set<String> _loadingRunLogDetailIds = <String>{};
@@ -52,9 +54,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   final Set<String> _expandedFunctionKeys = <String>{};
 
   UtgBridgeConfig? _config;
-  UtgPathsSnapshot? _pathsSnapshot;
+  UtgFunctionsSnapshot? _functionsSnapshot;
   UtgRunLogsSnapshot? _runLogsSnapshot;
-  String? _pathsError;
+  String? _functionsError;
   String? _runLogsError;
 
   @override
@@ -69,8 +71,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     _startCommandController.dispose();
     _workingDirectoryController.dispose();
     _cloudBaseUrlController.dispose();
-    _cloudPathIdController.dispose();
-    _pathSearchController.dispose();
+    _cloudFunctionIdController.dispose();
+    _functionSearchController.dispose();
     super.dispose();
   }
 
@@ -81,7 +83,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       if (!mounted) return;
       _applyConfig(config);
       await Future.wait([
-        _loadPaths(baseUrl: config.resolvedOmniflowBaseUrl, silent: true),
+        _loadFunctions(baseUrl: config.resolvedOmniflowBaseUrl, silent: true),
         _loadRunLogs(baseUrl: config.resolvedOmniflowBaseUrl, silent: true),
       ]);
     } on PlatformException catch (e) {
@@ -124,7 +126,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       if (!mounted) return;
       _applyConfig(saved);
       await Future.wait([
-        _loadPaths(baseUrl: saved.resolvedOmniflowBaseUrl, silent: true),
+        _loadFunctions(baseUrl: saved.resolvedOmniflowBaseUrl, silent: true),
         _loadRunLogs(baseUrl: saved.resolvedOmniflowBaseUrl, silent: true),
       ]);
       showToast('OmniFlow 配置已保存', type: ToastType.success);
@@ -140,40 +142,40 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     }
   }
 
-  Future<void> _loadPaths({String? baseUrl, bool silent = false}) async {
+  Future<void> _loadFunctions({String? baseUrl, bool silent = false}) async {
     if (!silent) {
       setState(() {
-        _loadingPaths = true;
-        _pathsError = null;
+        _loadingFunctions = true;
+        _functionsError = null;
       });
     } else {
-      _loadingPaths = true;
-      _pathsError = null;
+      _loadingFunctions = true;
+      _functionsError = null;
     }
     try {
-      final snapshot = await AssistsMessageService.getUtgPaths(
+      final snapshot = await AssistsMessageService.getUtgFunctions(
         baseUrl: baseUrl,
       );
       if (!mounted) return;
       setState(() {
-        _pathsSnapshot = snapshot;
-        _pathsError = null;
+        _functionsSnapshot = snapshot;
+        _functionsError = null;
       });
     } catch (e) {
       final errorText = e.toString().replaceFirst('Exception: ', '');
       if (!mounted) return;
       setState(() {
-        _pathsSnapshot = null;
-        _pathsError = errorText;
+        _functionsSnapshot = null;
+        _functionsError = errorText;
       });
       if (!silent) {
-        showToast('加载 OmniFlow 轨迹失败：$errorText', type: ToastType.error);
+        showToast('加载 OmniFlow 资产失败：$errorText', type: ToastType.error);
       }
     } finally {
       if (mounted) {
-        setState(() => _loadingPaths = false);
+        setState(() => _loadingFunctions = false);
       } else {
-        _loadingPaths = false;
+        _loadingFunctions = false;
       }
     }
   }
@@ -374,22 +376,22 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     );
   }
 
-  Widget _buildPathCard(UtgPathSummary path) {
-    final description = path.description.trim().isEmpty
+  Widget _buildFunctionCard(UtgFunctionSummary function) {
+    final description = function.description.trim().isEmpty
         ? '无描述'
-        : path.description;
-    final running = _runningPathId == path.pathId;
-    final deleting = _deletingPathId == path.pathId;
-    final distilling = _distillingPathId == path.pathId;
-    final uploading = _uploadingPathId == path.pathId;
-    final viewing = _viewingPathId == path.pathId;
-    final expanded = _expandedPathId == path.pathId;
-    final highlighted = _highlightedPathId == path.pathId;
-    final isTemporary = _isTemporaryPath(path);
-    final isReady = _isReadyPath(path);
-    final bundle = _pathBundleCache[path.pathId];
-    final bundleError = _pathBundleErrorById[path.pathId];
-    final lastRun = path.lastRun;
+        : function.description;
+    final running = _runningFunctionId == function.functionId;
+    final deleting = _deletingFunctionId == function.functionId;
+    final distilling = _distillingFunctionId == function.functionId;
+    final uploading = _uploadingFunctionId == function.functionId;
+    final viewing = _viewingFunctionId == function.functionId;
+    final expanded = _expandedFunctionId == function.functionId;
+    final highlighted = _highlightedFunctionId == function.functionId;
+    final isTemporary = _isTemporaryFunction(function);
+    final isReady = _isReadyFunction(function);
+    final bundle = _functionBundleCache[function.functionId];
+    final bundleError = _functionBundleErrorById[function.functionId];
+    final lastRun = function.lastRun;
     final lastRunSuccess = lastRun['success'] == true;
     final hasLastRun = lastRun.isNotEmpty;
     return Container(
@@ -413,7 +415,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            path.pathId,
+            function.functionId,
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
@@ -436,7 +438,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             children: [
               if (highlighted) _buildPill('新导入'),
               _buildPill(
-                _pathKindLabel(path),
+                _assetKindLabel(function),
                 backgroundColor: isTemporary
                     ? const Color(0xFFFFF4E5)
                     : isReady
@@ -448,8 +450,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                     ? const Color(0xFF117A37)
                     : AppColors.text70,
               ),
-              if (path.appName.trim().isNotEmpty) _buildPill(path.appName),
-              _buildPill(_syncStatusLabel(path.syncStatus)),
+              if (function.appName.trim().isNotEmpty)
+                _buildPill(function.appName),
+              _buildPill(_syncStatusLabel(function.syncStatus)),
               if (hasLastRun)
                 _buildPill(
                   lastRunSuccess ? '最近成功' : '最近失败',
@@ -460,22 +463,24 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       ? const Color(0xFF117A37)
                       : const Color(0xFFB42318),
                 ),
-              _buildPill('${path.stepCount} steps'),
-              _buildPill('parameters ${path.parameterNames.length}'),
-              if (path.parameterNames.isEmpty) _buildPill('无参数'),
-              if (path.parameterNames.isNotEmpty) _buildPill('需填写参数'),
-              ...path.parameterNames.map((parameter) => _buildPill(parameter)),
+              _buildPill('${function.stepCount} steps'),
+              _buildPill('parameters ${function.parameterNames.length}'),
+              if (function.parameterNames.isEmpty) _buildPill('无参数'),
+              if (function.parameterNames.isNotEmpty) _buildPill('需填写参数'),
+              ...function.parameterNames.map(
+                (parameter) => _buildPill(parameter),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           _buildInfoRow(
             'app',
             [
-              path.appName,
-              path.packageName,
+              function.appName,
+              function.packageName,
             ].where((e) => e.trim().isNotEmpty).join(' · '),
           ),
-          if (path.parameterExamples.isNotEmpty) ...[
+          if (function.parameterExamples.isNotEmpty) ...[
             const SizedBox(height: 10),
             const Text(
               'parameter 示例',
@@ -489,7 +494,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: path.parameterExamples.entries
+              children: function.parameterExamples.entries
                   .map((entry) => _buildPill('${entry.key}=${entry.value}'))
                   .toList(),
             ),
@@ -503,13 +508,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
               children: [
                 OutlinedButton.icon(
                   onPressed:
-                      _runningPathId != null ||
-                          _deletingPathId != null ||
-                          _distillingPathId != null ||
-                          _uploadingPathId != null ||
-                          _viewingPathId != null
+                      _runningFunctionId != null ||
+                          _deletingFunctionId != null ||
+                          _distillingFunctionId != null ||
+                          _uploadingFunctionId != null ||
+                          _viewingFunctionId != null
                       ? null
-                      : () => _viewPathBundle(path),
+                      : () => _viewFunctionBundle(function),
                   icon: viewing
                       ? const SizedBox(
                           width: 14,
@@ -517,17 +522,17 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.account_tree_outlined),
-                  label: Text(viewing ? '加载中...' : '查看轨迹'),
+                  label: Text(viewing ? '加载中...' : '查看资产'),
                 ),
                 OutlinedButton.icon(
                   onPressed:
-                      _runningPathId != null ||
-                          _deletingPathId != null ||
-                          _distillingPathId != null ||
-                          _uploadingPathId != null ||
-                          _viewingPathId != null
+                      _runningFunctionId != null ||
+                          _deletingFunctionId != null ||
+                          _distillingFunctionId != null ||
+                          _uploadingFunctionId != null ||
+                          _viewingFunctionId != null
                       ? null
-                      : () => _deletePathFromDashboard(path),
+                      : () => _deleteFunctionFromDashboard(function),
                   icon: deleting
                       ? const SizedBox(
                           width: 14,
@@ -540,13 +545,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 OutlinedButton.icon(
                   onPressed:
                       isTemporary ||
-                          _runningPathId != null ||
-                          _deletingPathId != null ||
-                          _distillingPathId != null ||
-                          _uploadingPathId != null ||
-                          _viewingPathId != null
+                          _runningFunctionId != null ||
+                          _deletingFunctionId != null ||
+                          _distillingFunctionId != null ||
+                          _uploadingFunctionId != null ||
+                          _viewingFunctionId != null
                       ? null
-                      : () => _uploadPathToCloud(path),
+                      : () => _uploadFunctionToCloud(function),
                   icon: uploading
                       ? const SizedBox(
                           width: 14,
@@ -561,13 +566,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 if (isTemporary)
                   OutlinedButton.icon(
                     onPressed:
-                        _runningPathId != null ||
-                            _deletingPathId != null ||
-                            _distillingPathId != null ||
-                            _uploadingPathId != null ||
-                            _viewingPathId != null
+                        _runningFunctionId != null ||
+                            _deletingFunctionId != null ||
+                            _distillingFunctionId != null ||
+                            _uploadingFunctionId != null ||
+                            _viewingFunctionId != null
                         ? null
-                        : () => _distillPathFromDashboard(path),
+                        : () => _distillFunctionFromDashboard(function),
                     icon: distilling
                         ? const SizedBox(
                             width: 14,
@@ -579,13 +584,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   ),
                 FilledButton.icon(
                   onPressed:
-                      _runningPathId != null ||
-                          _deletingPathId != null ||
-                          _distillingPathId != null ||
-                          _uploadingPathId != null ||
-                          _viewingPathId != null
+                      _runningFunctionId != null ||
+                          _deletingFunctionId != null ||
+                          _distillingFunctionId != null ||
+                          _uploadingFunctionId != null ||
+                          _viewingFunctionId != null
                       ? null
-                      : () => _runPathFromDashboard(path),
+                      : () => _runFunctionFromDashboard(function),
                   icon: running
                       ? const SizedBox(
                           width: 14,
@@ -619,24 +624,25 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 ),
               )
             else if (bundle != null)
-              _buildPathBundleView(path, bundle),
+              _buildFunctionBundleView(function, bundle),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildPathBundleView(
-    UtgPathSummary path,
+  Widget _buildFunctionBundleView(
+    UtgFunctionSummary function,
     Map<String, dynamic> payload,
   ) {
     final graph =
         (payload['graph'] as Map<String, dynamic>?) ??
         const <String, dynamic>{};
-    final paths = (graph['paths'] as List<dynamic>?) ?? const <dynamic>[];
+    final functions =
+        (graph['functions'] as List<dynamic>?) ?? const <dynamic>[];
     final nodes = (graph['nodes'] as List<dynamic>?) ?? const <dynamic>[];
-    final pathPayload = paths.isNotEmpty && paths.first is Map
-        ? Map<String, dynamic>.from(paths.first as Map)
+    final functionPayload = functions.isNotEmpty && functions.first is Map
+        ? Map<String, dynamic>.from(functions.first as Map)
         : const <String, dynamic>{};
     final nodeById = <String, Map<String, dynamic>>{};
     for (final raw in nodes) {
@@ -648,7 +654,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       }
     }
     final stepEntries = <MapEntry<String, dynamic>>[];
-    final steps = (pathPayload['steps'] as Map<dynamic, dynamic>?) ?? const {};
+    final steps =
+        (functionPayload['steps'] as Map<dynamic, dynamic>?) ?? const {};
     for (final entry in steps.entries) {
       stepEntries.add(MapEntry(entry.key.toString(), entry.value));
     }
@@ -697,11 +704,11 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         children: [
           Row(
             children: [
-              const Text('轨迹详情', style: TextStyle(fontWeight: FontWeight.w700)),
+              const Text('资产详情', style: TextStyle(fontWeight: FontWeight.w700)),
               const Spacer(),
               OutlinedButton(
                 onPressed: () => _copyText(
-                  '轨迹 JSON',
+                  '资产 JSON',
                   const JsonEncoder.withIndent('  ').convert(payload),
                 ),
                 child: const Text('复制 JSON'),
@@ -710,8 +717,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
               TextButton(
                 onPressed: () {
                   setState(() {
-                    if (_expandedPathId == path.pathId) {
-                      _expandedPathId = null;
+                    if (_expandedFunctionId == function.functionId) {
+                      _expandedFunctionId = null;
                     }
                   });
                 },
@@ -731,20 +738,20 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             ),
           ),
           const SizedBox(height: 8),
-          if (path.parameterNames.isNotEmpty) ...[
+          if (function.parameterNames.isNotEmpty) ...[
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: path.parameterNames.map(_buildPill).toList(),
+              children: function.parameterNames.map(_buildPill).toList(),
             ),
             const SizedBox(height: 12),
           ],
           if (stepEntries.isEmpty)
-            const Text('这条轨迹暂时没有步骤。', style: TextStyle(color: AppColors.text70))
+            const Text('这条资产暂时没有步骤。', style: TextStyle(color: AppColors.text70))
           else
             ...stepEntries.map((entry) {
               final nodeId = entry.key;
-              final stepKey = '${path.pathId}::$nodeId';
+              final stepKey = '${function.functionId}::$nodeId';
               final stepExpanded = _expandedStepKeys.contains(stepKey);
               final step = entry.value is Map
                   ? Map<String, dynamic>.from(entry.value as Map)
@@ -1106,10 +1113,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
               _buildPill('${run.stepCount} steps'),
               _buildPill(compileLabel),
               _buildPill(routeLabel),
-              if (run.compilePathId.trim().isNotEmpty)
-                _buildPill('hit ${run.compilePathId}'),
-              if (run.actPathId.trim().isNotEmpty)
-                _buildPill('act ${run.actPathId}'),
+              if (run.compileFunctionId.trim().isNotEmpty)
+                _buildPill('compile fn ${run.compileFunctionId}'),
+              if (run.actFunctionId.trim().isNotEmpty)
+                _buildPill('execute fn ${run.actFunctionId}'),
             ],
           ),
           _buildInfoRow('started_at', run.startedAt),
@@ -1178,10 +1185,17 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     final loading = _loadingRunLogDetailIds.contains(runId);
     final errorText = _runLogDetailErrorById[runId];
     final raw = detail?.runLog ?? const <String, dynamic>{};
-    final steps = (raw['steps'] as List<dynamic>?) ?? const <dynamic>[];
-    final finalObservation =
-        (raw['final_observation'] as Map<dynamic, dynamic>?) ?? const {};
-    final extra = (raw['extra'] as Map<dynamic, dynamic>?) ?? const {};
+    final view =
+        (detail?.rawJson['view'] as Map<dynamic, dynamic>?) ??
+        const <dynamic, dynamic>{};
+    final viewSteps = (view['steps'] as List<dynamic>?) ?? const <dynamic>[];
+    final summary = (view['summary'] ?? '').toString().trim();
+    final emptyMessage = (view['empty_message'] ?? '').toString().trim().isEmpty
+        ? 'provider 当前没有返回可展示的 step。'
+        : (view['empty_message'] ?? '').toString().trim();
+    final finalPackage = (view['final_package'] ?? '').toString().trim().isEmpty
+        ? 'unknown'
+        : (view['final_package'] ?? '').toString().trim();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -1200,26 +1214,16 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
               ),
               const Spacer(),
               OutlinedButton(
-                onPressed: raw.isEmpty
+                onPressed: view.isEmpty
                     ? null
                     : () => _copyText(
-                        'run log json',
-                        const JsonEncoder.withIndent('  ').convert(raw),
+                        'provider view json',
+                        const JsonEncoder.withIndent('  ').convert(view),
                       ),
-                child: const Text('复制 JSON'),
+                child: const Text('复制 View JSON'),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          if (run.source.trim().isNotEmpty)
-            Text(
-              'source: ${run.source}',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.text70,
-                height: 1.5,
-              ),
-            ),
           if (loading) ...[
             const SizedBox(height: 12),
             const Row(
@@ -1249,88 +1253,50 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
               style: TextStyle(color: AppColors.text70, height: 1.6),
             ),
           ] else ...[
-            if (extra['screenshot_error_code'] != null)
+            if (summary.isNotEmpty) ...[
+              const SizedBox(height: 12),
               Text(
-                'screenshot_error_code: ${extra['screenshot_error_code']}',
+                summary,
                 style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFFB42318),
-                  height: 1.5,
+                  fontSize: 13,
+                  color: Colors.black87,
+                  height: 1.6,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            if (extra['stabilization_wait_ms'] != null)
-              Text(
-                'stabilization_wait_ms: ${extra['stabilization_wait_ms']}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.text70,
-                  height: 1.5,
-                ),
-              ),
+            ],
             const SizedBox(height: 12),
-            if (steps.isEmpty)
-              const Text(
-                '这个 run_log 没有记录到 step。常见原因是任务在首轮观察前失败或被中断。',
-                style: TextStyle(color: AppColors.text70, height: 1.6),
+            if (viewSteps.isEmpty)
+              Text(
+                emptyMessage,
+                style: const TextStyle(color: AppColors.text70, height: 1.6),
               )
             else
-              ...steps.asMap().entries.map((entry) {
+              ...viewSteps.asMap().entries.map((entry) {
                 final step = entry.value is Map
                     ? Map<String, dynamic>.from(entry.value as Map)
                     : const <String, dynamic>{};
-                final plan =
-                    (step['plan'] as Map<dynamic, dynamic>?) ?? const {};
-                final actRequest =
-                    (step['act_request'] as Map<dynamic, dynamic>?) ?? const {};
-                final actResult =
-                    (step['act_result'] as Map<dynamic, dynamic>?) ?? const {};
-                final resultSummary =
-                    (actResult['result_summary'] as Map<dynamic, dynamic>?) ??
-                    const {};
-                final resultMessage =
-                    ((resultSummary['message'] ?? '').toString()).trim();
-                final resultThought =
-                    ((resultSummary['thought'] ?? '').toString()).trim();
-                final resultTextSummary =
-                    ((resultSummary['summary'] ?? '').toString()).trim();
-                final selectorLabel =
-                    ((step['selector_label'] ?? '').toString()).trim();
-                final selectorReason =
-                    ((step['selector_reason'] ?? '').toString()).trim();
-                final executedActions =
-                    (step['executed_actions'] as List<dynamic>?)
-                        ?.whereType<Map>()
-                        .map(
-                          (item) => _buildActionPreviewText(
-                            Map<String, dynamic>.from(item),
-                          ).trim(),
-                        )
+                final actions =
+                    (step['actions'] as List<dynamic>?)
+                        ?.map((item) => item.toString().trim())
                         .where((item) => item.isNotEmpty)
                         .toList() ??
                     const <String>[];
-                final executedActionDescriptions = executedActions.isNotEmpty
-                    ? executedActions
-                    : (step['executed_action_descriptions'] as List<dynamic>?)
-                              ?.map((item) => item.toString().trim())
-                              .where((item) => item.isNotEmpty)
-                              .toList() ??
-                          const <String>[];
-                final stepSuccess = actResult['success'] != false;
-                final actionMap =
-                    (actRequest['action'] as Map<dynamic, dynamic>?) ??
-                    const {};
+                final stepSuccess = step['success'] != false;
                 final operationDescription =
-                    ((step['operation_description'] ??
-                                plan['description'] ??
-                                actRequest['action_description'] ??
-                                '')
-                            .toString())
-                        .trim();
-                final actionPreview = actionMap.isNotEmpty
-                    ? _buildActionPreviewText(
-                        Map<String, dynamic>.from(actionMap),
-                      )
-                    : '';
+                    ((step['title'] ?? '').toString()).trim().isEmpty
+                    ? 'Step ${entry.key + 1}'
+                    : (step['title'] ?? '').toString().trim();
+                final selectorLabel = ((step['selected_by'] ?? '').toString())
+                    .trim();
+                final selectorReason = ((step['why'] ?? '').toString()).trim();
+                final resultMessage = ((step['result'] ?? '').toString())
+                    .trim();
+                final resultThought = ((step['thought'] ?? '').toString())
+                    .trim();
+                final resultTextSummary = ((step['summary'] ?? '').toString())
+                    .trim();
+                final errorText = ((step['error'] ?? '').toString()).trim();
                 return Container(
                   width: double.infinity,
                   margin: const EdgeInsets.only(bottom: 10),
@@ -1347,11 +1313,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         children: [
                           Expanded(
                             child: Text(
-                              'Step ${(step['step_index'] ?? entry.key) is num ? ((step['step_index'] ?? entry.key) as num).toInt() + 1 : entry.key + 1} · ${(operationDescription.isNotEmpty
-                                  ? operationDescription
-                                  : (plan['tool_name'] ?? '').toString().trim().isEmpty
-                                  ? '未记录动作'
-                                  : plan['tool_name'])}',
+                              'Step ${entry.key + 1} · $operationDescription',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1380,27 +1342,16 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                             height: 1.5,
                           ),
                         ),
-                      if (executedActionDescriptions.isNotEmpty)
-                        ...executedActionDescriptions.asMap().entries.map(
-                          (actionEntry) => Text(
-                            'action ${actionEntry.key + 1}: ${actionEntry.value}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.text70,
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
-                      if (executedActionDescriptions.isEmpty &&
-                          actionPreview.isNotEmpty)
-                        Text(
-                          'action: $actionPreview',
+                      ...actions.asMap().entries.map(
+                        (actionEntry) => Text(
+                          'action ${actionEntry.key + 1}: ${actionEntry.value}',
                           style: const TextStyle(
                             fontSize: 12,
                             color: AppColors.text70,
                             height: 1.5,
                           ),
                         ),
+                      ),
                       if (resultMessage.isNotEmpty)
                         Text(
                           'result: $resultMessage',
@@ -1428,12 +1379,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                             height: 1.5,
                           ),
                         ),
-                      if ((actResult['error_message'] ?? '')
-                          .toString()
-                          .trim()
-                          .isNotEmpty)
+                      if (errorText.isNotEmpty)
                         Text(
-                          'error: ${(actResult['error_message'] ?? '').toString()}',
+                          'error: $errorText',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Color(0xFFB42318),
@@ -1446,37 +1394,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
               }),
             const SizedBox(height: 8),
             Text(
-              'final package: ${(finalObservation['package_name'] ?? '').toString().trim().isEmpty ? 'unknown' : (finalObservation['package_name'] ?? '').toString()}',
+              'final package: $finalPackage',
               style: const TextStyle(
                 fontSize: 12,
                 color: AppColors.text70,
                 height: 1.5,
               ),
             ),
-            if ((finalObservation['xml'] ?? '')
-                .toString()
-                .trim()
-                .isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE4E8EE)),
-                ),
-                child: SelectableText(
-                  (finalObservation['xml'] ?? '').toString(),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.text70,
-                    height: 1.5,
-                  ),
-                  maxLines: 10,
-                ),
-              ),
-            ],
           ],
         ],
       ),
@@ -1591,22 +1515,24 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     }
   }
 
-  bool _isTemporaryPath(UtgPathSummary path) {
-    return path.assetState.trim().toLowerCase() == 'temporary';
+  bool _isTemporaryFunction(UtgFunctionSummary function) {
+    return function.assetState.trim().toLowerCase() == 'temporary';
   }
 
-  bool _isReadyPath(UtgPathSummary path) {
-    return path.assetState.trim().toLowerCase() == 'ready';
+  bool _isReadyFunction(UtgFunctionSummary function) {
+    return function.assetState.trim().toLowerCase() == 'ready';
   }
 
-  String _pathKindLabel(UtgPathSummary path) {
-    if (_isTemporaryPath(path)) {
+  String _assetKindLabel(UtgFunctionSummary function) {
+    if (_isTemporaryFunction(function)) {
       return '临时区';
     }
-    if (_isReadyPath(path)) {
+    if (_isReadyFunction(function)) {
       return '资产区';
     }
-    return path.assetState.trim().isEmpty ? '未分区' : path.assetState.trim();
+    return function.assetState.trim().isEmpty
+        ? '未分区'
+        : function.assetState.trim();
   }
 
   Future<void> _controlProvider(String action) async {
@@ -1617,7 +1543,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       );
       if (!mounted) return;
       _applyConfig(result.config);
-      await _loadPaths(
+      await _loadFunctions(
         baseUrl: result.config.resolvedOmniflowBaseUrl,
         silent: true,
       );
@@ -1651,7 +1577,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         return AlertDialog(
           title: const Text('记忆到 OmniFlow'),
           content: const Text(
-            '是否确定将这次执行记录记忆到 OmniFlow 临时区？\n\n记忆后可在下方 OmniFlow 轨迹列表继续沉淀为可 compile 资产。',
+            '是否确定将这次执行记录记忆到 OmniFlow 临时区？\n\n记忆后可在下方 OmniFlow 资产列表继续沉淀为可 compile 资产。',
           ),
           actions: [
             TextButton(
@@ -1701,7 +1627,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         Navigator.of(context, rootNavigator: true).pop();
         loadingShown = false;
       }
-      await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
+      await _loadFunctions(
+        baseUrl: _baseUrlController.text.trim(),
+        silent: true,
+      );
       await _loadRunLogs(baseUrl: _baseUrlController.text.trim(), silent: true);
       if (!mounted) return;
       if (!result.success) {
@@ -1711,16 +1640,17 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         );
         return;
       }
-      final targetPathId = result.createdPathId.trim();
-      if (targetPathId.isNotEmpty) {
+      final targetFunctionId = result.createdFunctionId.trim();
+      if (targetFunctionId.isNotEmpty) {
         setState(() {
-          _highlightedPathId = targetPathId;
-          _pathSearchController.text = targetPathId;
+          _highlightedFunctionId = targetFunctionId;
+          _functionSearchController.text = targetFunctionId;
         });
-        final matchedPaths = _pathsSnapshot?.paths ?? const <UtgPathSummary>[];
-        for (final path in matchedPaths) {
-          if (path.pathId == targetPathId) {
-            await _viewPathBundle(path);
+        final matchedFunctions =
+            _functionsSnapshot?.functions ?? const <UtgFunctionSummary>[];
+        for (final function in matchedFunctions) {
+          if (function.functionId == targetFunctionId) {
+            await _viewFunctionBundle(function);
             break;
           }
         }
@@ -1730,9 +1660,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
           ? '临时区'
           : result.assetState.trim();
       showToast(
-        targetPathId.isEmpty
+        targetFunctionId.isEmpty
             ? '已记忆到 OmniFlow $zoneLabel'
-            : '已记忆到 OmniFlow $zoneLabel：$targetPathId',
+            : '已记忆到 OmniFlow $zoneLabel：$targetFunctionId',
         type: ToastType.success,
       );
     } catch (e) {
@@ -1750,14 +1680,14 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     }
   }
 
-  Future<Map<String, String>?> _confirmPathRun(
-    UtgPathSummary path,
+  Future<Map<String, String>?> _confirmFunctionRun(
+    UtgFunctionSummary function,
     UtgBridgeExecutionContext executionContext,
   ) async {
     final controllers = {
-      for (final parameter in path.parameterNames)
+      for (final parameter in function.parameterNames)
         parameter: TextEditingController(
-          text: path.parameterExamples[parameter] ?? '',
+          text: function.parameterExamples[parameter] ?? '',
         ),
     };
     try {
@@ -1765,16 +1695,18 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text('执行 OmniFlow 轨迹'),
+            title: const Text('执行 OmniFlow 资产'),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SelectableText('path_id: ${path.pathId}'),
+                  SelectableText('function_id: ${function.functionId}'),
                   const SizedBox(height: 8),
                   Text(
-                    path.description.trim().isEmpty ? '无描述' : path.description,
+                    function.description.trim().isEmpty
+                        ? '无描述'
+                        : function.description,
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -1798,7 +1730,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   ),
                   const SizedBox(height: 12),
                   if (controllers.isEmpty)
-                    const Text('此轨迹无需填写参数。')
+                    const Text('此资产无需填写参数。')
                   else
                     ...controllers.entries.map(
                       (entry) => Padding(
@@ -1807,7 +1739,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           controller: entry.value,
                           decoration: InputDecoration(
                             labelText: entry.key,
-                            hintText: path.parameterExamples[entry.key] ?? '',
+                            hintText:
+                                function.parameterExamples[entry.key] ?? '',
                             border: const OutlineInputBorder(),
                             isDense: true,
                           ),
@@ -1842,103 +1775,106 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     }
   }
 
-  Future<void> _uploadPathToCloud(UtgPathSummary path) async {
+  Future<void> _uploadFunctionToCloud(UtgFunctionSummary function) async {
     final cloudBaseUrl = _cloudBaseUrlController.text.trim();
     if (cloudBaseUrl.isEmpty) {
       showToast('请先填写云端 Base URL', type: ToastType.error);
       return;
     }
     try {
-      setState(() => _uploadingPathId = path.pathId);
-      final result = await AssistsMessageService.uploadCloudUtgPath(
-        pathId: path.pathId,
+      setState(() => _uploadingFunctionId = function.functionId);
+      final result = await AssistsMessageService.uploadCloudUtgFunction(
+        functionId: function.functionId,
         cloudBaseUrl: cloudBaseUrl,
         baseUrl: _baseUrlController.text.trim(),
       );
       if (!mounted) return;
       if (!result.success) {
-        showToast(result.errorMessage ?? '上传云端轨迹失败', type: ToastType.error);
+        showToast(result.errorMessage ?? '上传云端资产失败', type: ToastType.error);
         return;
       }
-      showToast('已上传到云端：${path.pathId}', type: ToastType.success);
+      showToast('已上传到云端：${function.functionId}', type: ToastType.success);
     } catch (e) {
       if (!mounted) return;
-      showToast('上传云端轨迹失败', type: ToastType.error);
+      showToast('上传云端资产失败', type: ToastType.error);
       debugPrint('Upload cloud trajectory failed: $e');
     } finally {
       if (mounted) {
-        setState(() => _uploadingPathId = null);
+        setState(() => _uploadingFunctionId = null);
       }
     }
   }
 
-  Future<void> _viewPathBundle(UtgPathSummary path) async {
-    if (_expandedPathId == path.pathId) {
+  Future<void> _viewFunctionBundle(UtgFunctionSummary function) async {
+    if (_expandedFunctionId == function.functionId) {
       setState(() {
-        _expandedPathId = null;
-        _pathBundleErrorById.remove(path.pathId);
+        _expandedFunctionId = null;
+        _functionBundleErrorById.remove(function.functionId);
       });
       return;
     }
-    if (_pathBundleCache.containsKey(path.pathId)) {
+    if (_functionBundleCache.containsKey(function.functionId)) {
       setState(() {
-        _expandedPathId = path.pathId;
-        _pathBundleErrorById.remove(path.pathId);
+        _expandedFunctionId = function.functionId;
+        _functionBundleErrorById.remove(function.functionId);
       });
       return;
     }
     try {
-      setState(() => _viewingPathId = path.pathId);
-      final payload = await AssistsMessageService.getUtgPathBundle(
-        pathId: path.pathId,
+      setState(() => _viewingFunctionId = function.functionId);
+      final payload = await AssistsMessageService.getUtgFunctionBundle(
+        functionId: function.functionId,
         baseUrl: _baseUrlController.text.trim(),
       );
       if (!mounted) return;
       setState(() {
-        _pathBundleCache[path.pathId] = payload;
-        _pathBundleErrorById.remove(path.pathId);
-        _expandedPathId = path.pathId;
+        _functionBundleCache[function.functionId] = payload;
+        _functionBundleErrorById.remove(function.functionId);
+        _expandedFunctionId = function.functionId;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _pathBundleErrorById[path.pathId] = '加载轨迹详情失败：$e';
-        _expandedPathId = path.pathId;
+        _functionBundleErrorById[function.functionId] = '加载资产详情失败：$e';
+        _expandedFunctionId = function.functionId;
       });
-      showToast('加载轨迹详情失败', type: ToastType.error);
+      showToast('加载资产详情失败', type: ToastType.error);
       debugPrint('Load OmniFlow trajectory bundle failed: $e');
     } finally {
       if (mounted) {
-        setState(() => _viewingPathId = null);
+        setState(() => _viewingFunctionId = null);
       }
     }
   }
 
-  Future<void> _runPathFromDashboard(UtgPathSummary path) async {
+  Future<void> _runFunctionFromDashboard(UtgFunctionSummary function) async {
     try {
       final executionContext =
           await AssistsMessageService.getUtgBridgeExecutionContext();
       if (!mounted) return;
-      final arguments = await _confirmPathRun(path, executionContext);
+      final arguments = await _confirmFunctionRun(function, executionContext);
       if (!mounted || arguments == null) {
         return;
       }
-      setState(() => _runningPathId = path.pathId);
-      final result = await AssistsMessageService.runUtgPath(
-        pathId: path.pathId,
+      setState(() => _runningFunctionId = function.functionId);
+      final result = await AssistsMessageService.runUtgFunction(
+        functionId: function.functionId,
         arguments: arguments,
         baseUrl: _baseUrlController.text.trim(),
       );
       if (!mounted) return;
-      await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
+      await _loadFunctions(
+        baseUrl: _baseUrlController.text.trim(),
+        silent: true,
+      );
       await _loadRunLogs(baseUrl: _baseUrlController.text.trim(), silent: true);
       if (!mounted) return;
       showToast(
         result.success
-            ? '已通过 OmniFlow 执行 ${path.pathId}'
+            ? '已通过 OmniFlow 执行 ${function.functionId}'
             : (result.errorMessage?.trim().isNotEmpty == true
                   ? 'OmniFlow 执行失败：${result.errorMessage}'
-                  : 'OmniFlow 执行失败：${path.pathId}'),
+                  : 'OmniFlow 执行失败：${function.functionId}'),
         type: result.success ? ToastType.success : ToastType.error,
       );
       await AppStateService.navigateBackToChat();
@@ -1947,23 +1883,25 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       showToast(e.message ?? '获取 OmniFlow bridge 失败', type: ToastType.error);
     } catch (e) {
       if (!mounted) return;
-      showToast('执行 OmniFlow 轨迹失败', type: ToastType.error);
+      showToast('执行 OmniFlow 资产失败', type: ToastType.error);
       debugPrint('Run OmniFlow trajectory failed: $e');
     } finally {
       if (mounted) {
-        setState(() => _runningPathId = null);
+        setState(() => _runningFunctionId = null);
       }
     }
   }
 
-  Future<void> _distillPathFromDashboard(UtgPathSummary path) async {
+  Future<void> _distillFunctionFromDashboard(
+    UtgFunctionSummary function,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('沉淀为资产'),
           content: Text(
-            '确认将 ${path.pathId} 从 OmniFlow 临时区沉淀到资产区？\n\n沉淀后会生成一个新的 ready path，原 raw replay 会继续保留。',
+            '确认将 ${function.functionId} 从 OmniFlow 临时区沉淀到资产区？\n\n沉淀后会生成一个新的 ready function，原 raw replay function 会继续保留。',
           ),
           actions: [
             TextButton(
@@ -1982,30 +1920,33 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       return;
     }
     try {
-      setState(() => _distillingPathId = path.pathId);
-      final result = await AssistsMessageService.distillUtgPath(
-        pathId: path.pathId,
+      setState(() => _distillingFunctionId = function.functionId);
+      final result = await AssistsMessageService.distillUtgFunction(
+        functionId: function.functionId,
         baseUrl: _baseUrlController.text.trim(),
       );
       if (!mounted) return;
-      await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
+      await _loadFunctions(
+        baseUrl: _baseUrlController.text.trim(),
+        silent: true,
+      );
       await _loadRunLogs(baseUrl: _baseUrlController.text.trim(), silent: true);
       if (!mounted) return;
       if (!result.success) {
         showToast(result.errorMessage ?? '沉淀资产失败', type: ToastType.error);
         return;
       }
-      final createdPathId = result.createdPathId.trim();
+      final createdFunctionId = result.createdFunctionId.trim();
       setState(() {
-        _highlightedPathId = createdPathId.isEmpty
-            ? path.pathId
-            : createdPathId;
-        if (createdPathId.isNotEmpty) {
-          _pathSearchController.text = createdPathId;
+        _highlightedFunctionId = createdFunctionId.isEmpty
+            ? function.functionId
+            : createdFunctionId;
+        if (createdFunctionId.isNotEmpty) {
+          _functionSearchController.text = createdFunctionId;
         }
       });
       showToast(
-        createdPathId.isEmpty ? '已完成沉淀' : '已沉淀到资产区：$createdPathId',
+        createdFunctionId.isEmpty ? '已完成沉淀' : '已沉淀到资产区：$createdFunctionId',
         type: ToastType.success,
       );
     } catch (e) {
@@ -2014,19 +1955,19 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       debugPrint('Distill OmniFlow trajectory failed: $e');
     } finally {
       if (mounted) {
-        setState(() => _distillingPathId = null);
+        setState(() => _distillingFunctionId = null);
       }
     }
   }
 
-  Future<void> _deletePathFromDashboard(UtgPathSummary path) async {
+  Future<void> _deleteFunctionFromDashboard(UtgFunctionSummary function) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('删除 OmniFlow 轨迹'),
+          title: const Text('删除 OmniFlow 资产'),
           content: SelectableText(
-            '确认删除 path_id=${path.pathId}？\n\n删除后会直接从当前本地 provider 的 OmniFlow store 移除。',
+            '确认删除 function_id=${function.functionId}？\n\n删除后会直接从当前本地 provider 的 OmniFlow store 移除。',
           ),
           actions: [
             TextButton(
@@ -2045,80 +1986,86 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
       return;
     }
     try {
-      setState(() => _deletingPathId = path.pathId);
-      final result = await AssistsMessageService.deleteUtgPath(
-        pathId: path.pathId,
+      setState(() => _deletingFunctionId = function.functionId);
+      final result = await AssistsMessageService.deleteUtgFunction(
+        functionId: function.functionId,
         baseUrl: _baseUrlController.text.trim(),
       );
       if (!mounted) return;
       if (!result.success) {
         showToast(
-          result.errorMessage ?? '删除失败：${path.pathId}',
+          result.errorMessage ?? '删除失败：${function.functionId}',
           type: ToastType.error,
         );
         return;
       }
-      await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
+      await _loadFunctions(
+        baseUrl: _baseUrlController.text.trim(),
+        silent: true,
+      );
       if (!mounted) return;
       setState(() {
-        if (_highlightedPathId == path.pathId) {
-          _highlightedPathId = null;
+        if (_highlightedFunctionId == function.functionId) {
+          _highlightedFunctionId = null;
         }
-        if (_expandedPathId == path.pathId) {
-          _expandedPathId = null;
+        if (_expandedFunctionId == function.functionId) {
+          _expandedFunctionId = null;
         }
-        _pathBundleCache.remove(path.pathId);
-        _pathBundleErrorById.remove(path.pathId);
+        _functionBundleCache.remove(function.functionId);
+        _functionBundleErrorById.remove(function.functionId);
       });
-      showToast('已删除 ${path.pathId}', type: ToastType.success);
+      showToast('已删除 ${function.functionId}', type: ToastType.success);
     } catch (e) {
       if (!mounted) return;
-      showToast('删除 OmniFlow 轨迹失败', type: ToastType.error);
+      showToast('删除 OmniFlow 资产失败', type: ToastType.error);
       debugPrint('Delete OmniFlow trajectory failed: $e');
     } finally {
       if (mounted) {
-        setState(() => _deletingPathId = null);
+        setState(() => _deletingFunctionId = null);
       }
     }
   }
 
-  Future<void> _downloadCloudPath() async {
+  Future<void> _downloadCloudFunction() async {
     final cloudBaseUrl = _cloudBaseUrlController.text.trim();
-    final pathId = _cloudPathIdController.text.trim();
+    final functionId = _cloudFunctionIdController.text.trim();
     if (cloudBaseUrl.isEmpty) {
       showToast('请填写云端 Base URL', type: ToastType.error);
       return;
     }
     try {
-      setState(() => _downloadingCloudPath = true);
-      final result = await AssistsMessageService.downloadCloudUtgPath(
-        pathId: pathId,
+      setState(() => _downloadingCloudFunction = true);
+      final result = await AssistsMessageService.downloadCloudUtgFunction(
+        functionId: functionId,
         cloudBaseUrl: cloudBaseUrl,
         baseUrl: _baseUrlController.text.trim(),
       );
       if (!mounted) return;
       if (!result.success) {
-        showToast(result.errorMessage ?? '下载云端轨迹失败', type: ToastType.error);
+        showToast(result.errorMessage ?? '下载云端资产失败', type: ToastType.error);
         return;
       }
-      await _loadPaths(baseUrl: _baseUrlController.text.trim(), silent: true);
+      await _loadFunctions(
+        baseUrl: _baseUrlController.text.trim(),
+        silent: true,
+      );
       if (!mounted) return;
       final importedCount = result.count;
-      if (pathId.isEmpty) {
+      if (functionId.isEmpty) {
         showToast(
-          importedCount > 0 ? '已下载全部云端轨迹：$importedCount 条' : '云端轨迹已同步，无新增条目',
+          importedCount > 0 ? '已下载全部云端资产：$importedCount 条' : '云端资产已同步，无新增条目',
           type: ToastType.success,
         );
       } else {
-        showToast('已下载云端轨迹：$pathId', type: ToastType.success);
+        showToast('已下载云端资产：$functionId', type: ToastType.success);
       }
     } catch (e) {
       if (!mounted) return;
-      showToast('下载云端轨迹失败', type: ToastType.error);
+      showToast('下载云端资产失败', type: ToastType.error);
       debugPrint('Download cloud trajectory failed: $e');
     } finally {
       if (mounted) {
-        setState(() => _downloadingCloudPath = false);
+        setState(() => _downloadingCloudFunction = false);
       }
     }
   }
@@ -2126,40 +2073,50 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   @override
   Widget build(BuildContext context) {
     final config = _config;
-    final allPaths = _pathsSnapshot?.paths ?? const <UtgPathSummary>[];
+    final allFunctions =
+        _functionsSnapshot?.functions ?? const <UtgFunctionSummary>[];
     final allRuns = _runLogsSnapshot?.runs ?? const <UtgRunLogSummary>[];
     final filteredRuns = _filteredRunLogs();
-    final searchQuery = _pathSearchController.text.trim().toLowerCase();
-    final filteredPaths = searchQuery.isEmpty
-        ? allPaths
-        : allPaths.where((path) {
+    final searchQuery = _functionSearchController.text.trim().toLowerCase();
+    final filteredFunctions = searchQuery.isEmpty
+        ? allFunctions
+        : allFunctions.where((function) {
             final haystack = <String>[
-              path.pathId,
-              path.description,
-              path.pathKind,
-              path.assetState,
-              path.derivedFromRawPathId,
-              path.startNodeId,
-              path.endNodeId,
-              path.startNodeDescription,
-              path.endNodeDescription,
-              ...path.parameterNames,
+              function.functionId,
+              function.description,
+              function.assetKind,
+              function.assetState,
+              function.derivedFromRawFunctionId,
+              function.startNodeId,
+              function.endNodeId,
+              function.startNodeDescription,
+              function.endNodeDescription,
+              ...function.parameterNames,
             ].join(' ').toLowerCase();
             return haystack.contains(searchQuery);
           }).toList();
-    final temporaryPaths = filteredPaths.where(_isTemporaryPath).toList();
-    final readyPaths = filteredPaths.where(_isReadyPath).toList();
-    final unknownPaths = filteredPaths
-        .where((path) => !_isTemporaryPath(path) && !_isReadyPath(path))
+    final temporaryFunctions = filteredFunctions
+        .where(_isTemporaryFunction)
+        .toList();
+    final readyFunctions = filteredFunctions.where(_isReadyFunction).toList();
+    final unknownFunctions = filteredFunctions
+        .where(
+          (function) =>
+              !_isTemporaryFunction(function) && !_isReadyFunction(function),
+        )
         .toList();
 
-    Map<String, List<UtgPathSummary>> groupByApp(List<UtgPathSummary> paths) {
-      final grouped = <String, List<UtgPathSummary>>{};
-      for (final path in paths) {
-        final groupName = path.groupName.trim().isEmpty
+    Map<String, List<UtgFunctionSummary>> groupByApp(
+      List<UtgFunctionSummary> functions,
+    ) {
+      final grouped = <String, List<UtgFunctionSummary>>{};
+      for (final function in functions) {
+        final groupName = function.groupName.trim().isEmpty
             ? 'unknown_app'
-            : path.groupName.trim();
-        grouped.putIfAbsent(groupName, () => <UtgPathSummary>[]).add(path);
+            : function.groupName.trim();
+        grouped
+            .putIfAbsent(groupName, () => <UtgFunctionSummary>[])
+            .add(function);
       }
       return grouped;
     }
@@ -2167,7 +2124,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: CommonAppBar(
-        title: 'OmniFlow 轨迹执行 [debug]',
+        title: 'OmniFlow 技能栏',
         primary: true,
         actions: [
           IconButton(
@@ -2186,8 +2143,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 children: [
                   _buildCard(
                     child: const Text(
-                      '这里统一处理 OmniFlow provider 的轨迹执行设置，并展示当前 provider 暴露出来的临时 raw replay 与 ready 资产轨迹。'
-                      ' `vlm_task` 的 compile-first pre-hook 也由这里控制。',
+                      '管理 OmniFlow 技能：查看已学习的技能，执行技能，或删除不需要的技能。',
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.text70,
@@ -2245,7 +2201,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         _buildInputField(
                           controller: _workingDirectoryController,
                           label: 'Working Directory',
-                          hint: '/data/data/com.termux/files/home/omniflow-utg',
+                          hint: '/data/local/tmp/omnibot/omniflow',
                         ),
                         const SizedBox(height: 8),
                         _buildInfoRow(
@@ -2284,7 +2240,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                             border: Border.all(color: const Color(0xFFFFD89B)),
                           ),
                           child: const Text(
-                            '当前页的启动/重启/停止按钮只控制手机内 provider。若你现在使用的是 Mac + adb reverse 调试模式，请在开发机运行 bash scripts/start_oob_utg_host_bridge.sh <serial>，然后这里再点刷新轨迹。',
+                            '当前页的启动/重启/停止按钮只控制手机内 provider。若你现在使用的是 Mac + adb reverse 调试模式，请在开发机运行 bash scripts/start_oob_utg_host_bridge.sh <serial>，然后这里再点刷新资产。',
                             style: TextStyle(
                               fontSize: 12,
                               height: 1.5,
@@ -2301,11 +2257,11 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                               onPressed:
                                   _saving || _providerControlAction != null
                                   ? null
-                                  : () => _loadPaths(
+                                  : () => _loadFunctions(
                                       baseUrl: _baseUrlController.text.trim(),
                                     ),
                               icon: const Icon(Icons.sync_outlined),
-                              label: const Text('刷新轨迹'),
+                              label: const Text('刷新资产'),
                             ),
                             OutlinedButton.icon(
                               onPressed:
@@ -2393,7 +2349,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          '下载云端轨迹',
+                          '下载云端资产',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
@@ -2416,18 +2372,18 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ),
                         const SizedBox(height: 12),
                         _buildInputField(
-                          controller: _cloudPathIdController,
-                          label: '云端 path_id（可留空）',
+                          controller: _cloudFunctionIdController,
+                          label: '云端 function_id（可留空）',
                           hint: '例如 global-open-settings；留空表示下载全部',
                         ),
                         const SizedBox(height: 12),
                         Align(
                           alignment: Alignment.centerRight,
                           child: FilledButton.icon(
-                            onPressed: _downloadingCloudPath || _saving
+                            onPressed: _downloadingCloudFunction || _saving
                                 ? null
-                                : _downloadCloudPath,
-                            icon: _downloadingCloudPath
+                                : _downloadCloudFunction,
+                            icon: _downloadingCloudFunction
                                 ? const SizedBox(
                                     width: 14,
                                     height: 14,
@@ -2437,233 +2393,36 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   )
                                 : const Icon(Icons.cloud_download_outlined),
                             label: Text(
-                              _downloadingCloudPath ? '下载中...' : '下载云端轨迹',
+                              _downloadingCloudFunction ? '下载中...' : '下载云端资产',
                             ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        _runLogsExpanded = !_runLogsExpanded;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          const Text(
-                            '最近 Run Logs',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (_loadingRunLogs)
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          else
-                            _buildPill(
-                              filteredRuns.length == allRuns.length
-                                  ? '${allRuns.length}'
-                                  : '${filteredRuns.length}/${allRuns.length}',
-                            ),
-                          const Spacer(),
-                          Icon(
-                            _runLogsExpanded
-                                ? Icons.expand_less
-                                : Icons.expand_more,
-                            color: AppColors.text70,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (!_runLogsExpanded)
-                    _buildCard(
-                      child: const Text(
-                        '点击上方标题展开最近 run_log 列表。',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.text70,
-                          height: 1.7,
-                        ),
-                      ),
-                    )
-                  else if (_runLogsError != null)
-                    _buildCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'OmniFlow run_log 列表加载失败',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _runLogsError!,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.text70,
-                              height: 1.6,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if ((_runLogsSnapshot?.runs ??
-                          const <UtgRunLogSummary>[])
-                      .isEmpty)
-                    _buildCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '当前没有可导入的 run_log',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'OmniFlow provider 目前还没有记录到 canonical run(goal) 日志，先执行一次 `vlm_task` 或手动运行轨迹。',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.text70,
-                              height: 1.7,
-                            ),
-                          ),
-                          if ((_runLogsSnapshot?.runLogPath ?? '')
-                              .trim()
-                              .isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            _buildInfoRow(
-                              'canonical run_log',
-                              _runLogsSnapshot?.runLogPath ?? '',
-                            ),
-                          ],
-                        ],
-                      ),
-                    )
-                  else ...[
-                    _buildCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '筛选',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              ChoiceChip(
-                                label: const Text('全部'),
-                                selected: _runLogFilter == 'all',
-                                onSelected: (_) {
-                                  setState(() {
-                                    _runLogFilter = 'all';
-                                  });
-                                },
-                              ),
-                              ChoiceChip(
-                                label: const Text('成功'),
-                                selected: _runLogFilter == 'success',
-                                selectedColor: const Color(0xFFE8F7EE),
-                                labelStyle: TextStyle(
-                                  color: _runLogFilter == 'success'
-                                      ? const Color(0xFF117A37)
-                                      : AppColors.text70,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                onSelected: (_) {
-                                  setState(() {
-                                    _runLogFilter = 'success';
-                                  });
-                                },
-                              ),
-                              ChoiceChip(
-                                label: const Text('失败'),
-                                selected: _runLogFilter == 'failed',
-                                selectedColor: const Color(0xFFFDECEC),
-                                labelStyle: TextStyle(
-                                  color: _runLogFilter == 'failed'
-                                      ? const Color(0xFFB42318)
-                                      : AppColors.text70,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                onSelected: (_) {
-                                  setState(() {
-                                    _runLogFilter = 'failed';
-                                  });
-                                },
-                              ),
-                              _buildPill('当前 ${filteredRuns.length}'),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (filteredRuns.isEmpty)
-                      _buildCard(
-                        child: const Text(
-                          '当前筛选条件下没有 run_log。',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.text70,
-                            height: 1.7,
-                          ),
-                        ),
-                      )
-                    else
-                      ...filteredRuns.map(
-                        (run) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _buildRunLogCard(run),
-                        ),
-                      ),
-                  ],
+                  // RunLog 部分已移至轨迹页面
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       const Text(
-                        '已有 OmniFlow 轨迹',
+                        '已有技能',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      if (_loadingPaths)
+                      if (_loadingFunctions)
                         const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       else
-                        _buildPill('${allPaths.length}'),
+                        _buildPill('${allFunctions.length}'),
                       if (searchQuery.isNotEmpty) ...[
                         const SizedBox(width: 8),
-                        _buildPill('筛选 ${filteredPaths.length}'),
+                        _buildPill('筛选 ${filteredFunctions.length}'),
                       ],
                     ],
                   ),
@@ -2673,19 +2432,19 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       children: [
                         Expanded(
                           child: TextField(
-                            controller: _pathSearchController,
+                            controller: _functionSearchController,
                             onChanged: (_) => setState(() {}),
                             decoration: InputDecoration(
-                              labelText: '搜索轨迹',
-                              hintText: '按 path_id、描述、parameter、node 过滤',
+                              labelText: '搜索技能',
+                              hintText: '按名称、描述等关键字过滤',
                               prefixIcon: const Icon(Icons.search_outlined),
                               suffixIcon: searchQuery.isEmpty
                                   ? null
                                   : IconButton(
                                       onPressed: () {
                                         setState(() {
-                                          _pathSearchController.clear();
-                                          _highlightedPathId = null;
+                                          _functionSearchController.clear();
+                                          _highlightedFunctionId = null;
                                         });
                                       },
                                       icon: const Icon(Icons.close_outlined),
@@ -2700,13 +2459,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (_pathsError != null)
+                  if (_functionsError != null)
                     _buildCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'OmniFlow 轨迹列表加载失败',
+                            'OmniFlow 资产列表加载失败',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
@@ -2714,7 +2473,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            _pathsError!,
+                            _functionsError!,
                             style: const TextStyle(
                               fontSize: 13,
                               color: AppColors.text70,
@@ -2724,10 +2483,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ],
                       ),
                     )
-                  else if (allPaths.isEmpty)
+                  else if (allFunctions.isEmpty)
                     _buildCard(
                       child: const Text(
-                        '当前 provider 没有返回可展示的 OmniFlow 轨迹。确认 OmniFlow provider 已启动、Base URL 正确，并且 provider 能访问到临时区或资产区轨迹数据。',
+                        '当前 provider 没有返回可展示的 OmniFlow 资产。确认 OmniFlow provider 已启动、Base URL 正确，并且 provider 能访问到临时区或资产区数据。',
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.text70,
@@ -2735,10 +2494,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ),
                       ),
                     )
-                  else if (filteredPaths.isEmpty)
+                  else if (filteredFunctions.isEmpty)
                     _buildCard(
                       child: Text(
-                        '没有匹配到轨迹：${_pathSearchController.text.trim()}',
+                        '没有匹配到资产：${_functionSearchController.text.trim()}',
                         style: const TextStyle(
                           fontSize: 13,
                           color: AppColors.text70,
@@ -2747,7 +2506,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       ),
                     )
                   else ...[
-                    if (temporaryPaths.isNotEmpty) ...[
+                    if (temporaryFunctions.isNotEmpty) ...[
                       _buildCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2764,7 +2523,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   ),
                                 ),
                                 _buildPill(
-                                  '${temporaryPaths.length}',
+                                  '${temporaryFunctions.length}',
                                   backgroundColor: const Color(0xFFFFF4E5),
                                   textColor: const Color(0xFFB54708),
                                 ),
@@ -2784,12 +2543,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       ),
                       const SizedBox(height: 8),
                       ...(() {
-                        final groupedPaths = groupByApp(temporaryPaths);
-                        final groupKeys = groupedPaths.keys.toList()..sort();
+                        final groupedFunctions = groupByApp(temporaryFunctions);
+                        final groupKeys = groupedFunctions.keys.toList()
+                          ..sort();
                         return groupKeys.expand((groupName) {
-                          final paths =
-                              groupedPaths[groupName] ??
-                              const <UtgPathSummary>[];
+                          final functionsInGroup =
+                              groupedFunctions[groupName] ??
+                              const <UtgFunctionSummary>[];
                           return [
                             _buildCard(
                               child: Row(
@@ -2803,22 +2563,22 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                       ),
                                     ),
                                   ),
-                                  _buildPill('${paths.length}'),
+                                  _buildPill('${functionsInGroup.length}'),
                                 ],
                               ),
                             ),
                             const SizedBox(height: 8),
-                            ...paths.map(
-                              (path) => Padding(
+                            ...functionsInGroup.map(
+                              (function) => Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
-                                child: _buildPathCard(path),
+                                child: _buildFunctionCard(function),
                               ),
                             ),
                           ];
                         });
                       })(),
                     ],
-                    if (readyPaths.isNotEmpty) ...[
+                    if (readyFunctions.isNotEmpty) ...[
                       _buildCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2827,7 +2587,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                               children: [
                                 const Expanded(
                                   child: Text(
-                                    '资产区 Ready 轨迹',
+                                    '资产区 Ready 资产',
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
@@ -2835,7 +2595,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   ),
                                 ),
                                 _buildPill(
-                                  '${readyPaths.length}',
+                                  '${readyFunctions.length}',
                                   backgroundColor: const Color(0xFFE8F7EE),
                                   textColor: const Color(0xFF117A37),
                                 ),
@@ -2843,7 +2603,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                             ),
                             const SizedBox(height: 8),
                             const Text(
-                              '这里的路径已经完成沉淀，可复用、可 compile，也可以继续上传或同步。',
+                              '这里的 function 资产已经完成沉淀，可复用、可 compile，也可以继续上传或同步。',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: AppColors.text70,
@@ -2855,12 +2615,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       ),
                       const SizedBox(height: 8),
                       ...(() {
-                        final groupedPaths = groupByApp(readyPaths);
-                        final groupKeys = groupedPaths.keys.toList()..sort();
+                        final groupedFunctions = groupByApp(readyFunctions);
+                        final groupKeys = groupedFunctions.keys.toList()
+                          ..sort();
                         return groupKeys.expand((groupName) {
-                          final paths =
-                              groupedPaths[groupName] ??
-                              const <UtgPathSummary>[];
+                          final functionsInGroup =
+                              groupedFunctions[groupName] ??
+                              const <UtgFunctionSummary>[];
                           return [
                             _buildCard(
                               child: Row(
@@ -2874,46 +2635,22 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                       ),
                                     ),
                                   ),
-                                  _buildPill('${paths.length}'),
+                                  _buildPill('${functionsInGroup.length}'),
                                 ],
                               ),
                             ),
                             const SizedBox(height: 8),
-                            ...paths.map(
-                              (path) => Padding(
+                            ...functionsInGroup.map(
+                              (function) => Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
-                                child: _buildPathCard(path),
+                                child: _buildFunctionCard(function),
                               ),
                             ),
                           ];
                         });
                       })(),
                     ],
-                    if (unknownPaths.isNotEmpty) ...[
-                      _buildCard(
-                        child: Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                '未分区轨迹',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            _buildPill('${unknownPaths.length}'),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...unknownPaths.map(
-                        (path) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _buildPathCard(path),
-                        ),
-                      ),
-                    ],
+                    // 未分区资产已隐藏
                   ],
                 ],
               ),

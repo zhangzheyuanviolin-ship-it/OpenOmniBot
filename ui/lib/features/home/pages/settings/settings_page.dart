@@ -461,19 +461,18 @@ class _SettingsPageState extends State<SettingsPage> {
         },
       ),
     ];
-    if (_omniFlowDebugUnlocked) {
-      modelMemoryItems.add(
-        _SettingItem(
-          icon: Icons.route_outlined,
-          title: 'OmniFlow 轨迹执行 [debug]',
-          subtitle: _buildUtgSubtitle(),
-          onTap: () async {
-            await GoRouterManager.pushForResult('/home/utg');
-            _loadUtgBridgeConfig();
-          },
-        ),
-      );
-    }
+    // OmniFlow 技能栏 - 直接显示，不需要解锁
+    modelMemoryItems.add(
+      _SettingItem(
+        icon: Icons.auto_awesome_outlined,
+        title: 'OmniFlow 技能栏',
+        subtitle: _buildUtgSubtitle(),
+        onTap: () async {
+          await GoRouterManager.pushForResult('/home/utg');
+          _loadUtgBridgeConfig();
+        },
+      ),
+    );
     return [
       _SettingSection(
         label: context.l10n.settingsSectionModelMemory,
