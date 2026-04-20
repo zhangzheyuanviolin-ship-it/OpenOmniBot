@@ -381,5 +381,26 @@
   "alpineStartCommand": "启动命令",
   "alpineCommandExample": "例如：python app.py 或 pnpm start",
   "alpineWorkDir": "工作目录",
-  "alpineBootAutoStart": "打开小万时自动启动"
+  "alpineBootAutoStart": "打开小万时自动启动",
+
+  "omniflowSkillPanelTitle": "OmniFlow 技能栏",
+  "omniflowSkillPanelDesc": "管理 OmniFlow 技能：查看已学习的技能，执行技能，或删除不需要的技能。",
+  "omniflowSkillList": "已有技能",
+  "omniflowSkillSearch": "搜索技能",
+  "omniflowSkillSearchHint": "按名称、描述等关键字过滤",
+  "omniflowSettings": "OmniFlow 设置",
+  "omniflowEnablePreHook": "启用 `vlm_task` 前置 OmniFlow pre-hook",
+  "omniflowAutoStartProvider": "打开 OOB 时自动拉起 provider",
+  "omniflowRefreshSkills": "刷新技能",
+  "omniflowProviderStart": "启动",
+  "omniflowProviderStop": "停止",
+  "omniflowProviderRestart": "重启",
+  "omniflowSaveConfig": "保存配置",
+  "omniflowConfigSaved": "OmniFlow 配置已保存",
+  "omniflowConfigSaveFailed": "保存 OmniFlow 配置失败",
+  "omniflowConfigLoadFailed": "加载 OmniFlow 配置失败",
+  "omniflowSkillsLoadFailed": "加载 OmniFlow 技能失败",
+  "omniflowDownloadCloudSkill": "下载云端技能",
+  "omniflowTempSkills": "临时技能（待导入）",
+  "omniflowReadySkills": "可用技能"
 }

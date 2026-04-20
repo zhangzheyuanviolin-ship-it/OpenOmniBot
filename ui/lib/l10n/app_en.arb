@@ -381,5 +381,26 @@
   "alpineStartCommand": "Start Command",
   "alpineCommandExample": "e.g., python app.py or pnpm start",
   "alpineWorkDir": "Working Directory",
-  "alpineBootAutoStart": "Auto-start when Omnibot opens"
+  "alpineBootAutoStart": "Auto-start when Omnibot opens",
+
+  "omniflowSkillPanelTitle": "OmniFlow Skills",
+  "omniflowSkillPanelDesc": "Manage OmniFlow skills: view learned skills, execute skills, or delete unwanted ones.",
+  "omniflowSkillList": "Available Skills",
+  "omniflowSkillSearch": "Search skills",
+  "omniflowSkillSearchHint": "Filter by name, description, etc.",
+  "omniflowSettings": "OmniFlow Settings",
+  "omniflowEnablePreHook": "Enable OmniFlow pre-hook for vlm_task",
+  "omniflowAutoStartProvider": "Auto-start provider when app opens",
+  "omniflowRefreshSkills": "Refresh Skills",
+  "omniflowProviderStart": "Start",
+  "omniflowProviderStop": "Stop",
+  "omniflowProviderRestart": "Restart",
+  "omniflowSaveConfig": "Save Config",
+  "omniflowConfigSaved": "OmniFlow config saved",
+  "omniflowConfigSaveFailed": "Failed to save OmniFlow config",
+  "omniflowConfigLoadFailed": "Failed to load OmniFlow config",
+  "omniflowSkillsLoadFailed": "Failed to load OmniFlow skills",
+  "omniflowDownloadCloudSkill": "Download Cloud Skills",
+  "omniflowTempSkills": "Temporary Skills (pending import)",
+  "omniflowReadySkills": "Ready Skills"
 }

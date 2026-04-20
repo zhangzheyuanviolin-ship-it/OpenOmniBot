@@ -465,7 +465,7 @@ class _SettingsPageState extends State<SettingsPage> {
     modelMemoryItems.add(
       _SettingItem(
         icon: Icons.auto_awesome_outlined,
-        title: 'OmniFlow 技能栏',
+        title: context.l10n.omniflowSkillPanelTitle,
         subtitle: _buildUtgSubtitle(),
         onTap: () async {
           await GoRouterManager.pushForResult('/home/utg');

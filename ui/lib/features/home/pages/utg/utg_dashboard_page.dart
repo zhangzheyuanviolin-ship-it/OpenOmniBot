@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/theme/app_colors.dart';
@@ -2124,7 +2125,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: CommonAppBar(
-        title: 'OmniFlow 技能栏',
+        title: context.l10n.omniflowSkillPanelTitle,
         primary: true,
         actions: [
           IconButton(
@@ -2142,9 +2143,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   _buildCard(
-                    child: const Text(
-                      '管理 OmniFlow 技能：查看已学习的技能，执行技能，或删除不需要的技能。',
-                      style: TextStyle(
+                    child: Text(
+                      context.l10n.omniflowSkillPanelDesc,
+                      style: const TextStyle(
                         fontSize: 13,
                         color: AppColors.text70,
                         height: 1.7,
@@ -2404,9 +2405,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      const Text(
-                        '已有技能',
-                        style: TextStyle(
+                      Text(
+                        context.l10n.omniflowSkillList,
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                         ),
@@ -2435,8 +2436,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                             controller: _functionSearchController,
                             onChanged: (_) => setState(() {}),
                             decoration: InputDecoration(
-                              labelText: '搜索技能',
-                              hintText: '按名称、描述等关键字过滤',
+                              labelText: context.l10n.omniflowSkillSearch,
+                              hintText: context.l10n.omniflowSkillSearchHint,
                               prefixIcon: const Icon(Icons.search_outlined),
                               suffixIcon: searchQuery.isEmpty
                                   ? null
