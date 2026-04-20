@@ -100,6 +100,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final PageController _modePageController = PageController(initialPage: 0);
   final FocusNode _inputFocusNode = FocusNode();
   final TextEditingController _vlmAnswerController = TextEditingController();
+  final TextEditingController _normalUserMessageEditController =
+      TextEditingController();
+  final TextEditingController _openClawUserMessageEditController =
+      TextEditingController();
 
   // ===================== Keys =====================
   final GlobalKey<ChatInputAreaState> _chatInputAreaKey =
@@ -183,6 +187,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final Map<ChatPageMode, List<ChatMessageModel>> _messagesByMode = {
     ChatPageMode.normal: <ChatMessageModel>[],
     ChatPageMode.openclaw: <ChatMessageModel>[],
+  };
+  final Map<ChatPageMode, String?> _editingUserMessageIdByMode = {
+    ChatPageMode.normal: null,
+    ChatPageMode.openclaw: null,
   };
   final Map<ChatPageMode, double> _toolActivityOccupiedHeightByMode = {
     ChatPageMode.normal: 0,
@@ -908,6 +916,15 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   List<ChatInputAttachment> get _pendingAttachments =>
       _pendingAttachmentsByMode[_activeMode]!;
+  String? get _editingUserMessageId => _editingUserMessageIdByMode[_activeMode];
+  set _editingUserMessageId(String? value) =>
+      _editingUserMessageIdByMode[_activeMode] = value;
+  TextEditingController _userMessageEditControllerForMode(ChatPageMode mode) =>
+      mode == ChatPageMode.openclaw
+      ? _openClawUserMessageEditController
+      : _normalUserMessageEditController;
+  TextEditingController get _editingUserMessageController =>
+      _userMessageEditControllerForMode(_activeMode);
   _ChatModelOverrideSelection? get _activeConversationModelOverrideSelection {
     final pending = _pendingConversationModelOverride;
     if (pending != null) {
@@ -1317,6 +1334,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _lastAgentToolTypeByMode[mode] = null;
     _browserSessionSnapshotByMode[mode] = null;
     _pendingAttachmentsByMode[mode]!.clear();
+    _editingUserMessageIdByMode[mode] = null;
+    _userMessageEditControllerForMode(mode).clear();
     _draftMessageByMode[mode] = '';
     if (mode == ChatPageMode.normal) {
       _conversationModelOverride = null;

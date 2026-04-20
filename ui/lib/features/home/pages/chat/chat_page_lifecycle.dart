@@ -548,6 +548,8 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     _modePageController.dispose();
     _inputFocusNode.dispose();
     _vlmAnswerController.dispose();
+    _normalUserMessageEditController.dispose();
+    _openClawUserMessageEditController.dispose();
     _openClawBaseUrlController.dispose();
     _openClawTokenController.dispose();
     _openClawUserIdController.dispose();
