@@ -6,8 +6,6 @@ import 'package:ui/features/task/pages/execution_history/widgets/execution_recor
 
 class ExecutionRecordList extends StatelessWidget {
   final List<ExecutionRecordListItemData> records;
-  final Function(int) onDelete;
-  final Function(ExecutionRecordListItemData, BuildContext, Offset) onMore;
   final Function(ExecutionRecordListItemData)? onLongPress;
   final Function(ExecutionRecordListItemData)? onTap;
   // 选择模式相关
@@ -17,11 +15,11 @@ class ExecutionRecordList extends StatelessWidget {
   final String Function(ExecutionRecordListItemData)? getRecordKey;
   final Function(ExecutionRecordListItemData)? onSchedulePressed;
   final Set<String> scheduledTaskKeys;
+  // 重放相关
+  final Function(ExecutionRecordListItemData)? onReplayPressed;
 
   const ExecutionRecordList({
     required this.records,
-    required this.onDelete,
-    required this.onMore,
     this.onLongPress,
     this.onTap,
     this.isSelectionMode = false,
@@ -30,6 +28,7 @@ class ExecutionRecordList extends StatelessWidget {
     this.getRecordKey,
     this.onSchedulePressed,
     this.scheduledTaskKeys = const {},
+    this.onReplayPressed,
   });
 
   @override
@@ -81,16 +80,9 @@ class ExecutionRecordList extends StatelessWidget {
                             onSchedulePressed: isSelectionMode
                                 ? null
                                 : () => onSchedulePressed?.call(record),
-                            onMorePressed: isSelectionMode
+                            onReplayPressed: isSelectionMode
                                 ? null
-                                : (context, position) {
-                                    onMore(record, context, position);
-                                  },
-                            onDelete: isSelectionMode
-                                ? null
-                                : () {
-                                    onDelete(record.id);
-                                  },
+                                : () => onReplayPressed?.call(record),
                             onLongPress: isSelectionMode
                                 ? null
                                 : () {

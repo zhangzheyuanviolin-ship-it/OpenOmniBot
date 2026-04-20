@@ -4,6 +4,7 @@ import cn.com.omnimind.accessibility.service.AssistsService
 import cn.com.omnimind.accessibility.util.XmlTreeUtils
 import cn.com.omnimind.assists.controller.accessibility.AccessibilityController
 import cn.com.omnimind.baselib.http.Http429Exception
+import cn.com.omnimind.baselib.llm.ChatCompletionUsage
 import cn.com.omnimind.baselib.llm.contentText
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.baselib.util.exception.PrivacyBlockedException
@@ -247,6 +248,10 @@ class VLMOperationService(
         )
         context = drainExternalMemories(context)
         val executionTrace = mutableListOf<UIStep>()
+        // Token 使用统计
+        var totalPromptTokens = 0
+        var totalCompletionTokens = 0
+        var totalLlmCalls = 0
         var lastError: String? = null
         val summaryScreenshotList =
             mutableListOf<String>() //prepare for summary,screenshot before action
@@ -334,6 +339,12 @@ class VLMOperationService(
             if (result.screenshotErrorCode != null) {
                 lastScreenshotErrorCode = result.screenshotErrorCode
             }
+            // 累积 Token 使用统计
+            result.usage?.let { usage ->
+                totalPromptTokens += usage.promptTokens ?: 0
+                totalCompletionTokens += usage.completionTokens ?: 0
+                totalLlmCalls++
+            }
             ensureTaskActive("after_single_step_$stepIndex")
 
             if (result.feedback != null) {
@@ -353,6 +364,7 @@ class VLMOperationService(
                     feedback = result.feedback,
                     screenshotErrorCode = lastScreenshotErrorCode,
                     stabilizationWaitMs = totalStabilizationWaitMs,
+                    llmUsage = LlmUsageSummary(totalPromptTokens, totalCompletionTokens, totalPromptTokens + totalCompletionTokens, totalLlmCalls),
                 )
             }
 
@@ -386,6 +398,7 @@ class VLMOperationService(
                         error = "VLM解析失败次数超过限制(${maxParseFailures}次)，任务终止",
                         screenshotErrorCode = lastScreenshotErrorCode,
                         stabilizationWaitMs = totalStabilizationWaitMs,
+                        llmUsage = LlmUsageSummary(totalPromptTokens, totalCompletionTokens, totalPromptTokens + totalCompletionTokens, totalLlmCalls),
                     )
                 }
 
@@ -454,6 +467,7 @@ class VLMOperationService(
                     summaryScreenshotList = summaryScreenshotList,
                     screenshotErrorCode = lastScreenshotErrorCode,
                     stabilizationWaitMs = totalStabilizationWaitMs,
+                    llmUsage = LlmUsageSummary(totalPromptTokens, totalCompletionTokens, totalPromptTokens + totalCompletionTokens, totalLlmCalls),
                 )
             }
             if (step.action is InfoAction) {
@@ -485,6 +499,7 @@ class VLMOperationService(
                         error = "INFO动作处理失败: ${e.message}",
                         screenshotErrorCode = lastScreenshotErrorCode,
                         stabilizationWaitMs = totalStabilizationWaitMs,
+                        llmUsage = LlmUsageSummary(totalPromptTokens, totalCompletionTokens, totalPromptTokens + totalCompletionTokens, totalLlmCalls),
                     )
                 }
             }
@@ -530,6 +545,7 @@ class VLMOperationService(
                         error = "用户交互动作处理失败: ${e.message}",
                         screenshotErrorCode = lastScreenshotErrorCode,
                         stabilizationWaitMs = totalStabilizationWaitMs,
+                        llmUsage = LlmUsageSummary(totalPromptTokens, totalCompletionTokens, totalPromptTokens + totalCompletionTokens, totalLlmCalls),
                     )
                 }
             }
@@ -543,6 +559,7 @@ class VLMOperationService(
                     error = "任务终止: ${(step.action as AbortAction).value}",
                     screenshotErrorCode = lastScreenshotErrorCode,
                     stabilizationWaitMs = totalStabilizationWaitMs,
+                    llmUsage = LlmUsageSummary(totalPromptTokens, totalCompletionTokens, totalPromptTokens + totalCompletionTokens, totalLlmCalls),
                 )
             }
             stepIndex++
@@ -558,6 +575,7 @@ class VLMOperationService(
             summaryScreenshotList = summaryScreenshotList,
             screenshotErrorCode = lastScreenshotErrorCode,
             stabilizationWaitMs = totalStabilizationWaitMs,
+            llmUsage = LlmUsageSummary(totalPromptTokens, totalCompletionTokens, totalPromptTokens + totalCompletionTokens, totalLlmCalls),
         )
     }
 
@@ -960,6 +978,7 @@ class VLMOperationService(
                     error = null,
                     screenshot = if (summary) screenshot else null,
                     stabilizationWaitMs = stabilizationWaitMs,
+                    usage = sceneTurn?.turn?.usage,
                 )
 
             } catch (e: Http429Exception) {
@@ -1391,6 +1410,14 @@ data class VLMOperationResult(
     val feedback: String? = null,
     val screenshotErrorCode: Int? = null,
     val stabilizationWaitMs: Long = 0L,
+    val usage: ChatCompletionUsage? = null,
+)
+
+data class LlmUsageSummary(
+    val promptTokens: Int = 0,
+    val completionTokens: Int = 0,
+    val totalTokens: Int = 0,
+    val llmCalls: Int = 0,
 )
 
 data class TaskExecutionReport(
@@ -1409,4 +1436,5 @@ data class TaskExecutionReport(
     val providerRunLogJson: String? = null,
     val providerRunLogPath: String? = null,
     val canonicalRunLogPath: String? = null,
+    val llmUsage: LlmUsageSummary? = null,
 )

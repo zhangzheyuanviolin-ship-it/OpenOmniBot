@@ -43,6 +43,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URI
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 /**
@@ -94,9 +98,9 @@ object UtgBridge {
         @SerializedName("image_base64") val imageBase64: String? = null,
     )
 
-    data class RunCompiledPathRequest(
+    data class RunFunctionRequest(
         @SerializedName("goal") val goal: String,
-        @SerializedName("path_id") val pathId: String,
+        @SerializedName("function_id") val functionId: String,
         @SerializedName("arguments") val arguments: Map<String, String> = emptyMap(),
         @SerializedName("bridge_base_url") val bridgeBaseUrl: String,
         @SerializedName("bridge_token") val bridgeToken: String,
@@ -104,7 +108,7 @@ object UtgBridge {
         @SerializedName("skip_terminal_verify") val skipTerminalVerify: Boolean = false,
     )
 
-    data class RunCompiledPathResponse(
+    data class RunFunctionResponse(
         @SerializedName("success") val success: Boolean = false,
         @SerializedName("error_code") val errorCode: String? = null,
         @SerializedName("error_message") val errorMessage: String? = null,
@@ -124,14 +128,15 @@ object UtgBridge {
     data class VlmPreHookResponse(
         @SerializedName("kind") val kind: String = "",
         @SerializedName("summary") val summary: String = "",
-        @SerializedName("path_id") val pathId: String? = null,
+        @SerializedName("function_id") val functionId: String? = null,
         @SerializedName("planner_guidance") val plannerGuidance: String = "",
         @SerializedName("execution_route") val executionRoute: String = "",
     )
 
     data class IngestRequest(
         @SerializedName("goal") val goal: String,
-        @SerializedName("steps") val steps: List<StepRecord>,
+        @SerializedName("run_log") val runLog: Map<String, Any?>? = null,
+        @SerializedName("steps") val steps: List<StepRecord> = emptyList(),
         @SerializedName("auto_import") val autoImport: Boolean = true,
     )
 
@@ -377,13 +382,14 @@ object UtgBridge {
         return VLMTaskPreHookResult(
             kind = response.kind.ifBlank { "hard_fail" },
             summary = response.summary,
-            pathId = response.pathId,
+            functionId = response.functionId?.takeIf { it.isNotBlank() },
             plannerGuidance = response.plannerGuidance,
             executionRoute = response.executionRoute,
         )
     }
 
     suspend fun captureObservation(request: ObservationRequest): ObservationResponse {
+        AccessibilityController.initController()
         val rootNode = AssistsService.instance?.rootInActiveWindow
         val xml = if (request.xml) {
             try {
@@ -434,6 +440,7 @@ object UtgBridge {
     }
 
     suspend fun executeAction(request: ActRequest): ActResponse {
+        AccessibilityController.initController()
         val action = request.action
         val params = action.params
         return try {
@@ -493,18 +500,27 @@ object UtgBridge {
                     if (packageName.isNullOrBlank()) {
                         return ActResponse(success = false, message = "missing package_name")
                     }
-                    val launchIntent = runCatching {
-                        BaseApplication.instance.packageManager.getLaunchIntentForPackage(packageName)
-                    }.getOrNull()
-                    if (launchIntent != null) {
-                        launchIntent.addFlags(
-                            Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-                        )
-                        BaseApplication.instance.startActivity(launchIntent)
-                    } else {
+                    val launched = runCatching {
                         AccessibilityController.launchApplication(packageName) { clickX, clickY ->
                             AccessibilityController.clickCoordinate(clickX, clickY)
+                        }
+                        true
+                    }.getOrElse {
+                        OmniLog.w(TAG, "open_app accessibility launch failed: ${it.message}")
+                        false
+                    }
+                    if (!launched) {
+                        val launchIntent = runCatching {
+                            BaseApplication.instance.packageManager.getLaunchIntentForPackage(packageName)
+                        }.getOrNull()
+                        if (launchIntent != null) {
+                            launchIntent.addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                            )
+                            BaseApplication.instance.startActivity(launchIntent)
+                        } else {
+                            return ActResponse(success = false, message = "package not found: $packageName")
                         }
                     }
                     ActResponse(
@@ -564,11 +580,11 @@ object UtgBridge {
         }
     }
 
-    suspend fun runCompiledPath(request: RunCompiledPathRequest): RunCompiledPathResponse? {
+    suspend fun runFunction(request: RunFunctionRequest): RunFunctionResponse? {
         return post(
             path = "/functions/execute",
             payload = request,
-            responseClass = RunCompiledPathResponse::class.java,
+            responseClass = RunFunctionResponse::class.java,
         )
     }
 
@@ -577,11 +593,20 @@ object UtgBridge {
     ): AppendRunLogResponse? {
         if (payload.compileGateResult?.kind == "hit") {
             val providerRunLog = parseJsonMap(payload.taskReport.providerRunLogJson)
-            return AppendRunLogResponse(
-                success = providerRunLog != null || !payload.taskReport.canonicalRunLogPath.isNullOrBlank(),
-                runId = providerRunLog?.stringValue("run_id"),
-                runLogPath = payload.taskReport.canonicalRunLogPath ?: payload.taskReport.providerRunLogPath,
-                runLog = providerRunLog,
+            val providerRunId = providerRunLog?.stringValue("run_id")
+            if (!providerRunId.isNullOrBlank()) {
+                OmniLog.i(TAG, "ingestVlmTaskRunLog reuse provider run_log: run_id=$providerRunId")
+                return AppendRunLogResponse(
+                    success = true,
+                    runId = providerRunId,
+                    runLogPath = payload.taskReport.canonicalRunLogPath
+                        ?: payload.taskReport.providerRunLogPath,
+                    runLog = providerRunLog,
+                )
+            }
+            OmniLog.i(
+                TAG,
+                "ingestVlmTaskRunLog compile-hit missing provider run_log; fallback to import_trace"
             )
         }
         return post(
@@ -596,10 +621,13 @@ object UtgBridge {
         if (normalizedTaskId.isEmpty()) {
             return
         }
+        OmniLog.i(
+            TAG,
+            "cacheVlmTaskRunLog start: task_id=$normalizedTaskId compile_gate=${payload.compileGateResult?.kind}"
+        )
         runCatching {
             val appendResponse = ingestVlmTaskRunLog(payload)
             val providerPersisted = appendResponse?.success == true
-            val ingestPayload = buildIngestPayload(payload)
             val snapshot = linkedMapOf<String, Any?>(
                 "success" to providerPersisted,
                 "cached_locally" to true,
@@ -609,16 +637,19 @@ object UtgBridge {
                 "run_id" to appendResponse?.runId,
                 "run_log_path" to appendResponse?.runLogPath,
                 "run_log" to appendResponse?.runLog,
-                "ingest_payload" to ingestPayload,
                 "error_message" to if (providerPersisted) {
                     null
                 } else {
-                    "provider ingest unavailable; using local cached ingest_payload snapshot"
+                    "provider ingest unavailable"
                 },
             )
             mmkv.encode(
                 PREF_VLM_TASK_RUN_LOG_PREFIX + normalizedTaskId,
                 gson.toJson(snapshot),
+            )
+            OmniLog.i(
+                TAG,
+                "cacheVlmTaskRunLog finish: task_id=$normalizedTaskId persisted=$providerPersisted run_id=${appendResponse?.runId.orEmpty()}"
             )
         }.onFailure {
             OmniLog.w(TAG, "cacheVlmTaskRunLog failed: ${it.message}")
@@ -653,8 +684,19 @@ object UtgBridge {
                 "error_message" to "run_log 解析失败",
             )
         }
-        return linkedMapOf<String, Any?>("success" to true).apply {
+        val normalized = linkedMapOf<String, Any?>().apply {
             putAll(decoded)
+            remove("ingest_payload")
+            val errorMessage = stringValue("error_message")
+            if (
+                errorMessage ==
+                "provider ingest unavailable; using local cached ingest_payload snapshot"
+            ) {
+                put("error_message", "provider ingest unavailable")
+            }
+        }
+        return linkedMapOf<String, Any?>("success" to true).apply {
+            putAll(normalized)
         }
     }
 
@@ -967,7 +1009,7 @@ object UtgBridge {
     }
 
     private fun buildIngestPayload(payload: VLMTaskRunLogPayload): IngestRequest {
-        val steps = payload.taskReport.executionTrace.map { step ->
+        val legacySteps = payload.taskReport.executionTrace.map { step ->
             StepRecord(
                 observation = ObservationRecord(
                     xml = step.observationXml,
@@ -976,7 +1018,332 @@ object UtgBridge {
                 toolCall = uiActionToToolCall(step.action),
             )
         }
-        return IngestRequest(goal = payload.goal, steps = steps)
+        val compileGate = payload.compileGateResult
+        val compileSummary = listOf(
+            compileGate?.summary,
+            compileGate?.plannerGuidance,
+            payload.taskReport.feedback,
+        ).firstOrNull { !it.isNullOrBlank() }?.trim()
+        val rawExecutionTrace = payload.taskReport.executionTrace
+        val compileFunctionId = compileGate?.functionId?.trim().orEmpty()
+        val syntheticObservationXml = rawExecutionTrace.firstOrNull()?.observationXml ?: payload.finalXml
+        val syntheticPackageName = rawExecutionTrace.firstOrNull()?.packageName ?: payload.finalPackageName
+        val shouldSynthesizeCompileHitStep = compileGate?.kind == "hit" &&
+            compileFunctionId.isNotEmpty()
+        val canonicalSteps = if (shouldSynthesizeCompileHitStep) {
+            val stepStartedAtMs = payload.startedAtMs
+            val stepFinishedAtMs = maxOf(stepStartedAtMs, payload.finishedAtMs)
+            val syntheticResultMessage = compileSummary.orEmpty().ifBlank {
+                payload.taskReport.feedback.orEmpty().trim().ifEmpty {
+                    "OmniFlow function 执行成功"
+                }
+            }
+            val syntheticSteps = mutableListOf(
+                linkedMapOf<String, Any?>(
+                    "step_index" to 0,
+                    "source" to "oob_canonical_steps",
+                    "observation_before_act" to linkedMapOf(
+                        "xml" to syntheticObservationXml,
+                        "image_base64" to null,
+                        "package_name" to syntheticPackageName,
+                        "activity_name" to null,
+                        "state_node_id" to null,
+                    ),
+                    "tool_call" to linkedMapOf(
+                        "name" to "execute_function",
+                        "params" to linkedMapOf(
+                            "function_id" to compileFunctionId,
+                            "arguments" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+                    "plan" to linkedMapOf(
+                        "tool_name" to "execute_function",
+                        "description" to "执行轨迹 $compileFunctionId",
+                        "reason" to compileSummary.orEmpty(),
+                        "planner_used" to false,
+                        "tool_args" to linkedMapOf(
+                            "function_id" to compileFunctionId,
+                            "arguments" to emptyMap<String, Any?>(),
+                        ),
+                        "action_description" to "执行轨迹 $compileFunctionId",
+                    ),
+                    "act_source" to "utg",
+                    "act_result" to linkedMapOf(
+                        "success" to payload.taskReport.success,
+                        "source" to "oob_canonical_steps",
+                        "error_message" to if (payload.taskReport.success) null else syntheticResultMessage,
+                        "result_summary" to linkedMapOf(
+                            "message" to syntheticResultMessage,
+                            "thought" to "",
+                            "summary" to syntheticResultMessage,
+                        ),
+                    ),
+                    "provider_detail" to emptyMap<String, Any?>(),
+                    "target_element" to null,
+                    "intent" to null,
+                    "started_at" to epochMsToIsoUtc(stepStartedAtMs),
+                    "finished_at" to epochMsToIsoUtc(stepFinishedAtMs),
+                    "duration_ms" to (stepFinishedAtMs - stepStartedAtMs).toDouble(),
+                    "selection_source" to "utg",
+                    "execution_source" to "utg",
+                    "operation_description" to "执行轨迹 $compileFunctionId",
+                    "selector_source" to "omniflow",
+                    "selector_label" to "OmniFlow",
+                    "selector_reason" to compileSummary.orEmpty().ifEmpty { payload.goal },
+                    "compile_result" to linkedMapOf(
+                        "success" to true,
+                        "reason" to compileSummary,
+                        "summary" to compileSummary,
+                        "decision" to compileGate.kind,
+                        "execution_route" to compileGate.executionRoute,
+                        "function_id" to compileFunctionId,
+                    ),
+                ) as LinkedHashMap<String, Any?>
+            )
+            val terminalStep = rawExecutionTrace.lastOrNull()?.takeIf { it.action is FinishedAction }
+            if (terminalStep != null) {
+                val terminalStartedAtMs = terminalStep.startedAtMs ?: stepFinishedAtMs
+                val terminalFinishedAtMs = maxOf(
+                    terminalStartedAtMs,
+                    terminalStep.finishedAtMs ?: terminalStartedAtMs,
+                )
+                syntheticSteps += linkedMapOf<String, Any?>(
+                    "step_index" to syntheticSteps.size,
+                    "source" to "oob_canonical_steps",
+                    "observation_before_act" to linkedMapOf(
+                        "xml" to terminalStep.observationXml,
+                        "image_base64" to null,
+                        "package_name" to terminalStep.packageName,
+                        "activity_name" to null,
+                        "state_node_id" to null,
+                    ),
+                    "tool_call" to linkedMapOf(
+                        "name" to "finished",
+                        "params" to linkedMapOf("content" to ""),
+                    ),
+                    "plan" to linkedMapOf(
+                        "tool_name" to "finished",
+                        "description" to "结束任务",
+                        "reason" to terminalStep.thought.trim(),
+                        "planner_used" to true,
+                        "tool_args" to linkedMapOf(
+                            "action" to linkedMapOf(
+                                "type" to "finished",
+                                "params" to linkedMapOf("content" to ""),
+                            )
+                        ),
+                        "action_description" to "结束任务",
+                    ),
+                    "act_source" to "vlm",
+                    "act_result" to linkedMapOf(
+                        "success" to true,
+                        "source" to "oob_canonical_steps",
+                        "result_summary" to linkedMapOf(
+                            "message" to terminalStep.result?.trim().orEmpty().ifEmpty { "任务完成" },
+                            "thought" to terminalStep.thought.trim(),
+                            "summary" to terminalStep.summary.trim(),
+                        ),
+                    ),
+                    "provider_detail" to emptyMap<String, Any?>(),
+                    "target_element" to null,
+                    "intent" to null,
+                    "started_at" to epochMsToIsoUtc(terminalStartedAtMs),
+                    "finished_at" to epochMsToIsoUtc(terminalFinishedAtMs),
+                    "duration_ms" to (terminalFinishedAtMs - terminalStartedAtMs).toDouble(),
+                    "selection_source" to "vlm",
+                    "execution_source" to "vlm",
+                    "operation_description" to "结束任务",
+                    "selector_source" to "vlm",
+                    "selector_label" to "VLM",
+                    "selector_reason" to terminalStep.thought.trim().ifEmpty { payload.goal },
+                )
+            }
+            syntheticSteps
+        } else {
+            rawExecutionTrace.mapIndexed { index, step ->
+            val toolCall = uiActionToToolCall(step.action)
+            val operationDescription = describeUiAction(step.action)
+            val stepStartedAtMs = step.startedAtMs ?: payload.startedAtMs
+            val rawFinishedAtMs = step.finishedAtMs ?: stepStartedAtMs
+            val stepFinishedAtMs = maxOf(stepStartedAtMs, rawFinishedAtMs)
+            val stepSuccess = isSuccessfulStepResult(step.result, step.action)
+            val resultMessage = step.result?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: defaultStepResultMessage(step.action, stepSuccess)
+            linkedMapOf<String, Any?>(
+                "step_index" to index,
+                "source" to "oob_canonical_steps",
+                "observation_before_act" to linkedMapOf(
+                    "xml" to step.observationXml,
+                    "image_base64" to null,
+                    "package_name" to step.packageName,
+                    "activity_name" to null,
+                    "state_node_id" to null,
+                ),
+                "tool_call" to linkedMapOf(
+                    "name" to toolCall.name,
+                    "params" to toolCall.params,
+                ),
+                "plan" to linkedMapOf(
+                    "tool_name" to toolCall.name,
+                    "description" to operationDescription,
+                    "reason" to step.thought.trim(),
+                    "planner_used" to true,
+                    "tool_args" to linkedMapOf(
+                        "action" to linkedMapOf(
+                            "type" to toolCall.name,
+                            "params" to toolCall.params,
+                        )
+                    ),
+                    "action_description" to operationDescription,
+                ),
+                "act_source" to "vlm",
+                "act_result" to linkedMapOf(
+                    "success" to stepSuccess,
+                    "source" to "oob_canonical_steps",
+                    "error_message" to if (stepSuccess) null else resultMessage,
+                    "result_summary" to linkedMapOf(
+                        "message" to resultMessage,
+                        "thought" to step.thought.trim(),
+                        "summary" to step.summary.trim(),
+                    ),
+                ),
+                "provider_detail" to emptyMap<String, Any?>(),
+                "target_element" to null,
+                "intent" to null,
+                "started_at" to epochMsToIsoUtc(stepStartedAtMs),
+                "finished_at" to epochMsToIsoUtc(stepFinishedAtMs),
+                "duration_ms" to (stepFinishedAtMs - stepStartedAtMs).toDouble(),
+                "selection_source" to "vlm",
+                "execution_source" to "vlm",
+                "operation_description" to operationDescription,
+                "selector_source" to "vlm",
+                "selector_label" to "VLM",
+                "selector_reason" to payload.goal,
+                "compile_result" to if (index == 0 && compileGate != null) {
+                    linkedMapOf(
+                        "success" to (compileGate.kind == "hit"),
+                        "reason" to compileSummary,
+                        "summary" to compileSummary,
+                        "decision" to compileGate.kind,
+                        "execution_route" to compileGate.executionRoute,
+                    )
+                } else {
+                    emptyMap<String, Any?>()
+                },
+            )
+            }
+        }
+        val runLog = linkedMapOf<String, Any?>(
+            "goal" to payload.goal,
+            "success" to payload.taskReport.success,
+            "done_reason" to if (payload.taskReport.success) {
+                "completed"
+            } else {
+                payload.taskReport.error?.trim().takeUnless { it.isNullOrEmpty() } ?: "failed"
+            },
+            "started_at" to epochMsToIsoUtc(payload.startedAtMs),
+            "finished_at" to epochMsToIsoUtc(payload.finishedAtMs),
+            "duration_ms" to maxOf(0L, payload.finishedAtMs - payload.startedAtMs).toDouble(),
+            "step_count" to payload.taskReport.executionTrace.size,
+            "steps" to canonicalSteps,
+            "extra" to linkedMapOf(
+                "source" to "oob_canonical_steps",
+                "compile_summary" to compileSummary,
+                "compile_gate_kind" to payload.taskReport.compileGateKind,
+                "fallback_used" to payload.taskReport.fallbackUsed,
+                "stabilization_wait_ms" to payload.taskReport.stabilizationWaitMs,
+                "error_message" to payload.taskReport.error,
+                "llm_usage" to payload.taskReport.llmUsage?.let { usage ->
+                    linkedMapOf(
+                        "prompt_tokens" to usage.promptTokens,
+                        "completion_tokens" to usage.completionTokens,
+                        "total_tokens" to usage.totalTokens,
+                        "llm_calls" to usage.llmCalls,
+                    )
+                },
+            ),
+            "final_observation" to linkedMapOf(
+                "xml" to payload.finalXml,
+                "package_name" to payload.finalPackageName,
+            ),
+            "source" to "oob_canonical_steps",
+        )
+        return IngestRequest(
+            goal = payload.goal,
+            runLog = runLog,
+            steps = emptyList(),
+        )
+    }
+
+    private fun describeUiAction(action: UIAction): String {
+        return when (action) {
+            is ClickAction -> action.targetDescription?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: "点击 (${action.x}, ${action.y})"
+            is TypeAction -> "输入文本"
+            is ScrollAction -> action.targetDescription?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: "滑动屏幕"
+            is LongPressAction -> action.targetDescription?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: "长按 (${action.x}, ${action.y})"
+            is OpenAppAction -> "打开应用 ${action.packageName}"
+            is PressHomeAction -> "按下 Home"
+            is PressBackAction -> "按下返回"
+            is WaitAction -> "等待"
+            is FinishedAction -> "结束任务"
+            is RecordAction -> action.content.ifBlank { "记录信息" }
+            is InfoAction -> action.value.ifBlank { "提示信息" }
+            is FeedbackAction -> action.value.ifBlank { "反馈信息" }
+            is AbortAction -> action.value.ifBlank { "终止任务" }
+            is HotKeyAction -> "按下 ${action.key}"
+            is RequireUserChoiceAction -> action.prompt.ifBlank { "请求用户选择" }
+            is RequireUserConfirmationAction -> action.prompt.ifBlank { "请求用户确认" }
+        }
+    }
+
+    private fun defaultStepResultMessage(action: UIAction, success: Boolean): String {
+        if (!success) {
+            return "步骤执行失败"
+        }
+        return when (action) {
+            is OpenAppAction -> "启动应用 ${action.packageName} 成功"
+            is ClickAction -> "点击坐标 (${action.x}, ${action.y}) 成功"
+            is LongPressAction -> "长按坐标 (${action.x}, ${action.y}) 成功"
+            is ScrollAction -> "滑动操作成功"
+            is TypeAction -> "输入文本成功"
+            is PressHomeAction -> "返回桌面成功"
+            is PressBackAction -> "返回上一级成功"
+            is WaitAction -> "等待完成"
+            is FinishedAction -> "任务完成"
+            is RecordAction -> action.content.ifBlank { "记录完成" }
+            is InfoAction -> action.value.ifBlank { "提示完成" }
+            is FeedbackAction -> action.value.ifBlank { "反馈完成" }
+            is AbortAction -> action.value.ifBlank { "任务终止" }
+            is HotKeyAction -> "按键 ${action.key} 成功"
+            is RequireUserChoiceAction -> action.prompt.ifBlank { "已请求用户选择" }
+            is RequireUserConfirmationAction -> action.prompt.ifBlank { "已请求用户确认" }
+        }
+    }
+
+    private fun isSuccessfulStepResult(result: String?, action: UIAction): Boolean {
+        if (action is AbortAction) {
+            return false
+        }
+        val normalized = result?.trim().orEmpty()
+        if (normalized.isBlank()) {
+            return true
+        }
+        val lowered = normalized.lowercase()
+        return !listOf("失败", "错误", "异常", "超时", "不支持", "fail", "error", "exception").any {
+            lowered.contains(it)
+        }
+    }
+
+    private fun epochMsToIsoUtc(value: Long?): String? {
+        if (value == null || value <= 0L) {
+            return null
+        }
+        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return formatter.format(Date(value))
     }
 
     private fun uiActionToToolCall(action: UIAction): ToolCallRecord {
