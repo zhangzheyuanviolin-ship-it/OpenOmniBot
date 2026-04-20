@@ -1770,6 +1770,16 @@ class AssistsMessageService {
     return UtgVlmPreHookResult.fromMap(decoded);
   }
 
+  /// 清空所有数据：run_logs + functions + shared_pages
+  static Future<Map<String, dynamic>> resetAllData({String? baseUrl}) async {
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/provider/reset',
+      baseUrl: baseUrl,
+    );
+    return Map<String, dynamic>.from(decoded);
+  }
+
   static Future<Map<String, dynamic>> getUtgFunctionBundle({
     required String functionId,
     String? baseUrl,
