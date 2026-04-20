@@ -41,6 +41,8 @@ import cn.com.omnimind.baselib.llm.SceneModelBindingEntry
 import cn.com.omnimind.baselib.llm.SceneModelBindingStore
 import cn.com.omnimind.baselib.llm.SceneModelOverrideEntry
 import cn.com.omnimind.baselib.llm.SceneModelOverrideStore
+import cn.com.omnimind.baselib.llm.SceneVoiceConfig
+import cn.com.omnimind.baselib.llm.SceneVoiceConfigStore
 import cn.com.omnimind.baselib.util.APPPackageUtil
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.baselib.util.exception.PermissionException
@@ -54,6 +56,7 @@ import cn.com.omnimind.bot.agent.AgentCallback
 import cn.com.omnimind.bot.agent.AgentAlarmToolService
 import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
 import cn.com.omnimind.bot.agent.AgentConversationContextCompactor
+import cn.com.omnimind.bot.agent.AgentTextSanitizer
 import cn.com.omnimind.bot.agent.AgentModelOverride
 import cn.com.omnimind.bot.agent.AgentResult
 import cn.com.omnimind.bot.agent.AgentConversationHistoryRepository
@@ -178,6 +181,58 @@ internal fun normalizeReasoningEffort(raw: String?): String? {
     return when (normalized) {
         "low", "high" -> normalized
         else -> null
+    }
+}
+
+internal data class AgentFinalErrorResolution(
+    val text: String,
+    val persistAsError: Boolean
+)
+
+internal fun resolveAgentFinalErrorResolution(
+    streamed: String,
+    error: String,
+    localizedFallback: String
+): AgentFinalErrorResolution {
+    val normalizedStreamed = AgentTextSanitizer.sanitizeUtf16(streamed).trim()
+    if (normalizedStreamed.isNotEmpty()) {
+        return AgentFinalErrorResolution(
+            text = normalizedStreamed,
+            persistAsError = false
+        )
+    }
+
+    val normalizedError = AgentTextSanitizer.sanitizeUtf16(error).trim()
+    val finalText = normalizedError.ifEmpty {
+        AgentTextSanitizer.sanitizeUtf16(localizedFallback).trim()
+    }
+    return AgentFinalErrorResolution(
+        text = finalText,
+        persistAsError = finalText.isNotEmpty()
+    )
+}
+
+private fun sanitizeInteropValue(value: Any?): Any? {
+    return when (value) {
+        null -> null
+        is String -> AgentTextSanitizer.sanitizeUtf16(value)
+        is Map<*, *> -> linkedMapOf<String, Any?>().apply {
+            value.forEach { (key, item) ->
+                if (key != null) {
+                    put(key.toString(), sanitizeInteropValue(item))
+                }
+            }
+        }
+        is List<*> -> value.map(::sanitizeInteropValue)
+        else -> value
+    }
+}
+
+private fun sanitizeInteropMap(payload: Map<String, Any?>): Map<String, Any?> {
+    return linkedMapOf<String, Any?>().apply {
+        payload.forEach { (key, value) ->
+            put(key, sanitizeInteropValue(value))
+        }
     }
 }
 
@@ -738,6 +793,15 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "sceneId" to sceneId,
             "providerProfileId" to providerProfileId,
             "modelId" to modelId
+        )
+    }
+
+    private fun SceneVoiceConfig.toMap(): Map<String, Any?> {
+        return mapOf(
+            "autoPlay" to autoPlay,
+            "voiceId" to voiceId,
+            "stylePreset" to stylePreset,
+            "customStyle" to customStyle
         )
     }
 
@@ -2886,6 +2950,50 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
+    fun getSceneVoiceConfig(call: MethodCall, result: MethodChannel.Result) {
+        workJob.launch {
+            try {
+                withContext(Dispatchers.Main) {
+                    result.success(SceneVoiceConfigStore.getConfig().toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "getSceneVoiceConfig error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("GET_SCENE_VOICE_CONFIG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun saveSceneVoiceConfig(call: MethodCall, result: MethodChannel.Result) {
+        val autoPlay = call.argument<Boolean>("autoPlay") == true
+        val voiceId = call.argument<String>("voiceId")?.trim().orEmpty()
+        val stylePreset = call.argument<String>("stylePreset")?.trim().orEmpty()
+        val customStyle = call.argument<String>("customStyle")?.trim().orEmpty()
+
+        workJob.launch {
+            try {
+                val saved = SceneVoiceConfigStore.saveConfig(
+                    SceneVoiceConfig(
+                        autoPlay = autoPlay,
+                        voiceId = voiceId,
+                        stylePreset = stylePreset,
+                        customStyle = customStyle
+                    )
+                )
+                syncAgentAiCapabilityConfigFile()
+                withContext(Dispatchers.Main) {
+                    result.success(saved.toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "saveSceneVoiceConfig error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("SAVE_SCENE_VOICE_CONFIG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
     fun getSceneModelOverrides(call: MethodCall, result: MethodChannel.Result) {
         workJob.launch {
             try {
@@ -3436,7 +3544,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     }
 
     private fun normalizeNotificationBody(text: String): String {
-        val normalized = text.replace(Regex("\\s+"), " ").trim()
+        val normalized = AgentTextSanitizer.sanitizeUtf16(text)
+            .replace(Regex("\\s+"), " ")
+            .trim()
         if (normalized.isEmpty()) {
             return t("任务已完成，点击查看详情。", "Task completed. Tap to view details.")
         }
@@ -3570,10 +3680,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
     fun createAgentTask(call: MethodCall, result: MethodChannel.Result) {
         val taskId = (call.argument<String>("taskId") ?: "").trim()
-        val userMessage = (call.argument<String>("userMessage") ?: "").toString()
+        val userMessage = AgentTextSanitizer.sanitizeUtf16(
+            (call.argument<String>("userMessage") ?: "").toString()
+        )
         val legacyConversationHistory =
             call.argument<List<Map<String, Any?>>>("conversationHistory") ?: emptyList()
-        val attachments = call.argument<List<Map<String, Any?>>>("attachments") ?: emptyList()
+        val attachments = (call.argument<List<Map<String, Any?>>>("attachments") ?: emptyList())
+            .map(::sanitizeInteropMap)
         val userMessageCreatedAt = call.argument<Number>("userMessageCreatedAt")?.toLong()
         val conversationId = call.argument<Number>("conversationId")?.toLong()?.takeIf { it > 0L }
         val requestedConversationMode =
@@ -3687,23 +3800,52 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 suspend fun publishConversationMessagesSync() {
                     val normalizedConversationId = conversationId ?: return
                     val repository = historyRepository ?: return
-                    val messages = repository.listConversationMessages(
-                        conversationId = normalizedConversationId,
-                        conversationMode = resolvedConversationMode
-                    )
-                    RealtimeHub.publish(
-                        "messages_replaced",
-                        mapOf(
-                            "conversationId" to normalizedConversationId,
-                            "mode" to resolvedConversationMode,
-                            "messages" to messages
+                    try {
+                        val messages = repository.listConversationMessages(
+                            conversationId = normalizedConversationId,
+                            conversationMode = resolvedConversationMode
                         )
-                    )
-                    FlutterChatSyncBridge.dispatchConversationMessagesChanged(
-                        conversationId = normalizedConversationId,
-                        mode = resolvedConversationMode,
-                        reason = "messages_replaced"
-                    )
+                        RealtimeHub.publish(
+                            "messages_replaced",
+                            mapOf(
+                                "conversationId" to normalizedConversationId,
+                                "mode" to resolvedConversationMode,
+                                "messages" to messages
+                            )
+                        )
+                        FlutterChatSyncBridge.dispatchConversationMessagesChanged(
+                            conversationId = normalizedConversationId,
+                            mode = resolvedConversationMode,
+                            reason = "messages_replaced"
+                        )
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        OmniLog.w(
+                            TAG,
+                            "publish conversation messages failed: ${error.message}",
+                            error
+                        )
+                    }
+                }
+
+                suspend fun persistConversationMutation(
+                    description: String,
+                    publish: Boolean = true,
+                    block: suspend () -> Unit
+                ) {
+                    val persisted = try {
+                        block()
+                        true
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        OmniLog.w(TAG, "$description failed: ${error.message}", error)
+                        false
+                    }
+                    if (persisted && publish) {
+                        publishConversationMessagesSync()
+                    }
                 }
 
                 fun resolveThinkingEntryId(round: Int): String {
@@ -3745,21 +3887,23 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val normalizedConversationId = conversationId ?: return
                     if (entryId.isBlank()) return
                     val startTime = thinkingCardStartTimes.getOrPut(entryId) { createdAt }
-                    repository.upsertUiCard(
-                        conversationId = normalizedConversationId,
-                        conversationMode = resolvedConversationMode,
-                        entryId = entryId,
-                        cardData = buildDeepThinkingCardData(
-                            thinkingContent = thinkingContent,
-                            isLoading = isLoading,
-                            stage = stage,
-                            startTime = startTime,
-                            endTime = endTime
-                        ),
-                        createdAt = startTime
-                    )
-                    if (publish) {
-                        publishConversationMessagesSync()
+                    persistConversationMutation(
+                        description = "upsert thinking card",
+                        publish = publish
+                    ) {
+                        repository.upsertUiCard(
+                            conversationId = normalizedConversationId,
+                            conversationMode = resolvedConversationMode,
+                            entryId = entryId,
+                            cardData = buildDeepThinkingCardData(
+                                thinkingContent = AgentTextSanitizer.sanitizeUtf16(thinkingContent),
+                                isLoading = isLoading,
+                                stage = stage,
+                                startTime = startTime,
+                                endTime = endTime
+                            ),
+                            createdAt = startTime
+                        )
                     }
                 }
 
@@ -3778,30 +3922,32 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                 suspend fun upsertAssistantSnapshot(text: String, isError: Boolean) {
                     val normalizedConversationId = conversationId ?: return
-                    val normalizedText = text.trim()
+                    val normalizedText = AgentTextSanitizer.sanitizeUtf16(text).trim()
                     if (normalizedText.isEmpty()) return
-                    repository.upsertAssistantMessage(
-                        conversationId = normalizedConversationId,
-                        conversationMode = resolvedConversationMode,
-                        entryId = "$taskId-assistant",
-                        text = normalizedText,
-                        isError = isError
-                    )
-                    publishConversationMessagesSync()
+                    persistConversationMutation("upsert assistant snapshot") {
+                        repository.upsertAssistantMessage(
+                            conversationId = normalizedConversationId,
+                            conversationMode = resolvedConversationMode,
+                            entryId = "$taskId-assistant",
+                            text = normalizedText,
+                            isError = isError
+                        )
+                    }
                 }
 
                 suspend fun upsertClarifyMessage(question: String) {
                     val normalizedConversationId = conversationId ?: return
-                    val normalizedQuestion = question.trim()
+                    val normalizedQuestion = AgentTextSanitizer.sanitizeUtf16(question).trim()
                     if (normalizedQuestion.isEmpty()) return
-                    repository.upsertAssistantMessage(
-                        conversationId = normalizedConversationId,
-                        conversationMode = resolvedConversationMode,
-                        entryId = "$taskId-clarify",
-                        text = normalizedQuestion,
-                        isError = false
-                    )
-                    publishConversationMessagesSync()
+                    persistConversationMutation("upsert clarify message") {
+                        repository.upsertAssistantMessage(
+                            conversationId = normalizedConversationId,
+                            conversationMode = resolvedConversationMode,
+                            entryId = "$taskId-clarify",
+                            text = normalizedQuestion,
+                            isError = false
+                        )
+                    }
                 }
 
                 suspend fun upsertPermissionState(missing: List<String>) {
@@ -3818,23 +3964,24 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             "Enable these permissions before running the task: ${names.joinToString(", ")}"
                         )
                     }
-                    repository.upsertAssistantMessage(
-                        conversationId = normalizedConversationId,
-                        conversationMode = resolvedConversationMode,
-                        entryId = "$taskId-text",
-                        text = message,
-                        isError = false
-                    )
-                    val permissionIds = resolveRequiredPermissionIds(names)
-                    if (permissionIds.isNotEmpty()) {
-                        repository.upsertUiCard(
+                    persistConversationMutation("upsert permission state") {
+                        repository.upsertAssistantMessage(
                             conversationId = normalizedConversationId,
                             conversationMode = resolvedConversationMode,
-                            entryId = "$taskId-permission",
-                            cardData = buildPermissionCardData(permissionIds)
+                            entryId = "$taskId-text",
+                            text = AgentTextSanitizer.sanitizeUtf16(message),
+                            isError = false
                         )
+                        val permissionIds = resolveRequiredPermissionIds(names)
+                        if (permissionIds.isNotEmpty()) {
+                            repository.upsertUiCard(
+                                conversationId = normalizedConversationId,
+                                conversationMode = resolvedConversationMode,
+                                entryId = "$taskId-permission",
+                                cardData = buildPermissionCardData(permissionIds)
+                            )
+                        }
                     }
-                    publishConversationMessagesSync()
                 }
 
                 suspend fun upsertToolEvent(
@@ -3845,30 +3992,35 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 ) {
                     val normalizedConversationId = conversationId ?: return
                     if (entryId.isBlank()) return
-                    repository.upsertToolEvent(
-                        conversationId = normalizedConversationId,
-                        conversationMode = resolvedConversationMode,
-                        entryId = entryId,
-                        payload = linkedMapOf<String, Any?>("taskId" to taskId).apply {
-                            putAll(payload)
-                        },
-                        fallbackStatus = fallbackStatus,
-                            fallbackSummary = fallbackSummary
+                    persistConversationMutation("upsert tool event") {
+                        val sanitizedPayload = sanitizeInteropMap(
+                            linkedMapOf<String, Any?>("taskId" to taskId).apply {
+                                putAll(payload)
+                            }
                         )
-                    publishConversationMessagesSync()
+                        repository.upsertToolEvent(
+                            conversationId = normalizedConversationId,
+                            conversationMode = resolvedConversationMode,
+                            entryId = entryId,
+                            payload = sanitizedPayload,
+                            fallbackStatus = fallbackStatus,
+                            fallbackSummary = AgentTextSanitizer.sanitizeUtf16(fallbackSummary)
+                        )
+                    }
                 }
 
                 conversationId?.let { normalizedConversationId ->
                     if (userMessage.isNotBlank() || attachments.isNotEmpty()) {
-                        repository.upsertUserMessage(
-                            conversationId = normalizedConversationId,
-                            conversationMode = resolvedConversationMode,
-                            entryId = "$taskId-user",
-                            text = userMessage,
-                            attachments = attachments,
-                            createdAt = userMessageCreatedAt ?: System.currentTimeMillis()
-                        )
-                        publishConversationMessagesSync()
+                        persistConversationMutation("upsert user message") {
+                            repository.upsertUserMessage(
+                                conversationId = normalizedConversationId,
+                                conversationMode = resolvedConversationMode,
+                                entryId = "$taskId-user",
+                                text = userMessage,
+                                attachments = attachments,
+                                createdAt = userMessageCreatedAt ?: System.currentTimeMillis()
+                            )
+                        }
                     }
                 }
 
@@ -3895,7 +4047,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     }
 
                     override suspend fun onThinkingUpdate(thinking: String) {
-                        val normalizedThinking = thinking.trim()
+                        val normalizedThinking = AgentTextSanitizer.sanitizeUtf16(thinking).trim()
                         if (shouldIgnoreRegressiveSnapshot(latestThinkingContent, normalizedThinking)) {
                             OmniLog.d(
                                 TAG,
@@ -4137,7 +4289,15 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                     t("任务已结束，请点击查看详情。", "Task ended. Tap to view details.")
                                 }
                             }
-                            notifyScheduledSubagentCompletion(meta, notificationText)
+                            runCatching {
+                                notifyScheduledSubagentCompletion(meta, notificationText)
+                            }.onFailure {
+                                OmniLog.w(
+                                    TAG,
+                                    "notify scheduled subagent completion failed: ${it.message}",
+                                    it
+                                )
+                            }
                         }
                         sendEvent(
                             "onAgentComplete",
@@ -4152,21 +4312,32 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     }
 
                     override suspend fun onError(error: String) {
-                        val streamed = scheduledAssistantBuffer.toString().trim()
-                        val finalText = streamed.ifEmpty {
-                            error.trim().ifEmpty {
-                                t(
-                                    "暂时无法生成回复，请重试。",
-                                    "I can't generate a reply right now. Please try again."
-                                )
-                            }
-                        }
+                        val resolution = resolveAgentFinalErrorResolution(
+                            streamed = scheduledAssistantBuffer.toString(),
+                            error = error,
+                            localizedFallback = t(
+                                "暂时无法生成回复，请重试。",
+                                "I can't generate a reply right now. Please try again."
+                            )
+                        )
+                        val finalText = resolution.text
                         finalizeThinkingCardIfNeeded(publish = finalText.isBlank())
                         if (finalText.isNotBlank()) {
-                            upsertAssistantSnapshot(finalText, isError = true)
+                            upsertAssistantSnapshot(
+                                finalText,
+                                isError = resolution.persistAsError
+                            )
                         }
                         scheduledSubagentMeta?.let { meta ->
-                            notifyScheduledSubagentCompletion(meta, finalText)
+                            runCatching {
+                                notifyScheduledSubagentCompletion(meta, finalText)
+                            }.onFailure {
+                                OmniLog.w(
+                                    TAG,
+                                    "notify scheduled subagent error failed: ${it.message}",
+                                    it
+                                )
+                            }
                         }
                         sendEvent("onAgentError", mapOf("error" to error))
                     }
@@ -4187,9 +4358,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         prefillTokensPerSecond: Double? = null,
                         decodeTokensPerSecond: Double? = null
                     ) {
-                        val normalizedMessage = message.trim()
+                        val normalizedMessage = AgentTextSanitizer.sanitizeUtf16(message).trim()
                         if (normalizedMessage.isNotEmpty()) {
-                            val currentSnapshot = scheduledAssistantBuffer.toString().trim()
+                            val currentSnapshot =
+                                AgentTextSanitizer.sanitizeUtf16(
+                                    scheduledAssistantBuffer.toString()
+                                ).trim()
                             if (shouldIgnoreRegressiveSnapshot(currentSnapshot, normalizedMessage)) {
                                 OmniLog.d(
                                     TAG,
@@ -4201,7 +4375,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             // 否则会把同一段内容在流式阶段重复拼接。
                             scheduledAssistantBuffer.setLength(0)
                             scheduledAssistantBuffer.append(normalizedMessage)
-                            val streamingText = scheduledAssistantBuffer.toString().trim()
+                            val streamingText =
+                                AgentTextSanitizer.sanitizeUtf16(
+                                    scheduledAssistantBuffer.toString()
+                                ).trim()
                             if (streamingText.isNotEmpty()) {
                                 upsertAssistantSnapshot(streamingText, isError = false)
                             }
@@ -4209,7 +4386,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         sendEvent(
                             "onAgentChatMessage",
                             buildMap {
-                                put("message", message)
+                                put("message", normalizedMessage)
                                 put("isFinal", isFinal)
                                 if (prefillTokensPerSecond != null) {
                                     put("prefillTokensPerSecond", prefillTokensPerSecond)
@@ -4235,25 +4412,31 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         streamed: String,
                         fallback: String
                     ): String {
-                        if (fallback.isEmpty()) {
-                            return streamed
+                        val normalizedStreamed = AgentTextSanitizer.sanitizeUtf16(streamed).trim()
+                        val normalizedFallback = AgentTextSanitizer.sanitizeUtf16(fallback).trim()
+                        if (normalizedFallback.isEmpty()) {
+                            return normalizedStreamed
                         }
-                        if (streamed.isEmpty()) {
-                            return fallback
+                        if (normalizedStreamed.isEmpty()) {
+                            return normalizedFallback
                         }
                         return when {
-                            fallback.length >= streamed.length && fallback.startsWith(streamed) -> fallback
-                            streamed.length > fallback.length && streamed.startsWith(fallback) -> streamed
-                            else -> fallback
+                            normalizedFallback.length >= normalizedStreamed.length &&
+                                normalizedFallback.startsWith(normalizedStreamed) -> normalizedFallback
+                            normalizedStreamed.length > normalizedFallback.length &&
+                                normalizedStreamed.startsWith(normalizedFallback) -> normalizedStreamed
+                            else -> normalizedFallback
                         }
                     }
 
                     private suspend fun sendEvent(method: String, args: Map<String, Any?>) {
-                        val payload = mapOf(
-                            "taskId" to taskId,
-                            "conversationId" to conversationId,
-                            "conversationMode" to resolvedConversationMode
-                        ) + args
+                        val payload = sanitizeInteropMap(
+                            mapOf(
+                                "taskId" to taskId,
+                                "conversationId" to conversationId,
+                                "conversationMode" to resolvedConversationMode
+                            ) + args
+                        )
                         val eventName = when (method) {
                             "onAgentThinkingStart" -> "agent_thinking_start"
                             "onAgentThinkingUpdate" -> "agent_thinking_update"
@@ -4339,11 +4522,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     }
                 }
                 runCatching {
-                    val payload = mapOf(
-                        "taskId" to taskId,
-                        "conversationId" to conversationId,
-                        "conversationMode" to resolvedConversationMode,
-                        "error" to errorMessage
+                    val payload = sanitizeInteropMap(
+                        mapOf(
+                            "taskId" to taskId,
+                            "conversationId" to conversationId,
+                            "conversationMode" to resolvedConversationMode,
+                            "error" to errorMessage
+                        )
                     )
                     RealtimeHub.publish("agent_error", payload)
                     withContext(Dispatchers.Main) {

@@ -194,7 +194,7 @@
 
   "trajectoryTitle": "轨迹",
   "trajectoryNoRecords": "暂无执行记录",
-  "trajectoryNoRecordsDesc": "小万为你执行的任务，后续都会在此展示",
+  "trajectoryNoRecordsDesc": "小万为你执行的视觉任务，都会在此展示",
   "trajectoryAll": "全部",
   "trajectoryTaskRecords": "任务记录",
   "trajectorySelectedCount": "已选择{n}项",

@@ -762,31 +762,31 @@ class _TrajectoryPageState
                               ],
                             ),
                           ),
-                          if (allRecords.isNotEmpty) ...[
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  '任务记录',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                    color: context.omniPalette.textPrimary,
-                                  ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '任务记录',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: context.omniPalette.textPrimary,
                                 ),
                               ),
                             ),
-                            SizedBox(height: 10),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: TagSection(
-                                items: executionTags,
-                                selectedIds: selectedTagIds,
-                                onSelectionChanged: _onTagSelectionChanged,
-                                maxCollapsedRows: 1,
-                              ),
+                          ),
+                          SizedBox(height: 10),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: TagSection(
+                              items: executionTags,
+                              selectedIds: selectedTagIds,
+                              onSelectionChanged: _onTagSelectionChanged,
+                              maxCollapsedRows: 1,
                             ),
+                          ),
+                          if (allRecords.isNotEmpty) ...[
                             SizedBox(height: 8),
                             ExecutionRecordList(
                               records: filterRecords,
@@ -886,34 +886,20 @@ class _TrajectoryPageState
             ),
           ),
           const SizedBox(height: 12),
+          
           Text(
-            '暂无任务记录',
+            context.l10n.trajectoryNoRecordsDesc,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: AppTextStyles.fontSizeH3,
-              fontWeight: AppTextStyles.fontWeightMedium,
+              fontSize: AppTextStyles.fontSizeMain,
+              fontWeight: AppTextStyles.fontWeightRegular,
               color: context.isDarkTheme
-                  ? palette.textPrimary
-                  : AppColors.primaryBlue,
-              height: AppTextStyles.lineHeightH1,
+                  ? palette.textSecondary
+                  : AppColors.text20,
+              height: AppTextStyles.lineHeightH2,
               letterSpacing: AppTextStyles.letterSpacingWide,
-            ),
-          ),
-          const SizedBox(height: 9),
-          Container(
-            alignment: Alignment.center,
-            width: 192,
-            child: Text(
-              context.l10n.trajectoryNoRecordsDesc,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: AppTextStyles.fontSizeMain,
-                fontWeight: AppTextStyles.fontWeightRegular,
-                color: context.isDarkTheme
-                    ? palette.textSecondary
-                    : AppColors.text20,
-                height: AppTextStyles.lineHeightH2,
-                letterSpacing: AppTextStyles.letterSpacingWide,
-              ),
             ),
           ),
         ],

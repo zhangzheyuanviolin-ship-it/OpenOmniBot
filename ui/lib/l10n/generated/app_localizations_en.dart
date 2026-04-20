@@ -50,7 +50,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Choose the display language for the app UI, agent prompts, and tool text';
 
   @override
-  String get languageFollowSystem => 'Follow System';
+  String get languageFollowSystem => 'System';
 
   @override
   String get languageZhHans => '简体中文';
@@ -643,8 +643,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trajectoryNoRecords => 'No execution records';
 
   @override
-  String get trajectoryNoRecordsDesc =>
-      'Tasks executed by Omnibot will be displayed here';
+  String get trajectoryNoRecordsDesc => 'VLM tasks will be displayed here';
 
   @override
   String get trajectoryAll => 'All';

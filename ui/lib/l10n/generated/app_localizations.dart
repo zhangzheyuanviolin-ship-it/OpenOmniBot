@@ -1241,7 +1241,7 @@ abstract class AppLocalizations {
   /// No description provided for @trajectoryNoRecordsDesc.
   ///
   /// In zh, this message translates to:
-  /// **'小万为你执行的任务，后续都会在此展示'**
+  /// **'小万为你执行的视觉任务，都会在此展示'**
   String get trajectoryNoRecordsDesc;
 
   /// No description provided for @trajectoryAll.

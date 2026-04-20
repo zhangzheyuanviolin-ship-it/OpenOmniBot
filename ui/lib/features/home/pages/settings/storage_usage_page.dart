@@ -2,8 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:ui/l10n/l10n.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/storage_usage_service.dart';
-import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -21,97 +22,7 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
   String? _applyingStrategyId;
   StorageUsageSummary? _summary;
 
-  String _catName(String id, String fallback) {
-    final l = context.l10n;
-    switch (id) {
-      case 'app_binary': return l.storageCatAppBinary;
-      case 'cache': return l.storageCatCache;
-      case 'conversation_history': return l.storageCatConversation;
-      case 'database_other': return l.storageCatDatabaseOther;
-      case 'workspace_browser': return l.storageCatWorkspaceBrowser;
-      case 'workspace_offloads': return l.storageCatWorkspaceOffloads;
-      case 'workspace_attachments': return l.storageCatWorkspaceAttachments;
-      case 'workspace_shared': return l.storageCatWorkspaceShared;
-      case 'workspace_memory': return l.storageCatWorkspaceMemory;
-      case 'workspace_user_files': return l.storageCatWorkspaceUserFiles;
-      case 'local_models_files': return l.storageCatLocalModelsFiles;
-      case 'local_models_cache': return l.storageCatLocalModelsCache;
-      case 'terminal_runtime_local': return l.storageCatTerminalLocal;
-      case 'terminal_runtime_bootstrap': return l.storageCatTerminalBootstrap;
-      case 'shared_drafts': return l.storageCatSharedDrafts;
-      case 'mcp_inbox': return l.storageCatMcpInbox;
-      case 'legacy_workspace': return l.storageCatLegacyWorkspace;
-      case 'other_user_data': return l.storageCatOtherUserData;
-      default: return fallback;
-    }
-  }
-
-  String _catDesc(String id, String fallback) {
-    final l = context.l10n;
-    switch (id) {
-      case 'app_binary': return l.storageCatAppBinaryDesc;
-      case 'cache': return l.storageCatCacheDesc;
-      case 'conversation_history': return l.storageCatConversationDesc;
-      case 'database_other': return l.storageCatDatabaseOtherDesc;
-      case 'workspace_browser': return l.storageCatWorkspaceBrowserDesc;
-      case 'workspace_offloads': return l.storageCatWorkspaceOffloadsDesc;
-      case 'workspace_attachments': return l.storageCatWorkspaceAttachmentsDesc;
-      case 'workspace_shared': return l.storageCatWorkspaceSharedDesc;
-      case 'workspace_memory': return l.storageCatWorkspaceMemoryDesc;
-      case 'workspace_user_files': return l.storageCatWorkspaceUserFilesDesc;
-      case 'local_models_files': return l.storageCatLocalModelsFilesDesc;
-      case 'local_models_cache': return l.storageCatLocalModelsCacheDesc;
-      case 'terminal_runtime_local': return l.storageCatTerminalLocalDesc;
-      case 'terminal_runtime_bootstrap': return l.storageCatTerminalBootstrapDesc;
-      case 'shared_drafts': return l.storageCatSharedDraftsDesc;
-      case 'mcp_inbox': return l.storageCatMcpInboxDesc;
-      case 'legacy_workspace': return l.storageCatLegacyWorkspaceDesc;
-      case 'other_user_data': return l.storageCatOtherUserDataDesc;
-      default: return fallback;
-    }
-  }
-
-  String? _catHint(String id) {
-    final l = context.l10n;
-    switch (id) {
-      case 'cache': return l.storageCatCacheHint;
-      case 'conversation_history': return l.storageCatConversationHint;
-      case 'workspace_browser': return l.storageCatWorkspaceBrowserHint;
-      case 'workspace_offloads': return l.storageCatWorkspaceOffloadsHint;
-      case 'workspace_attachments': return l.storageCatWorkspaceAttachmentsHint;
-      case 'workspace_shared': return l.storageCatWorkspaceSharedHint;
-      case 'local_models_files': return l.storageCatLocalModelsFilesHint;
-      case 'local_models_cache': return l.storageCatLocalModelsCacheHint;
-      case 'terminal_runtime_local': return l.storageCatTerminalLocalHint;
-      case 'terminal_runtime_bootstrap': return l.storageCatTerminalBootstrapHint;
-      case 'shared_drafts': return l.storageCatSharedDraftsHint;
-      case 'mcp_inbox': return l.storageCatMcpInboxHint;
-      case 'legacy_workspace': return l.storageCatLegacyWorkspaceHint;
-      default: return null;
-    }
-  }
-
-  String _stratName(String id, String fallback) {
-    final l = context.l10n;
-    switch (id) {
-      case 'safe_quick': return l.storageStrategySafeQuick;
-      case 'balance_deep': return l.storageStrategyBalanceDeep;
-      case 'free_1gb_priority': return l.storageStrategyFree1gb;
-      default: return fallback;
-    }
-  }
-
-  String _stratDesc(String id, String fallback) {
-    final l = context.l10n;
-    switch (id) {
-      case 'safe_quick': return l.storageStrategySafeQuickDesc;
-      case 'balance_deep': return l.storageStrategyBalanceDeepDesc;
-      case 'free_1gb_priority': return l.storageStrategyFree1gbDesc;
-      default: return fallback;
-    }
-  }
-
-  static const List<Color> _palette = [
+  static const List<Color> _segmentPaletteLight = [
     Color(0xFF2C7FEB),
     Color(0xFF00A870),
     Color(0xFFF59E0B),
@@ -124,10 +35,30 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
     Color(0xFF64748B),
   ];
 
+  static const List<Color> _segmentPaletteDark = [
+    Color(0xFF6FA9FF),
+    Color(0xFF66D4A4),
+    Color(0xFFFFC766),
+    Color(0xFFFF8E8E),
+    Color(0xFFB9A1FF),
+    Color(0xFF58D6CB),
+    Color(0xFFFF96CD),
+    Color(0xFF8F9BFF),
+    Color(0xFFB6DD6F),
+    Color(0xFF9AA4B2),
+  ];
+
   @override
   void initState() {
     super.initState();
     _loadSummary();
+  }
+
+  String _t(BuildContext context, String zh, String en) {
+    if (LegacyTextLocalizer.isEnglish) {
+      return en;
+    }
+    return context.trLegacy(zh);
   }
 
   Future<void> _loadSummary({bool silent = false}) async {
@@ -149,13 +80,18 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = context.l10n.storageAnalyzeFailed;
+        _error = _t(
+          context,
+          '存储分析失败，请重试',
+          'Storage analysis failed, please try again',
+        );
       });
     }
   }
 
   Future<void> _onClearCategory(StorageUsageCategory category) async {
     final olderThanDays = await _showClearOptionsDialog(category);
+    if (!mounted) return;
     if (olderThanDays == null) return;
 
     setState(() {
@@ -173,11 +109,16 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
         });
       } else {
         await _loadSummary(silent: true);
+        if (!mounted) return;
       }
 
       if (result.success) {
         showToast(
-          context.l10n.storageCategoryCleaned(_catName(category.id, category.name), _formatBytes(result.releasedBytes)),
+          _t(
+            context,
+            '已清理 ${category.name}，释放 ${_formatBytes(result.releasedBytes)}',
+            'Cleaned ${category.name}, freed ${_formatBytes(result.releasedBytes)}',
+          ),
           type: ToastType.success,
         );
       } else {
@@ -185,15 +126,19 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
         final hint = _translateHint(rawHint);
         showToast(
           hint.isNotEmpty
-              ? context.l10n.storageCleanPartialFailed(hint)
-              : context.l10n.storageCleanPartialFailedGeneric,
+              ? _t(context, '部分清理失败：$hint', 'Some cleanup failed: $hint')
+              : _t(
+                  context,
+                  '部分文件清理失败，请稍后重试',
+                  'Some files failed to clean up, please try again later',
+                ),
           type: ToastType.error,
         );
       }
     } catch (_) {
       if (!mounted) return;
       showToast(
-        context.l10n.storageCleanFailed,
+        _t(context, '清理失败，请稍后重试', 'Cleanup failed, please try again later'),
         type: ToastType.error,
       );
     } finally {
@@ -210,40 +155,63 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
     final canRetention = category.riskLevel != 'dangerous';
     return showDialog<int>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
+        final palette = dialogContext.omniPalette;
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (dialogContext, setDialogState) {
             return AlertDialog(
+              backgroundColor: palette.surfacePrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               title: Text(
-                context.l10n.storageCleanCategory(_catName(category.id, category.name)),
+                _t(
+                  dialogContext,
+                  '清理 ${category.name}',
+                  'Clean ${category.name}',
+                ),
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_catHint(category.id) ??
-                      context.l10n.storageCleanConfirmMsg),
+                  Text(
+                    category.cleanupHint ??
+                        _t(
+                          dialogContext,
+                          '确认清理该分类数据吗？',
+                          'Confirm cleanup for this category?',
+                        ),
+                    style: TextStyle(color: palette.textSecondary),
+                  ),
                   if (canRetention) ...[
                     const SizedBox(height: 12),
-                    Text(context.l10n.storageCleanScope),
+                    Text(
+                      _t(dialogContext, '清理范围', 'Cleanup scope'),
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
                       children: [
                         ChoiceChip(
-                          label: Text(context.l10n.storageCleanAll),
+                          label: Text(_t(dialogContext, '全部', 'All')),
                           selected: selected == 0,
                           onSelected: (_) => setDialogState(() => selected = 0),
                         ),
                         ChoiceChip(
-                          label: Text(context.l10n.storageClean7Days),
+                          label: Text(_t(dialogContext, '7天前', '7 days ago')),
                           selected: selected == 7,
                           onSelected: (_) => setDialogState(() => selected = 7),
                         ),
                         ChoiceChip(
-                          label: Text(context.l10n.storageClean30Days),
+                          label: Text(_t(dialogContext, '30天前', '30 days ago')),
                           selected: selected == 30,
-                          onSelected: (_) => setDialogState(() => selected = 30),
+                          onSelected: (_) =>
+                              setDialogState(() => selected = 30),
                         ),
                       ],
                     ),
@@ -252,12 +220,12 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(null),
-                  child: Text(context.trLegacy('取消')),
+                  onPressed: () => Navigator.of(dialogContext).pop(null),
+                  child: Text(_t(dialogContext, '取消', 'Cancel')),
                 ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(selected),
-                  child: Text(context.l10n.storageClean),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(selected),
+                  child: Text(_t(dialogContext, '确认清理', 'Confirm cleanup')),
                 ),
               ],
             );
@@ -270,23 +238,38 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
   Future<void> _applyStrategy(StorageCleanupStrategyPreset preset) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
+        final palette = dialogContext.omniPalette;
         return AlertDialog(
-          title: Text(context.l10n.storageStrategyName(_stratName(preset.id, preset.name))),
-          content: Text(_stratDesc(preset.id, preset.description)),
+          backgroundColor: palette.surfacePrimary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            _t(
+              dialogContext,
+              '执行策略：${preset.name}',
+              'Run strategy: ${preset.name}',
+            ),
+          ),
+          content: Text(
+            preset.description,
+            style: TextStyle(color: palette.textSecondary),
+          ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(context.trLegacy('取消')),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_t(dialogContext, '取消', 'Cancel')),
             ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(context.l10n.storageExecute),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_t(dialogContext, '开始执行', 'Run')),
             ),
           ],
         );
       },
     );
+    if (!mounted) return;
     if (confirmed != true) return;
 
     setState(() {
@@ -301,23 +284,41 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
         });
       } else {
         await _loadSummary(silent: true);
+        if (!mounted) return;
       }
 
-      final failedCount = result.actionResults.where((item) => !item.success).length;
+      final failedCount = result.actionResults
+          .where((item) => !item.success)
+          .length;
       if (failedCount == 0) {
         showToast(
-          context.l10n.storageStrategyDone(_formatBytes(result.releasedBytes)),
+          _t(
+            context,
+            '策略执行完成，释放 ${_formatBytes(result.releasedBytes)}',
+            'Cleanup strategy completed, freed ${_formatBytes(result.releasedBytes)}',
+          ),
           type: ToastType.success,
         );
       } else {
         showToast(
-          context.l10n.storageStrategyPartialDone(failedCount, _formatBytes(result.releasedBytes)),
+          _t(
+            context,
+            '策略执行完成，释放 ${_formatBytes(result.releasedBytes)}，$failedCount 项未完全成功',
+            'Cleanup strategy finished, freed ${_formatBytes(result.releasedBytes)}, $failedCount actions were incomplete',
+          ),
           type: ToastType.error,
         );
       }
     } catch (_) {
       if (!mounted) return;
-      showToast(context.l10n.storageStrategyFailed, type: ToastType.error);
+      showToast(
+        _t(
+          context,
+          '策略执行失败，请稍后重试',
+          'Cleanup strategy failed, please try again later',
+        ),
+        type: ToastType.error,
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -330,14 +331,25 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
   @override
   Widget build(BuildContext context) {
     final summary = _summary;
+    final palette = context.omniPalette;
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: CommonAppBar(title: context.l10n.storageUsageTitle, primary: true),
+      backgroundColor: palette.pageBackground,
+      appBar: CommonAppBar(
+        title: _t(context, '存储占用', 'Storage Usage'),
+        primary: true,
+      ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  palette.accentPrimary,
+                ),
+              ),
+            )
           : summary == null
           ? _buildErrorView()
           : RefreshIndicator(
+              color: palette.accentPrimary,
               onRefresh: _loadSummary,
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -358,19 +370,27 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
   }
 
   Widget _buildErrorView() {
+    final palette = context.omniPalette;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(_error ?? context.l10n.storageLoadFailed, style: const TextStyle(color: AppColors.text70)),
+          Text(
+            _error ?? _t(context, '加载失败', 'Load failed'),
+            style: TextStyle(color: palette.textSecondary),
+          ),
           const SizedBox(height: 12),
-          ElevatedButton(onPressed: _loadSummary, child: Text(context.l10n.storageReanalyze)),
+          FilledButton(
+            onPressed: _loadSummary,
+            child: Text(_t(context, '重新分析', 'Analyze again')),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildOverviewCard(StorageUsageSummary summary) {
+    final palette = context.omniPalette;
     final sourceText = _metricsSourceText(summary.metricsSource);
     final hasBothTotals =
         summary.systemTotalBytes > 0 && summary.scanTotalBytes > 0;
@@ -379,37 +399,67 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(context.l10n.storageTotalUsage, style: const TextStyle(fontSize: 12, color: AppColors.text70)),
+          Text(
+            _t(context, '总占用', 'Total usage'),
+            style: TextStyle(fontSize: 12, color: palette.textSecondary),
+          ),
           const SizedBox(height: 4),
           Text(
             _formatBytes(summary.totalBytes),
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: palette.textPrimary,
+            ),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _buildMetricCell(context.l10n.storageAppSize, _formatBytes(summary.appBinaryBytes))),
-              Expanded(child: _buildMetricCell(context.l10n.storageUserData, _formatBytes(summary.userDataBytes))),
-              Expanded(child: _buildMetricCell(context.l10n.storageCleanable, _formatBytes(summary.cleanableBytes))),
+              Expanded(
+                child: _buildMetricCell(
+                  _t(context, '应用大小', 'App size'),
+                  _formatBytes(summary.appBinaryBytes),
+                ),
+              ),
+              Expanded(
+                child: _buildMetricCell(
+                  _t(context, '用户数据', 'User data'),
+                  _formatBytes(summary.userDataBytes),
+                ),
+              ),
+              Expanded(
+                child: _buildMetricCell(
+                  _t(context, '可清理', 'Cleanable'),
+                  _formatBytes(summary.cleanableBytes),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
           Text(
-            context.l10n.storageStatsSource(sourceText),
-            style: const TextStyle(fontSize: 11, color: AppColors.text70),
+            _t(context, '统计口径：$sourceText', 'Metrics source: $sourceText'),
+            style: TextStyle(fontSize: 11, color: palette.textSecondary),
           ),
           if (summary.packageName.isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(
-              context.l10n.storagePackageName(summary.packageName),
-              style: const TextStyle(fontSize: 11, color: AppColors.text70),
+              _t(
+                context,
+                '当前包名：${summary.packageName}',
+                'Package: ${summary.packageName}',
+              ),
+              style: TextStyle(fontSize: 11, color: palette.textSecondary),
             ),
           ],
           if (hasBothTotals && diffBytes != 0) ...[
             const SizedBox(height: 2),
             Text(
-              'System vs scan difference: ${_signedBytes(diffBytes)}',
-              style: const TextStyle(fontSize: 11, color: AppColors.text70),
+              _t(
+                context,
+                '系统口径与扫描口径差异：${_signedBytes(diffBytes)}',
+                'Delta between system and scan totals: ${_signedBytes(diffBytes)}',
+              ),
+              style: TextStyle(fontSize: 11, color: palette.textSecondary),
             ),
           ],
         ],
@@ -418,24 +468,38 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
   }
 
   Widget _buildTrendCard(StorageUsageSummary summary) {
+    final palette = context.omniPalette;
     final trend = summary.trend;
     final totalDeltaText = _signedBytes(trend.deltaTotalBytes);
     final cleanableDeltaText = _signedBytes(trend.deltaCleanableBytes);
-    final hasPrev = trend.hasPrevious;
     return _buildCard(
       child: Row(
         children: [
-          const Icon(Icons.trending_up, color: Color(0xFF2C7FEB)),
+          Icon(Icons.trending_up, color: palette.accentPrimary),
           const SizedBox(width: 10),
           Expanded(
-            child: hasPrev
+            child: trend.hasPrevious
                 ? Text(
-                    context.l10n.storageTrendVsLast(totalDeltaText, cleanableDeltaText),
-                    style: const TextStyle(fontSize: 12, color: AppColors.text70),
+                    _t(
+                      context,
+                      '较上次分析：总占用 $totalDeltaText，可清理 $cleanableDeltaText',
+                      'Since last analysis: total $totalDeltaText, cleanable $cleanableDeltaText',
+                    ),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: palette.textSecondary,
+                    ),
                   )
                 : Text(
-                    context.l10n.storageTrendFirst,
-                    style: const TextStyle(fontSize: 12, color: AppColors.text70),
+                    _t(
+                      context,
+                      '这是首次分析，后续将展示占用变化趋势',
+                      'This is the first analysis. Trend data will appear next time.',
+                    ),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: palette.textSecondary,
+                    ),
                   ),
           ),
         ],
@@ -444,6 +508,8 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
   }
 
   Widget _buildStrategyCard(StorageUsageSummary summary) {
+    final palette = context.omniPalette;
+    final colorScheme = Theme.of(context).colorScheme;
     final presets = summary.strategyPresets;
     if (presets.isEmpty) {
       return const SizedBox.shrink();
@@ -453,8 +519,12 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            context.l10n.storageSmartCleanup,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            _t(context, '智能清理策略', 'Cleanup strategies'),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: palette.textPrimary,
+            ),
           ),
           const SizedBox(height: 8),
           ...presets.map((preset) {
@@ -468,26 +538,45 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _stratName(preset.id, preset.name),
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          preset.name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: palette.textPrimary,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          _stratDesc(preset.id, preset.description),
-                          style: const TextStyle(fontSize: 12, color: AppColors.text70),
+                          preset.description,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: palette.textSecondary,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  TextButton(
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(72, 34),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      backgroundColor: palette.accentPrimary,
+                      disabledBackgroundColor: palette.borderStrong,
+                      foregroundColor: colorScheme.onPrimary,
+                    ),
                     onPressed: applying ? null : () => _applyStrategy(preset),
                     child: applying
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 14,
                             height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                colorScheme.onPrimary,
+                              ),
+                            ),
                           )
-                        : Text(context.l10n.storageExecute),
+                        : Text(_t(context, '执行', 'Run')),
                   ),
                 ],
               ),
@@ -499,33 +588,65 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
   }
 
   Widget _buildPieCard(StorageUsageSummary summary) {
-    final categories = summary.categories.where((item) => item.bytes > 0).toList();
+    final palette = context.omniPalette;
+    final categories = summary.categories
+        .where((item) => item.bytes > 0)
+        .toList();
     final colorMap = _buildCategoryColorMap(summary.categories);
     final segments = _buildChartSegments(categories, colorMap);
     return _buildCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(context.l10n.storageUsageAnalysis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          Text(
+            _t(context, '占用分析', 'Usage breakdown'),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: palette.textPrimary,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
-            context.l10n.storageLastAnalyzed(_formatDateTime(summary.generatedAt)),
-            style: const TextStyle(fontSize: 12, color: AppColors.text70),
+            _t(
+              context,
+              '最后分析：${_formatDateTime(summary.generatedAt)}',
+              'Analyzed at: ${_formatDateTime(summary.generatedAt)}',
+            ),
+            style: TextStyle(fontSize: 12, color: palette.textSecondary),
           ),
           const SizedBox(height: 12),
           Center(
-            child: _StorageUsagePieChart(totalBytes: summary.totalBytes, segments: segments),
+            child: _StorageUsagePieChart(
+              totalBytes: summary.totalBytes,
+              segments: segments,
+              trackColor: palette.segmentTrack,
+              centerTextColor: palette.textPrimary,
+            ),
           ),
           const SizedBox(height: 8),
-          TextButton(onPressed: _loadSummary, child: Text(context.l10n.storageReanalyze)),
+          TextButton(
+            onPressed: _loadSummary,
+            child: Text(_t(context, '重新分析', 'Analyze again')),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildCategoryListCard(StorageUsageSummary summary) {
-    final categories = summary.categories.where((item) => item.bytes > 0).toList();
+    final palette = context.omniPalette;
+    final colorScheme = Theme.of(context).colorScheme;
+    final categories = summary.categories.toList();
     final colorMap = _buildCategoryColorMap(summary.categories);
+    if (categories.isEmpty) {
+      return _buildCard(
+        child: Text(
+          _t(context, '暂无可展示数据', 'No storage data available'),
+          style: TextStyle(fontSize: 12, color: palette.textSecondary),
+        ),
+      );
+    }
     return _buildCard(
       padding: EdgeInsets.zero,
       child: Column(
@@ -541,22 +662,50 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
                   width: 10,
                   height: 10,
                   decoration: BoxDecoration(
-                    color: colorMap[category.id] ?? const Color(0xFF94A3B8),
+                    color: colorMap[category.id] ?? palette.textTertiary,
                     shape: BoxShape.circle,
                   ),
                 ),
-                title: Text(_catName(category.id, category.name), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                subtitle: Text('${_catDesc(category.id, category.description)}\n${percent.toStringAsFixed(1)}%'),
+                title: Text(
+                  category.name,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: palette.textPrimary,
+                  ),
+                ),
+                subtitle: Text(
+                  '${category.description}\n${_t(context, '占比', 'Share')} ${percent.toStringAsFixed(1)}%',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.45,
+                    color: palette.textSecondary,
+                  ),
+                ),
                 trailing: category.cleanable
-                    ? TextButton(
-                        onPressed: isClearing ? null : () => _onClearCategory(category),
+                    ? FilledButton(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(64, 32),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          backgroundColor: palette.accentPrimary,
+                          disabledBackgroundColor: palette.borderStrong,
+                          foregroundColor: colorScheme.onPrimary,
+                        ),
+                        onPressed: isClearing
+                            ? null
+                            : () => _onClearCategory(category),
                         child: isClearing
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 14,
                                 height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    colorScheme.onPrimary,
+                                  ),
+                                ),
                               )
-                            : Text(context.l10n.storageClean),
+                            : Text(_t(context, '清理', 'Clean')),
                       )
                     : null,
               ),
@@ -566,15 +715,28 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
                   children: [
                     Text(
                       _formatBytes(category.bytes),
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: palette.textPrimary,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     _buildRiskTag(category.riskLevel),
                   ],
                 ),
               ),
+              if (category.breakdown.isNotEmpty)
+                _buildCategoryBreakdown(category.breakdown),
               if (category != categories.last)
-                const Divider(height: 1, indent: 16, endIndent: 16),
+                Divider(
+                  height: 1,
+                  indent: 16,
+                  endIndent: 16,
+                  color: palette.borderSubtle.withValues(
+                    alpha: context.isDarkTheme ? 0.56 : 0.8,
+                  ),
+                ),
             ],
           );
         }).toList(),
@@ -593,61 +755,143 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
   }
 
   Widget _buildCard({required Widget child, EdgeInsetsGeometry? padding}) {
+    final palette = context.omniPalette;
     return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+        color: palette.surfacePrimary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: palette.borderSubtle.withValues(
+            alpha: context.isDarkTheme ? 0.6 : 0.86,
+          ),
+        ),
+        boxShadow: context.isDarkTheme
+            ? null
+            : [
+                BoxShadow(
+                  color: palette.shadowColor,
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+      ),
       padding: padding ?? const EdgeInsets.all(16),
       child: child,
     );
   }
 
   Widget _buildMetricCell(String title, String value) {
+    final palette = context.omniPalette;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 12, color: AppColors.text70)),
+        Text(
+          title,
+          style: TextStyle(fontSize: 12, color: palette.textSecondary),
+        ),
         const SizedBox(height: 2),
-        Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: palette.textPrimary,
+          ),
+        ),
       ],
     );
   }
 
+  Widget _buildCategoryBreakdown(List<StorageUsageBreakdownEntry> entries) {
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.only(left: 50, right: 16, bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _t(context, 'Native 库 Top 明细', 'Top native libs'),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: palette.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          ...entries.map((entry) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                '${entry.label} · ${_formatBytes(entry.bytes)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.4,
+                  color: palette.textSecondary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRiskTag(String riskLevel) {
+    final isDark = context.isDarkTheme;
     late final String text;
     late final Color bgColor;
     late final Color fgColor;
     switch (riskLevel) {
       case 'safe':
-        text = context.l10n.storageRiskLow;
-        bgColor = const Color(0xFFE6F8F0);
-        fgColor = const Color(0xFF0E9F6E);
+        text = _t(context, '低风险', 'Low risk');
+        bgColor = isDark ? const Color(0xFF1D4C38) : const Color(0xFFE6F8F0);
+        fgColor = isDark ? const Color(0xFF7CE2B4) : const Color(0xFF0E9F6E);
         break;
       case 'caution':
-        text = context.l10n.storageRiskCaution;
-        bgColor = const Color(0xFFFFF4E5);
-        fgColor = const Color(0xFFB76E00);
+        text = _t(context, '谨慎', 'Caution');
+        bgColor = isDark ? const Color(0xFF4E3C1E) : const Color(0xFFFFF4E5);
+        fgColor = isDark ? const Color(0xFFFFD37A) : const Color(0xFFB76E00);
         break;
       case 'dangerous':
-        text = context.l10n.storageRiskHigh;
-        bgColor = const Color(0xFFFFECEC);
-        fgColor = const Color(0xFFCC3C3C);
+        text = _t(context, '高风险', 'High risk');
+        bgColor = isDark ? const Color(0xFF4C2225) : const Color(0xFFFFECEC);
+        fgColor = isDark ? const Color(0xFFFF9A9A) : const Color(0xFFCC3C3C);
         break;
       default:
-        text = context.l10n.storageReadOnly;
-        bgColor = const Color(0xFFF1F5F9);
-        fgColor = const Color(0xFF475569);
+        text = _t(context, '只读', 'Read-only');
+        bgColor = isDark ? const Color(0xFF2B3138) : const Color(0xFFF1F5F9);
+        fgColor = isDark ? const Color(0xFFB0BCCB) : const Color(0xFF475569);
         break;
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(6)),
-      child: Text(text, style: TextStyle(fontSize: 10, color: fgColor)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: fgColor.withValues(alpha: 0.24)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          color: fgColor,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 
-  Map<String, Color> _buildCategoryColorMap(List<StorageUsageCategory> categories) {
+  Map<String, Color> _buildCategoryColorMap(
+    List<StorageUsageCategory> categories,
+  ) {
+    final palette = context.isDarkTheme
+        ? _segmentPaletteDark
+        : _segmentPaletteLight;
     final colorMap = <String, Color>{};
     for (int index = 0; index < categories.length; index++) {
-      colorMap[categories[index].id] = _palette[index % _palette.length];
+      colorMap[categories[index].id] = palette[index % palette.length];
     }
     return colorMap;
   }
@@ -656,17 +900,32 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
     List<StorageUsageCategory> categories,
     Map<String, Color> colorMap,
   ) {
+    final fallbackColor = context.isDarkTheme
+        ? const Color(0xFF9AA4B2)
+        : const Color(0xFF94A3B8);
     final sorted = [...categories]..sort((a, b) => b.bytes.compareTo(a.bytes));
     if (sorted.length <= 7) {
-      return sorted
-          .map((item) => _PieChartSegment(_catName(item.id, item.name), item.bytes, colorMap[item.id] ?? const Color(0xFF94A3B8)))
-          .toList();
+      return sorted.map((item) {
+        return _PieChartSegment(
+          item.name,
+          item.bytes,
+          colorMap[item.id] ?? fallbackColor,
+        );
+      }).toList();
     }
     final head = sorted.take(6).toList();
-    final tailBytes = sorted.skip(6).fold<int>(0, (sum, item) => sum + item.bytes);
+    final tailBytes = sorted
+        .skip(6)
+        .fold<int>(0, (sum, item) => sum + item.bytes);
     return [
-      ...head.map((item) => _PieChartSegment(_catName(item.id, item.name), item.bytes, colorMap[item.id] ?? const Color(0xFF94A3B8))),
-      _PieChartSegment(context.l10n.storageCatOtherUserData, tailBytes, const Color(0xFF94A3B8)),
+      ...head.map(
+        (item) => _PieChartSegment(
+          item.name,
+          item.bytes,
+          colorMap[item.id] ?? fallbackColor,
+        ),
+      ),
+      _PieChartSegment(_t(context, '其他', 'Others'), tailBytes, fallbackColor),
     ];
   }
 
@@ -679,10 +938,14 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
   String _metricsSourceText(String source) {
     switch (source) {
       case 'system_storage_stats':
-        return context.l10n.storageSystemStats;
+        return _t(
+          context,
+          '系统统计（与系统设置更接近）',
+          'System stats (closer to Settings)',
+        );
       case 'filesystem_estimate':
       default:
-        return context.l10n.storageDirectoryScan;
+        return _t(context, '目录扫描估算', 'Directory scan estimate');
     }
   }
 
@@ -695,7 +958,9 @@ class _StorageUsagePageState extends State<StorageUsagePage> {
       size /= 1024;
       unitIndex++;
     }
-    final fixed = size >= 100 ? size.toStringAsFixed(0) : size.toStringAsFixed(1);
+    final fixed = size >= 100
+        ? size.toStringAsFixed(0)
+        : size.toStringAsFixed(1);
     return '$fixed ${units[unitIndex]}';
   }
 
@@ -715,10 +980,17 @@ class _PieChartSegment {
 }
 
 class _StorageUsagePieChart extends StatelessWidget {
-  const _StorageUsagePieChart({required this.totalBytes, required this.segments});
+  const _StorageUsagePieChart({
+    required this.totalBytes,
+    required this.segments,
+    required this.trackColor,
+    required this.centerTextColor,
+  });
 
   final int totalBytes;
   final List<_PieChartSegment> segments;
+  final Color trackColor;
+  final Color centerTextColor;
 
   @override
   Widget build(BuildContext context) {
@@ -730,11 +1002,18 @@ class _StorageUsagePieChart extends StatelessWidget {
         children: [
           CustomPaint(
             size: const Size(210, 210),
-            painter: _StorageUsagePiePainter(segments: segments),
+            painter: _StorageUsagePiePainter(
+              segments: segments,
+              trackColor: trackColor,
+            ),
           ),
           Text(
             _formatBytes(totalBytes),
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: centerTextColor,
+            ),
           ),
         ],
       ),
@@ -750,14 +1029,18 @@ class _StorageUsagePieChart extends StatelessWidget {
       size /= 1024;
       unitIndex++;
     }
-    final fixed = size >= 100 ? size.toStringAsFixed(0) : size.toStringAsFixed(1);
+    final fixed = size >= 100
+        ? size.toStringAsFixed(0)
+        : size.toStringAsFixed(1);
     return '$fixed ${units[unitIndex]}';
   }
 }
 
 class _StorageUsagePiePainter extends CustomPainter {
-  _StorageUsagePiePainter({required this.segments});
+  _StorageUsagePiePainter({required this.segments, required this.trackColor});
+
   final List<_PieChartSegment> segments;
+  final Color trackColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -766,14 +1049,17 @@ class _StorageUsagePiePainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
     final paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 20;
+      ..strokeWidth = 20
+      ..strokeCap = StrokeCap.butt;
+
+    paint.color = trackColor;
+    canvas.drawArc(rect, -math.pi / 2, math.pi * 2, false, paint);
 
     final total = segments.fold<int>(0, (sum, item) => sum + item.bytes);
     if (total <= 0) {
-      paint.color = const Color(0xFFE2E8F0);
-      canvas.drawArc(rect, -math.pi / 2, math.pi * 2, false, paint);
       return;
     }
+
     double start = -math.pi / 2;
     for (final segment in segments) {
       if (segment.bytes <= 0) continue;
@@ -786,6 +1072,7 @@ class _StorageUsagePiePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _StorageUsagePiePainter oldDelegate) {
+    if (trackColor != oldDelegate.trackColor) return true;
     if (segments.length != oldDelegate.segments.length) return true;
     for (int i = 0; i < segments.length; i++) {
       if (segments[i].bytes != oldDelegate.segments[i].bytes ||

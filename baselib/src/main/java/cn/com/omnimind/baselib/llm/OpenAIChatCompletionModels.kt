@@ -34,7 +34,8 @@ data class ChatCompletionRequest(
     @SerialName("reasoning_effort")
     val reasoningEffort: String? = null,
     @SerialName("enable_thinking")
-    val enableThinking: Boolean? = null
+    val enableThinking: Boolean? = null,
+    val audio: ChatCompletionAudioRequest? = null
 )
 
 @Serializable
@@ -47,6 +48,7 @@ data class ChatCompletionStreamOptions(
 data class ChatCompletionMessage(
     val role: String,
     val content: JsonElement? = null,
+    val audio: ChatCompletionAudioResponse? = null,
     @SerialName("tool_calls")
     val toolCalls: List<AssistantToolCall>? = null,
     @SerialName("tool_call_id")
@@ -103,6 +105,7 @@ data class ChatCompletionChoice(
 data class ChatCompletionAssistantMessage(
     val role: String = "assistant",
     val content: JsonElement? = null,
+    val audio: ChatCompletionAudioResponse? = null,
     @SerialName("tool_calls")
     val toolCalls: List<AssistantToolCall>? = null,
     @SerialName("function_call")
@@ -135,6 +138,7 @@ data class ChatCompletionStreamChoice(
 data class ChatCompletionDelta(
     val role: String? = null,
     val content: String? = null,
+    val audio: ChatCompletionAudioResponse? = null,
     @SerialName("tool_calls")
     val toolCalls: List<ChatCompletionToolCallDelta>? = null,
     @SerialName("function_call")
@@ -212,6 +216,22 @@ fun decodeChatCompletionUsage(element: JsonElement?): ChatCompletionUsage? {
         completionTokensDetails = obj["completion_tokens_details"]
     )
 }
+
+@Serializable
+data class ChatCompletionAudioRequest(
+    val voice: String,
+    val format: String
+)
+
+@Serializable
+data class ChatCompletionAudioResponse(
+    val data: String? = null,
+    val id: String? = null,
+    @SerialName("expires_at")
+    val expiresAt: Long? = null,
+    val transcript: String? = null,
+    val format: String? = null
+)
 
 fun ChatCompletionMessage.contentText(): String {
     return when (val value = content) {

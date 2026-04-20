@@ -3,14 +3,16 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
+import 'package:ui/features/home/pages/chat/utils/stream_text_merge.dart';
 import 'package:ui/features/home/pages/command_overlay/constants/messages.dart';
 import 'package:ui/features/home/pages/chat/mixins/agent_stream_handler.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
-import 'package:ui/services/storage_service.dart';
+import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/utils/data_parser.dart';
 
 const String kChatRuntimeModeNormal = 'normal';
@@ -116,8 +118,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
   bool _initialized = false;
 
-  bool get _isEnglish =>
-      StorageService.getResolvedLocale().languageCode == 'en';
+  bool get _isEnglish => LegacyTextLocalizer.isEnglish;
 
   String _permissionDisplayName(String raw) {
     return switch (raw.trim()) {
@@ -134,6 +135,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   void ensureInitialized() {
     if (_initialized) return;
     _initialized = true;
+    unawaited(VoicePlaybackCoordinator.instance.ensureInitialized());
 
     AssistsMessageService.initialize();
     AssistsMessageService.addOnChatTaskMessageCallBack(_handleChatTaskMessage);
@@ -663,7 +665,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       }
       final text = extractChatTaskText(content, fallbackToRawText: false);
       if (text.isNotEmpty) {
-        runtime.currentAiMessages[taskId] = _mergeStreamingText(
+        runtime.currentAiMessages[taskId] = mergeLegacyStreamingText(
           runtime.currentAiMessages[taskId] ?? '',
           text,
         );
@@ -691,6 +693,15 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         prefillTokensPerSecond: prefillTokensPerSecond,
         decodeTokensPerSecond: decodeTokensPerSecond,
       );
+      if (!isError && !isSummarizing && messageText.trim().isNotEmpty) {
+        unawaited(
+          VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
+            messageId: taskId,
+            text: messageText,
+            isFinal: false,
+          ),
+        );
+      }
     }
     runtime.isAiResponding = true;
     notifyListeners();
@@ -729,6 +740,14 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     if (messageText.isNotEmpty && index != -1) {
       final existing = runtime.messages[index];
       runtime.messages[index] = existing.copyWith(content: existing.content);
+    }
+    if (!isErrorMessage && messageText.trim().isNotEmpty) {
+      unawaited(
+        VoicePlaybackCoordinator.instance.onAssistantMessageCompleted(
+          messageId: taskId,
+          text: messageText,
+        ),
+      );
     }
     runtime.currentAiMessages.remove(taskId);
     _taskBindings.remove(taskId);
@@ -801,7 +820,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final resolvedTaskId =
         runtime.currentDispatchTaskId ?? runtime.lastAgentTaskId;
     if (resolvedTaskId == null || resolvedTaskId != taskId) return;
-    if (_shouldIgnoreRegressiveSnapshot(
+    if (shouldIgnoreRegressiveStreamingSnapshot(
       runtime.deepThinkingContent,
       thinking,
     )) {
@@ -936,7 +955,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final index = runtime.messages.indexWhere(
       (msg) => msg.id == aiTextMessageId,
     );
+    late final String visibleText;
     if (index == -1) {
+      final initialText = mergeAgentTextSnapshot('', message);
+      visibleText = initialText;
       runtime.messages.insert(
         0,
         ChatMessageModel(
@@ -944,7 +966,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           type: 1,
           user: 2,
           content: {
-            'text': message,
+            'text': initialText,
             'id': aiTextMessageId,
             if (isFinal && prefillTokensPerSecond != null)
               'prefillTokensPerSecond': prefillTokensPerSecond,
@@ -957,16 +979,15 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       final existing = runtime.messages[index];
       final content = Map<String, dynamic>.from(existing.content ?? {});
       final currentText = (content['text'] ?? '').toString();
-      if (!_shouldIgnoreRegressiveSnapshot(currentText, message)) {
-        content['text'] = message;
-        if (isFinal && prefillTokensPerSecond != null) {
-          content['prefillTokensPerSecond'] = prefillTokensPerSecond;
-        }
-        if (isFinal && decodeTokensPerSecond != null) {
-          content['decodeTokensPerSecond'] = decodeTokensPerSecond;
-        }
-        runtime.messages[index] = existing.copyWith(content: content);
+      visibleText = mergeAgentTextSnapshot(currentText, message);
+      content['text'] = visibleText;
+      if (isFinal && prefillTokensPerSecond != null) {
+        content['prefillTokensPerSecond'] = prefillTokensPerSecond;
       }
+      if (isFinal && decodeTokensPerSecond != null) {
+        content['decodeTokensPerSecond'] = decodeTokensPerSecond;
+      }
+      runtime.messages[index] = existing.copyWith(content: content);
     }
     if (isFinal) {
       runtime.isAiResponding = false;
@@ -976,6 +997,15 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       runtime.lastAgentTaskId = null;
     }
     notifyListeners();
+    if (visibleText.trim().isNotEmpty) {
+      unawaited(
+        VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
+          messageId: aiTextMessageId,
+          text: visibleText,
+          isFinal: isFinal,
+        ),
+      );
+    }
     if (isFinal) {
       unawaited(
         persistRuntimeConversation(
@@ -992,13 +1022,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     }
   }
 
-  bool _shouldIgnoreRegressiveSnapshot(String current, String incoming) {
-    if (current.isEmpty || incoming.isEmpty) {
-      return false;
-    }
-    return incoming.length < current.length && current.startsWith(incoming);
-  }
-
   void _upsertPureChatThinking(
     ChatConversationRuntimeState runtime,
     String taskId,
@@ -1009,7 +1032,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       return;
     }
     final previous = runtime.currentThinkingMessages[taskId] ?? '';
-    final merged = _mergeStreamingText(previous, thinking);
+    final merged = mergeLegacyStreamingText(previous, thinking);
     if (merged.isEmpty || merged == previous) {
       return;
     }
@@ -1100,12 +1123,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       conversationId: binding.conversationId,
       mode: binding.mode,
     );
-  }
-
-  String _mergeStreamingText(String current, String incoming) {
-    if (incoming.isEmpty) return current;
-    if (current.isEmpty) return incoming;
-    return current + incoming;
   }
 
   void _handleAgentContextCompactionStateChanged(
@@ -1417,14 +1434,18 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final textId =
         _resolvePendingAgentTextMessageId(runtime, taskId) ??
         _nextAgentTextMessageId(runtime, taskId);
-    final message = error.trim().isEmpty
+    final index = runtime.messages.indexWhere((msg) => msg.id == textId);
+    final existingText = index == -1
+        ? ''
+        : (runtime.messages[index].content?['text'] as String? ?? '');
+    final preservedText = existingText.trim();
+    final fallbackMessage = error.trim().isEmpty
         ? (_isEnglish
               ? "I can't generate a reply right now. Please try again."
               : '暂时无法生成回复，请重试。')
         : (_isEnglish
               ? "I can't generate a reply right now. Please try again. ${error.trim()}"
               : '暂时无法生成回复，请重试。${error.trim()}');
-    final index = runtime.messages.indexWhere((msg) => msg.id == textId);
     if (index == -1) {
       runtime.messages.insert(
         0,
@@ -1432,19 +1453,33 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           id: textId,
           type: 1,
           user: 2,
-          content: {'text': message, 'id': textId},
-          isError: true,
+          content: {
+            'text': preservedText.isNotEmpty ? preservedText : fallbackMessage,
+            'id': textId,
+          },
+          isError: preservedText.isEmpty,
         ),
       );
     } else {
       runtime.messages[index] = runtime.messages[index].copyWith(
-        content: {'text': message, 'id': textId},
-        isError: true,
+        content: {
+          'text': preservedText.isNotEmpty ? preservedText : fallbackMessage,
+          'id': textId,
+        },
+        isError: preservedText.isEmpty,
       );
     }
     runtime.pendingAgentTextTaskId = null;
     runtime.isAiResponding = false;
     runtime.currentDispatchTaskId = null;
+    if (preservedText.isNotEmpty) {
+      unawaited(
+        VoicePlaybackCoordinator.instance.onAssistantMessageCompleted(
+          messageId: textId,
+          text: preservedText,
+        ),
+      );
+    }
     clearConversationRuntimeSession(
       conversationId: binding.conversationId,
       mode: binding.mode,
