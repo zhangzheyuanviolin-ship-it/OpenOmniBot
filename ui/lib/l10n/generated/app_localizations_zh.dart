@@ -1179,4 +1179,235 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get alpineBootAutoStart => '打开小万时自动启动';
+
+  @override
+  String get omniflowPanelTitle => 'OmniFlow 轨迹面板';
+
+  @override
+  String get omniflowPanelDesc => '管理 OmniFlow Function：查看、执行或删除 Function 资产。';
+
+  @override
+  String get omniflowFunctionList => 'Function 列表';
+
+  @override
+  String get omniflowFunctionSearch => '搜索 Function';
+
+  @override
+  String get omniflowFunctionSearchHint => '按名称、描述等关键字过滤';
+
+  @override
+  String get omniflowSettings => 'OmniFlow 设置';
+
+  @override
+  String get omniflowSettingsSubtitle => '记录高频可复用操作段，加速任务执行';
+
+  @override
+  String get omniflowEnablePreHook => '启用 OmniFlow 执行加速';
+
+  @override
+  String get omniflowAutoStartProvider => 'OmniFlow 自启动';
+
+  @override
+  String get omniflowRefresh => '刷新';
+
+  @override
+  String get omniflowProviderStart => '启动';
+
+  @override
+  String get omniflowProviderStop => '停止';
+
+  @override
+  String get omniflowProviderRestart => '重启';
+
+  @override
+  String get omniflowSaveConfig => '保存';
+
+  @override
+  String get omniflowConfigSaved => 'OmniFlow 配置已保存';
+
+  @override
+  String get omniflowConfigSaveFailed => '保存 OmniFlow 配置失败';
+
+  @override
+  String get omniflowConfigLoadFailed => '加载 OmniFlow 配置失败';
+
+  @override
+  String get omniflowFunctionsLoadFailed => '加载 Function 列表失败';
+
+  @override
+  String get omniflowTempFunctions => '临时 Function';
+
+  @override
+  String get omniflowReadyFunctions => '可用 Function';
+
+  @override
+  String get omniflowServiceAddressNotConfigured => '服务地址未配置';
+
+  @override
+  String get omniflowSkillLibrary => 'OmniFlow 技能库';
+
+  @override
+  String get omniflowServiceStatus => '服务状态';
+
+  @override
+  String get omniflowServiceStatusRunning => '运行中';
+
+  @override
+  String get omniflowServiceStatusStopped => '未运行';
+
+  @override
+  String get omniflowServiceAddress => '服务地址';
+
+  @override
+  String get omniflowDataDirectory => '数据目录';
+
+  @override
+  String get omniflowNotSet => '未设置';
+
+  @override
+  String get omniflowEnableAccelerationDesc => '执行任务前优先匹配已学习的技能';
+
+  @override
+  String get omniflowAutoStartDesc => '打开应用时自动启动技能服务';
+
+  @override
+  String get omniflowStarting => '启动中...';
+
+  @override
+  String get omniflowRestarting => '重启中...';
+
+  @override
+  String get omniflowStopping => '停止中...';
+
+  @override
+  String get omniflowViewSkillLibrary => '查看技能库';
+
+  @override
+  String get omniflowViewFunctionLibrary => '查看功能库';
+
+  @override
+  String get omniflowClearAllData => '清空所有数据';
+
+  @override
+  String get omniflowClearAllDataTitle => '清空所有数据';
+
+  @override
+  String get omniflowClearAllDataConfirm =>
+      '确认清空所有 OmniFlow 数据？\n\n这将删除：\n• 所有 Functions\n• 所有 Run Logs\n• 所有 Shared Pages\n\n此操作不可恢复！';
+
+  @override
+  String get omniflowCancel => '取消';
+
+  @override
+  String get omniflowClear => '清空';
+
+  @override
+  String omniflowClearSuccess(Object functions, Object runLogs) {
+    return '已清空: $functions functions, $runLogs run_logs';
+  }
+
+  @override
+  String get omniflowClearFailed => '清空失败';
+
+  @override
+  String omniflowProviderActionSuccess(Object action) {
+    return 'provider $action 成功';
+  }
+
+  @override
+  String omniflowProviderActionFailed(Object action) {
+    return 'provider $action 失败';
+  }
+
+  @override
+  String get functionLibraryTitle => '功能库';
+
+  @override
+  String get functionLibrarySearchHint => '搜索功能名称或应用';
+
+  @override
+  String get functionLibraryEmpty => '暂无已学习的功能';
+
+  @override
+  String get functionLibraryEmptyDesc => '执行任务后，高频操作会自动沉淀到这里';
+
+  @override
+  String get functionLibrarySteps => '步';
+
+  @override
+  String get functionLibraryHasParams => '有参数';
+
+  @override
+  String get functionLibraryRunCount => '执行';
+
+  @override
+  String get functionLibraryId => 'ID';
+
+  @override
+  String get functionLibraryParams => '参数';
+
+  @override
+  String get functionLibrarySource => '来源';
+
+  @override
+  String get functionLibraryCreatedAt => '创建时间';
+
+  @override
+  String get functionLibraryDelete => '删除';
+
+  @override
+  String get functionLibraryDeleteTitle => '删除功能';
+
+  @override
+  String functionLibraryDeleteConfirm(Object name) {
+    return '确认删除「$name」？';
+  }
+
+  @override
+  String get functionLibraryDeleted => '已删除';
+
+  @override
+  String get functionLibraryDeleteFailed => '删除失败';
+
+  @override
+  String get functionLibraryUpload => '上传';
+
+  @override
+  String get functionLibraryUploadTitle => '上传到云端';
+
+  @override
+  String get functionLibraryUploadSuccess => '上传成功';
+
+  @override
+  String get functionLibraryUploadFailed => '上传失败';
+
+  @override
+  String get functionLibraryDownload => '从云端下载';
+
+  @override
+  String get functionLibraryDownloadTitle => '从云端下载';
+
+  @override
+  String get functionLibraryDownloadSuccess => '下载成功';
+
+  @override
+  String get functionLibraryDownloadFailed => '下载失败';
+
+  @override
+  String get functionLibraryCloudUrlHint => '输入云端服务地址';
+
+  @override
+  String get functionLibraryConfirm => '确定';
+
+  @override
+  String get functionLibrarySyncStatus => '同步状态';
+
+  @override
+  String get functionLibrarySynced => '已同步';
+
+  @override
+  String get functionLibraryLocalOnly => '仅本地';
+
+  @override
+  String get functionLibraryCloudOnly => '仅云端';
 }

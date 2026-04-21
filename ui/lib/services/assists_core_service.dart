@@ -464,6 +464,13 @@ class UtgFunctionMutationResult {
   final String derivedFromRawFunctionId;
   final Map<String, dynamic> rawJson;
 
+  // 语义去重相关字段
+  final bool isUpdate;
+  final double? similarity;
+  final String? enrichedGoal;
+  final String? originalGoal;
+  final List<String> sourceRunIds;
+
   const UtgFunctionMutationResult({
     required this.success,
     required this.functionId,
@@ -479,9 +486,23 @@ class UtgFunctionMutationResult {
     required this.assetState,
     required this.derivedFromRawFunctionId,
     required this.rawJson,
+    this.isUpdate = false,
+    this.similarity,
+    this.enrichedGoal,
+    this.originalGoal,
+    this.sourceRunIds = const [],
   });
 
   factory UtgFunctionMutationResult.fromMap(Map<String, dynamic> map) {
+    // 解析 source_run_ids
+    List<String> parseSourceRunIds() {
+      final raw = map['source_run_ids'];
+      if (raw is List) {
+        return raw.map((e) => e.toString()).toList();
+      }
+      return const [];
+    }
+
     return UtgFunctionMutationResult(
       success: map['success'] == true,
       functionId: (map['function_id'] ?? '').toString(),
@@ -501,6 +522,14 @@ class UtgFunctionMutationResult {
       derivedFromRawFunctionId: (map['derived_from_raw_function_id'] ?? '')
           .toString(),
       rawJson: Map<String, dynamic>.from(map),
+      // 语义去重字段
+      isUpdate: map['is_update'] == true,
+      similarity: map['similarity'] is num
+          ? (map['similarity'] as num).toDouble()
+          : null,
+      enrichedGoal: map['enriched_goal']?.toString(),
+      originalGoal: map['original_goal']?.toString(),
+      sourceRunIds: parseSourceRunIds(),
     );
   }
 }

@@ -2,10 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/assists_core_service.dart';
-import 'package:ui/theme/app_colors.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
@@ -124,6 +125,11 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     }
   }
 
+  void _openFunctionsBrowser() {
+    // 跳转到 Flutter 原生功能库页面
+    context.push('/task/function_library');
+  }
+
   Future<void> _loadFunctions({String? baseUrl, bool silent = false}) async {
     if (!silent) {
       setState(() {
@@ -183,13 +189,13 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   Widget _buildCard({required Widget child}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.omniPalette.surfacePrimary,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x11000000),
+            color: context.omniPalette.shadowColor,
             blurRadius: 18,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -200,13 +206,14 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
 
   Widget _buildPill(
     String text, {
-    Color backgroundColor = const Color(0xFFF2F5FA),
-    Color textColor = AppColors.text70,
+    Color? backgroundColor,
+    Color? textColor,
   }) {
+    final palette = context.omniPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: backgroundColor ?? palette.surfaceSecondary,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -214,7 +221,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: textColor,
+          color: textColor ?? palette.textSecondary,
         ),
       ),
     );
@@ -229,16 +236,16 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppColors.text70,
+              color: context.omniPalette.textSecondary,
             ),
           ),
           const SizedBox(height: 4),
           SelectableText(
             display,
-            style: const TextStyle(fontSize: 13, color: Colors.black87),
+            style: TextStyle(fontSize: 13, color: context.omniPalette.textPrimary),
           ),
         ],
       ),
@@ -261,7 +268,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     final hasLastRun = lastRun.isNotEmpty;
     return Container(
       decoration: BoxDecoration(
-        color: highlighted ? const Color(0xFFFFFBF0) : Colors.white,
+        color: highlighted ? const Color(0xFFFFFBF0) : context.omniPalette.surfacePrimary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: highlighted ? const Color(0xFFF59E0B) : Colors.transparent,
@@ -281,18 +288,18 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
         children: [
           Text(
             function.functionId,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
-              color: Colors.black87,
+              color: context.omniPalette.textPrimary,
             ),
           ),
           const SizedBox(height: 6),
           Text(
             description,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: AppColors.text70,
+              color: context.omniPalette.textSecondary,
               height: 1.5,
             ),
           ),
@@ -335,12 +342,12 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
           ),
           if (function.parameterExamples.isNotEmpty) ...[
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'parameter 示例',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: AppColors.text70,
+                color: context.omniPalette.textSecondary,
               ),
             ),
             const SizedBox(height: 6),
@@ -437,7 +444,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 ),
                 child: Text(
                   bundleError,
-                  style: const TextStyle(color: Color(0xFFB42318), height: 1.5),
+                  style: TextStyle(color: Color(0xFFB42318), height: 1.5),
                 ),
               )
             else if (bundle != null)
@@ -548,8 +555,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             previewParts.isEmpty
                 ? '执行预览：无动作'
                 : '执行预览：${previewParts.join(' -> ')}',
-            style: const TextStyle(
-              color: AppColors.text70,
+            style: TextStyle(
+              color: context.omniPalette.textSecondary,
               fontSize: 12,
               height: 1.6,
             ),
@@ -564,7 +571,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
             const SizedBox(height: 12),
           ],
           if (stepEntries.isEmpty)
-            const Text('这条资产暂时没有步骤。', style: TextStyle(color: AppColors.text70))
+            Text('这条资产暂时没有步骤。', style: TextStyle(color: context.omniPalette.textSecondary))
           else
             ...stepEntries.map((entry) {
               final nodeId = entry.key;
@@ -590,9 +597,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: context.omniPalette.surfacePrimary,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE4E8EE)),
+                  border: Border.all(color: context.omniPalette.borderSubtle),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -612,7 +619,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           Expanded(
                             child: Text(
                               'Step ${stepIndex + 1} · $nodeId',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -623,7 +630,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                             stepExpanded
                                 ? Icons.expand_less
                                 : Icons.expand_more,
-                            color: AppColors.text70,
+                            color: context.omniPalette.textSecondary,
                           ),
                         ],
                       ),
@@ -632,15 +639,15 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                       const SizedBox(height: 4),
                       Text(
                         nodeDescription,
-                        style: const TextStyle(color: AppColors.text70),
+                        style: TextStyle(color: context.omniPalette.textSecondary),
                       ),
                     ],
                     const SizedBox(height: 8),
                     if (!stepExpanded)
                       Text(
                         functionNames.map((e) => e.toString()).join(' · '),
-                        style: const TextStyle(
-                          color: AppColors.text70,
+                        style: TextStyle(
+                          color: context.omniPalette.textSecondary,
                           fontSize: 12,
                           height: 1.5,
                         ),
@@ -686,7 +693,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                     Expanded(
                                       child: Text(
                                         functionName,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
@@ -697,7 +704,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                       functionExpanded
                                           ? Icons.expand_less
                                           : Icons.expand_more,
-                                      color: AppColors.text70,
+                                      color: context.omniPalette.textSecondary,
                                     ),
                                   ],
                                 ),
@@ -710,8 +717,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                 Text(
                                   (functionPayload['description'] ?? '')
                                       .toString(),
-                                  style: const TextStyle(
-                                    color: AppColors.text70,
+                                  style: TextStyle(
+                                    color: context.omniPalette.textSecondary,
                                   ),
                                 ),
                               ],
@@ -728,16 +735,16 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                         );
                                       })
                                       .join(' -> '),
-                                  style: const TextStyle(
-                                    color: AppColors.text70,
+                                  style: TextStyle(
+                                    color: context.omniPalette.textSecondary,
                                     fontSize: 12,
                                     height: 1.5,
                                   ),
                                 )
                               else if (actions.isEmpty)
-                                const Text(
+                                Text(
                                   '无动作',
-                                  style: TextStyle(color: AppColors.text70),
+                                  style: TextStyle(color: context.omniPalette.textSecondary),
                                 )
                               else
                                 ...actions.asMap().entries.map((actionEntry) {
@@ -812,10 +819,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                       width: double.infinity,
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
-                                        color: Colors.white,
+                                        color: context.omniPalette.surfacePrimary,
                                         borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
-                                          color: const Color(0xFFE9EDF3),
+                                          color: context.omniPalette.borderSubtle,
                                         ),
                                       ),
                                       child: Column(
@@ -827,7 +834,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                               Expanded(
                                                 child: Text(
                                                   '${actionEntry.key + 1}. ${_actionDisplayName(actionType)}',
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     fontSize: 13,
                                                     fontWeight: FontWeight.w700,
                                                   ),
@@ -848,9 +855,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                             const SizedBox(height: 4),
                                             Text(
                                               summaryParts.join(' · '),
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontSize: 12,
-                                                color: AppColors.text70,
+                                                color: context.omniPalette.textSecondary,
                                                 height: 1.5,
                                               ),
                                             ),
@@ -1102,9 +1109,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   const SizedBox(height: 8),
                   SelectableText(
                     'bridge: ${executionContext.bridgeBaseUrl}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.text70,
+                      color: context.omniPalette.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1401,7 +1408,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.omniPalette.pageBackground,
       appBar: CommonAppBar(
         title: context.l10n.omniflowPanelTitle,
         primary: true,
@@ -1415,7 +1422,7 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.delete_sweep_outlined),
-            tooltip: '清空所有数据',
+            tooltip: context.l10n.omniflowClearAllData,
           ),
           IconButton(
             onPressed: _loading ? null : _refreshAll,
@@ -1434,9 +1441,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                   _buildCard(
                     child: Text(
                       context.l10n.omniflowPanelDesc,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
-                        color: AppColors.text70,
+                        color: context.omniPalette.textSecondary,
                         height: 1.7,
                       ),
                     ),
@@ -1446,9 +1453,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'OmniFlow 设置',
-                          style: TextStyle(
+                        Text(
+                          context.l10n.omniflowSettings,
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1457,10 +1464,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           value: _utgEnabled,
-                          title: const Text('启用 OmniFlow 执行加速'),
-                          subtitle: const Text(
-                            '执行任务前优先匹配已学习的技能',
-                            style: TextStyle(fontSize: 12, color: AppColors.text50),
+                          title: Text(context.l10n.omniflowEnablePreHook),
+                          subtitle: Text(
+                            context.l10n.omniflowEnableAccelerationDesc,
+                            style: TextStyle(fontSize: 12, color: context.omniPalette.textTertiary),
                           ),
                           onChanged: _saving
                               ? null
@@ -1469,10 +1476,10 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           value: _providerAutoStartEnabled,
-                          title: const Text('OmniFlow 自启动'),
-                          subtitle: const Text(
-                            '打开应用时自动启动技能服务',
-                            style: TextStyle(fontSize: 12, color: AppColors.text50),
+                          title: Text(context.l10n.omniflowAutoStartProvider),
+                          subtitle: Text(
+                            context.l10n.omniflowAutoStartDesc,
+                            style: TextStyle(fontSize: 12, color: context.omniPalette.textTertiary),
                           ),
                           onChanged: _saving
                               ? null
@@ -1482,21 +1489,29 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                         ),
                         const SizedBox(height: 8),
                         _buildInfoRow(
-                          '服务状态',
+                          context.l10n.omniflowServiceStatus,
                           config == null
-                              ? '加载中...'
-                              : (config.providerHealthy ? '运行中' : '未运行'),
+                              ? context.l10n.commonLoading
+                              : (config.providerHealthy ? context.l10n.omniflowServiceStatusRunning : context.l10n.omniflowServiceStatusStopped),
                         ),
-                        if (config != null &&
-                            config.resolvedOmniflowBaseUrl.isNotEmpty)
-                          _buildInfoRow(
-                            '服务地址',
-                            config.resolvedOmniflowBaseUrl,
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _baseUrlController,
+                          decoration: InputDecoration(
+                            labelText: context.l10n.omniflowServiceAddress,
+                            hintText: 'http://localhost:8765',
+                            border: const OutlineInputBorder(),
+                            isDense: true,
                           ),
+                          onEditingComplete: () {
+                            FocusScope.of(context).unfocus();
+                            _saveConfig();
+                          },
+                        ),
                         if (config?.providerRunLogPath != null &&
                             config!.providerRunLogPath.isNotEmpty)
                           _buildInfoRow(
-                            '数据目录',
+                            context.l10n.omniflowDataDirectory,
                             config.providerRunLogPath.replaceAll(
                               RegExp(r'/run_log\.jsonl$'),
                               '',
@@ -1507,16 +1522,6 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            OutlinedButton.icon(
-                              onPressed:
-                                  _saving || _providerControlAction != null
-                                  ? null
-                                  : () => _loadFunctions(
-                                      baseUrl: _baseUrlController.text.trim(),
-                                    ),
-                              icon: const Icon(Icons.sync_outlined),
-                              label: const Text('刷新'),
-                            ),
                             FilledButton.icon(
                               onPressed:
                                   _saving || _providerControlAction != null
@@ -1534,8 +1539,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   : const Icon(Icons.play_circle_outline),
                               label: Text(
                                 _providerControlAction == 'start'
-                                    ? '启动中...'
-                                    : '启动',
+                                    ? context.l10n.omniflowStarting
+                                    : context.l10n.omniflowProviderStart,
                               ),
                             ),
                             OutlinedButton.icon(
@@ -1554,8 +1559,8 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   : const Icon(Icons.restart_alt_outlined),
                               label: Text(
                                 _providerControlAction == 'restart'
-                                    ? '重启中...'
-                                    : '重启',
+                                    ? context.l10n.omniflowRestarting
+                                    : context.l10n.omniflowProviderRestart,
                               ),
                             ),
                             OutlinedButton.icon(
@@ -1574,13 +1579,9 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                                   : const Icon(Icons.stop_circle_outlined),
                               label: Text(
                                 _providerControlAction == 'stop'
-                                    ? '停止中...'
-                                    : '停止',
+                                    ? context.l10n.omniflowStopping
+                                    : context.l10n.omniflowProviderStop,
                               ),
-                            ),
-                            FilledButton(
-                              onPressed: _saving ? null : _saveConfig,
-                              child: Text(_saving ? '保存中...' : '保存'),
                             ),
                           ],
                         ),
@@ -1588,187 +1589,45 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Text(
-                        context.l10n.omniflowFunctionList,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (_loadingFunctions)
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      else
-                        _buildPill('${allFunctions.length}'),
-                      if (searchQuery.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        _buildPill('筛选 ${filteredFunctions.length}'),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 12),
                   _buildCard(
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _functionSearchController,
-                            onChanged: (_) => setState(() {}),
-                            decoration: InputDecoration(
-                              labelText: context.l10n.omniflowFunctionSearch,
-                              hintText: context.l10n.omniflowFunctionSearchHint,
-                              prefixIcon: const Icon(Icons.search_outlined),
-                              suffixIcon: searchQuery.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          _functionSearchController.clear();
-                                          _highlightedFunctionId = null;
-                                        });
-                                      },
-                                      icon: const Icon(Icons.close_outlined),
-                                      tooltip: '清空搜索',
-                                    ),
-                              border: const OutlineInputBorder(),
-                              isDense: true,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                context.l10n.omniflowFunctionList,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
+                            if (_loadingFunctions)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            else
+                              _buildPill('${allFunctions.length}'),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: config == null || !config.providerHealthy
+                                ? null
+                                : () => _openFunctionsBrowser(),
+                            icon: const Icon(Icons.bolt_outlined),
+                            label: Text(context.l10n.omniflowViewFunctionLibrary),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  if (_functionsError != null)
-                    _buildCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'OmniFlow 资产列表加载失败',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _functionsError!,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.text70,
-                              height: 1.6,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (allFunctions.isEmpty)
-                    _buildCard(
-                      child: const Text(
-                        '当前 provider 没有返回可展示的 OmniFlow 资产。确认 OmniFlow provider 已启动、Base URL 正确，并且 provider 能访问到临时区或资产区数据。',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.text70,
-                          height: 1.7,
-                        ),
-                      ),
-                    )
-                  else if (filteredFunctions.isEmpty)
-                    _buildCard(
-                      child: Text(
-                        '没有匹配到资产：${_functionSearchController.text.trim()}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.text70,
-                          height: 1.7,
-                        ),
-                      ),
-                    )
-                  else ...[
-                    ...(() {
-                      final groupedFunctions = groupByApp(filteredFunctions);
-                      final groupKeys = groupedFunctions.keys.toList()..sort();
-                      return groupKeys.expand((groupName) {
-                        final functionsInGroup =
-                            groupedFunctions[groupName] ??
-                            const <UtgFunctionSummary>[];
-                        return [
-                          _buildCard(
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    groupName,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                _buildPill('${functionsInGroup.length}'),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          ...functionsInGroup.map(
-                            (function) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Dismissible(
-                                key: Key('function_${function.functionId}'),
-                                direction: DismissDirection.endToStart,
-                                background: Container(
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: 20),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.shade400,
-                                    borderRadius: BorderRadius.circular(18),
-                                  ),
-                                  child: const Icon(
-                                    Icons.delete_outline,
-                                    color: Colors.white,
-                                    size: 28,
-                                  ),
-                                ),
-                                confirmDismiss: (direction) async {
-                                  return await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: const Text('删除轨迹'),
-                                      content: Text('确认删除 ${function.description.isNotEmpty ? function.description : function.functionId}？'),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.of(ctx).pop(false),
-                                          child: const Text('取消'),
-                                        ),
-                                        FilledButton(
-                                          onPressed: () => Navigator.of(ctx).pop(true),
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: Colors.red,
-                                          ),
-                                          child: const Text('删除'),
-                                        ),
-                                      ],
-                                    ),
-                                  ) ?? false;
-                                },
-                                onDismissed: (direction) {
-                                  _deleteFunctionFromDashboard(function);
-                                },
-                                child: _buildFunctionCard(function),
-                              ),
-                            ),
-                          ),
-                        ];
-                      });
-                    })(),
-                  ],
                 ],
               ),
             ),

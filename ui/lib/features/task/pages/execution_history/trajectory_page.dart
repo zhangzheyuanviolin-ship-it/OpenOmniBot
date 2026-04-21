@@ -549,14 +549,19 @@ class _TrajectoryPageState
     }
 
     try {
-      // TODO: 调用 Provider 的 /run_logs/import_run_log API
-      // final config = await AssistsMessageService.getUtgBridgeConfig();
-      // final result = await AssistsMessageService.importRunLogAsFunction(
-      //   runId: vm.runId!,
-      //   baseUrl: config.resolvedOmniflowBaseUrl,
-      // );
+      final config = await AssistsMessageService.getUtgBridgeConfig();
+      final result = await AssistsMessageService.importRunLog(
+        runId: vm.runId!,
+        baseUrl: config.resolvedOmniflowBaseUrl,
+      );
 
-      showToast('保存技能功能开发中...', type: ToastType.info);
+      if (!mounted) return;
+      if (result.success) {
+        showToast('已保存为技能', type: ToastType.success);
+      } else {
+        showToast('保存失败: ${result.errorMessage ?? "未知错误"}',
+            type: ToastType.error);
+      }
     } catch (e) {
       if (!mounted) return;
       showToast('保存失败：$e', type: ToastType.error);

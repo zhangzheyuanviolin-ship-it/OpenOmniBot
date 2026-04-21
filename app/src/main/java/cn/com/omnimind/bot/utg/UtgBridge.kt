@@ -418,8 +418,10 @@ object UtgBridge {
     }
 
     suspend fun captureObservation(request: ObservationRequest): ObservationResponse {
-        AccessibilityController.initController()
-        val rootNode = AssistsService.instance?.rootInActiveWindow
+        val controllerInit = AccessibilityController.initController()
+        val serviceInstance = AssistsService.instance
+        val rootNode = serviceInstance?.rootInActiveWindow
+        OmniLog.d(TAG, "captureObservation: controllerInit=$controllerInit, serviceInstance=${serviceInstance != null}, rootNode=${rootNode != null}")
         val xml = if (request.xml) {
             try {
                 rootNode?.let { XmlTreeUtils.buildXmlTree(it) }?.let { XmlTreeUtils.serializeXml(it) }
@@ -432,8 +434,10 @@ object UtgBridge {
             null
         }
         val packageName = if (request.appInfo) {
-            rootNode?.packageName?.toString()?.takeIf { it.isNotBlank() }
-                ?: AccessibilityController.getPackageName()
+            val rootPackage = rootNode?.packageName?.toString()?.takeIf { it.isNotBlank() }
+            val controllerPackage = AccessibilityController.getPackageName()
+            OmniLog.d(TAG, "captureObservation appInfo: rootPackage=$rootPackage, controllerPackage=$controllerPackage")
+            rootPackage ?: controllerPackage
         } else {
             null
         }

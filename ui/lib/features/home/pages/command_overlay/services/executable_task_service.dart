@@ -63,7 +63,7 @@ class ExecutableTaskService {
             });
           }
 
-          return {'pathId': task['pathId'], 'arguments': arguments};
+          return {'functionId': task['functionId'], 'arguments': arguments};
         }
         return task;
       }).toList();

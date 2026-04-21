@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit
 data class VLMTaskPreHookResult(
     val kind: String,
     val summary: String = "",
-    val pathId: String? = null,
+    val functionId: String? = null,
     val plannerGuidance: String = "",
     val executionRoute: String = ""
 )
@@ -64,7 +64,7 @@ sealed class TaskParams {
         val onMessagePushListener: OnMessagePushListener? = null,
         val skipGoHome: Boolean = false,  // 是否跳过回到主页，从当前页面开始执行
         val stepSkillGuidance: String = "",
-        val onRunCompiledPath: (suspend (String) -> OperationResult)? = null,
+        val onRunFunction: (suspend (String) -> OperationResult)? = null,
         val onPrepareExecution: (suspend () -> VLMTaskPreHookResult)? = null,
         val onCompileGateResolved: (suspend (VLMTaskPreHookResult) -> Unit)? = null,
         val onTaskRunLogReady: (suspend (VLMTaskRunLogPayload) -> Unit)? = null

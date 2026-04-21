@@ -2311,6 +2311,450 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'打开小万时自动启动'**
   String get alpineBootAutoStart;
+
+  /// No description provided for @omniflowPanelTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'OmniFlow 轨迹面板'**
+  String get omniflowPanelTitle;
+
+  /// No description provided for @omniflowPanelDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'管理 OmniFlow Function：查看、执行或删除 Function 资产。'**
+  String get omniflowPanelDesc;
+
+  /// No description provided for @omniflowFunctionList.
+  ///
+  /// In zh, this message translates to:
+  /// **'Function 列表'**
+  String get omniflowFunctionList;
+
+  /// No description provided for @omniflowFunctionSearch.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索 Function'**
+  String get omniflowFunctionSearch;
+
+  /// No description provided for @omniflowFunctionSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'按名称、描述等关键字过滤'**
+  String get omniflowFunctionSearchHint;
+
+  /// No description provided for @omniflowSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'OmniFlow 设置'**
+  String get omniflowSettings;
+
+  /// No description provided for @omniflowSettingsSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'记录高频可复用操作段，加速任务执行'**
+  String get omniflowSettingsSubtitle;
+
+  /// No description provided for @omniflowEnablePreHook.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用 OmniFlow 执行加速'**
+  String get omniflowEnablePreHook;
+
+  /// No description provided for @omniflowAutoStartProvider.
+  ///
+  /// In zh, this message translates to:
+  /// **'OmniFlow 自启动'**
+  String get omniflowAutoStartProvider;
+
+  /// No description provided for @omniflowRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新'**
+  String get omniflowRefresh;
+
+  /// No description provided for @omniflowProviderStart.
+  ///
+  /// In zh, this message translates to:
+  /// **'启动'**
+  String get omniflowProviderStart;
+
+  /// No description provided for @omniflowProviderStop.
+  ///
+  /// In zh, this message translates to:
+  /// **'停止'**
+  String get omniflowProviderStop;
+
+  /// No description provided for @omniflowProviderRestart.
+  ///
+  /// In zh, this message translates to:
+  /// **'重启'**
+  String get omniflowProviderRestart;
+
+  /// No description provided for @omniflowSaveConfig.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存'**
+  String get omniflowSaveConfig;
+
+  /// No description provided for @omniflowConfigSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'OmniFlow 配置已保存'**
+  String get omniflowConfigSaved;
+
+  /// No description provided for @omniflowConfigSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存 OmniFlow 配置失败'**
+  String get omniflowConfigSaveFailed;
+
+  /// No description provided for @omniflowConfigLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载 OmniFlow 配置失败'**
+  String get omniflowConfigLoadFailed;
+
+  /// No description provided for @omniflowFunctionsLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载 Function 列表失败'**
+  String get omniflowFunctionsLoadFailed;
+
+  /// No description provided for @omniflowTempFunctions.
+  ///
+  /// In zh, this message translates to:
+  /// **'临时 Function'**
+  String get omniflowTempFunctions;
+
+  /// No description provided for @omniflowReadyFunctions.
+  ///
+  /// In zh, this message translates to:
+  /// **'可用 Function'**
+  String get omniflowReadyFunctions;
+
+  /// No description provided for @omniflowServiceAddressNotConfigured.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务地址未配置'**
+  String get omniflowServiceAddressNotConfigured;
+
+  /// No description provided for @omniflowSkillLibrary.
+  ///
+  /// In zh, this message translates to:
+  /// **'OmniFlow 技能库'**
+  String get omniflowSkillLibrary;
+
+  /// No description provided for @omniflowServiceStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务状态'**
+  String get omniflowServiceStatus;
+
+  /// No description provided for @omniflowServiceStatusRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'运行中'**
+  String get omniflowServiceStatusRunning;
+
+  /// No description provided for @omniflowServiceStatusStopped.
+  ///
+  /// In zh, this message translates to:
+  /// **'未运行'**
+  String get omniflowServiceStatusStopped;
+
+  /// No description provided for @omniflowServiceAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务地址'**
+  String get omniflowServiceAddress;
+
+  /// No description provided for @omniflowDataDirectory.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据目录'**
+  String get omniflowDataDirectory;
+
+  /// No description provided for @omniflowNotSet.
+  ///
+  /// In zh, this message translates to:
+  /// **'未设置'**
+  String get omniflowNotSet;
+
+  /// No description provided for @omniflowEnableAccelerationDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行任务前优先匹配已学习的技能'**
+  String get omniflowEnableAccelerationDesc;
+
+  /// No description provided for @omniflowAutoStartDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开应用时自动启动技能服务'**
+  String get omniflowAutoStartDesc;
+
+  /// No description provided for @omniflowStarting.
+  ///
+  /// In zh, this message translates to:
+  /// **'启动中...'**
+  String get omniflowStarting;
+
+  /// No description provided for @omniflowRestarting.
+  ///
+  /// In zh, this message translates to:
+  /// **'重启中...'**
+  String get omniflowRestarting;
+
+  /// No description provided for @omniflowStopping.
+  ///
+  /// In zh, this message translates to:
+  /// **'停止中...'**
+  String get omniflowStopping;
+
+  /// No description provided for @omniflowViewSkillLibrary.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看技能库'**
+  String get omniflowViewSkillLibrary;
+
+  /// No description provided for @omniflowViewFunctionLibrary.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看功能库'**
+  String get omniflowViewFunctionLibrary;
+
+  /// No description provided for @omniflowClearAllData.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空所有数据'**
+  String get omniflowClearAllData;
+
+  /// No description provided for @omniflowClearAllDataTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空所有数据'**
+  String get omniflowClearAllDataTitle;
+
+  /// No description provided for @omniflowClearAllDataConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认清空所有 OmniFlow 数据？\n\n这将删除：\n• 所有 Functions\n• 所有 Run Logs\n• 所有 Shared Pages\n\n此操作不可恢复！'**
+  String get omniflowClearAllDataConfirm;
+
+  /// No description provided for @omniflowCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get omniflowCancel;
+
+  /// No description provided for @omniflowClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空'**
+  String get omniflowClear;
+
+  /// No description provided for @omniflowClearSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已清空: {functions} functions, {runLogs} run_logs'**
+  String omniflowClearSuccess(Object functions, Object runLogs);
+
+  /// No description provided for @omniflowClearFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空失败'**
+  String get omniflowClearFailed;
+
+  /// No description provided for @omniflowProviderActionSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'provider {action} 成功'**
+  String omniflowProviderActionSuccess(Object action);
+
+  /// No description provided for @omniflowProviderActionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'provider {action} 失败'**
+  String omniflowProviderActionFailed(Object action);
+
+  /// No description provided for @functionLibraryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'功能库'**
+  String get functionLibraryTitle;
+
+  /// No description provided for @functionLibrarySearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索功能名称或应用'**
+  String get functionLibrarySearchHint;
+
+  /// No description provided for @functionLibraryEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无已学习的功能'**
+  String get functionLibraryEmpty;
+
+  /// No description provided for @functionLibraryEmptyDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行任务后，高频操作会自动沉淀到这里'**
+  String get functionLibraryEmptyDesc;
+
+  /// No description provided for @functionLibrarySteps.
+  ///
+  /// In zh, this message translates to:
+  /// **'步'**
+  String get functionLibrarySteps;
+
+  /// No description provided for @functionLibraryHasParams.
+  ///
+  /// In zh, this message translates to:
+  /// **'有参数'**
+  String get functionLibraryHasParams;
+
+  /// No description provided for @functionLibraryRunCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行'**
+  String get functionLibraryRunCount;
+
+  /// No description provided for @functionLibraryId.
+  ///
+  /// In zh, this message translates to:
+  /// **'ID'**
+  String get functionLibraryId;
+
+  /// No description provided for @functionLibraryParams.
+  ///
+  /// In zh, this message translates to:
+  /// **'参数'**
+  String get functionLibraryParams;
+
+  /// No description provided for @functionLibrarySource.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源'**
+  String get functionLibrarySource;
+
+  /// No description provided for @functionLibraryCreatedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建时间'**
+  String get functionLibraryCreatedAt;
+
+  /// No description provided for @functionLibraryDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get functionLibraryDelete;
+
+  /// No description provided for @functionLibraryDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除功能'**
+  String get functionLibraryDeleteTitle;
+
+  /// No description provided for @functionLibraryDeleteConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认删除「{name}」？'**
+  String functionLibraryDeleteConfirm(Object name);
+
+  /// No description provided for @functionLibraryDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除'**
+  String get functionLibraryDeleted;
+
+  /// No description provided for @functionLibraryDeleteFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除失败'**
+  String get functionLibraryDeleteFailed;
+
+  /// No description provided for @functionLibraryUpload.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传'**
+  String get functionLibraryUpload;
+
+  /// No description provided for @functionLibraryUploadTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传到云端'**
+  String get functionLibraryUploadTitle;
+
+  /// No description provided for @functionLibraryUploadSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传成功'**
+  String get functionLibraryUploadSuccess;
+
+  /// No description provided for @functionLibraryUploadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传失败'**
+  String get functionLibraryUploadFailed;
+
+  /// No description provided for @functionLibraryDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'从云端下载'**
+  String get functionLibraryDownload;
+
+  /// No description provided for @functionLibraryDownloadTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'从云端下载'**
+  String get functionLibraryDownloadTitle;
+
+  /// No description provided for @functionLibraryDownloadSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载成功'**
+  String get functionLibraryDownloadSuccess;
+
+  /// No description provided for @functionLibraryDownloadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载失败'**
+  String get functionLibraryDownloadFailed;
+
+  /// No description provided for @functionLibraryCloudUrlHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入云端服务地址'**
+  String get functionLibraryCloudUrlHint;
+
+  /// No description provided for @functionLibraryConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定'**
+  String get functionLibraryConfirm;
+
+  /// No description provided for @functionLibrarySyncStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'同步状态'**
+  String get functionLibrarySyncStatus;
+
+  /// No description provided for @functionLibrarySynced.
+  ///
+  /// In zh, this message translates to:
+  /// **'已同步'**
+  String get functionLibrarySynced;
+
+  /// No description provided for @functionLibraryLocalOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅本地'**
+  String get functionLibraryLocalOnly;
+
+  /// No description provided for @functionLibraryCloudOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅云端'**
+  String get functionLibraryCloudOnly;
 }
 
 class _AppLocalizationsDelegate

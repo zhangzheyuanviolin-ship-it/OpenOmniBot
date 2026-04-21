@@ -189,8 +189,8 @@ void main() {
       });
 
       expect(result.success, isTrue);
-      expect(result.createdPathId, 'raw_replay_run123');
-      expect(result.pathKind, 'raw_replay');
+      expect(result.createdFunctionId, 'raw_replay_run123');
+      expect(result.assetKind, 'raw_replay');
       expect(result.assetState, 'temporary');
       expect(result.functionsCreated, 3);
     },
@@ -199,7 +199,7 @@ void main() {
   test(
     'utg distill result preserves ready-asset metadata and raw response',
     () {
-      final result = UtgPathMutationResult.fromMap(<String, dynamic>{
+      final result = UtgFunctionMutationResult.fromMap(<String, dynamic>{
         'success': true,
         'path_id': 'raw_replay_run123',
         'created_path_id': 'ready_path_wifi',
@@ -211,10 +211,10 @@ void main() {
       });
 
       expect(result.success, isTrue);
-      expect(result.createdPathId, 'ready_path_wifi');
-      expect(result.pathKind, 'distilled_asset');
+      expect(result.createdFunctionId, 'ready_path_wifi');
+      expect(result.assetKind, 'distilled_asset');
       expect(result.assetState, 'ready');
-      expect(result.derivedFromRawPathId, 'raw_replay_run123');
+      expect(result.derivedFromRawFunctionId, 'raw_replay_run123');
       expect(result.rawJson['functions_created'], 2);
       expect(result.rawJson['function_names'], <String>[
         'open_settings',
@@ -224,7 +224,7 @@ void main() {
   );
 
   test('utg path summary parses raw replay and ready asset partitions', () {
-    final snapshot = UtgPathsSnapshot.fromMap(<String, dynamic>{
+    final snapshot = UtgFunctionsSnapshot.fromMap(<String, dynamic>{
       'success': true,
       'count': 2,
       'provider': 'omniflow_utg',
@@ -252,18 +252,21 @@ void main() {
     });
 
     expect(snapshot.success, isTrue);
-    expect(snapshot.paths, hasLength(2));
-    expect(snapshot.paths.first.pathKind, 'raw_replay');
-    expect(snapshot.paths.first.assetState, 'temporary');
-    expect(snapshot.paths.last.pathKind, 'distilled_asset');
-    expect(snapshot.paths.last.assetState, 'ready');
-    expect(snapshot.paths.last.derivedFromRawPathId, 'raw_replay_run123');
-    expect(snapshot.paths.last.parameterNames, <String>['query']);
-    expect(snapshot.paths.last.parameterExamples['query'], 'Wi-Fi');
+    expect(snapshot.functions, hasLength(2));
+    expect(snapshot.functions.first.assetKind, 'raw_replay');
+    expect(snapshot.functions.first.assetState, 'temporary');
+    expect(snapshot.functions.last.assetKind, 'distilled_asset');
+    expect(snapshot.functions.last.assetState, 'ready');
+    expect(
+      snapshot.functions.last.derivedFromRawFunctionId,
+      'raw_replay_run123',
+    );
+    expect(snapshot.functions.last.parameterNames, <String>['query']);
+    expect(snapshot.functions.last.parameterExamples['query'], 'Wi-Fi');
   });
 
   testWidgets(
-    'run log popup keeps memory and replay actions when only ingest payload exists',
+    'run log popup keeps memory and replay actions when provider run_id exists',
     (tester) async {
       const channel = MethodChannel('cn.com.omnimind.bot/AssistCoreEvent');
       final messenger =
@@ -273,33 +276,35 @@ void main() {
           return <String, dynamic>{
             'success': true,
             'task_id': 'task_ingest_only',
+            'run_id': 'run_ingest_only',
+          };
+        }
+        if (call.method == 'requestUtgJson') {
+          return <String, dynamic>{
+            'success': true,
+            'run_id': 'run_ingest_only',
             'run_log': <String, dynamic>{
               'goal': '打开设置',
               'success': true,
               'done_reason': 'completed',
-              'steps': <Map<String, dynamic>>[
-                <String, dynamic>{
-                  'step_index': 0,
-                  'plan': <String, dynamic>{'tool_name': 'run_action'},
-                },
-              ],
-              'final_observation': <String, dynamic>{
-                'package_name': 'com.demo',
-              },
-              'extra': <String, dynamic>{'compile_kind': 'miss'},
             },
-            'ingest_payload': <String, dynamic>{
+            'view': <String, dynamic>{
+              'success': true,
               'goal': '打开设置',
+              'step_count': 1,
+              'compile_label': 'compile miss',
+              'tool_label': 'click',
+              'summary': '已打开设置',
+              'final_package': 'com.demo',
               'steps': <Map<String, dynamic>>[
                 <String, dynamic>{
-                  'observation': <String, dynamic>{
-                    'xml': '<hierarchy />',
-                    'package_name': 'com.demo',
-                  },
-                  'tool_call': <String, dynamic>{
-                    'name': 'click',
-                    'params': <String, dynamic>{'x': 1, 'y': 2},
-                  },
+                  'title': '点击设置',
+                  'selected_by': 'VLM',
+                  'why': 'provider view',
+                  'actions': <String>['click(1, 2)'],
+                  'result': '成功',
+                  'summary': '已完成',
+                  'success': true,
                 },
               ],
             },
@@ -357,6 +362,163 @@ void main() {
       );
       expect(rememberButton.onPressed, isNotNull);
       expect(replayButton.onPressed, isNotNull);
+    },
+  );
+
+  testWidgets('vlm task success card tap also opens run log popup', (
+    tester,
+  ) async {
+    const channel = MethodChannel('cn.com.omnimind.bot/AssistCoreEvent');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'getVlmTaskRunLog') {
+        return <String, dynamic>{
+          'success': true,
+          'task_id': 'task_card_tap',
+          'run_id': 'run_card_tap',
+        };
+      }
+      if (call.method == 'requestUtgJson') {
+        return <String, dynamic>{
+          'success': true,
+          'run_id': 'run_card_tap',
+          'run_log': <String, dynamic>{
+            'goal': '打开设置',
+            'success': true,
+            'done_reason': 'completed',
+          },
+          'view': <String, dynamic>{
+            'success': true,
+            'goal': '打开设置',
+            'step_count': 1,
+            'compile_label': 'compile miss',
+            'tool_label': '打开应用 com.android.settings',
+            'summary': '已打开设置',
+            'final_package': 'com.android.settings',
+            'steps': <Map<String, dynamic>>[
+              <String, dynamic>{'title': '打开设置', 'success': true},
+            ],
+          },
+        };
+      }
+      return null;
+    });
+    addTearDown(() async {
+      messenger.setMockMethodCallHandler(channel, null);
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AgentToolSummaryCard(
+            cardData: <String, dynamic>{
+              'status': 'success',
+              'toolName': 'vlm_task',
+              'toolType': 'builtin',
+              'toolTitle': '打开设置应用',
+              'toolTaskId': 'task_card_tap',
+              'compileStatus': 'miss',
+              'executionRoute': 'vlm',
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(AgentToolSummaryCard));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Run Log 详情'), findsOneWidget);
+    expect(find.text('记忆'), findsOneWidget);
+    expect(find.text('重放'), findsOneWidget);
+  });
+
+  testWidgets(
+    'vlm task view prefers taskId from result json over agent task id',
+    (tester) async {
+      const channel = MethodChannel('cn.com.omnimind.bot/AssistCoreEvent');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      var requestedTaskId = '';
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'getVlmTaskRunLog') {
+          requestedTaskId = ((call.arguments as Map?)?['taskId'] ?? '')
+              .toString();
+          if (requestedTaskId == 'vlm_task_real') {
+            return <String, dynamic>{
+              'success': true,
+              'task_id': 'vlm_task_real',
+              'run_id': 'run_real',
+            };
+          }
+          return <String, dynamic>{
+            'success': false,
+            'task_id': requestedTaskId,
+            'error_message': '未找到对应的 run_log',
+          };
+        }
+        if (call.method == 'requestUtgJson') {
+          return <String, dynamic>{
+            'success': true,
+            'run_id': 'run_real',
+            'run_log': <String, dynamic>{
+              'goal': '打开蓝牙设置',
+              'success': true,
+              'done_reason': 'completed',
+            },
+            'view': <String, dynamic>{
+              'success': true,
+              'goal': '打开蓝牙设置',
+              'step_count': 1,
+              'compile_label': 'compile miss',
+              'tool_label': '打开应用 com.android.settings',
+              'summary': '已打开蓝牙设置',
+              'final_package': 'com.android.settings',
+              'steps': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'title': '打开设置',
+                  'actions': <String>['open_app(com.android.settings)'],
+                  'success': true,
+                },
+              ],
+            },
+          };
+        }
+        return null;
+      });
+      addTearDown(() async {
+        messenger.setMockMethodCallHandler(channel, null);
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AgentToolSummaryCard(
+              cardData: <String, dynamic>{
+                'status': 'success',
+                'toolName': 'vlm_task',
+                'toolType': 'builtin',
+                'toolTitle': '打开蓝牙设置',
+                'toolTaskId': 'agent_task_outer',
+                'resultPreviewJson': jsonEncode(<String, dynamic>{
+                  'taskId': 'vlm_task_real',
+                }),
+                'compileStatus': 'miss',
+                'executionRoute': 'vlm',
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('查看'));
+      await tester.pumpAndSettle();
+
+      expect(requestedTaskId, 'vlm_task_real');
+      expect(find.text('Run Log 详情'), findsOneWidget);
+      expect(find.text('记忆'), findsOneWidget);
+      expect(find.text('重放'), findsOneWidget);
     },
   );
 

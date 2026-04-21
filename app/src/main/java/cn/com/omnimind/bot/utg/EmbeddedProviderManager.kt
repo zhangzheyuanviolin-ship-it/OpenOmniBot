@@ -5,6 +5,7 @@ import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
@@ -194,20 +195,26 @@ object EmbeddedProviderManager {
         return try {
             // 在终端中启动 Provider
             val command = "${status.binaryPath} --port $port --host 127.0.0.1"
-            val result = EmbeddedTerminalRuntime.launchBackgroundService(
+            val result = EmbeddedTerminalRuntime.launchBackgroundServiceSession(
                 context = context,
-                serviceKey = "omniflow_provider",
-                launchCommand = command,
-                healthCheckUrl = "http://127.0.0.1:$port/health",
-                timeoutSeconds = 30
+                sessionId = "omniflow_provider",
+                command = command,
+                workingDirectory = File(status.binaryPath).parentFile?.absolutePath
             )
 
             if (result.started || result.alreadyRunning) {
                 providerSessionId = result.sessionId
-                OmniLog.i(TAG, "Provider started on port $port")
-                true
+                repeat(30) {
+                    if (isProviderRunning(port)) {
+                        OmniLog.i(TAG, "Provider started on port $port")
+                        return true
+                    }
+                    delay(1000)
+                }
+                OmniLog.e(TAG, "Provider process launched but health check timed out")
+                false
             } else {
-                OmniLog.e(TAG, "Failed to start provider")
+                OmniLog.e(TAG, "Failed to start provider: ${result.message}")
                 false
             }
         } catch (e: Exception) {
@@ -219,14 +226,17 @@ object EmbeddedProviderManager {
     /**
      * 停止 Provider
      */
-    suspend fun stop(): Boolean {
+    suspend fun stop(context: Context): Boolean {
         return try {
-            providerSessionId?.let { sessionId ->
-                EmbeddedTerminalRuntime.stopBackgroundService(sessionId)
+            val sessionId = providerSessionId
+            val stopped = if (!sessionId.isNullOrBlank()) {
+                EmbeddedTerminalRuntime.stopSession(context = context, sessionId = sessionId)
+            } else {
+                true
             }
             providerSessionId = null
-            OmniLog.i(TAG, "Provider stopped")
-            true
+            OmniLog.i(TAG, "Provider stopped: $stopped")
+            stopped
         } catch (e: Exception) {
             OmniLog.e(TAG, "Stop failed", e)
             false
@@ -236,10 +246,10 @@ object EmbeddedProviderManager {
     /**
      * 检查 Provider 是否运行中
      */
-    private suspend fun isProviderRunning(): Boolean {
+    private suspend fun isProviderRunning(port: Int = DEFAULT_PORT): Boolean {
         return try {
             withContext(Dispatchers.IO) {
-                val url = URL("http://127.0.0.1:$DEFAULT_PORT/health")
+                val url = URL("http://127.0.0.1:$port/health")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 2000
                 conn.readTimeout = 2000
@@ -291,7 +301,7 @@ object EmbeddedProviderManager {
      */
     suspend fun uninstall(context: Context): Boolean {
         return try {
-            stop()
+            stop(context)
 
             val mmkv = MMKV.defaultMMKV()
             val binaryPath = mmkv?.decodeString(MMKV_KEY_BINARY_PATH)

@@ -373,17 +373,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   String _buildUtgSubtitle() {
-    if (!_utgLoaded) {
-      return '加载中...';
-    }
-    final config = _utgConfig;
-    if (config == null) {
-      return '配置 OmniFlow provider 与轨迹执行 run_log';
-    }
-    final enabled = config.utgEnabled ? 'OmniFlow 已开启' : 'OmniFlow 已关闭';
-    final autoStart = config.providerAutoStartEnabled ? '自动拉起' : '手动拉起';
-    final health = config.providerHealthy ? 'provider 正常' : 'provider 不可达';
-    return '$enabled，$autoStart，$health';
+    return context.l10n.omniflowSettingsSubtitle;
   }
 
   @override
@@ -465,7 +455,7 @@ class _SettingsPageState extends State<SettingsPage> {
     modelMemoryItems.add(
       _SettingItem(
         icon: Icons.auto_awesome_outlined,
-        title: context.l10n.omniflowSkillPanelTitle,
+        title: context.l10n.omniflowPanelTitle,
         subtitle: _buildUtgSubtitle(),
         onTap: () async {
           await GoRouterManager.pushForResult('/home/utg');

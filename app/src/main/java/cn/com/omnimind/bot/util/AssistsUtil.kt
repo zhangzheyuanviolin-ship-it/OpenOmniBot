@@ -204,7 +204,7 @@ class AssistsUtil {
             needSummary: Boolean = false,
             skipGoHome: Boolean = false,  // 是否跳过回到主页，从当前页面开始执行
             stepSkillGuidance: String = "",
-            onRunCompiledPath: (suspend (String) -> OperationResult)? = null,
+            onRunFunction: (suspend (String) -> OperationResult)? = null,
             onPrepareExecution: (suspend () -> VLMTaskPreHookResult)? = null,
             onCompileGateResolved: (suspend (VLMTaskPreHookResult) -> Unit)? = null,
             onTaskRunLogReady: (suspend (VLMTaskRunLogPayload) -> Unit)? = null
@@ -233,12 +233,12 @@ class AssistsUtil {
                         ?: AccessibilityController.getPackageName()
                 )
             }
-            val resolvedRunCompiledPath = onRunCompiledPath ?: { pathId ->
+            val resolvedRunFunction = onRunFunction ?: { functionId ->
                 val bridgeState = McpServerManager.ensureRunning(context)
-                val response = UtgBridge.runCompiledPath(
-                    UtgBridge.RunCompiledPathRequest(
+                val response = UtgBridge.runFunction(
+                    UtgBridge.RunFunctionRequest(
                         goal = goal,
-                        pathId = pathId,
+                        functionId = functionId,
                         arguments = emptyMap(),
                         bridgeBaseUrl = UtgBridge.localBridgeBaseUrl(bridgeState),
                         bridgeToken = bridgeState.token,
@@ -247,16 +247,16 @@ class AssistsUtil {
                     )
                 )
                 if (response == null) {
-                    OperationResult(false, "OmniFlow compiled path request failed", null)
+                    OperationResult(false, "OmniFlow function request failed", null)
                 } else {
                     OperationResult(
                         success = response.success,
                         message = response.summary?.takeIf { it.isNotBlank() }
                             ?: response.errorMessage?.takeIf { it.isNotBlank() }
                             ?: if (response.success) {
-                                "OmniFlow compiled path succeeded without provider summary"
+                                "OmniFlow function succeeded without provider summary"
                             } else {
-                                "OmniFlow compiled path request failed"
+                                "OmniFlow function request failed"
                             },
                         data = null,
                         providerRunLogJson = response.runLog?.let { Gson().toJson(it) },
@@ -288,7 +288,7 @@ class AssistsUtil {
                     onMessagePushListener,
                     skipGoHome,
                     stepSkillGuidance,
-                    resolvedRunCompiledPath,
+                    resolvedRunFunction,
                     resolvedPrepareExecution,
                     onCompileGateResolved,
                     resolvedTaskRunLogReady

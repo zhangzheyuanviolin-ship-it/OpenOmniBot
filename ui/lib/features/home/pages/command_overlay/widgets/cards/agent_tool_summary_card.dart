@@ -28,35 +28,38 @@ class AgentToolSummaryCard extends StatelessWidget {
     final status = (cardData['status'] ?? 'running').toString();
     final title = resolveAgentToolTitle(cardData);
     final toolName = (cardData['toolName'] ?? '').toString().trim();
-    var taskId = (cardData['toolTaskId'] ?? '').toString().trim();
-    if (taskId.isEmpty) {
-      final previewJson = (cardData['resultPreviewJson'] ?? '')
-          .toString()
-          .trim();
-      if (previewJson.isNotEmpty) {
-        try {
-          final decoded = jsonDecode(previewJson);
-          if (decoded is Map) {
-            taskId = (decoded['taskId'] ?? decoded['task_id'] ?? '')
-                .toString()
-                .trim();
-          }
-        } catch (_) {}
+    String taskIdFromJson(String rawJson) {
+      final text = rawJson.trim();
+      if (text.isEmpty) {
+        return '';
       }
+      try {
+        final decoded = jsonDecode(text);
+        if (decoded is Map) {
+          return (decoded['taskId'] ?? decoded['task_id'] ?? '')
+              .toString()
+              .trim();
+        }
+      } catch (_) {}
+      return '';
     }
-    if (taskId.isEmpty) {
-      final rawResultJson = (cardData['rawResultJson'] ?? '').toString().trim();
-      if (rawResultJson.isNotEmpty) {
-        try {
-          final decoded = jsonDecode(rawResultJson);
-          if (decoded is Map) {
-            taskId = (decoded['taskId'] ?? decoded['task_id'] ?? '')
-                .toString()
-                .trim();
-          }
-        } catch (_) {}
-      }
-    }
+
+    final previewTaskId = taskIdFromJson(
+      (cardData['resultPreviewJson'] ?? '').toString(),
+    );
+    final rawResultTaskId = taskIdFromJson(
+      (cardData['rawResultJson'] ?? '').toString(),
+    );
+    final cachedToolTaskId = (cardData['toolTaskId'] ?? '').toString().trim();
+    final taskId = toolName == 'vlm_task'
+        ? (previewTaskId.isNotEmpty
+              ? previewTaskId
+              : (rawResultTaskId.isNotEmpty
+                    ? rawResultTaskId
+                    : cachedToolTaskId))
+        : (cachedToolTaskId.isNotEmpty
+              ? cachedToolTaskId
+              : (previewTaskId.isNotEmpty ? previewTaskId : rawResultTaskId));
     final canViewRunLog =
         toolName == 'vlm_task' && status != 'running' && taskId.isNotEmpty;
     final statusLabel = resolveAgentToolStatusLabel(cardData);
@@ -109,6 +112,10 @@ class AgentToolSummaryCard extends StatelessWidget {
       tooltipLines.add(routeLabel);
     }
 
+    final openRunLog = canViewRunLog
+        ? () => _showVlmTaskRunLog(context, taskId: taskId, title: title)
+        : null;
+
     return Tooltip(
       message: tooltipLines.join('\n'),
       child: Align(
@@ -118,114 +125,115 @@ class AgentToolSummaryCard extends StatelessWidget {
             maxWidth: MediaQuery.of(context).size.width * 0.78,
             minHeight: 34,
           ),
-          child: Container(
-            margin: const EdgeInsets.only(top: 6, bottom: 2),
-            padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
-            decoration: BoxDecoration(
-              color: cardBackgroundColor,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: openRunLog,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: cardBorderColor),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _StatusIcon(status: status, toolType: cardData['toolType']),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: titleColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      height: 1.15,
-                    ),
-                  ),
+              child: Container(
+                margin: const EdgeInsets.only(top: 6, bottom: 2),
+                padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+                decoration: BoxDecoration(
+                  color: cardBackgroundColor,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: cardBorderColor),
                 ),
-                if (routeLabel != null) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _resolvedRouteColor(
-                        executionRoute: executionRoute,
-                        compileStatus: compileStatus,
-                      ).withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      routeLabel,
-                      style: TextStyle(
-                        color: _resolvedRouteColor(
-                          executionRoute: executionRoute,
-                          compileStatus: compileStatus,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _StatusIcon(status: status, toolType: cardData['toolType']),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.15,
                         ),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        height: 1,
                       ),
                     ),
-                  ),
-                ],
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusTagBackgroundColor,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    status == 'running' ? typeLabel : statusLabel,
-                    style: TextStyle(
-                      color: statusTagTextColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      height: 1,
-                    ),
-                  ),
-                ),
-                if (canViewRunLog) ...[
-                  const SizedBox(width: 6),
-                  InkWell(
-                    onTap: () => _showVlmTaskRunLog(
-                      context,
-                      taskId: taskId,
-                      title: title,
-                    ),
-                    borderRadius: BorderRadius.circular(999),
-                    child: Container(
+                    if (routeLabel != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _resolvedRouteColor(
+                            executionRoute: executionRoute,
+                            compileStatus: compileStatus,
+                          ).withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          routeLabel,
+                          style: TextStyle(
+                            color: _resolvedRouteColor(
+                              executionRoute: executionRoute,
+                              compileStatus: compileStatus,
+                            ),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(width: 8),
+                    Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 7,
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.78),
+                        color: statusTagBackgroundColor,
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: AppColors.primaryBlue.withValues(alpha: 0.18),
-                        ),
                       ),
-                      child: const Text(
-                        '查看',
+                      child: Text(
+                        status == 'running' ? typeLabel : statusLabel,
                         style: TextStyle(
-                          color: AppColors.primaryBlue,
+                          color: statusTagTextColor,
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                           height: 1,
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ],
+                    if (canViewRunLog) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.78),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: AppColors.primaryBlue.withValues(
+                              alpha: 0.18,
+                            ),
+                          ),
+                        ),
+                        child: const Text(
+                          '查看',
+                          style: TextStyle(
+                            color: AppColors.primaryBlue,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -238,9 +246,20 @@ class AgentToolSummaryCard extends StatelessWidget {
     required String taskId,
     required String title,
   }) async {
-    final payload = await AssistsMessageService.getVlmTaskRunLog(
-      taskId: taskId,
-    );
+    late final Map<String, dynamic> payload;
+    try {
+      payload = await AssistsMessageService.getVlmTaskRunLog(taskId: taskId);
+    } catch (e) {
+      if (!context.mounted) {
+        return;
+      }
+      final message = e.toString().trim();
+      showToast(
+        message.isEmpty ? '读取 OmniFlow runlog 索引失败' : message,
+        type: ToastType.error,
+      );
+      return;
+    }
     if (!context.mounted) {
       return;
     }
@@ -282,6 +301,7 @@ class AgentToolSummaryCard extends StatelessWidget {
     }
     await showDialog<void>(
       context: context,
+      useRootNavigator: false,
       builder: (dialogContext) {
         return Dialog(
           insetPadding: const EdgeInsets.symmetric(
@@ -296,7 +316,7 @@ class AgentToolSummaryCard extends StatelessWidget {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: _buildRunLogPopupCard(
-                context,
+                dialogContext,
                 title: title,
                 runId: runId,
                 raw: raw,
@@ -316,38 +336,26 @@ class AgentToolSummaryCard extends StatelessWidget {
     required Map<String, dynamic> raw,
     required Map<String, dynamic> view,
   }) {
-    final extra =
-        (raw['extra'] as Map<dynamic, dynamic>?) ?? const <dynamic, dynamic>{};
-    final finalObservation =
-        (raw['final_observation'] as Map<dynamic, dynamic>?) ??
-        const <dynamic, dynamic>{};
-    final rawSteps = (raw['steps'] as List<dynamic>?) ?? const <dynamic>[];
     final viewSteps = (view['steps'] as List<dynamic>?) ?? const <dynamic>[];
-    final success =
-        view['success'] == true || (view.isEmpty && raw['success'] == true);
+    final success = view['success'] == true;
     final canImport = runId.isNotEmpty;
     final stepCount = view['step_count'] is num
         ? (view['step_count'] as num).toInt()
-        : int.tryParse((view['step_count'] ?? '').toString()) ??
-              rawSteps.length;
+        : int.tryParse((view['step_count'] ?? '').toString()) ?? 0;
     final compileLabel = (view['compile_label'] ?? '').toString().trim().isEmpty
-        ? (((extra['compile_kind'] ?? '').toString().trim().isEmpty)
-              ? 'compile unknown'
-              : 'compile ${(extra['compile_kind'] ?? '').toString().trim()}')
+        ? 'compile unknown'
         : (view['compile_label'] ?? '').toString().trim();
     final toolLabel = (view['tool_label'] ?? '').toString().trim();
     final toolName = toolLabel.isEmpty ? '无 tool' : toolLabel;
     final summary = (view['summary'] ?? '').toString().trim();
     final goal = (view['goal'] ?? raw['goal'] ?? '').toString().trim();
     final finalPackage = (view['final_package'] ?? '').toString().trim().isEmpty
-        ? ((finalObservation['package_name'] ?? '').toString().trim().isEmpty
-              ? 'unknown'
-              : (finalObservation['package_name'] ?? '').toString().trim())
+        ? 'unknown'
         : (view['final_package'] ?? '').toString().trim();
     final emptyMessage = (view['empty_message'] ?? '').toString().trim().isEmpty
-        ? '这个 run_log 没有记录到 step。常见原因是任务在首轮观察前失败或被中断。'
+        ? 'provider 当前没有返回可展示的 step。'
         : (view['empty_message'] ?? '').toString().trim();
-    final prettyJson = const JsonEncoder.withIndent('  ').convert(raw);
+    final prettyJson = const JsonEncoder.withIndent('  ').convert(view);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -400,32 +408,17 @@ class AgentToolSummaryCard extends StatelessWidget {
                   ),
                   const Spacer(),
                   OutlinedButton(
-                    onPressed: raw.isEmpty
+                    onPressed: view.isEmpty
                         ? null
-                        : () => _copyText(context, 'run log json', prettyJson),
-                    child: const Text('复制 JSON'),
+                        : () => _copyText(
+                            context,
+                            'provider view json',
+                            prettyJson,
+                          ),
+                    child: const Text('复制 View JSON'),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              if ((extra['source'] ?? '').toString().trim().isNotEmpty)
-                Text(
-                  'source: ${(extra['source'] ?? '').toString()}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.text70,
-                    height: 1.5,
-                  ),
-                ),
-              if (extra['stabilization_wait_ms'] != null)
-                Text(
-                  'stabilization_wait_ms: ${extra['stabilization_wait_ms']}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.text70,
-                    height: 1.5,
-                  ),
-                ),
               if (summary.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(
@@ -439,12 +432,12 @@ class AgentToolSummaryCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              if (viewSteps.isEmpty && rawSteps.isEmpty)
+              if (viewSteps.isEmpty)
                 Text(
                   emptyMessage,
                   style: TextStyle(color: AppColors.text70, height: 1.6),
                 )
-              else if (viewSteps.isNotEmpty)
+              else
                 ...viewSteps.asMap().entries.map((entry) {
                   final step = entry.value is Map
                       ? Map<String, dynamic>.from(entry.value as Map)
@@ -456,16 +449,21 @@ class AgentToolSummaryCard extends StatelessWidget {
                           .toList() ??
                       const <String>[];
                   final stepSuccess = step['success'] != false;
-                  final title = (step['title'] ?? '').toString().trim().isEmpty
+                  final operationDescription =
+                      (step['title'] ?? '').toString().trim().isEmpty
                       ? 'Step ${entry.key + 1}'
                       : (step['title'] ?? '').toString().trim();
-                  final selectedBy = (step['selected_by'] ?? '')
-                      .toString()
+                  final selectorLabel = ((step['selected_by'] ?? '').toString())
                       .trim();
-                  final why = (step['why'] ?? '').toString().trim();
-                  final result = (step['result'] ?? '').toString().trim();
-                  final thought = (step['thought'] ?? '').toString().trim();
-                  final summaryText = (step['summary'] ?? '').toString().trim();
+                  final selectorReason = ((step['why'] ?? '').toString())
+                      .trim();
+                  final resultMessage = ((step['result'] ?? '').toString())
+                      .trim();
+                  final resultThought = ((step['thought'] ?? '').toString())
+                      .trim();
+                  final resultSummary = ((step['summary'] ?? '').toString())
+                      .trim();
+                  final errorText = ((step['error'] ?? '').toString()).trim();
                   return Container(
                     width: double.infinity,
                     margin: const EdgeInsets.only(bottom: 10),
@@ -482,130 +480,7 @@ class AgentToolSummaryCard extends StatelessWidget {
                           children: [
                             Expanded(
                               child: Text(
-                                'Step ${entry.key + 1} · $title',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            _buildRunStatusPill(stepSuccess),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        if (selectedBy.isNotEmpty)
-                          Text(
-                            'selected_by: $selectedBy',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.text70,
-                              height: 1.5,
-                            ),
-                          ),
-                        if (why.isNotEmpty)
-                          Text(
-                            'why: $why',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.text70,
-                              height: 1.5,
-                            ),
-                          ),
-                        ...actions.asMap().entries.map(
-                          (actionEntry) => Text(
-                            'action ${actionEntry.key + 1}: ${actionEntry.value}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.text70,
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
-                        if (result.isNotEmpty)
-                          Text(
-                            'result: $result',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.text70,
-                              height: 1.5,
-                            ),
-                          ),
-                        if (thought.isNotEmpty)
-                          Text(
-                            'thought: $thought',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.text70,
-                              height: 1.5,
-                            ),
-                          ),
-                        if (summaryText.isNotEmpty)
-                          Text(
-                            'summary: $summaryText',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.text70,
-                              height: 1.5,
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                })
-              else
-                ...rawSteps.asMap().entries.map((entry) {
-                  final step = entry.value is Map
-                      ? Map<String, dynamic>.from(entry.value as Map)
-                      : const <String, dynamic>{};
-                  final plan =
-                      (step['plan'] as Map<dynamic, dynamic>?) ??
-                      const <dynamic, dynamic>{};
-                  final actResult =
-                      (step['act_result'] as Map<dynamic, dynamic>?) ??
-                      const <dynamic, dynamic>{};
-                  final resultSummary =
-                      (actResult['result_summary'] as Map<dynamic, dynamic>?) ??
-                      const <dynamic, dynamic>{};
-                  final executedActions =
-                      (step['executed_actions'] as List<dynamic>?)
-                          ?.whereType<Map>()
-                          .map(
-                            (item) => _buildActionPreviewText(
-                              Map<String, dynamic>.from(item),
-                            ).trim(),
-                          )
-                          .where((item) => item.isNotEmpty)
-                          .toList() ??
-                      const <String>[];
-                  final operationDescription =
-                      ((step['operation_description'] ??
-                                  plan['description'] ??
-                                  plan['tool_name'] ??
-                                  '')
-                              .toString())
-                          .trim();
-                  final selectorLabel =
-                      ((step['selector_label'] ?? '').toString()).trim();
-                  final selectorReason =
-                      ((step['selector_reason'] ?? '').toString()).trim();
-                  final stepSuccess = actResult['success'] != false;
-                  return Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFE4E8EE)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Step ${entry.key + 1} · ${operationDescription.isEmpty ? '未记录动作' : operationDescription}',
+                                'Step ${entry.key + 1} · $operationDescription',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -634,7 +509,7 @@ class AgentToolSummaryCard extends StatelessWidget {
                               height: 1.5,
                             ),
                           ),
-                        ...executedActions.asMap().entries.map(
+                        ...actions.asMap().entries.map(
                           (actionEntry) => Text(
                             'action ${actionEntry.key + 1}: ${actionEntry.value}',
                             style: const TextStyle(
@@ -644,36 +519,39 @@ class AgentToolSummaryCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (((resultSummary['message'] ?? '').toString())
-                            .trim()
-                            .isNotEmpty)
+                        if (resultMessage.isNotEmpty)
                           Text(
-                            'result: ${(resultSummary['message'] ?? '').toString()}',
+                            'result: $resultMessage',
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.text70,
                               height: 1.5,
                             ),
                           ),
-                        if (((resultSummary['thought'] ?? '').toString())
-                            .trim()
-                            .isNotEmpty)
+                        if (resultThought.isNotEmpty)
                           Text(
-                            'thought: ${(resultSummary['thought'] ?? '').toString()}',
+                            'thought: $resultThought',
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.text70,
                               height: 1.5,
                             ),
                           ),
-                        if (((resultSummary['summary'] ?? '').toString())
-                            .trim()
-                            .isNotEmpty)
+                        if (resultSummary.isNotEmpty)
                           Text(
-                            'summary: ${(resultSummary['summary'] ?? '').toString()}',
+                            'summary: $resultSummary',
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.text70,
+                              height: 1.5,
+                            ),
+                          ),
+                        if (errorText.isNotEmpty)
+                          Text(
+                            'error: $errorText',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFFB42318),
                               height: 1.5,
                             ),
                           ),
@@ -690,30 +568,6 @@ class AgentToolSummaryCard extends StatelessWidget {
                   height: 1.5,
                 ),
               ),
-              if ((finalObservation['xml'] ?? '')
-                  .toString()
-                  .trim()
-                  .isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE4E8EE)),
-                  ),
-                  child: SelectableText(
-                    (finalObservation['xml'] ?? '').toString(),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.text70,
-                      height: 1.5,
-                    ),
-                    maxLines: 10,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -760,6 +614,7 @@ class AgentToolSummaryCard extends StatelessWidget {
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('记忆到 OmniFlow'),
@@ -785,6 +640,7 @@ class AgentToolSummaryCard extends StatelessWidget {
     var loadingShown = false;
     showDialog<void>(
       context: context,
+      useRootNavigator: false,
       barrierDismissible: false,
       builder: (dialogContext) {
         return const AlertDialog(
@@ -815,18 +671,18 @@ class AgentToolSummaryCard extends StatelessWidget {
         return;
       }
       if (loadingShown) {
-        Navigator.of(context, rootNavigator: true).pop();
+        Navigator.of(context).pop();
         loadingShown = false;
       }
       if (result.success) {
-        final createdPathId = result.createdPathId.trim();
+        final createdFunctionId = result.createdFunctionId.trim();
         final zoneLabel = result.assetState.trim().isEmpty
             ? '临时区'
             : result.assetState.trim();
         showToast(
-          createdPathId.isEmpty
+          createdFunctionId.isEmpty
               ? '已记忆到 OmniFlow $zoneLabel'
-              : '已记忆到 OmniFlow $zoneLabel：$createdPathId',
+              : '已记忆到 OmniFlow $zoneLabel：$createdFunctionId',
           type: ToastType.success,
         );
       } else {
@@ -837,7 +693,7 @@ class AgentToolSummaryCard extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted && loadingShown) {
-        Navigator.of(context, rootNavigator: true).pop();
+        Navigator.of(context).pop();
         loadingShown = false;
       }
       if (!context.mounted) {
@@ -857,6 +713,7 @@ class AgentToolSummaryCard extends StatelessWidget {
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('通过 OmniFlow 重放'),
@@ -880,6 +737,7 @@ class AgentToolSummaryCard extends StatelessWidget {
     var loadingShown = false;
     showDialog<void>(
       context: context,
+      useRootNavigator: false,
       barrierDismissible: false,
       builder: (dialogContext) {
         return const AlertDialog(
@@ -910,19 +768,26 @@ class AgentToolSummaryCard extends StatelessWidget {
         return;
       }
       if (loadingShown) {
-        Navigator.of(context, rootNavigator: true).pop();
+        Navigator.of(context).pop();
         loadingShown = false;
       }
-      final pathId = result.pathId.trim();
+      final functionId = result.functionId.trim();
+      final failureMessage = (result.errorMessage ?? '').trim();
       showToast(
         result.success
-            ? (pathId.isEmpty ? '已通过 OmniFlow 重放' : '已通过 OmniFlow 重放：$pathId')
-            : (pathId.isEmpty ? 'OmniFlow 重放失败' : 'OmniFlow 重放失败：$pathId'),
+            ? (functionId.isEmpty
+                  ? '已通过 OmniFlow 重放'
+                  : '已通过 OmniFlow 重放：$functionId')
+            : (failureMessage.isNotEmpty
+                  ? 'OmniFlow 重放失败：$failureMessage'
+                  : (functionId.isEmpty
+                        ? 'OmniFlow 重放失败'
+                        : 'OmniFlow 重放失败：$functionId')),
         type: result.success ? ToastType.success : ToastType.error,
       );
     } catch (e) {
       if (context.mounted && loadingShown) {
-        Navigator.of(context, rootNavigator: true).pop();
+        Navigator.of(context).pop();
         loadingShown = false;
       }
       if (!context.mounted) {

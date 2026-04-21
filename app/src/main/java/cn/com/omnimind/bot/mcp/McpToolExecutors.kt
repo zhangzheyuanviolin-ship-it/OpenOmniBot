@@ -3,6 +3,7 @@ package cn.com.omnimind.bot.mcp
 import android.content.Context
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.OmniLog
+import cn.com.omnimind.bot.utg.UtgBridge
 import cn.com.omnimind.bot.vlm.VlmToolCoordinator
 import cn.com.omnimind.bot.vlm.VlmToolOutcome
 import cn.com.omnimind.bot.vlm.VlmToolOutcomeStatus
@@ -10,6 +11,7 @@ import cn.com.omnimind.bot.util.AssistsUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 /**
  * MCP 工具执行器
@@ -41,10 +43,15 @@ object McpToolExecutors {
         )
 
         try {
+            val taskId = UUID.randomUUID().toString()
             val outcome = VlmToolCoordinator.executeNewTask(
                 context = context,
                 request = request,
-                scope = scope
+                scope = scope,
+                taskId = taskId,
+                onTaskRunLogReady = { payload ->
+                    UtgBridge.cacheVlmTaskRunLog(taskId = taskId, payload = payload)
+                }
             )
             return@withContext outcomeToMcpResponse(outcome)
         } catch (e: Exception) {

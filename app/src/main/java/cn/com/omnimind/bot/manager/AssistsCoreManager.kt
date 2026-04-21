@@ -75,6 +75,7 @@ import cn.com.omnimind.bot.agent.ToolExecutionResult
 import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
+import cn.com.omnimind.bot.mcp.McpServerManager
 import cn.com.omnimind.bot.agent.resolveToolExecutionStatus
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
@@ -1207,10 +1208,30 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     throw IllegalArgumentException("unsupported_utg_debug_route")
                 }
                 val response = withContext(Dispatchers.IO) {
+                    val forwardedPayload =
+                        if (method == "POST" &&
+                            (routePath == "/functions/execute" || routePath == "/run_logs/replay")
+                        ) {
+                            val bridgeState = McpServerManager.ensureRunning(context)
+                            linkedMapOf<String, Any?>().apply {
+                                if (payload is Map<*, *>) {
+                                    payload.entries.forEach { entry ->
+                                        val key = entry.key?.toString()?.trim().orEmpty()
+                                        if (key.isNotEmpty()) {
+                                            put(key, entry.value)
+                                        }
+                                    }
+                                }
+                                this["bridge_base_url"] = UtgBridge.localBridgeBaseUrl(bridgeState)
+                                this["bridge_token"] = bridgeState.token
+                            }
+                        } else {
+                            payload
+                        }
                     UtgBridge.requestJson(
                         method = method,
                         path = path,
-                        payload = payload,
+                        payload = forwardedPayload,
                         baseUrl = baseUrl,
                     )
                 }

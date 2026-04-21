@@ -1,0 +1,721 @@
+import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
+import 'package:ui/core/mixins/page_lifecycle_mixin.dart';
+import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/theme/theme_context.dart';
+import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/common_app_bar.dart';
+
+class FunctionLibraryPage extends StatefulWidget {
+  const FunctionLibraryPage({super.key});
+
+  @override
+  State<FunctionLibraryPage> createState() => _FunctionLibraryPageState();
+}
+
+class _FunctionLibraryPageState extends State<FunctionLibraryPage>
+    with WidgetsBindingObserver, PageLifecycleMixin<FunctionLibraryPage> {
+  List<UtgFunctionSummary> _functions = [];
+  List<UtgFunctionSummary> _filteredFunctions = [];
+  bool _isLoading = true;
+  bool _hasLoadedOnce = false;
+  String _searchQuery = '';
+  String _selectedApp = ''; // 空字符串表示全部
+  Set<String> _availableApps = {};
+  String? _expandedFunctionId;
+
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void onPageResumed() {
+    if (_hasLoadedOnce) {
+      _loadData(silent: true);
+    }
+  }
+
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      final config = await AssistsMessageService.getUtgBridgeConfig();
+      if (!mounted) return;
+
+      final snapshot = await AssistsMessageService.getUtgFunctions(
+        baseUrl: config.resolvedOmniflowBaseUrl,
+      );
+      if (!mounted) return;
+
+      setState(() {
+        _functions = snapshot.functions;
+        _availableApps = _functions
+            .map((f) => f.appName.isNotEmpty ? f.appName : f.groupName)
+            .where((name) => name.isNotEmpty)
+            .toSet();
+        _applyFilters();
+        _isLoading = false;
+      });
+      _hasLoadedOnce = true;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      if (!silent) {
+        showToast('${context.l10n.omniflowFunctionsLoadFailed}: $e',
+            type: ToastType.error);
+      }
+    }
+  }
+
+  void _applyFilters() {
+    _filteredFunctions = _functions.where((f) {
+      // 搜索过滤
+      if (_searchQuery.isNotEmpty) {
+        final query = _searchQuery.toLowerCase();
+        final matchesSearch = f.description.toLowerCase().contains(query) ||
+            f.functionId.toLowerCase().contains(query) ||
+            f.appName.toLowerCase().contains(query);
+        if (!matchesSearch) return false;
+      }
+
+      // 应用过滤
+      if (_selectedApp.isNotEmpty) {
+        final appName = f.appName.isNotEmpty ? f.appName : f.groupName;
+        if (appName != _selectedApp) return false;
+      }
+
+      return true;
+    }).toList();
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query;
+      _applyFilters();
+    });
+  }
+
+  void _onAppFilterChanged(String? app) {
+    setState(() {
+      _selectedApp = app ?? '';
+      _applyFilters();
+    });
+  }
+
+  Future<void> _deleteFunction(UtgFunctionSummary func) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.l10n.functionLibraryDeleteTitle),
+        content: Text(context.l10n.functionLibraryDeleteConfirm(func.description)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(context.l10n.omniflowCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(context.l10n.functionLibraryDelete,
+                style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final config = await AssistsMessageService.getUtgBridgeConfig();
+      await AssistsMessageService.deleteUtgFunction(
+        functionId: func.functionId,
+        baseUrl: config.resolvedOmniflowBaseUrl,
+      );
+      if (!mounted) return;
+      showToast(context.l10n.functionLibraryDeleted, type: ToastType.success);
+      _loadData(silent: true);
+    } catch (e) {
+      if (!mounted) return;
+      showToast('${context.l10n.functionLibraryDeleteFailed}: $e', type: ToastType.error);
+    }
+  }
+
+  Future<void> _uploadFunction(UtgFunctionSummary func) async {
+    final cloudUrl = await _showCloudUrlDialog(
+      title: context.l10n.functionLibraryUploadTitle,
+      hint: func.cloudBaseUrl,
+    );
+    if (cloudUrl == null || cloudUrl.isEmpty) return;
+
+    try {
+      final config = await AssistsMessageService.getUtgBridgeConfig();
+      final result = await AssistsMessageService.uploadCloudUtgFunction(
+        functionId: func.functionId,
+        cloudBaseUrl: cloudUrl,
+        baseUrl: config.resolvedOmniflowBaseUrl,
+      );
+      if (!mounted) return;
+      if (result.success) {
+        showToast(context.l10n.functionLibraryUploadSuccess, type: ToastType.success);
+        _loadData(silent: true);
+      } else {
+        showToast(result.errorMessage ?? context.l10n.functionLibraryUploadFailed,
+            type: ToastType.error);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showToast('${context.l10n.functionLibraryUploadFailed}: $e', type: ToastType.error);
+    }
+  }
+
+  Future<void> _showDownloadDialog() async {
+    final cloudUrl = await _showCloudUrlDialog(
+      title: context.l10n.functionLibraryDownloadTitle,
+    );
+    if (cloudUrl == null || cloudUrl.isEmpty) return;
+
+    try {
+      final config = await AssistsMessageService.getUtgBridgeConfig();
+      final result = await AssistsMessageService.downloadCloudUtgFunction(
+        cloudBaseUrl: cloudUrl,
+        baseUrl: config.resolvedOmniflowBaseUrl,
+      );
+      if (!mounted) return;
+      if (result.success) {
+        showToast(context.l10n.functionLibraryDownloadSuccess, type: ToastType.success);
+        _loadData(silent: true);
+      } else {
+        showToast(result.errorMessage ?? context.l10n.functionLibraryDownloadFailed,
+            type: ToastType.error);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showToast('${context.l10n.functionLibraryDownloadFailed}: $e', type: ToastType.error);
+    }
+  }
+
+  Future<String?> _showCloudUrlDialog({
+    required String title,
+    String? hint,
+  }) async {
+    final controller = TextEditingController(text: hint ?? '');
+    final palette = context.omniPalette;
+
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              context.l10n.functionLibraryCloudUrlHint,
+              style: TextStyle(fontSize: 13, color: palette.textTertiary),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: 'https://example.com/omniflow',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(context.l10n.omniflowCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: Text(context.l10n.functionLibraryConfirm),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getSyncStatusText(String status) {
+    switch (status) {
+      case 'synced':
+        return context.l10n.functionLibrarySynced;
+      case 'local_only':
+        return context.l10n.functionLibraryLocalOnly;
+      case 'cloud_only':
+        return context.l10n.functionLibraryCloudOnly;
+      default:
+        return status;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+
+    return Scaffold(
+      backgroundColor: palette.pageBackground,
+      appBar: CommonAppBar(
+        title: context.l10n.functionLibraryTitle,
+        primary: true,
+        actions: [
+          // 从云端下载
+          IconButton(
+            icon: Icon(Icons.cloud_download_outlined, color: palette.textSecondary),
+            onPressed: _showDownloadDialog,
+            tooltip: context.l10n.functionLibraryDownload,
+          ),
+          // 刷新
+          IconButton(
+            icon: Icon(Icons.refresh, color: palette.textSecondary),
+            onPressed: () => _loadData(),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // 搜索和筛选栏
+          _buildSearchBar(palette),
+          // 功能列表
+          Expanded(
+            child: _isLoading
+                ? Center(
+                    child: CircularProgressIndicator(
+                      color: palette.accentPrimary,
+                    ),
+                  )
+                : _filteredFunctions.isEmpty
+                    ? _buildEmptyState(palette)
+                    : _buildFunctionList(palette),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar(dynamic palette) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Column(
+        children: [
+          // 搜索框
+          TextField(
+            controller: _searchController,
+            onChanged: _onSearchChanged,
+            style: TextStyle(color: palette.textPrimary),
+            decoration: InputDecoration(
+              hintText: context.l10n.functionLibrarySearchHint,
+              hintStyle: TextStyle(color: palette.textTertiary),
+              prefixIcon: Icon(Icons.search, color: palette.textTertiary),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.clear, color: palette.textTertiary),
+                      onPressed: () {
+                        _searchController.clear();
+                        _onSearchChanged('');
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: palette.surfaceSecondary,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 应用筛选
+          if (_availableApps.isNotEmpty)
+            SizedBox(
+              height: 36,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _buildFilterChip(
+                    label: context.l10n.trajectoryAll,
+                    selected: _selectedApp.isEmpty,
+                    onTap: () => _onAppFilterChanged(''),
+                    palette: palette,
+                  ),
+                  ..._availableApps.map((app) => _buildFilterChip(
+                        label: app,
+                        selected: _selectedApp == app,
+                        onTap: () => _onAppFilterChanged(app),
+                        palette: palette,
+                      )),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    required dynamic palette,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? palette.accentPrimary : palette.surfaceSecondary,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: selected ? Colors.white : palette.textSecondary,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(dynamic palette) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.auto_awesome, size: 64, color: palette.textTertiary),
+          const SizedBox(height: 16),
+          Text(
+            context.l10n.functionLibraryEmpty,
+            style: TextStyle(fontSize: 16, color: palette.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            context.l10n.functionLibraryEmptyDesc,
+            style: TextStyle(fontSize: 14, color: palette.textTertiary),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFunctionList(dynamic palette) {
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      itemCount: _filteredFunctions.length,
+      itemBuilder: (context, index) {
+        final func = _filteredFunctions[index];
+        final isExpanded = _expandedFunctionId == func.functionId;
+        return _buildFunctionCard(func, isExpanded, palette);
+      },
+    );
+  }
+
+  Widget _buildFunctionCard(
+      UtgFunctionSummary func, bool isExpanded, dynamic palette) {
+    final hasParams = func.parameterNames.isNotEmpty;
+    final successRate = func.runCount > 0
+        ? ((func.successCount / func.runCount) * 100).toInt()
+        : null;
+    final appName = func.appName.isNotEmpty ? func.appName : func.groupName;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: palette.surfacePrimary,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: palette.borderSubtle, width: 1),
+      ),
+      child: Column(
+        children: [
+          // 主卡片内容
+          InkWell(
+            onTap: () {
+              setState(() {
+                _expandedFunctionId =
+                    isExpanded ? null : func.functionId;
+              });
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 标题行
+                  Row(
+                    children: [
+                      // 功能图标
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: palette.accentPrimary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          Icons.bolt,
+                          color: palette.accentPrimary,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // 标题和应用名
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              func.description.isNotEmpty
+                                  ? func.description
+                                  : func.functionId,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: palette.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              appName.isNotEmpty ? appName : '-',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: palette.textTertiary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // 展开箭头
+                      Icon(
+                        isExpanded
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: palette.textTertiary,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // 统计标签
+                  Row(
+                    children: [
+                      _buildStatChip(
+                        '${func.stepCount} ${context.l10n.functionLibrarySteps}',
+                        palette,
+                      ),
+                      if (hasParams)
+                        _buildStatChip(
+                          context.l10n.functionLibraryHasParams,
+                          palette,
+                          color: palette.accentPrimary,
+                        ),
+                      if (successRate != null)
+                        _buildStatChip(
+                          '$successRate%',
+                          palette,
+                          color: successRate >= 80
+                              ? Colors.green
+                              : successRate >= 50
+                                  ? Colors.orange
+                                  : Colors.red,
+                        ),
+                      const Spacer(),
+                      if (func.runCount > 0)
+                        Text(
+                          '${context.l10n.functionLibraryRunCount}: ${func.runCount}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: palette.textTertiary,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 展开详情
+          if (isExpanded) _buildExpandedContent(func, palette),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatChip(String label, dynamic palette, {Color? color}) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: (color ?? palette.textTertiary).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          color: color ?? palette.textSecondary,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedContent(UtgFunctionSummary func, dynamic palette) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: palette.borderSubtle, width: 1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
+          // 功能 ID
+          _buildDetailRow(
+            context.l10n.functionLibraryId,
+            func.functionId,
+            palette,
+            mono: true,
+          ),
+          // 参数
+          if (func.parameterNames.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildDetailRow(
+              context.l10n.functionLibraryParams,
+              func.parameterNames.join(', '),
+              palette,
+            ),
+          ],
+          // 来源
+          if (func.source.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildDetailRow(
+              context.l10n.functionLibrarySource,
+              func.source,
+              palette,
+            ),
+          ],
+          // 创建时间
+          if (func.createdAt.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildDetailRow(
+              context.l10n.functionLibraryCreatedAt,
+              _formatDate(func.createdAt),
+              palette,
+            ),
+          ],
+          // 同步状态
+          if (func.syncStatus.isNotEmpty && func.syncStatus != 'local_only') ...[
+            const SizedBox(height: 8),
+            _buildDetailRow(
+              context.l10n.functionLibrarySyncStatus,
+              _getSyncStatusText(func.syncStatus),
+              palette,
+            ),
+          ],
+          const SizedBox(height: 16),
+          // 操作按钮
+          Row(
+            children: [
+              // 上传按钮
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _uploadFunction(func),
+                  icon: Icon(Icons.cloud_upload_outlined, size: 18),
+                  label: Text(context.l10n.functionLibraryUpload),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: palette.accentPrimary,
+                    side: BorderSide(color: palette.accentPrimary.withOpacity(0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // 删除按钮
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _deleteFunction(func),
+                  icon: Icon(Icons.delete_outline, size: 18),
+                  label: Text(context.l10n.functionLibraryDelete),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: BorderSide(color: Colors.red.withOpacity(0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, dynamic palette,
+      {bool mono = false}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: palette.textTertiary,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              color: palette.textSecondary,
+              fontFamily: mono ? 'monospace' : null,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDate(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return dateStr;
+    }
+  }
+}

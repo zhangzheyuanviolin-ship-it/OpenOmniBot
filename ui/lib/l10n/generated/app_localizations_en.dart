@@ -1243,4 +1243,240 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alpineBootAutoStart => 'Auto-start when Omnibot opens';
+
+  @override
+  String get omniflowPanelTitle => 'OmniFlow Trajectory Panel';
+
+  @override
+  String get omniflowPanelDesc =>
+      'Manage OmniFlow Functions: view, execute, or delete Function assets.';
+
+  @override
+  String get omniflowFunctionList => 'Function List';
+
+  @override
+  String get omniflowFunctionSearch => 'Search Functions';
+
+  @override
+  String get omniflowFunctionSearchHint => 'Filter by name, description, etc.';
+
+  @override
+  String get omniflowSettings => 'OmniFlow Settings';
+
+  @override
+  String get omniflowSettingsSubtitle =>
+      'Record reusable action sequences to accelerate tasks';
+
+  @override
+  String get omniflowEnablePreHook => 'Enable OmniFlow Acceleration';
+
+  @override
+  String get omniflowAutoStartProvider => 'OmniFlow Auto-start';
+
+  @override
+  String get omniflowRefresh => 'Refresh';
+
+  @override
+  String get omniflowProviderStart => 'Start';
+
+  @override
+  String get omniflowProviderStop => 'Stop';
+
+  @override
+  String get omniflowProviderRestart => 'Restart';
+
+  @override
+  String get omniflowSaveConfig => 'Save';
+
+  @override
+  String get omniflowConfigSaved => 'OmniFlow config saved';
+
+  @override
+  String get omniflowConfigSaveFailed => 'Failed to save OmniFlow config';
+
+  @override
+  String get omniflowConfigLoadFailed => 'Failed to load OmniFlow config';
+
+  @override
+  String get omniflowFunctionsLoadFailed => 'Failed to load Functions';
+
+  @override
+  String get omniflowTempFunctions => 'Temporary Functions';
+
+  @override
+  String get omniflowReadyFunctions => 'Ready Functions';
+
+  @override
+  String get omniflowServiceAddressNotConfigured =>
+      'Service address not configured';
+
+  @override
+  String get omniflowSkillLibrary => 'OmniFlow Skill Library';
+
+  @override
+  String get omniflowServiceStatus => 'Service Status';
+
+  @override
+  String get omniflowServiceStatusRunning => 'Running';
+
+  @override
+  String get omniflowServiceStatusStopped => 'Not Running';
+
+  @override
+  String get omniflowServiceAddress => 'Service Address';
+
+  @override
+  String get omniflowDataDirectory => 'Data Directory';
+
+  @override
+  String get omniflowNotSet => 'Not set';
+
+  @override
+  String get omniflowEnableAccelerationDesc =>
+      'Match learned skills before executing tasks';
+
+  @override
+  String get omniflowAutoStartDesc => 'Auto-start skill service when app opens';
+
+  @override
+  String get omniflowStarting => 'Starting...';
+
+  @override
+  String get omniflowRestarting => 'Restarting...';
+
+  @override
+  String get omniflowStopping => 'Stopping...';
+
+  @override
+  String get omniflowViewSkillLibrary => 'View Skill Library';
+
+  @override
+  String get omniflowViewFunctionLibrary => 'View Functions';
+
+  @override
+  String get omniflowClearAllData => 'Clear All Data';
+
+  @override
+  String get omniflowClearAllDataTitle => 'Clear All Data';
+
+  @override
+  String get omniflowClearAllDataConfirm =>
+      'Confirm clear all OmniFlow data?\n\nThis will delete:\n• All Functions\n• All Run Logs\n• All Shared Pages\n\nThis action cannot be undone!';
+
+  @override
+  String get omniflowCancel => 'Cancel';
+
+  @override
+  String get omniflowClear => 'Clear';
+
+  @override
+  String omniflowClearSuccess(Object functions, Object runLogs) {
+    return 'Cleared: $functions functions, $runLogs run_logs';
+  }
+
+  @override
+  String get omniflowClearFailed => 'Clear failed';
+
+  @override
+  String omniflowProviderActionSuccess(Object action) {
+    return 'provider $action success';
+  }
+
+  @override
+  String omniflowProviderActionFailed(Object action) {
+    return 'provider $action failed';
+  }
+
+  @override
+  String get functionLibraryTitle => 'Functions';
+
+  @override
+  String get functionLibrarySearchHint => 'Search functions or apps';
+
+  @override
+  String get functionLibraryEmpty => 'No learned functions yet';
+
+  @override
+  String get functionLibraryEmptyDesc =>
+      'Frequently used actions will be saved here after task execution';
+
+  @override
+  String get functionLibrarySteps => 'steps';
+
+  @override
+  String get functionLibraryHasParams => 'has params';
+
+  @override
+  String get functionLibraryRunCount => 'runs';
+
+  @override
+  String get functionLibraryId => 'ID';
+
+  @override
+  String get functionLibraryParams => 'Params';
+
+  @override
+  String get functionLibrarySource => 'Source';
+
+  @override
+  String get functionLibraryCreatedAt => 'Created';
+
+  @override
+  String get functionLibraryDelete => 'Delete';
+
+  @override
+  String get functionLibraryDeleteTitle => 'Delete Function';
+
+  @override
+  String functionLibraryDeleteConfirm(Object name) {
+    return 'Delete \"$name\"?';
+  }
+
+  @override
+  String get functionLibraryDeleted => 'Deleted';
+
+  @override
+  String get functionLibraryDeleteFailed => 'Delete failed';
+
+  @override
+  String get functionLibraryUpload => 'Upload';
+
+  @override
+  String get functionLibraryUploadTitle => 'Upload to Cloud';
+
+  @override
+  String get functionLibraryUploadSuccess => 'Upload successful';
+
+  @override
+  String get functionLibraryUploadFailed => 'Upload failed';
+
+  @override
+  String get functionLibraryDownload => 'Download from Cloud';
+
+  @override
+  String get functionLibraryDownloadTitle => 'Download from Cloud';
+
+  @override
+  String get functionLibraryDownloadSuccess => 'Download successful';
+
+  @override
+  String get functionLibraryDownloadFailed => 'Download failed';
+
+  @override
+  String get functionLibraryCloudUrlHint => 'Enter cloud service URL';
+
+  @override
+  String get functionLibraryConfirm => 'Confirm';
+
+  @override
+  String get functionLibrarySyncStatus => 'Sync Status';
+
+  @override
+  String get functionLibrarySynced => 'Synced';
+
+  @override
+  String get functionLibraryLocalOnly => 'Local Only';
+
+  @override
+  String get functionLibraryCloudOnly => 'Cloud Only';
 }

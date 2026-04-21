@@ -66,7 +66,7 @@ open class VLMOperationTask(
     private lateinit var streamClient: VLMStreamClient
 
     private var taskContext: Context? = null
-    private var onRunCompiledPath: (suspend (String) -> OperationResult)? = null
+    private var onRunFunction: (suspend (String) -> OperationResult)? = null
 
     // INFO动作等待通道：用于挂起任务等待用户回复
     private val userInputChannel = Channel<String>(Channel.Factory.UNLIMITED)
@@ -281,7 +281,7 @@ open class VLMOperationTask(
         onTaskFinishListener: () -> Unit,
         skipGoHome: Boolean = false,  // 是否跳过回到主页，从当前页面开始执行
         stepSkillGuidance: String = "",
-        onRunCompiledPath: (suspend (String) -> OperationResult)? = null,
+        onRunFunction: (suspend (String) -> OperationResult)? = null,
         onPrepareExecution: (suspend () -> VLMTaskPreHookResult)? = null,
         onCompileGateResolved: (suspend (VLMTaskPreHookResult) -> Unit)? = null,
         onTaskRunLogReady: (suspend (VLMTaskRunLogPayload) -> Unit)? = null
@@ -289,7 +289,7 @@ open class VLMOperationTask(
         this.goal = goal;
         this.taskContext = context
         this.onTaskFinishListener = onTaskFinishListener
-        this.onRunCompiledPath = onRunCompiledPath
+        this.onRunFunction = onRunFunction
         super.start {
             AccessibilityController.Companion.hideKeyboard()
             val currentPackageName = packageName ?: (AccessibilityController.Companion.getPackageName() ?: "")
@@ -329,7 +329,7 @@ open class VLMOperationTask(
                             "compile_gate" to linkedMapOf(
                                 "kind" to preparedResult.kind,
                                 "summary" to preparedResult.summary,
-                                "path_id" to preparedResult.pathId,
+                                "function_id" to preparedResult.functionId,
                                 "planner_guidance" to preparedResult.plannerGuidance,
                                 "execution_route" to preparedResult.executionRoute,
                             )
@@ -388,11 +388,11 @@ open class VLMOperationTask(
                         }
 
                         compileGateResult?.kind == "hit" &&
-                            !compileGateResult.pathId.isNullOrBlank() -> {
-                            val compiledResult = onRunCompiledPath?.invoke(
-                                compileGateResult.pathId!!
-                            ) ?: OperationResult(false, "OmniFlow compiled path request failed", null)
-                            if (compiledResult.success) {
+                            !compileGateResult.functionId.isNullOrBlank() -> {
+                            val functionResult = onRunFunction?.invoke(
+                                compileGateResult.functionId!!
+                            ) ?: OperationResult(false, "OmniFlow function request failed", null)
+                            if (functionResult.success) {
                                 TaskExecutionReport(
                                     success = true,
                                     goal = goal,
@@ -405,11 +405,11 @@ open class VLMOperationTask(
                                         installedApplications = emptyMap()
                                     ),
                                     error = null,
-                                    feedback = compiledResult.message,
+                                    feedback = functionResult.message,
                                     compileGateKind = compileGateResult.kind,
-                                    providerRunLogJson = compiledResult.providerRunLogJson,
-                                    providerRunLogPath = compiledResult.providerRunLogPath,
-                                    canonicalRunLogPath = compiledResult.canonicalRunLogPath,
+                                    providerRunLogJson = functionResult.providerRunLogJson,
+                                    providerRunLogPath = functionResult.providerRunLogPath,
+                                    canonicalRunLogPath = functionResult.canonicalRunLogPath,
                                 )
                             } else {
                                 TaskExecutionReport(
@@ -423,8 +423,8 @@ open class VLMOperationTask(
                                         stepSkillGuidance = resolvedStepSkillGuidance,
                                         installedApplications = emptyMap()
                                     ),
-                                    error = compiledResult.message,
-                                    feedback = compiledResult.message,
+                                    error = functionResult.message,
+                                    feedback = functionResult.message,
                                     compileGateKind = compileGateResult.kind,
                                 )
                             }
@@ -909,7 +909,7 @@ open class VLMOperationTask(
                     linkedMapOf(
                         "kind" to it.kind,
                         "summary" to it.summary,
-                        "path_id" to it.pathId,
+                        "function_id" to it.functionId,
                         "planner_guidance" to it.plannerGuidance,
                         "execution_route" to it.executionRoute,
                     )
