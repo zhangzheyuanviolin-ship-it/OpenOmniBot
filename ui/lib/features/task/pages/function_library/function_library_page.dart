@@ -744,8 +744,73 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
   }
 
   Future<void> _editFunction(UtgFunctionSummary func) async {
-    // TODO: 实现编辑功能
-    showToast('编辑功能开发中', type: ToastType.info);
+    final controller = TextEditingController(text: func.description);
+    final palette = context.omniPalette;
+
+    final newDescription = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.l10n.functionLibraryEditTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              context.l10n.functionLibraryEditHint,
+              style: TextStyle(fontSize: 13, color: palette.textTertiary),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: context.l10n.functionLibraryEditPlaceholder,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              autofocus: true,
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(context.l10n.omniflowCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: Text(context.l10n.functionLibraryConfirm),
+          ),
+        ],
+      ),
+    );
+
+    if (newDescription == null || newDescription == func.description) return;
+
+    try {
+      final config = await AssistsMessageService.getUtgBridgeConfig();
+      final result = await AssistsMessageService.updateUtgFunction(
+        functionId: func.functionId,
+        description: newDescription,
+        baseUrl: config.resolvedOmniflowBaseUrl,
+      );
+      if (!mounted) return;
+      if (result.success) {
+        showToast(context.l10n.functionLibraryEditSuccess, type: ToastType.success);
+        _loadData(silent: true);
+      } else {
+        showToast(result.errorMessage ?? context.l10n.functionLibraryEditFailed,
+            type: ToastType.error);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showToast('${context.l10n.functionLibraryEditFailed}: $e', type: ToastType.error);
+    }
   }
 
   Widget _buildLastRunSection(dynamic palette, {

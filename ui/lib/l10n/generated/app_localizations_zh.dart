@@ -1356,6 +1356,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get functionLibraryEdit => '编辑';
 
   @override
+  String get functionLibraryEditTitle => '编辑功能';
+
+  @override
+  String get functionLibraryEditHint => '修改功能的描述名称';
+
+  @override
+  String get functionLibraryEditPlaceholder => '输入新的描述';
+
+  @override
+  String get functionLibraryEditSuccess => '已更新';
+
+  @override
+  String get functionLibraryEditFailed => '更新失败';
+
+  @override
   String get functionLibraryDelete => '删除';
 
   @override

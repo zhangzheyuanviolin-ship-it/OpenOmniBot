@@ -1425,6 +1425,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get functionLibraryEdit => 'Edit';
 
   @override
+  String get functionLibraryEditTitle => 'Edit Function';
+
+  @override
+  String get functionLibraryEditHint => 'Modify function description';
+
+  @override
+  String get functionLibraryEditPlaceholder => 'Enter new description';
+
+  @override
+  String get functionLibraryEditSuccess => 'Updated';
+
+  @override
+  String get functionLibraryEditFailed => 'Update failed';
+
+  @override
   String get functionLibraryDelete => 'Delete';
 
   @override

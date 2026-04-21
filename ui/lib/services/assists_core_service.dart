@@ -1840,6 +1840,23 @@ class AssistsMessageService {
     return UtgFunctionMutationResult.fromMap(decoded);
   }
 
+  /// 更新 function 信息
+  static Future<UtgFunctionMutationResult> updateUtgFunction({
+    required String functionId,
+    String? description,
+    String? baseUrl,
+  }) async {
+    final decoded = await _requestUtgJson(
+      method: 'PATCH',
+      path: '/functions/$functionId',
+      baseUrl: baseUrl,
+      payload: {
+        if (description != null) 'description': description,
+      },
+    );
+    return UtgFunctionMutationResult.fromMap(decoded);
+  }
+
   /// 导入 run_log 为持久化 function
   static Future<UtgFunctionMutationResult> importRunLog({
     required String runId,

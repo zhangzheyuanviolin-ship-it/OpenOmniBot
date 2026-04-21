@@ -2648,6 +2648,36 @@ abstract class AppLocalizations {
   /// **'编辑'**
   String get functionLibraryEdit;
 
+  /// No description provided for @functionLibraryEditTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑功能'**
+  String get functionLibraryEditTitle;
+
+  /// No description provided for @functionLibraryEditHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改功能的描述名称'**
+  String get functionLibraryEditHint;
+
+  /// No description provided for @functionLibraryEditPlaceholder.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入新的描述'**
+  String get functionLibraryEditPlaceholder;
+
+  /// No description provided for @functionLibraryEditSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已更新'**
+  String get functionLibraryEditSuccess;
+
+  /// No description provided for @functionLibraryEditFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新失败'**
+  String get functionLibraryEditFailed;
+
   /// No description provided for @functionLibraryDelete.
   ///
   /// In zh, this message translates to:
