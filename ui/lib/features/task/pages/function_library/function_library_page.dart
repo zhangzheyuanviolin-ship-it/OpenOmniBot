@@ -528,7 +528,7 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
                   Row(
                     children: [
                       _buildStatChip(
-                        '${func.actionCount} ${context.l10n.functionLibrarySteps}',
+                        '${func.stepCount} ${context.l10n.functionLibrarySteps}',
                         palette,
                       ),
                       if (hasParams)

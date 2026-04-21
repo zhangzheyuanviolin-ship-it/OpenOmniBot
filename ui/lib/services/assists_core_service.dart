@@ -230,7 +230,6 @@ class UtgFunctionSummary {
   final String functionId;
   final String description;
   final int stepCount;
-  final int actionCount;
   final List<String> parameterNames;
   final Map<String, String> parameterExamples;
   final String startNodeId;
@@ -259,7 +258,6 @@ class UtgFunctionSummary {
     required this.functionId,
     required this.description,
     required this.stepCount,
-    required this.actionCount,
     required this.parameterNames,
     required this.parameterExamples,
     required this.startNodeId,
@@ -293,9 +291,6 @@ class UtgFunctionSummary {
       stepCount: raw['step_count'] is num
           ? (raw['step_count'] as num).toInt()
           : int.tryParse((raw['step_count'] ?? '0').toString()) ?? 0,
-      actionCount: raw['action_count'] is num
-          ? (raw['action_count'] as num).toInt()
-          : int.tryParse((raw['action_count'] ?? '0').toString()) ?? 0,
       parameterNames:
           (raw['parameter_names'] as List<dynamic>?)
               ?.map((e) => e.toString())
