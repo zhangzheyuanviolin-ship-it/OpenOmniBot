@@ -433,6 +433,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get memoryCenterTitle => '记忆中心';
 
   @override
+  String get memoryShortTermTitle => '短期记忆';
+
+  @override
+  String get memoryLongTermTitle => '长期记忆';
+
+  @override
   String get memoryNoShortTerm => '还没有短期记忆';
 
   @override
@@ -755,6 +761,216 @@ class AppLocalizationsZh extends AppLocalizations {
   String get localModelsEmptyDesc => '先去模型市场下载一个模型，或者手动放置 MNN 模型目录。';
 
   @override
+  String get localModelsServiceControl => '服务控制';
+
+  @override
+  String get localModelsServiceControlDesc => '切换推理后端、当前模型和监听端口。';
+
+  @override
+  String get localModelsInferenceBackend => '推理后端';
+
+  @override
+  String get localModelsCurrentModel => '当前模型';
+
+  @override
+  String get localModelsCurrentModelHint => '启动服务时会加载这里选择的模型。';
+
+  @override
+  String get localModelsNoAvailableModels => '暂无可用模型';
+
+  @override
+  String get localModelsSelectModel => '选择一个模型';
+
+  @override
+  String get localModelsServicePort => '服务端口';
+
+  @override
+  String get localModelsServicePortHint => '请输入端口号';
+
+  @override
+  String get localModelsCurrentlyLoaded => '当前已加载';
+
+  @override
+  String get localModelsAutoPreheatSection => '自动预热';
+
+  @override
+  String get localModelsAutoPreheatSectionDesc => '打开 App 后自动启动本地服务并加载当前模型。';
+
+  @override
+  String get localModelsLocalInference => '本地推理模型';
+
+  @override
+  String get localModelsStopping => '停止中…';
+
+  @override
+  String get localModelsStarting => '启动中…';
+
+  @override
+  String get localModelsStopService => '停止服务';
+
+  @override
+  String get localModelsStartService => '启动服务';
+
+  @override
+  String get localModelsConfigLoadFailed => '无法加载本地模型配置';
+
+  @override
+  String get localModelsConfigLoadFailedDesc => '请稍后重试。';
+
+  @override
+  String get localModelsInstalledLoadFailed => '加载已安装模型失败';
+
+  @override
+  String get localModelsMarketLoadFailed => '加载模型市场失败';
+
+  @override
+  String get localModelsSwitchBackendFailed => '切换推理后端失败';
+
+  @override
+  String get localModelsActiveModelUpdated => '已更新当前模型';
+
+  @override
+  String get localModelsSetActiveFailed => '设置当前模型失败';
+
+  @override
+  String get localModelsPortInvalid => '端口号无效';
+
+  @override
+  String get localModelsPortUpdated => '已更新服务端口';
+
+  @override
+  String get localModelsPortSaveFailed => '保存端口失败';
+
+  @override
+  String get localModelsAutoPreheatSaveFailed => '保存自动预热设置失败';
+
+  @override
+  String get localModelsDownloadSourceSwitchFailed => '切换下载源失败';
+
+  @override
+  String get localModelsServiceStarted => '本地服务已启动';
+
+  @override
+  String get localModelsStartFailed => '启动服务失败';
+
+  @override
+  String get localModelsStopFailed => '停止服务失败';
+
+  @override
+  String get localModelsServiceStopped => '本地服务已停止';
+
+  @override
+  String get localModelsDownloadStartFailed => '启动下载失败';
+
+  @override
+  String get localModelsDownloadPauseFailed => '暂停下载失败';
+
+  @override
+  String get localModelsFilterAndSource => '筛选与来源';
+
+  @override
+  String get localModelsFilterAndSourceDesc => '切换推理后端和下载源，影响当前市场列表。';
+
+  @override
+  String get localModelsDownloadSource => '下载源';
+
+  @override
+  String get localModelsSelectDownloadSource => '选择下载源';
+
+  @override
+  String get localModelsMarketModels => '市场模型';
+
+  @override
+  String get localModelsMarketModelsDesc => '搜索、下载、暂停或删除市场中的模型。';
+
+  @override
+  String get localModelsMarketSearchHint => '搜索市场模型名称、描述或标签';
+
+  @override
+  String get localModelsMarketEmpty => '模型市场暂时为空';
+
+  @override
+  String get localModelsMarketEmptyDesc => '请检查下载源，或者下拉刷新重试。';
+
+  @override
+  String get localModelsCurrentDefault => '当前默认';
+
+  @override
+  String get localModelsLoaded => '已加载';
+
+  @override
+  String get localModelsFileSize => '文件大小';
+
+  @override
+  String get localModelsModelDir => '模型目录';
+
+  @override
+  String get localModelsManualDir => '这是手动放置目录，App 内不提供删除。';
+
+  @override
+  String get localModelsOmniInferLoadable => '该模型可由 OmniInfer 直接加载。';
+
+  @override
+  String get localModelsSetAsCurrent => '设为当前';
+
+  @override
+  String get localModelsDelete => '删除';
+
+  @override
+  String get localModelsHasUpdate => '有更新';
+
+  @override
+  String get localModelsStage => '阶段';
+
+  @override
+  String get localModelsErrorInfo => '错误信息';
+
+  @override
+  String get localModelsResumeDownload => '继续下载';
+
+  @override
+  String get localModelsRetryDownload => '重新下载';
+
+  @override
+  String get localModelsDownloadModel => '下载模型';
+
+  @override
+  String get localModelsPause => '暂停';
+
+  @override
+  String get localModelsDeleteOldVersion => '删除旧版本';
+
+  @override
+  String get localModelsTabService => '服务';
+
+  @override
+  String get localModelsTabMarket => '市场';
+
+  @override
+  String get localModelsRefresh => '刷新';
+
+  @override
+  String get localModelsDownloadPreparing => '准备中';
+
+  @override
+  String get localModelsDownloading => '下载中';
+
+  @override
+  String get localModelsDownloadPaused => '已暂停';
+
+  @override
+  String get localModelsDownloadCompleted => '已完成';
+
+  @override
+  String get localModelsDownloadFailed => '下载失败';
+
+  @override
+  String get localModelsDownloadCancelled => '已取消';
+
+  @override
+  String get localModelsNotDownloaded => '未下载';
+
+  @override
   String get alarmSaved => '闹钟设置已保存';
 
   @override
@@ -935,6 +1151,207 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get storageAdditionalInfo => '附加信息';
+
+  @override
+  String get storageCatAppBinary => '应用安装包';
+
+  @override
+  String get storageCatAppBinaryDesc => '应用安装文件占用（APK/AAB split）';
+
+  @override
+  String get storageCatCache => '缓存';
+
+  @override
+  String get storageCatCacheDesc => '临时文件与图片缓存，可安全清理';
+
+  @override
+  String get storageCatCacheHint => '清理后会在使用中自动重新生成';
+
+  @override
+  String get storageCatConversation => '会话历史';
+
+  @override
+  String get storageCatConversationDesc => '对话与工具执行历史（估算）';
+
+  @override
+  String get storageCatConversationHint => '会删除历史消息记录，且不可恢复';
+
+  @override
+  String get storageCatDatabaseOther => '数据库其他占用';
+
+  @override
+  String get storageCatDatabaseOtherDesc => '索引与系统表等数据库占用';
+
+  @override
+  String get storageCatWorkspaceBrowser => 'Workspace 浏览器产物';
+
+  @override
+  String get storageCatWorkspaceBrowserDesc => '浏览器截图、下载文件和中间产物';
+
+  @override
+  String get storageCatWorkspaceBrowserHint => '会删除浏览器工具相关的中间文件';
+
+  @override
+  String get storageCatWorkspaceOffloads => 'Workspace Offloads';
+
+  @override
+  String get storageCatWorkspaceOffloadsDesc => '工具离线输出与临时文件';
+
+  @override
+  String get storageCatWorkspaceOffloadsHint => '仅删除离线产物，不影响核心功能';
+
+  @override
+  String get storageCatWorkspaceAttachments => 'Workspace 附件';
+
+  @override
+  String get storageCatWorkspaceAttachmentsDesc => '历史任务使用的附件文件';
+
+  @override
+  String get storageCatWorkspaceAttachmentsHint => '可能影响历史任务对附件的回看';
+
+  @override
+  String get storageCatWorkspaceShared => 'Workspace 共享区';
+
+  @override
+  String get storageCatWorkspaceSharedDesc => '跨任务共享的工作区文件';
+
+  @override
+  String get storageCatWorkspaceSharedHint => '可能影响后续任务复用共享文件';
+
+  @override
+  String get storageCatWorkspaceMemory => 'Workspace 记忆数据';
+
+  @override
+  String get storageCatWorkspaceMemoryDesc => '长期/短期记忆与索引数据';
+
+  @override
+  String get storageCatWorkspaceUserFiles => 'Workspace 用户文件';
+
+  @override
+  String get storageCatWorkspaceUserFilesDesc => '用户主动保存到 workspace 的文件';
+
+  @override
+  String get storageCatLocalModelsFiles => '本地模型文件';
+
+  @override
+  String get storageCatLocalModelsFilesDesc => '.mnnmodels 下的模型文件';
+
+  @override
+  String get storageCatLocalModelsFilesHint => '会删除模型文件，后续需重新下载';
+
+  @override
+  String get storageCatLocalModelsCache => '模型推理缓存';
+
+  @override
+  String get storageCatLocalModelsCacheDesc => 'mmap 与本地推理临时目录';
+
+  @override
+  String get storageCatLocalModelsCacheHint => '清理后会在推理时重新生成';
+
+  @override
+  String get storageCatTerminalLocal => '终端运行时（local）';
+
+  @override
+  String get storageCatTerminalLocalDesc => 'Alpine 终端 local 运行目录';
+
+  @override
+  String get storageCatTerminalLocalHint => '会删除终端 local 目录，需重新初始化';
+
+  @override
+  String get storageCatTerminalBootstrap => '终端运行时（引导文件）';
+
+  @override
+  String get storageCatTerminalBootstrapDesc => 'proot/lib/alpine 引导文件';
+
+  @override
+  String get storageCatTerminalBootstrapHint => '会删除终端引导文件，需重新初始化';
+
+  @override
+  String get storageCatSharedDrafts => '共享草稿';
+
+  @override
+  String get storageCatSharedDraftsDesc => '外部分享导入的草稿缓存';
+
+  @override
+  String get storageCatSharedDraftsHint => '会删除未发送的草稿附件';
+
+  @override
+  String get storageCatMcpInbox => 'MCP 收件箱';
+
+  @override
+  String get storageCatMcpInboxDesc => 'MCP 文件传输接收目录';
+
+  @override
+  String get storageCatMcpInboxHint => '会删除 MCP 收件箱中的文件';
+
+  @override
+  String get storageCatLegacyWorkspace => '旧版遗留数据';
+
+  @override
+  String get storageCatLegacyWorkspaceDesc => '升级后可能残留的旧 workspace 目录';
+
+  @override
+  String get storageCatLegacyWorkspaceHint => '建议确认无用后再清理';
+
+  @override
+  String get storageCatOtherUserData => '其他数据';
+
+  @override
+  String get storageCatOtherUserDataDesc => '未命中分类规则的数据';
+
+  @override
+  String get storageStrategySafeQuick => '安全快速清理';
+
+  @override
+  String get storageStrategySafeQuickDesc => '优先清理低风险缓存与临时产物';
+
+  @override
+  String get storageStrategyBalanceDeep => '平衡深度清理';
+
+  @override
+  String get storageStrategyBalanceDeepDesc => '释放更多空间，保留核心模型与用户文件';
+
+  @override
+  String get storageStrategyFree1gb => '目标释放 1GB';
+
+  @override
+  String get storageStrategyFree1gbDesc => '按高收益顺序清理，尽量达到 1GB 释放目标';
+
+  @override
+  String get storageHintConversation => '如历史未释放，请重新进入页面执行「重新分析」';
+
+  @override
+  String get storageHintLocalModels => '模型被清理后，可在「本地模型服务」页面重新下载';
+
+  @override
+  String get storageHintTerminal => '终端运行时被清理后，可在 Alpine 环境页重新初始化';
+
+  @override
+  String get storageHintGeneral => '若清理失败，可稍后重试或重启应用后再次清理';
+
+  @override
+  String get storageHintNotCleanable => '该分类当前不可清理';
+
+  @override
+  String get storageHintSkipped => '该分类已跳过（可选项）';
+
+  @override
+  String storageCleanPartialFailed(Object hint) {
+    return '部分清理失败：$hint';
+  }
+
+  @override
+  String get storageCleanPartialFailedGeneric => '部分文件清理失败，请稍后重试';
+
+  @override
+  String storageTrendVsLast(Object cleanable, Object total) {
+    return '对比上次分析：总计 $total，可清理 $cleanable';
+  }
+
+  @override
+  String storageLastAnalyzed(Object time) {
+    return '上次分析时间：$time';
+  }
 
   @override
   String get aboutDescription =>
@@ -1179,6 +1596,167 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get alpineBootAutoStart => '打开小万时自动启动';
+
+  @override
+  String get alpineDevEnv => '开发环境';
+
+  @override
+  String get alpineEnvConfig => '环境配置';
+
+  @override
+  String alpineWorkDirValue(Object dir) {
+    return '工作目录：$dir';
+  }
+
+  @override
+  String get workspaceEmbeddingRetrieval => '记忆嵌入检索';
+
+  @override
+  String get chatHistoryStartConversation => '开始对话';
+
+  @override
+  String get homeDrawerSearching => '正在搜索对话内容…';
+
+  @override
+  String get homeDrawerNoResults => '没有找到相关对话';
+
+  @override
+  String get homeDrawerSearchHint2 => '试试更短的关键词，或换一种说法';
+
+  @override
+  String get homeDrawerSearchResults => '搜索结果';
+
+  @override
+  String get homeDrawerResultCount => '条';
+
+  @override
+  String get homeDrawerScheduled => '定时';
+
+  @override
+  String get homeDrawerGreeting => '你好！';
+
+  @override
+  String get homeDrawerWelcome => '欢迎使用小万';
+
+  @override
+  String get homeDrawerDawnGreeting => '凌晨啦';
+
+  @override
+  String get homeDrawerDawnSub => '还没休息吗？';
+
+  @override
+  String get homeDrawerDawnGreeting2 => '天还没亮';
+
+  @override
+  String get homeDrawerDawnSub2 => '早起的你辛苦啦～';
+
+  @override
+  String get homeDrawerDawnGreeting3 => '深夜的时光很静';
+
+  @override
+  String get homeDrawerDawnSub3 => '但也要记得给身体留些休息呀～';
+
+  @override
+  String get homeDrawerMorningGreeting => '早安！';
+
+  @override
+  String get homeDrawerMorningSub => '开启元气一天';
+
+  @override
+  String get homeDrawerMorningGreeting2 => '早呀！';
+
+  @override
+  String get homeDrawerMorningSub2 => '新的一天开始啦';
+
+  @override
+  String get homeDrawerForenoonGreeting => '上午好！';
+
+  @override
+  String get homeDrawerForenoonSub => '再忙也别忘了活动下肩膀';
+
+  @override
+  String get homeDrawerForenoonGreeting2 => '上午的效率超棒！';
+
+  @override
+  String get homeDrawerForenoonSub2 => '继续加油';
+
+  @override
+  String get homeDrawerLunchGreeting => '午饭时间到！';
+
+  @override
+  String get homeDrawerLunchSub => '好好吃饭，别凑合';
+
+  @override
+  String get homeDrawerLunchGreeting2 => '午安～';
+
+  @override
+  String get homeDrawerLunchSub2 => '吃完记得歇会儿';
+
+  @override
+  String get homeDrawerLunchGreeting3 => '午餐不知道吃什么？';
+
+  @override
+  String get homeDrawerLunchSub3 => '让小万帮你推荐吧！';
+
+  @override
+  String get homeDrawerAfternoonGreeting => '喝杯茶提提神';
+
+  @override
+  String get homeDrawerAfternoonSub => '剩下的任务也能轻松搞定～';
+
+  @override
+  String get homeDrawerAfternoonGreeting2 => '工作间隙看看窗外';
+
+  @override
+  String get homeDrawerAfternoonSub2 => '让眼睛歇一歇～';
+
+  @override
+  String get homeDrawerEveningGreeting => '回家路上慢点';
+
+  @override
+  String get homeDrawerEveningSub => '今晚好好放松～';
+
+  @override
+  String get homeDrawerEveningGreeting2 => '傍晚了';
+
+  @override
+  String get homeDrawerEveningSub2 => '吹来的晚风很舒服呀！～';
+
+  @override
+  String get homeDrawerEveningGreeting3 => '忙了一天';
+
+  @override
+  String get homeDrawerEveningSub3 => '吃顿好的犒劳自己～';
+
+  @override
+  String get homeDrawerNightGreeting => '晚上好！';
+
+  @override
+  String get homeDrawerNightSub => '享受属于自己的时光吧～';
+
+  @override
+  String get homeDrawerNightGreeting2 => '夜色渐浓';
+
+  @override
+  String get homeDrawerNightSub2 => '准备下早点休息啦～';
+
+  @override
+  String get homeDrawerNightGreeting3 => '该休息了';
+
+  @override
+  String get homeDrawerNightSub3 => '让小万帮你定个闹钟吧！';
+
+  @override
+  String get homeDrawerLateNightGreeting => '放下手机早点睡';
+
+  @override
+  String get homeDrawerLateNightSub => '明天才能元气满满～';
+
+  @override
+  String get homeDrawerLateNightGreeting2 => '深夜了';
+
+  @override
+  String get homeDrawerLateNightSub2 => '好好和今天说晚安～';
 
   @override
   String get omniflowPanelTitle => 'OmniFlow 轨迹面板';

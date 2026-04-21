@@ -10,6 +10,7 @@ import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/agent_avatar.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/widgets/settings_section_title.dart';
 
 const double _kSceneSelectionPopupMaxHeight = 420;
@@ -265,7 +266,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       }
     } catch (_) {
       if (!mounted) return;
-      showToast('加载场景配置失败', type: ToastType.error);
+      showToast('Failed to load scene config', type: ToastType.error);
     } finally {
       if (showLoading && mounted) {
         setState(() => _isLoading = false);
@@ -350,18 +351,18 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         final extraCount = failedProfiles.length - 2;
         final suffix = extraCount > 0 ? ' (+$extraCount)' : '';
         showToast(
-          '已部分更新，但有 Provider 失败：$preview$suffix',
+          'Partially updated, but some Providers failed: $preview$suffix',
           type: ToastType.warning,
         );
         return;
       }
       showToast(
-        refreshedCount == 0 ? '当前没有可用模型' : '已更新 $refreshedCount 个模型',
+        refreshedCount == 0 ? 'No available models' : 'Updated $refreshedCount models',
         type: refreshedCount == 0 ? ToastType.warning : ToastType.success,
       );
     } catch (e) {
       if (!mounted) return;
-      showToast('刷新模型列表失败：$e', type: ToastType.error);
+      showToast('Failed to refresh model list: $e', type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() => _isRefreshingModels = false);
@@ -381,7 +382,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       return;
     }
     if (!SceneModelConfigService.isValidModelName(modelId)) {
-      showToast('模型 ID 不能以 scene. 开头', type: ToastType.error);
+      showToast('Model ID must not start with scene.', type: ToastType.error);
       return;
     }
 
@@ -403,13 +404,13 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         );
       });
       showToast(
-        '${_sceneDisplayName(sceneId)} 已绑定 $modelId',
+        '${_sceneDisplayName(sceneId)} bound to $modelId',
         type: ToastType.success,
       );
     } catch (e) {
       if (!mounted) return;
       showToast(
-        '保存 ${_sceneDisplayName(sceneId)} 配置失败：$e',
+        'Failed to save ${_sceneDisplayName(sceneId)} config: $e',
         type: ToastType.error,
       );
     } finally {
@@ -446,7 +447,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     } catch (e) {
       if (!mounted) return;
       showToast(
-        '清除 ${_sceneDisplayName(sceneId)} 配置失败：$e',
+        'Failed to clear ${_sceneDisplayName(sceneId)} config: $e',
         type: ToastType.error,
       );
     } finally {
@@ -591,7 +592,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     final profile = _profiles.where(
       (item) => item.id == binding.providerProfileId,
     );
-    final profileName = profile.isEmpty ? 'Provider 已失效' : profile.first.name;
+    final profileName = profile.isEmpty ? 'Provider unavailable' : profile.first.name;
     return '$profileName / ${binding.modelId}';
   }
 
@@ -981,7 +982,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _pageBackground,
-      appBar: const CommonAppBar(title: '场景模型配置', primary: true),
+      appBar: CommonAppBar(title: context.l10n.settingsSceneModelTitle, primary: true),
       body: SafeArea(
         top: false,
         child: _isLoading
@@ -989,9 +990,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
                 children: [
-                  const SettingsSectionTitle(
-                    label: '场景映射',
-                    subtitle: '按场景绑定 Provider 与模型，未绑定的场景会继续使用默认模型。',
+                  SettingsSectionTitle(
+                    label: context.l10n.sceneModelMapping,
+                    subtitle: context.l10n.sceneModelMappingDesc,
                   ),
                   _buildCard(
                     child: Column(
@@ -1013,7 +1014,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                                       ),
                                     )
                                   : const Icon(Icons.refresh, size: 16),
-                              label: const Text('刷新模型列表'),
+                              label: Text(context.l10n.sceneModelRefreshList),
                             ),
                           ),
                         if (_showManualRefreshButton)
@@ -1032,7 +1033,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                           Padding(
                             padding: EdgeInsets.symmetric(vertical: 12),
                             child: Text(
-                              '暂无可配置场景',
+                              context.l10n.sceneModelNoScenes,
                               style: TextStyle(
                                 color: _secondaryTextColor,
                                 fontSize: 12,
@@ -1198,7 +1199,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
               ),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: '快速筛选模型 ID',
+                hintText: 'Filter model ID',
                 hintStyle: TextStyle(
                   fontSize: 13,
                   color: _tertiaryTextColor,
@@ -1314,7 +1315,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                 ),
               ),
               Text(
-                profile.configured ? '${models.length}' : '未配置',
+                profile.configured ? '${models.length}' : 'Not configured',
                 style: TextStyle(
                   fontSize: 11,
                   color: _tertiaryTextColor,
@@ -1431,7 +1432,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
               Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  '还没有可用 Provider，请先配置模型提供商。',
+                  'No available Providers yet. Please configure a model provider first.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
@@ -1445,7 +1446,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
               Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  '没有匹配的模型',
+                  'No matching models',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
@@ -1480,7 +1481,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                                             8,
                                           ),
                                           child: Text(
-                                            '当前 Provider 没有可选模型',
+                                            'No selectable models for this Provider',
                                             style: TextStyle(
                                               fontSize: 12,
                                               color: _tertiaryTextColor,
@@ -1499,7 +1500,7 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
                                 : Padding(
                                     padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
                                     child: Text(
-                                      '请先在模型提供商页配置该 Provider',
+                                      'Please configure this Provider in the model provider settings first',
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: _tertiaryTextColor,

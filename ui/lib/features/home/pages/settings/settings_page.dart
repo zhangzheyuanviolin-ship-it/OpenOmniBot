@@ -6,7 +6,6 @@ import 'package:flutter_svg/svg.dart';
 import 'package:flutter_switch/flutter_switch.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/l10n/l10n.dart';
-import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/hide_from_recents_service.dart';
 import 'package:ui/services/mcp_server_service.dart';
@@ -120,9 +119,7 @@ class _SettingsPageState extends State<SettingsPage> {
         hideFromRecentsEnabled = !value;
       });
       showToast(
-        LegacyTextLocalizer.isEnglish
-            ? 'Failed to update hide-from-recents'
-            : '设置后台隐藏失败',
+        context.l10n.settingsHideRecentsFailed,
         type: ToastType.error,
       );
     }
@@ -154,16 +151,14 @@ class _SettingsPageState extends State<SettingsPage> {
         _autoBackToChatAfterTaskEnabled = value;
       });
       showToast(
-        LegacyTextLocalizer.isEnglish
-            ? (value
-                ? 'The app will return to chat after tasks finish'
-                : 'The app will stay on the current page after tasks finish')
-            : (value ? '任务完成后将自动返回聊天' : '任务完成后将停留在当前页面'),
+        value
+            ? context.l10n.settingsAutoBackEnabledToast
+            : context.l10n.settingsAutoBackDisabledToast,
       );
     } catch (e) {
       if (!mounted) return;
       showToast(
-        LegacyTextLocalizer.isEnglish ? 'Failed to save settings' : '设置失败',
+        context.l10n.settingsSaveFailed,
         type: ToastType.error,
       );
     }
@@ -241,22 +236,20 @@ class _SettingsPageState extends State<SettingsPage> {
         final endpoint = info?.endpoint ?? '';
         if (endpoint.isNotEmpty) {
           showToast(
-          LegacyTextLocalizer.localize('MCP 已开启：$endpoint'),
+          context.l10n.settingsMcpEnabledToast(endpoint),
           type: ToastType.success,
         );
         }
       } else {
         showToast(
-          LegacyTextLocalizer.isEnglish ? 'MCP disabled' : 'MCP 已关闭',
+          context.l10n.settingsMcpDisabledToast,
         );
       }
     } on PlatformException catch (e) {
       if (!mounted) return;
       showToast(
         e.message ??
-            (LegacyTextLocalizer.isEnglish
-                ? 'Failed to toggle MCP'
-                : 'MCP 开关失败'),
+            context.l10n.settingsMcpToggleFailed,
         type: ToastType.error,
       );
       setState(() {
@@ -265,7 +258,7 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (e) {
       if (!mounted) return;
       showToast(
-        LegacyTextLocalizer.isEnglish ? 'Failed to toggle MCP' : 'MCP 开关失败',
+        context.l10n.settingsMcpToggleFailed,
         type: ToastType.error,
       );
       setState(() {
@@ -313,9 +306,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       Clipboard.setData(ClipboardData(text: info.endpoint));
                       Navigator.of(context).pop();
                       showToast(
-                        LegacyTextLocalizer.isEnglish
-                            ? 'Address copied'
-                            : '已复制访问地址',
+                        context.l10n.settingsCopiedAddress,
                       );
                     },
                     child: Text(context.l10n.settingsCopyAddress),
@@ -325,9 +316,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       Clipboard.setData(ClipboardData(text: info.token));
                       Navigator.of(context).pop();
                       showToast(
-                        LegacyTextLocalizer.isEnglish
-                            ? 'Token copied'
-                            : '已复制 Token',
+                        context.l10n.settingsCopiedToken,
                       );
                     },
                     child: Text(context.l10n.settingsCopyToken),
@@ -342,15 +331,11 @@ class _SettingsPageState extends State<SettingsPage> {
                           _mcpInfo = refreshed ?? _mcpInfo;
                         });
                         showToast(
-                          LegacyTextLocalizer.isEnglish
-                              ? 'Token refreshed'
-                              : '已刷新 Token',
+                          context.l10n.settingsTokenRefreshed,
                         );
                       } catch (_) {
                         showToast(
-                          LegacyTextLocalizer.isEnglish
-                              ? 'Failed to refresh token'
-                              : '刷新 Token 失败',
+                          context.l10n.settingsTokenRefreshFailed,
                           type: ToastType.error,
                         );
                       }
@@ -578,23 +563,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   GoRouterManager.push('/home/companion_setting');
                 }
               } catch (e) {
-                debugPrint('请求读取应用列表权限失败: $e');
+                debugPrint('Failed to request installed apps permission: $e');
                 showToast(
-                  LegacyTextLocalizer.isEnglish
-                      ? 'Failed to request installed apps permission'
-                      : '请求应用列表权限失败',
+                  context.l10n.settingsInstalledAppsPermissionFailed,
                 );
               }
             },
           ),
           _SettingItem(
             icon: Icons.storage_outlined,
-            title: Localizations.localeOf(context).languageCode == 'en'
-                ? 'Storage Usage'
-                : '存储占用',
-            subtitle: Localizations.localeOf(context).languageCode == 'en'
-                ? 'View storage usage details and clean up by category'
-                : '查看空间占用明细，支持分项清理',
+            title: context.l10n.storageUsageTitle,
+            subtitle: context.l10n.storageUsageSubtitle,
             onTap: () {
               GoRouterManager.push('/home/storage_usage');
             },

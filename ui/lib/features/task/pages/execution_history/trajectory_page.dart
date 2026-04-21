@@ -323,7 +323,7 @@ class _TrajectoryPageState
 
   Future<void> _onSchedulePressed(ExecutionRecordListItemData record) async {
     if (record.suggestionData == null) {
-      showToast('当前记录不支持定时', type: ToastType.error);
+      showToast('Current record does not support scheduling', type: ToastType.error);
       return;
     }
 
@@ -354,7 +354,7 @@ class _TrajectoryPageState
     ScheduledTaskSchedulerService.scheduleTask(result);
     await _loadScheduledTaskKeys();
     if (mounted) {
-      showToast('定时任务已设置', type: ToastType.success);
+      showToast('Scheduled task set', type: ToastType.success);
     }
   }
 

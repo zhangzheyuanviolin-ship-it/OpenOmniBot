@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/app_update_service.dart';
 import 'package:ui/theme/app_colors.dart';
@@ -88,17 +89,17 @@ class _AboutPageState extends State<AboutPage> {
       final status = await AppUpdateService.checkNow();
       if (!mounted) return;
       if (status == null) {
-        showToast('检查更新失败', type: ToastType.error);
+        showToast(context.trLegacy('检查更新失败'), type: ToastType.error);
         return;
       }
       if (status.hasUpdate) {
         await showAppUpdateDialog(context, status);
         return;
       }
-      showToast('已是最新版', type: ToastType.success);
+      showToast(context.trLegacy('已是最新版'), type: ToastType.success);
     } catch (_) {
       if (!mounted) return;
-      showToast('检查更新失败', type: ToastType.error);
+      showToast(context.trLegacy('检查更新失败'), type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -120,15 +121,15 @@ class _AboutPageState extends State<AboutPage> {
   String _buildUpdateHint() {
     final status = _updateStatus;
     if (status == null) {
-      return '检查 GitHub Release 获取最新版本';
+      return context.trLegacy('检查 GitHub Release 获取最新版本');
     }
     if (status.hasUpdate) {
-      return '发现新版本 ${status.latestVersionLabel}';
+      return '${context.trLegacy('发现新版本')} ${status.latestVersionLabel}';
     }
     if (status.checkedAt > 0) {
-      return '已是最新版';
+      return context.trLegacy('已是最新版');
     }
-    return '检查 GitHub Release 获取最新版本';
+    return context.trLegacy('检查 GitHub Release 获取最新版本');
   }
 
   Future<void> _handleVersionTap() async {
@@ -184,7 +185,7 @@ class _AboutPageState extends State<AboutPage> {
       backgroundColor: context.isDarkTheme
           ? palette.pageBackground
           : Colors.white,
-      appBar: const CommonAppBar(title: '关于小万', primary: true),
+      appBar: CommonAppBar(title: context.l10n.settingsAboutTitle, primary: true),
       body: SafeArea(
         top: false,
         child: SizedBox(
@@ -218,7 +219,7 @@ class _AboutPageState extends State<AboutPage> {
 
               // 描述文字
               Text(
-                '小万，是一款以智能对话为核心的手机AI助\n手，通过语义理解与持续学习能力，协助用户\n完成信息处理、决策辅助和日常管理。',
+                context.l10n.aboutDescription,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontFamily: AppTextStyles.fontFamily,
@@ -287,8 +288,8 @@ class _AboutPageState extends State<AboutPage> {
               const SizedBox(height: 16),
               GradientButton(
                 text: _isCheckingUpdate
-                    ? '检查中...'
-                    : (_updateStatus?.hasUpdate == true ? '查看新版本' : '检查更新'),
+                    ? context.trLegacy('检查中...')
+                    : (_updateStatus?.hasUpdate == true ? context.trLegacy('查看新版本') : context.trLegacy('检查更新')),
                 width: 180,
                 height: 44,
                 gradientColors: updateButtonGradient,
@@ -311,7 +312,7 @@ class _AboutPageState extends State<AboutPage> {
                   GoRouterManager.push('/my/about/request-logs');
                 },
                 icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                label: const Text('请求日志'),
+                label: Text(context.trLegacy('请求日志')),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(180, 44),
                   foregroundColor: context.isDarkTheme
