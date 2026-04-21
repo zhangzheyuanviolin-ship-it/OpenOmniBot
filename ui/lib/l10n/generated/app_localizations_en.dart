@@ -1479,4 +1479,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get functionLibraryCloudOnly => 'Cloud Only';
+
+  @override
+  String get functionLibraryStartNode => 'Start Page';
+
+  @override
+  String get functionLibraryEndNode => 'End Page';
+
+  @override
+  String get functionLibraryLastRun => 'Last Run';
+
+  @override
+  String get functionLibraryLastRunSuccess => 'Success';
+
+  @override
+  String get functionLibraryLastRunFailed => 'Failed';
+
+  @override
+  String get functionLibraryLastRunGoal => 'Task';
+
+  @override
+  String get functionLibraryNoDescription => 'No description';
 }

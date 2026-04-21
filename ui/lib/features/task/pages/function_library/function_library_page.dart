@@ -528,7 +528,7 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
                   Row(
                     children: [
                       _buildStatChip(
-                        '${func.stepCount} ${context.l10n.functionLibrarySteps}',
+                        '${func.actionCount} ${context.l10n.functionLibrarySteps}',
                         palette,
                       ),
                       if (hasParams)
@@ -546,6 +546,11 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
                               : successRate >= 50
                                   ? Colors.orange
                                   : Colors.red,
+                        ),
+                      if (func.createdAt.isNotEmpty)
+                        _buildStatChip(
+                          _formatDateShort(func.createdAt),
+                          palette,
                         ),
                       const Spacer(),
                       if (func.runCount > 0)
@@ -589,6 +594,12 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
   }
 
   Widget _buildExpandedContent(UtgFunctionSummary func, dynamic palette) {
+    final lastRun = func.lastRun;
+    final hasLastRun = lastRun.isNotEmpty && lastRun['run_id'] != null;
+    final lastRunSuccess = lastRun['success'] == true;
+    final lastRunGoal = (lastRun['goal'] ?? '').toString();
+    final lastRunTime = (lastRun['finished_at'] ?? lastRun['started_at'] ?? '').toString();
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       decoration: BoxDecoration(
@@ -600,50 +611,53 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 12),
-          // 功能 ID
-          _buildDetailRow(
-            context.l10n.functionLibraryId,
-            func.functionId,
-            palette,
-            mono: true,
-          ),
+          // 起始页面
+          if (func.startNodeDescription.isNotEmpty) ...[
+            _buildDetailRow(
+              context.l10n.functionLibraryStartNode,
+              func.startNodeDescription,
+              palette,
+            ),
+            const SizedBox(height: 8),
+          ],
+          // 结束页面
+          if (func.endNodeDescription.isNotEmpty) ...[
+            _buildDetailRow(
+              context.l10n.functionLibraryEndNode,
+              func.endNodeDescription,
+              palette,
+            ),
+            const SizedBox(height: 8),
+          ],
           // 参数
           if (func.parameterNames.isNotEmpty) ...[
-            const SizedBox(height: 8),
             _buildDetailRow(
               context.l10n.functionLibraryParams,
               func.parameterNames.join(', '),
               palette,
             ),
-          ],
-          // 来源
-          if (func.source.isNotEmpty) ...[
             const SizedBox(height: 8),
-            _buildDetailRow(
-              context.l10n.functionLibrarySource,
-              func.source,
-              palette,
-            ),
           ],
-          // 创建时间
-          if (func.createdAt.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _buildDetailRow(
-              context.l10n.functionLibraryCreatedAt,
-              _formatDate(func.createdAt),
+          // 最近执行信息
+          if (hasLastRun) ...[
+            _buildLastRunSection(
               palette,
+              success: lastRunSuccess,
+              goal: lastRunGoal,
+              time: lastRunTime,
             ),
+            const SizedBox(height: 8),
           ],
           // 同步状态
           if (func.syncStatus.isNotEmpty && func.syncStatus != 'local_only') ...[
-            const SizedBox(height: 8),
             _buildDetailRow(
               context.l10n.functionLibrarySyncStatus,
               _getSyncStatusText(func.syncStatus),
               palette,
             ),
+            const SizedBox(height: 8),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           // 操作按钮
           Row(
             children: [
@@ -681,6 +695,69 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
     );
   }
 
+  Widget _buildLastRunSection(dynamic palette, {
+    required bool success,
+    required String goal,
+    required String time,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              context.l10n.functionLibraryLastRun,
+              style: TextStyle(
+                fontSize: 13,
+                color: palette.textTertiary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: (success ? Colors.green : Colors.red).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                success
+                    ? context.l10n.functionLibraryLastRunSuccess
+                    : context.l10n.functionLibraryLastRunFailed,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: success ? Colors.green : Colors.red,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            if (time.isNotEmpty) ...[
+              const Spacer(),
+              Text(
+                _formatDateShort(time),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: palette.textTertiary,
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (goal.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            goal,
+            style: TextStyle(
+              fontSize: 13,
+              color: palette.textSecondary,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildDetailRow(String label, String value, dynamic palette,
       {bool mono = false}) {
     return Row(
@@ -710,11 +787,21 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
     );
   }
 
-  String _formatDate(String dateStr) {
+  String _formatDateShort(String dateStr) {
     try {
       final date = DateTime.parse(dateStr);
-      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final now = DateTime.now();
+      // 如果是今年，只显示月/日
+      if (date.year == now.year) {
+        return '${date.month}/${date.day}';
+      }
+      // 否则显示年/月/日
+      return '${date.year % 100}/${date.month}/${date.day}';
     } catch (_) {
+      // 尝试截取前10个字符（日期部分）
+      if (dateStr.length >= 10) {
+        return dateStr.substring(5, 10).replaceAll('-', '/');
+      }
       return dateStr;
     }
   }

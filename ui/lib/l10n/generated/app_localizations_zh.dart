@@ -1410,4 +1410,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get functionLibraryCloudOnly => '仅云端';
+
+  @override
+  String get functionLibraryStartNode => '起始页面';
+
+  @override
+  String get functionLibraryEndNode => '结束页面';
+
+  @override
+  String get functionLibraryLastRun => '最近执行';
+
+  @override
+  String get functionLibraryLastRunSuccess => '成功';
+
+  @override
+  String get functionLibraryLastRunFailed => '失败';
+
+  @override
+  String get functionLibraryLastRunGoal => '任务';
+
+  @override
+  String get functionLibraryNoDescription => '无描述';
 }

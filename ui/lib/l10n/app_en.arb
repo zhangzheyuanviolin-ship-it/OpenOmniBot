@@ -457,5 +457,12 @@
   "functionLibrarySyncStatus": "Sync Status",
   "functionLibrarySynced": "Synced",
   "functionLibraryLocalOnly": "Local Only",
-  "functionLibraryCloudOnly": "Cloud Only"
+  "functionLibraryCloudOnly": "Cloud Only",
+  "functionLibraryStartNode": "Start Page",
+  "functionLibraryEndNode": "End Page",
+  "functionLibraryLastRun": "Last Run",
+  "functionLibraryLastRunSuccess": "Success",
+  "functionLibraryLastRunFailed": "Failed",
+  "functionLibraryLastRunGoal": "Task",
+  "functionLibraryNoDescription": "No description"
 }

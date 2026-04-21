@@ -457,5 +457,12 @@
   "functionLibrarySyncStatus": "同步状态",
   "functionLibrarySynced": "已同步",
   "functionLibraryLocalOnly": "仅本地",
-  "functionLibraryCloudOnly": "仅云端"
+  "functionLibraryCloudOnly": "仅云端",
+  "functionLibraryStartNode": "起始页面",
+  "functionLibraryEndNode": "结束页面",
+  "functionLibraryLastRun": "最近执行",
+  "functionLibraryLastRunSuccess": "成功",
+  "functionLibraryLastRunFailed": "失败",
+  "functionLibraryLastRunGoal": "任务",
+  "functionLibraryNoDescription": "无描述"
 }

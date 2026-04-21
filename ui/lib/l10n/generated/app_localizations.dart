@@ -2755,6 +2755,48 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'仅云端'**
   String get functionLibraryCloudOnly;
+
+  /// No description provided for @functionLibraryStartNode.
+  ///
+  /// In zh, this message translates to:
+  /// **'起始页面'**
+  String get functionLibraryStartNode;
+
+  /// No description provided for @functionLibraryEndNode.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束页面'**
+  String get functionLibraryEndNode;
+
+  /// No description provided for @functionLibraryLastRun.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近执行'**
+  String get functionLibraryLastRun;
+
+  /// No description provided for @functionLibraryLastRunSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'成功'**
+  String get functionLibraryLastRunSuccess;
+
+  /// No description provided for @functionLibraryLastRunFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败'**
+  String get functionLibraryLastRunFailed;
+
+  /// No description provided for @functionLibraryLastRunGoal.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务'**
+  String get functionLibraryLastRunGoal;
+
+  /// No description provided for @functionLibraryNoDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'无描述'**
+  String get functionLibraryNoDescription;
 }
 
 class _AppLocalizationsDelegate
