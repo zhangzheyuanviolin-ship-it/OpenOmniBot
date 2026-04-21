@@ -29,7 +29,7 @@ enum OmniFlowCompileStatus {
 
 /// 通用资产卡片颜色配置
 class OmniFlowAssetColors {
-  // 状态颜色
+  // 状态颜色 - Light
   static const Color success = Color(0xFF10B981);
   static const Color successBg = Color(0xFFE7F8ED);
   static const Color failed = Color(0xFFEF4444);
@@ -37,19 +37,35 @@ class OmniFlowAssetColors {
   static const Color running = Color(0xFF6B7280);
   static const Color runningBg = Color(0xFFF3F4F6);
 
+  // 状态颜色 - Dark
+  static const Color successDark = Color(0xFF34D399);
+  static const Color successBgDark = Color(0xFF1A3A2A);
+  static const Color failedDark = Color(0xFFF87171);
+  static const Color failedBgDark = Color(0xFF3A1A1A);
+  static const Color runningDark = Color(0xFF9CA3AF);
+  static const Color runningBgDark = Color(0xFF2A2A2A);
+
   // 类型颜色
   static const Color functionType = Color(0xFFF59E0B);
   static const Color functionTypeBg = Color(0xFFFEF3C7);
+  static const Color functionTypeBgDark = Color(0xFF3A2A1A);
   static const Color runLogType = Color(0xFF3B82F6);
   static const Color runLogTypeBg = Color(0xFFDBEAFE);
+  static const Color runLogTypeBgDark = Color(0xFF1A2A3A);
 
-  // 编译状态颜色
+  // 编译状态颜色 - Light
   static const Color compileHit = Color(0xFF2F8F4E);
   static const Color compileHitBg = Color(0xFFEAF7EE);
   static const Color compileMiss = Color(0xFF3B82F6);
   static const Color compileMissBg = Color(0xFFEAF2FF);
 
-  // 通用颜色
+  // 编译状态颜色 - Dark
+  static const Color compileHitDark = Color(0xFF4ADE80);
+  static const Color compileHitBgDark = Color(0xFF1A3A2A);
+  static const Color compileMissDark = Color(0xFF60A5FA);
+  static const Color compileMissBgDark = Color(0xFF1A2A3A);
+
+  // 通用颜色 - Light
   static const Color detailPillBg = Color(0xFFF1F4FA);
   static const Color detailPillText = Color(0xFF64748B);
   static const Color cardBg = Color(0xFFF7F9FC);
@@ -57,6 +73,24 @@ class OmniFlowAssetColors {
   static const Color textPrimary = Color(0xFF1F2937);
   static const Color textSecondary = Color(0xFF4B5563);
   static const Color textTertiary = Color(0xFF9CA3AF);
+
+  // 通用颜色 - Dark
+  static const Color detailPillBgDark = Color(0xFF2A2F3A);
+  static const Color detailPillTextDark = Color(0xFF94A3B8);
+
+  // 根据深色模式获取颜色的便捷方法
+  static Color getSuccessColor(bool isDark) => isDark ? successDark : success;
+  static Color getSuccessBgColor(bool isDark) => isDark ? successBgDark : successBg;
+  static Color getFailedColor(bool isDark) => isDark ? failedDark : failed;
+  static Color getFailedBgColor(bool isDark) => isDark ? failedBgDark : failedBg;
+  static Color getRunningColor(bool isDark) => isDark ? runningDark : running;
+  static Color getRunningBgColor(bool isDark) => isDark ? runningBgDark : runningBg;
+  static Color getCompileHitColor(bool isDark) => isDark ? compileHitDark : compileHit;
+  static Color getCompileHitBgColor(bool isDark) => isDark ? compileHitBgDark : compileHitBg;
+  static Color getCompileMissColor(bool isDark) => isDark ? compileMissDark : compileMiss;
+  static Color getCompileMissBgColor(bool isDark) => isDark ? compileMissBgDark : compileMissBg;
+  static Color getDetailPillBgColor(bool isDark) => isDark ? detailPillBgDark : detailPillBg;
+  static Color getDetailPillTextColor(bool isDark) => isDark ? detailPillTextDark : detailPillText;
 }
 
 /// 通用资产卡片数据模型
@@ -401,23 +435,23 @@ class OmniFlowAssetCard extends StatelessWidget {
 
     switch (data.status) {
       case OmniFlowAssetStatus.success:
-        color = OmniFlowAssetColors.success;
-        bgColor = OmniFlowAssetColors.successBg;
+        color = OmniFlowAssetColors.getSuccessColor(isDark);
+        bgColor = OmniFlowAssetColors.getSuccessBgColor(isDark);
         text = l10n.omniflowAssetSuccess;
         break;
       case OmniFlowAssetStatus.failed:
-        color = OmniFlowAssetColors.failed;
-        bgColor = OmniFlowAssetColors.failedBg;
+        color = OmniFlowAssetColors.getFailedColor(isDark);
+        bgColor = OmniFlowAssetColors.getFailedBgColor(isDark);
         text = l10n.omniflowAssetFailed;
         break;
       case OmniFlowAssetStatus.running:
-        color = OmniFlowAssetColors.running;
-        bgColor = OmniFlowAssetColors.runningBg;
+        color = OmniFlowAssetColors.getRunningColor(isDark);
+        bgColor = OmniFlowAssetColors.getRunningBgColor(isDark);
         text = l10n.omniflowAssetRunning;
         break;
       case OmniFlowAssetStatus.unknown:
-        color = OmniFlowAssetColors.detailPillText;
-        bgColor = OmniFlowAssetColors.detailPillBg;
+        color = OmniFlowAssetColors.getDetailPillTextColor(isDark);
+        bgColor = OmniFlowAssetColors.getDetailPillBgColor(isDark);
         text = data.statusLabel?.isNotEmpty == true
             ? data.statusLabel!
             : l10n.omniflowAssetUnknown;
@@ -444,11 +478,12 @@ class OmniFlowAssetCard extends StatelessWidget {
   Widget _buildCompilePill(BuildContext context, bool isDark) {
     final l10n = context.l10n;
     final isHit = data.compileStatus == OmniFlowCompileStatus.hit;
-    final color =
-        isHit ? OmniFlowAssetColors.compileHit : OmniFlowAssetColors.compileMiss;
+    final color = isHit
+        ? OmniFlowAssetColors.getCompileHitColor(isDark)
+        : OmniFlowAssetColors.getCompileMissColor(isDark);
     final bgColor = isHit
-        ? OmniFlowAssetColors.compileHitBg
-        : OmniFlowAssetColors.compileMissBg;
+        ? OmniFlowAssetColors.getCompileHitBgColor(isDark)
+        : OmniFlowAssetColors.getCompileMissBgColor(isDark);
     final text = isHit ? l10n.omniflowAssetCompileHit : l10n.omniflowAssetCompileMiss;
 
     return Container(
@@ -472,13 +507,13 @@ class OmniFlowAssetCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: OmniFlowAssetColors.detailPillBg,
+        color: OmniFlowAssetColors.getDetailPillBgColor(isDark),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         text,
-        style: const TextStyle(
-          color: OmniFlowAssetColors.detailPillText,
+        style: TextStyle(
+          color: OmniFlowAssetColors.getDetailPillTextColor(isDark),
           fontSize: 12,
           fontWeight: FontWeight.w500,
         ),
@@ -856,11 +891,11 @@ class OmniFlowAssetDetailDialog extends StatelessWidget {
             children: [
               _buildStatusPill(context),
               if (data.stepCount > 0)
-                _buildPill(l10n.omniflowAssetSteps(data.stepCount)),
+                _buildPill(context, l10n.omniflowAssetSteps(data.stepCount)),
               if (data.compileStatus != OmniFlowCompileStatus.none)
                 _buildCompilePill(context),
               if (data.subtitle?.isNotEmpty == true)
-                _buildPill(data.subtitle!),
+                _buildPill(context, data.subtitle!),
             ],
           ),
           const SizedBox(height: 16),
@@ -942,29 +977,30 @@ class OmniFlowAssetDetailDialog extends StatelessWidget {
 
   Widget _buildStatusPill(BuildContext context) {
     final l10n = context.l10n;
+    final isDark = context.isDarkTheme;
     Color color;
     Color bgColor;
     String text;
 
     switch (data.status) {
       case OmniFlowAssetStatus.success:
-        color = OmniFlowAssetColors.success;
-        bgColor = OmniFlowAssetColors.successBg;
+        color = OmniFlowAssetColors.getSuccessColor(isDark);
+        bgColor = OmniFlowAssetColors.getSuccessBgColor(isDark);
         text = l10n.omniflowAssetSuccess;
         break;
       case OmniFlowAssetStatus.failed:
-        color = OmniFlowAssetColors.failed;
-        bgColor = OmniFlowAssetColors.failedBg;
+        color = OmniFlowAssetColors.getFailedColor(isDark);
+        bgColor = OmniFlowAssetColors.getFailedBgColor(isDark);
         text = l10n.omniflowAssetFailed;
         break;
       case OmniFlowAssetStatus.running:
-        color = OmniFlowAssetColors.running;
-        bgColor = OmniFlowAssetColors.runningBg;
+        color = OmniFlowAssetColors.getRunningColor(isDark);
+        bgColor = OmniFlowAssetColors.getRunningBgColor(isDark);
         text = l10n.omniflowAssetRunning;
         break;
       case OmniFlowAssetStatus.unknown:
-        color = OmniFlowAssetColors.detailPillText;
-        bgColor = OmniFlowAssetColors.detailPillBg;
+        color = OmniFlowAssetColors.getDetailPillTextColor(isDark);
+        bgColor = OmniFlowAssetColors.getDetailPillBgColor(isDark);
         text = l10n.omniflowAssetUnknown;
         break;
     }
@@ -988,12 +1024,14 @@ class OmniFlowAssetDetailDialog extends StatelessWidget {
 
   Widget _buildCompilePill(BuildContext context) {
     final l10n = context.l10n;
+    final isDark = context.isDarkTheme;
     final isHit = data.compileStatus == OmniFlowCompileStatus.hit;
-    final color =
-        isHit ? OmniFlowAssetColors.compileHit : OmniFlowAssetColors.compileMiss;
+    final color = isHit
+        ? OmniFlowAssetColors.getCompileHitColor(isDark)
+        : OmniFlowAssetColors.getCompileMissColor(isDark);
     final bgColor = isHit
-        ? OmniFlowAssetColors.compileHitBg
-        : OmniFlowAssetColors.compileMissBg;
+        ? OmniFlowAssetColors.getCompileHitBgColor(isDark)
+        : OmniFlowAssetColors.getCompileMissBgColor(isDark);
     final text = isHit ? l10n.omniflowAssetCompileHit : l10n.omniflowAssetCompileMiss;
 
     return Container(
@@ -1013,17 +1051,18 @@ class OmniFlowAssetDetailDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildPill(String text) {
+  Widget _buildPill(BuildContext context, String text) {
+    final isDark = context.isDarkTheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: OmniFlowAssetColors.detailPillBg,
+        color: OmniFlowAssetColors.getDetailPillBgColor(isDark),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         text,
-        style: const TextStyle(
-          color: OmniFlowAssetColors.detailPillText,
+        style: TextStyle(
+          color: OmniFlowAssetColors.getDetailPillTextColor(isDark),
           fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
