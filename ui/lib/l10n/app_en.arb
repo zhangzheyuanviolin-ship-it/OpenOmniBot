@@ -439,6 +439,7 @@
   "functionLibraryParams": "Params",
   "functionLibrarySource": "Source",
   "functionLibraryCreatedAt": "Created",
+  "functionLibraryEdit": "Edit",
   "functionLibraryDelete": "Delete",
   "functionLibraryDeleteTitle": "Delete Function",
   "functionLibraryDeleteConfirm": "Delete \"{name}\"?",

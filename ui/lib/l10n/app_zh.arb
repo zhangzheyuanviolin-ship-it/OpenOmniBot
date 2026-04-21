@@ -439,6 +439,7 @@
   "functionLibraryParams": "参数",
   "functionLibrarySource": "来源",
   "functionLibraryCreatedAt": "创建时间",
+  "functionLibraryEdit": "编辑",
   "functionLibraryDelete": "删除",
   "functionLibraryDeleteTitle": "删除功能",
   "functionLibraryDeleteConfirm": "确认删除「{name}」？",

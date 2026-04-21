@@ -600,6 +600,9 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
     final lastRunGoal = (lastRun['goal'] ?? '').toString();
     final lastRunTime = (lastRun['finished_at'] ?? lastRun['started_at'] ?? '').toString();
 
+    // 生成自然语言总结
+    final summary = _buildFunctionSummary(func);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       decoration: BoxDecoration(
@@ -611,23 +614,17 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 12),
-          // 起始页面
-          if (func.startNodeDescription.isNotEmpty) ...[
-            _buildDetailRow(
-              context.l10n.functionLibraryStartNode,
-              func.startNodeDescription,
-              palette,
+          // 自然语言总结
+          if (summary.isNotEmpty) ...[
+            Text(
+              summary,
+              style: TextStyle(
+                fontSize: 14,
+                color: palette.textSecondary,
+                height: 1.4,
+              ),
             ),
-            const SizedBox(height: 8),
-          ],
-          // 结束页面
-          if (func.endNodeDescription.isNotEmpty) ...[
-            _buildDetailRow(
-              context.l10n.functionLibraryEndNode,
-              func.endNodeDescription,
-              palette,
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
           ],
           // 参数
           if (func.parameterNames.isNotEmpty) ...[
@@ -657,42 +654,98 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
             ),
             const SizedBox(height: 8),
           ],
-          const SizedBox(height: 8),
-          // 操作按钮
+          // 操作按钮行
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              // 上传按钮
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _uploadFunction(func),
-                  icon: Icon(Icons.cloud_upload_outlined, size: 18),
-                  label: Text(context.l10n.functionLibraryUpload),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: palette.accentPrimary,
-                    side: BorderSide(color: palette.accentPrimary.withOpacity(0.5)),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                ),
+              // 编辑按钮
+              _buildActionButton(
+                icon: Icons.edit_outlined,
+                label: context.l10n.functionLibraryEdit,
+                color: palette.accentPrimary,
+                onTap: () => _editFunction(func),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
+              // 上传按钮
+              _buildActionButton(
+                icon: Icons.cloud_upload_outlined,
+                label: context.l10n.functionLibraryUpload,
+                color: palette.textSecondary,
+                onTap: () => _uploadFunction(func),
+              ),
+              const SizedBox(width: 16),
               // 删除按钮
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _deleteFunction(func),
-                  icon: Icon(Icons.delete_outline, size: 18),
-                  label: Text(context.l10n.functionLibraryDelete),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: BorderSide(color: Colors.red.withOpacity(0.5)),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                ),
+              _buildActionButton(
+                icon: Icons.delete_outline,
+                label: context.l10n.functionLibraryDelete,
+                color: Colors.red,
+                onTap: () => _deleteFunction(func),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(fontSize: 13, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _buildFunctionSummary(UtgFunctionSummary func) {
+    final parts = <String>[];
+
+    // 起始 -> 结束
+    if (func.startNodeDescription.isNotEmpty && func.endNodeDescription.isNotEmpty) {
+      if (func.startNodeDescription == func.endNodeDescription) {
+        parts.add('在「${func.startNodeDescription}」页面');
+      } else {
+        parts.add('从「${func.startNodeDescription}」到「${func.endNodeDescription}」');
+      }
+    } else if (func.startNodeDescription.isNotEmpty) {
+      parts.add('从「${func.startNodeDescription}」开始');
+    } else if (func.endNodeDescription.isNotEmpty) {
+      parts.add('到达「${func.endNodeDescription}」');
+    }
+
+    // 步数
+    if (func.stepCount > 0) {
+      parts.add('共 ${func.stepCount} 步操作');
+    }
+
+    // 参数
+    if (func.parameterNames.isNotEmpty) {
+      parts.add('需要输入 ${func.parameterNames.length} 个参数');
+    }
+
+    return parts.join('，');
+  }
+
+  Future<void> _editFunction(UtgFunctionSummary func) async {
+    // TODO: 实现编辑功能
+    showToast('编辑功能开发中', type: ToastType.info);
   }
 
   Widget _buildLastRunSection(dynamic palette, {

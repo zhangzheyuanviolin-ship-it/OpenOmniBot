@@ -1353,6 +1353,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get functionLibraryCreatedAt => '创建时间';
 
   @override
+  String get functionLibraryEdit => '编辑';
+
+  @override
   String get functionLibraryDelete => '删除';
 
   @override

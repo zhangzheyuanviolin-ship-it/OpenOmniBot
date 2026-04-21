@@ -2642,6 +2642,12 @@ abstract class AppLocalizations {
   /// **'创建时间'**
   String get functionLibraryCreatedAt;
 
+  /// No description provided for @functionLibraryEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑'**
+  String get functionLibraryEdit;
+
   /// No description provided for @functionLibraryDelete.
   ///
   /// In zh, this message translates to:

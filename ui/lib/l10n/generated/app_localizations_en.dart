@@ -1422,6 +1422,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get functionLibraryCreatedAt => 'Created';
 
   @override
+  String get functionLibraryEdit => 'Edit';
+
+  @override
   String get functionLibraryDelete => 'Delete';
 
   @override
