@@ -102,27 +102,6 @@ class MessageBubble extends StatelessWidget {
         : visualProfile.secondaryTextColor;
   }
 
-  bool _usesThemeDrivenUserBubble() {
-    return !appearanceConfig.isActive &&
-        appearanceConfig.chatTextColorMode != AppBackgroundTextColorMode.custom;
-  }
-
-  Color _resolvedUserBubbleColor(BuildContext context) {
-    return _usesThemeDrivenUserBubble()
-        ? context.omniPalette.accentPrimary
-        : visualProfile.userBubbleColor;
-  }
-
-  Color _resolvedUserTextColor(BuildContext context) {
-    if (!_usesThemeDrivenUserBubble()) {
-      return visualProfile.primaryTextColor;
-    }
-    final bubbleColor = _resolvedUserBubbleColor(context);
-    return bubbleColor.computeLuminance() > 0.45
-        ? const Color(0xFF152033)
-        : Colors.white;
-  }
-
   @override
   Widget build(BuildContext context) {
     // user: 1=用户, 2=AI, 3=系统
@@ -199,7 +178,7 @@ class MessageBubble extends StatelessWidget {
               constraints: BoxConstraints(maxWidth: maxBubbleWidth),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: ShapeDecoration(
-                color: _resolvedUserBubbleColor(context),
+                color: visualProfile.userBubbleColor,
                 shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(18),
@@ -219,39 +198,41 @@ class MessageBubble extends StatelessWidget {
                       attachments,
                     )
                   else ...[
-                    if (text.isNotEmpty) _buildUserText(context, text),
+                    if (text.isNotEmpty) _buildUserText(text),
                     if (attachments.isNotEmpty) ...[
                       if (text.isNotEmpty) const SizedBox(height: 8),
                       _buildUserAttachmentList(context, attachments),
                     ],
-                    if (showUserEditButton && onUserEditTap != null)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: IconButton(
-                          visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 28,
-                            height: 28,
-                          ),
-                          padding: EdgeInsets.zero,
-                          splashRadius: 16,
-                          tooltip: 'Edit message',
-                          onPressed: onUserEditTap,
-                          icon: Icon(
-                            Icons.edit_outlined,
-                            size: 16,
-                            color: visualProfile.primaryTextColor.withValues(
-                              alpha: 0.82,
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                   if (!isUserMessageEditing && linkPreviews.isNotEmpty) ...[
                     if (text.isNotEmpty || attachments.isNotEmpty)
                       const SizedBox(height: 8),
                     _buildLinkPreviewList(context, linkPreviews),
                   ],
+                  if (!isUserMessageEditing &&
+                      showUserEditButton &&
+                      onUserEditTap != null)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 28,
+                          height: 28,
+                        ),
+                        padding: EdgeInsets.zero,
+                        splashRadius: 16,
+                        tooltip: 'Edit message',
+                        onPressed: onUserEditTap,
+                        icon: Icon(
+                          Icons.edit_outlined,
+                          size: 16,
+                          color: visualProfile.primaryTextColor.withValues(
+                            alpha: 0.82,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -730,7 +711,6 @@ class MessageBubble extends StatelessWidget {
     TextEditingController controller,
     List<Map<String, dynamic>> attachments,
   ) {
-    final userTextColor = _resolvedUserTextColor(context);
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: controller,
       builder: (context, value, _) {
@@ -745,7 +725,7 @@ class MessageBubble extends StatelessWidget {
               maxLines: 6,
               autofocus: true,
               style: TextStyle(
-                color: userTextColor,
+                color: visualProfile.primaryTextColor,
                 fontSize: _chatTextSize,
                 fontFamily: 'PingFang SC',
                 fontWeight: FontWeight.w400,
@@ -758,7 +738,7 @@ class MessageBubble extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 hintText: 'Edit your message',
                 hintStyle: TextStyle(
-                  color: userTextColor.withValues(alpha: 0.6),
+                  color: visualProfile.primaryTextColor.withValues(alpha: 0.6),
                   fontSize: _chatTextSize,
                 ),
               ),
@@ -792,11 +772,11 @@ class MessageBubble extends StatelessWidget {
   }
 
   /// 构建用户文本（不使用流式效果）
-  Widget _buildUserText(BuildContext context, String text) {
+  Widget _buildUserText(String text) {
     return Text(
       text,
       style: TextStyle(
-        color: _resolvedUserTextColor(context),
+        color: visualProfile.primaryTextColor,
         fontSize: _chatTextSize,
         fontFamily: 'PingFang SC',
         fontWeight: FontWeight.w400,
