@@ -470,5 +470,14 @@
   "functionLibraryLastRunSuccess": "成功",
   "functionLibraryLastRunFailed": "失败",
   "functionLibraryLastRunGoal": "任务",
-  "functionLibraryNoDescription": "无描述"
+  "functionLibraryNoDescription": "无描述",
+  "functionLibrarySummaryOnPage": "在「{page}」页面",
+  "functionLibrarySummaryFromTo": "从「{from}」到「{to}」",
+  "functionLibrarySummaryFrom": "从「{from}」开始",
+  "functionLibrarySummaryTo": "到达「{to}」",
+  "functionLibrarySummarySteps": "共 {count} 步操作",
+  "functionLibrarySummaryParams": "需要 {count} 个参数",
+  "functionLibraryTest": "测试",
+  "functionLibraryTestNeedParams": "需要输入参数：{params}",
+  "functionLibraryTestStarted": "已发起测试执行"
 }

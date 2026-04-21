@@ -1449,4 +1449,45 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get functionLibraryNoDescription => '无描述';
+
+  @override
+  String functionLibrarySummaryOnPage(Object page) {
+    return '在「$page」页面';
+  }
+
+  @override
+  String functionLibrarySummaryFromTo(Object from, Object to) {
+    return '从「$from」到「$to」';
+  }
+
+  @override
+  String functionLibrarySummaryFrom(Object from) {
+    return '从「$from」开始';
+  }
+
+  @override
+  String functionLibrarySummaryTo(Object to) {
+    return '到达「$to」';
+  }
+
+  @override
+  String functionLibrarySummarySteps(Object count) {
+    return '共 $count 步操作';
+  }
+
+  @override
+  String functionLibrarySummaryParams(Object count) {
+    return '需要 $count 个参数';
+  }
+
+  @override
+  String get functionLibraryTest => '测试';
+
+  @override
+  String functionLibraryTestNeedParams(Object params) {
+    return '需要输入参数：$params';
+  }
+
+  @override
+  String get functionLibraryTestStarted => '已发起测试执行';
 }

@@ -715,32 +715,33 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
   }
 
   String _buildFunctionSummary(UtgFunctionSummary func) {
+    final l10n = context.l10n;
     final parts = <String>[];
 
     // 起始 -> 结束
     if (func.startNodeDescription.isNotEmpty && func.endNodeDescription.isNotEmpty) {
       if (func.startNodeDescription == func.endNodeDescription) {
-        parts.add('在「${func.startNodeDescription}」页面');
+        parts.add(l10n.functionLibrarySummaryOnPage(func.startNodeDescription));
       } else {
-        parts.add('从「${func.startNodeDescription}」到「${func.endNodeDescription}」');
+        parts.add(l10n.functionLibrarySummaryFromTo(func.startNodeDescription, func.endNodeDescription));
       }
     } else if (func.startNodeDescription.isNotEmpty) {
-      parts.add('从「${func.startNodeDescription}」开始');
+      parts.add(l10n.functionLibrarySummaryFrom(func.startNodeDescription));
     } else if (func.endNodeDescription.isNotEmpty) {
-      parts.add('到达「${func.endNodeDescription}」');
+      parts.add(l10n.functionLibrarySummaryTo(func.endNodeDescription));
     }
 
     // 步数
     if (func.stepCount > 0) {
-      parts.add('共 ${func.stepCount} 步操作');
+      parts.add(l10n.functionLibrarySummarySteps(func.stepCount));
     }
 
     // 参数
     if (func.parameterNames.isNotEmpty) {
-      parts.add('需要输入 ${func.parameterNames.length} 个参数');
+      parts.add(l10n.functionLibrarySummaryParams(func.parameterNames.length));
     }
 
-    return parts.join('，');
+    return parts.join(', ');
   }
 
   Future<void> _editFunction(UtgFunctionSummary func) async {

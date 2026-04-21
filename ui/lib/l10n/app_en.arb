@@ -470,5 +470,14 @@
   "functionLibraryLastRunSuccess": "Success",
   "functionLibraryLastRunFailed": "Failed",
   "functionLibraryLastRunGoal": "Task",
-  "functionLibraryNoDescription": "No description"
+  "functionLibraryNoDescription": "No description",
+  "functionLibrarySummaryOnPage": "On \"{page}\" page",
+  "functionLibrarySummaryFromTo": "From \"{from}\" to \"{to}\"",
+  "functionLibrarySummaryFrom": "Starting from \"{from}\"",
+  "functionLibrarySummaryTo": "Navigate to \"{to}\"",
+  "functionLibrarySummarySteps": "{count} steps",
+  "functionLibrarySummaryParams": "requires {count} params",
+  "functionLibraryTest": "Test",
+  "functionLibraryTestNeedParams": "Parameters needed: {params}",
+  "functionLibraryTestStarted": "Test execution started"
 }

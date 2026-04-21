@@ -1518,4 +1518,45 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get functionLibraryNoDescription => 'No description';
+
+  @override
+  String functionLibrarySummaryOnPage(Object page) {
+    return 'On \"$page\" page';
+  }
+
+  @override
+  String functionLibrarySummaryFromTo(Object from, Object to) {
+    return 'From \"$from\" to \"$to\"';
+  }
+
+  @override
+  String functionLibrarySummaryFrom(Object from) {
+    return 'Starting from \"$from\"';
+  }
+
+  @override
+  String functionLibrarySummaryTo(Object to) {
+    return 'Navigate to \"$to\"';
+  }
+
+  @override
+  String functionLibrarySummarySteps(Object count) {
+    return '$count steps';
+  }
+
+  @override
+  String functionLibrarySummaryParams(Object count) {
+    return 'requires $count params';
+  }
+
+  @override
+  String get functionLibraryTest => 'Test';
+
+  @override
+  String functionLibraryTestNeedParams(Object params) {
+    return 'Parameters needed: $params';
+  }
+
+  @override
+  String get functionLibraryTestStarted => 'Test execution started';
 }

@@ -2833,6 +2833,60 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'无描述'**
   String get functionLibraryNoDescription;
+
+  /// No description provided for @functionLibrarySummaryOnPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'在「{page}」页面'**
+  String functionLibrarySummaryOnPage(Object page);
+
+  /// No description provided for @functionLibrarySummaryFromTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'从「{from}」到「{to}」'**
+  String functionLibrarySummaryFromTo(Object from, Object to);
+
+  /// No description provided for @functionLibrarySummaryFrom.
+  ///
+  /// In zh, this message translates to:
+  /// **'从「{from}」开始'**
+  String functionLibrarySummaryFrom(Object from);
+
+  /// No description provided for @functionLibrarySummaryTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'到达「{to}」'**
+  String functionLibrarySummaryTo(Object to);
+
+  /// No description provided for @functionLibrarySummarySteps.
+  ///
+  /// In zh, this message translates to:
+  /// **'共 {count} 步操作'**
+  String functionLibrarySummarySteps(Object count);
+
+  /// No description provided for @functionLibrarySummaryParams.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要 {count} 个参数'**
+  String functionLibrarySummaryParams(Object count);
+
+  /// No description provided for @functionLibraryTest.
+  ///
+  /// In zh, this message translates to:
+  /// **'测试'**
+  String get functionLibraryTest;
+
+  /// No description provided for @functionLibraryTestNeedParams.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要输入参数：{params}'**
+  String functionLibraryTestNeedParams(Object params);
+
+  /// No description provided for @functionLibraryTestStarted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已发起测试执行'**
+  String get functionLibraryTestStarted;
 }
 
 class _AppLocalizationsDelegate
