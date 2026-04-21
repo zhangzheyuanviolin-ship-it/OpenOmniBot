@@ -639,11 +639,11 @@ object UtgBridge {
             }
             OmniLog.i(
                 TAG,
-                "ingestVlmTaskRunLog compile-hit missing provider run_log; fallback to import_trace"
+                "ingestVlmTaskRunLog compile-hit missing provider run_log; fallback to ingest"
             )
         }
         return post(
-            path = "/run_logs/import_trace",
+            path = "/run_logs/ingest",
             payload = buildIngestPayload(payload),
             responseClass = AppendRunLogResponse::class.java,
         )

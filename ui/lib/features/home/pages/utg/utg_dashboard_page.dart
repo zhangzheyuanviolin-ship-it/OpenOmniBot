@@ -895,27 +895,30 @@ class _UtgDashboardPageState extends State<UtgDashboardPage> {
   }
 
   String _actionDisplayName(String actionType) {
+    final l10n = context.l10n;
     switch (actionType.trim()) {
       case 'open_app':
-        return '打开应用';
+        return l10n.actionTypeOpenApp;
       case 'click':
-        return 'click';
+        return l10n.actionTypeClick;
       case 'click_node':
-        return 'click_node';
+        return l10n.actionTypeClickNode;
       case 'long_press':
-        return '长按';
+        return l10n.actionTypeLongPress;
       case 'input_text':
-        return '输入文本';
+        return l10n.actionTypeInputText;
       case 'swipe':
-        return '滑动';
+        return l10n.actionTypeSwipe;
       case 'press_key':
-        return '按键';
+        return l10n.actionTypePressKey;
       case 'wait':
-        return '等待';
+        return l10n.actionTypeWait;
       case 'finished':
-        return '结束';
+        return l10n.actionTypeFinished;
+      case 'call_function':
+        return l10n.actionTypeCallFunction;
       default:
-        return actionType.trim().isEmpty ? '动作' : actionType.trim();
+        return actionType.trim().isEmpty ? l10n.actionTypeDefault : actionType.trim();
     }
   }
 

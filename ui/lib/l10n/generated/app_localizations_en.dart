@@ -1559,4 +1559,333 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get functionLibraryTestStarted => 'Test execution started';
+
+  @override
+  String get executionCompileHit => 'Reuse Skill';
+
+  @override
+  String executionCompileHitWithFunction(Object functionId) {
+    return 'Reuse Skill · $functionId';
+  }
+
+  @override
+  String get executionVlmExecution => 'VLM Execution';
+
+  @override
+  String get executionActionOpenApp => 'Open App';
+
+  @override
+  String get executionActionClick => 'Click';
+
+  @override
+  String get executionActionClickNode => 'Click Element';
+
+  @override
+  String get executionActionLongPress => 'Long Press';
+
+  @override
+  String get executionActionInputText => 'Input Text';
+
+  @override
+  String get executionActionSwipe => 'Swipe';
+
+  @override
+  String get executionActionScroll => 'Scroll';
+
+  @override
+  String get executionActionPressKey => 'Press Key';
+
+  @override
+  String get executionActionWait => 'Wait';
+
+  @override
+  String get executionActionFinished => 'Finished';
+
+  @override
+  String get executionActionCallFunction => 'Call Skill';
+
+  @override
+  String get executionActionDefault => 'Action';
+
+  @override
+  String executionStepLabel(Object count) {
+    return '$count steps';
+  }
+
+  @override
+  String get executionSuccess => 'Success';
+
+  @override
+  String get executionFailed => 'Failed';
+
+  @override
+  String get memorySaveAsSkillTitle => 'Save as Function';
+
+  @override
+  String get memorySaveAsSkillContent =>
+      'Save this execution as a reusable function?\n\nYou can view and manage it in the Function Library.';
+
+  @override
+  String get memorySavingProgress => 'Saving function...';
+
+  @override
+  String memorySaveSuccess(String functionId) {
+    return 'Saved as function: $functionId';
+  }
+
+  @override
+  String get memorySaveSuccessSimple => 'Saved as Function';
+
+  @override
+  String get memorySaveSuccessHint =>
+      'Function saved to local library.\nYou can view, edit or upgrade it in the Function Library.';
+
+  @override
+  String get memoryViewInLibrary => 'View Library';
+
+  @override
+  String get memorySaveCannotImport =>
+      'This execution cannot be saved as a function';
+
+  @override
+  String get memorySaveFailed => 'Failed to save function';
+
+  @override
+  String memorySaveFailedWithMessage(String message) {
+    return 'Failed to save function: $message';
+  }
+
+  @override
+  String get memoryRunIdMissing => 'Execution record ID missing, cannot save';
+
+  @override
+  String get omniflowAssetSuccess => 'Success';
+
+  @override
+  String get omniflowAssetFailed => 'Failed';
+
+  @override
+  String get omniflowAssetRunning => 'Running';
+
+  @override
+  String get omniflowAssetUnknown => 'Unknown';
+
+  @override
+  String get omniflowAssetCompileHit => 'Reuse Function';
+
+  @override
+  String get omniflowAssetCompileMiss => 'VLM Execution';
+
+  @override
+  String omniflowAssetSteps(int count) {
+    return '$count steps';
+  }
+
+  @override
+  String get omniflowAssetId => 'ID';
+
+  @override
+  String get omniflowAssetPackage => 'Package';
+
+  @override
+  String get omniflowAssetSourceRuns => 'Source Runs';
+
+  @override
+  String get omniflowAssetLinkedFunction => 'Linked Function';
+
+  @override
+  String get omniflowAssetCopyId => 'Copy ID';
+
+  @override
+  String get omniflowAssetEdit => 'Edit';
+
+  @override
+  String get omniflowAssetMemory => 'Memory';
+
+  @override
+  String get omniflowAssetReplay => 'Replay';
+
+  @override
+  String get omniflowAssetDelete => 'Delete';
+
+  @override
+  String get omniflowAssetEnrich => 'Enrich';
+
+  @override
+  String get omniflowAssetUpload => 'Upload';
+
+  @override
+  String get omniflowAssetIdCopied => 'ID copied';
+
+  @override
+  String get omniflowAssetJsonCopied => 'JSON copied';
+
+  @override
+  String get omniflowAssetFunctionDetail => 'Function Details';
+
+  @override
+  String get omniflowAssetRunLogDetail => 'Run Log Details';
+
+  @override
+  String get omniflowAssetCopyJson => 'Copy JSON';
+
+  @override
+  String get omniflowAssetClose => 'Close';
+
+  @override
+  String get omniflowAssetStartPage => 'Start Page';
+
+  @override
+  String get omniflowAssetEndPage => 'End Page';
+
+  @override
+  String get omniflowAssetCreatedAt => 'Created At';
+
+  @override
+  String get omniflowAssetGoal => 'Goal';
+
+  @override
+  String get omniflowAssetStartedAt => 'Started At';
+
+  @override
+  String get omniflowAssetDoneReason => 'Done Reason';
+
+  @override
+  String get omniflowAssetView => 'View';
+
+  @override
+  String get omniflowAssetLoadFailed => 'Failed to load';
+
+  @override
+  String get omniflowAssetRunLogNotReady => 'Run log not yet persisted';
+
+  @override
+  String get omniflowAssetRunLogIndexFailed => 'Failed to read run log index';
+
+  @override
+  String get omniflowAssetReplayTitle => 'Replay Run Log';
+
+  @override
+  String get omniflowAssetReplayConfirm => 'Replay this execution?';
+
+  @override
+  String get omniflowAssetReplayProgress => 'Replaying...';
+
+  @override
+  String get omniflowAssetReplaySuccess => 'Replay successful';
+
+  @override
+  String omniflowAssetReplaySuccessWithId(String functionId) {
+    return 'Replay successful: $functionId';
+  }
+
+  @override
+  String get omniflowAssetReplayFailed => 'Replay failed';
+
+  @override
+  String omniflowAssetReplayFailedWithMessage(String message) {
+    return 'Replay failed: $message';
+  }
+
+  @override
+  String get omniflowAssetCancel => 'Cancel';
+
+  @override
+  String get omniflowAssetConfirm => 'Confirm';
+
+  @override
+  String omniflowAssetCopySuccess(String label) {
+    return '$label copied';
+  }
+
+  @override
+  String omniflowAssetCopyFailed(String label) {
+    return 'Failed to copy $label';
+  }
+
+  @override
+  String omniflowAssetEmpty(String label) {
+    return '$label is empty';
+  }
+
+  @override
+  String get omniflowAssetNoSteps => 'No steps to display';
+
+  @override
+  String get functionLibraryEnrich => 'Upgrade';
+
+  @override
+  String get functionLibraryEnrichTitle => 'Upgrade Function';
+
+  @override
+  String get functionLibraryEnrichConfirm =>
+      'Use AI to enrich this function\'s semantic info?\n\nWill auto-generate: description, parameter slots, pre/post conditions, etc.';
+
+  @override
+  String get functionLibraryEnrichProgress => 'Upgrading function...';
+
+  @override
+  String get functionLibraryEnrichSuccess => 'Function upgraded successfully';
+
+  @override
+  String get functionLibraryEnrichFailed => 'Upgrade failed';
+
+  @override
+  String functionLibraryEnrichFailedWithMessage(String message) {
+    return 'Upgrade failed: $message';
+  }
+
+  @override
+  String get functionLibrarySplit => 'Split';
+
+  @override
+  String get functionLibrarySplitTitle => 'Split Function';
+
+  @override
+  String get functionLibrarySplitConfirm =>
+      'Use AI to split this function into smaller ones?';
+
+  @override
+  String get functionLibrarySplitProgress => 'Splitting function...';
+
+  @override
+  String functionLibrarySplitSuccess(int count) {
+    return 'Function split successfully, created $count new functions';
+  }
+
+  @override
+  String get functionLibrarySplitFailed => 'Split failed';
+
+  @override
+  String get actionTypeOpenApp => 'Open App';
+
+  @override
+  String get actionTypeClick => 'Click';
+
+  @override
+  String get actionTypeClickNode => 'Click Node';
+
+  @override
+  String get actionTypeLongPress => 'Long Press';
+
+  @override
+  String get actionTypeInputText => 'Input Text';
+
+  @override
+  String get actionTypeSwipe => 'Swipe';
+
+  @override
+  String get actionTypePressKey => 'Press Key';
+
+  @override
+  String get actionTypeWait => 'Wait';
+
+  @override
+  String get actionTypeFinished => 'Finished';
+
+  @override
+  String get actionTypeCallFunction => 'Call Function';
+
+  @override
+  String get actionTypeDefault => 'Action';
 }

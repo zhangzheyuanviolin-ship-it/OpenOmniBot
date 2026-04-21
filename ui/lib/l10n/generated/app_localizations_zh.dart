@@ -1490,4 +1490,330 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get functionLibraryTestStarted => '已发起测试执行';
+
+  @override
+  String get executionCompileHit => '复用技能';
+
+  @override
+  String executionCompileHitWithFunction(Object functionId) {
+    return '复用技能 · $functionId';
+  }
+
+  @override
+  String get executionVlmExecution => 'VLM 执行';
+
+  @override
+  String get executionActionOpenApp => '打开应用';
+
+  @override
+  String get executionActionClick => '点击';
+
+  @override
+  String get executionActionClickNode => '点击元素';
+
+  @override
+  String get executionActionLongPress => '长按';
+
+  @override
+  String get executionActionInputText => '输入文本';
+
+  @override
+  String get executionActionSwipe => '滑动';
+
+  @override
+  String get executionActionScroll => '滚动';
+
+  @override
+  String get executionActionPressKey => '按键';
+
+  @override
+  String get executionActionWait => '等待';
+
+  @override
+  String get executionActionFinished => '完成';
+
+  @override
+  String get executionActionCallFunction => '调用技能';
+
+  @override
+  String get executionActionDefault => '动作';
+
+  @override
+  String executionStepLabel(Object count) {
+    return '$count steps';
+  }
+
+  @override
+  String get executionSuccess => '成功';
+
+  @override
+  String get executionFailed => '失败';
+
+  @override
+  String get memorySaveAsSkillTitle => '保存为功能（Function）';
+
+  @override
+  String get memorySaveAsSkillContent =>
+      '是否将这次执行记录保存为可复用的功能？\n\n保存后可在「功能库」中查看和管理。';
+
+  @override
+  String get memorySavingProgress => '正在保存功能...';
+
+  @override
+  String memorySaveSuccess(String functionId) {
+    return '已保存为功能：$functionId';
+  }
+
+  @override
+  String get memorySaveSuccessSimple => '已保存为功能';
+
+  @override
+  String get memorySaveSuccessHint => '功能已保存到本地功能库。\n你可以在功能库中查看、编辑或升级此功能。';
+
+  @override
+  String get memoryViewInLibrary => '查看功能库';
+
+  @override
+  String get memorySaveCannotImport => '该执行记录无法保存为功能';
+
+  @override
+  String get memorySaveFailed => '保存功能失败';
+
+  @override
+  String memorySaveFailedWithMessage(String message) {
+    return '保存功能失败：$message';
+  }
+
+  @override
+  String get memoryRunIdMissing => '执行记录 ID 缺失，无法保存';
+
+  @override
+  String get omniflowAssetSuccess => '成功';
+
+  @override
+  String get omniflowAssetFailed => '失败';
+
+  @override
+  String get omniflowAssetRunning => '运行中';
+
+  @override
+  String get omniflowAssetUnknown => '未知';
+
+  @override
+  String get omniflowAssetCompileHit => '复用功能';
+
+  @override
+  String get omniflowAssetCompileMiss => 'VLM 执行';
+
+  @override
+  String omniflowAssetSteps(int count) {
+    return '$count 步';
+  }
+
+  @override
+  String get omniflowAssetId => 'ID';
+
+  @override
+  String get omniflowAssetPackage => '应用包名';
+
+  @override
+  String get omniflowAssetSourceRuns => '来源执行';
+
+  @override
+  String get omniflowAssetLinkedFunction => '关联功能';
+
+  @override
+  String get omniflowAssetCopyId => '复制 ID';
+
+  @override
+  String get omniflowAssetEdit => '编辑';
+
+  @override
+  String get omniflowAssetMemory => '记忆';
+
+  @override
+  String get omniflowAssetReplay => '重放';
+
+  @override
+  String get omniflowAssetDelete => '删除';
+
+  @override
+  String get omniflowAssetEnrich => '升级';
+
+  @override
+  String get omniflowAssetUpload => '上传';
+
+  @override
+  String get omniflowAssetIdCopied => 'ID 已复制';
+
+  @override
+  String get omniflowAssetJsonCopied => 'JSON 已复制';
+
+  @override
+  String get omniflowAssetFunctionDetail => '功能详情';
+
+  @override
+  String get omniflowAssetRunLogDetail => '执行记录详情';
+
+  @override
+  String get omniflowAssetCopyJson => '复制 JSON';
+
+  @override
+  String get omniflowAssetClose => '关闭';
+
+  @override
+  String get omniflowAssetStartPage => '起始页面';
+
+  @override
+  String get omniflowAssetEndPage => '结束页面';
+
+  @override
+  String get omniflowAssetCreatedAt => '创建时间';
+
+  @override
+  String get omniflowAssetGoal => '目标';
+
+  @override
+  String get omniflowAssetStartedAt => '开始时间';
+
+  @override
+  String get omniflowAssetDoneReason => '完成原因';
+
+  @override
+  String get omniflowAssetView => '查看';
+
+  @override
+  String get omniflowAssetLoadFailed => '加载失败';
+
+  @override
+  String get omniflowAssetRunLogNotReady => '执行记录尚未落盘';
+
+  @override
+  String get omniflowAssetRunLogIndexFailed => '读取执行记录索引失败';
+
+  @override
+  String get omniflowAssetReplayTitle => '重放执行记录';
+
+  @override
+  String get omniflowAssetReplayConfirm => '是否确定重放这次执行记录？';
+
+  @override
+  String get omniflowAssetReplayProgress => '正在重放执行记录...';
+
+  @override
+  String get omniflowAssetReplaySuccess => '重放成功';
+
+  @override
+  String omniflowAssetReplaySuccessWithId(String functionId) {
+    return '重放成功：$functionId';
+  }
+
+  @override
+  String get omniflowAssetReplayFailed => '重放失败';
+
+  @override
+  String omniflowAssetReplayFailedWithMessage(String message) {
+    return '重放失败：$message';
+  }
+
+  @override
+  String get omniflowAssetCancel => '取消';
+
+  @override
+  String get omniflowAssetConfirm => '确定';
+
+  @override
+  String omniflowAssetCopySuccess(String label) {
+    return '$label 已复制';
+  }
+
+  @override
+  String omniflowAssetCopyFailed(String label) {
+    return '$label 复制失败';
+  }
+
+  @override
+  String omniflowAssetEmpty(String label) {
+    return '$label 为空';
+  }
+
+  @override
+  String get omniflowAssetNoSteps => '没有可展示的步骤';
+
+  @override
+  String get functionLibraryEnrich => '升级';
+
+  @override
+  String get functionLibraryEnrichTitle => '升级功能';
+
+  @override
+  String get functionLibraryEnrichConfirm =>
+      '使用 AI 补齐此功能的语义信息？\n\n将自动生成：描述、参数槽位、前置/后置条件等。';
+
+  @override
+  String get functionLibraryEnrichProgress => '正在升级功能...';
+
+  @override
+  String get functionLibraryEnrichSuccess => '功能升级成功';
+
+  @override
+  String get functionLibraryEnrichFailed => '升级失败';
+
+  @override
+  String functionLibraryEnrichFailedWithMessage(String message) {
+    return '升级失败：$message';
+  }
+
+  @override
+  String get functionLibrarySplit => '拆分';
+
+  @override
+  String get functionLibrarySplitTitle => '拆分功能';
+
+  @override
+  String get functionLibrarySplitConfirm => '使用 AI 将此功能拆分为多个更小的功能？';
+
+  @override
+  String get functionLibrarySplitProgress => '正在拆分功能...';
+
+  @override
+  String functionLibrarySplitSuccess(int count) {
+    return '功能拆分成功，生成了 $count 个新功能';
+  }
+
+  @override
+  String get functionLibrarySplitFailed => '拆分失败';
+
+  @override
+  String get actionTypeOpenApp => '打开应用';
+
+  @override
+  String get actionTypeClick => '点击';
+
+  @override
+  String get actionTypeClickNode => '点击节点';
+
+  @override
+  String get actionTypeLongPress => '长按';
+
+  @override
+  String get actionTypeInputText => '输入文本';
+
+  @override
+  String get actionTypeSwipe => '滑动';
+
+  @override
+  String get actionTypePressKey => '按键';
+
+  @override
+  String get actionTypeWait => '等待';
+
+  @override
+  String get actionTypeFinished => '结束';
+
+  @override
+  String get actionTypeCallFunction => '调用功能';
+
+  @override
+  String get actionTypeDefault => '动作';
 }

@@ -2887,6 +2887,606 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已发起测试执行'**
   String get functionLibraryTestStarted;
+
+  /// No description provided for @executionCompileHit.
+  ///
+  /// In zh, this message translates to:
+  /// **'复用技能'**
+  String get executionCompileHit;
+
+  /// No description provided for @executionCompileHitWithFunction.
+  ///
+  /// In zh, this message translates to:
+  /// **'复用技能 · {functionId}'**
+  String executionCompileHitWithFunction(Object functionId);
+
+  /// No description provided for @executionVlmExecution.
+  ///
+  /// In zh, this message translates to:
+  /// **'VLM 执行'**
+  String get executionVlmExecution;
+
+  /// No description provided for @executionActionOpenApp.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开应用'**
+  String get executionActionOpenApp;
+
+  /// No description provided for @executionActionClick.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击'**
+  String get executionActionClick;
+
+  /// No description provided for @executionActionClickNode.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击元素'**
+  String get executionActionClickNode;
+
+  /// No description provided for @executionActionLongPress.
+  ///
+  /// In zh, this message translates to:
+  /// **'长按'**
+  String get executionActionLongPress;
+
+  /// No description provided for @executionActionInputText.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入文本'**
+  String get executionActionInputText;
+
+  /// No description provided for @executionActionSwipe.
+  ///
+  /// In zh, this message translates to:
+  /// **'滑动'**
+  String get executionActionSwipe;
+
+  /// No description provided for @executionActionScroll.
+  ///
+  /// In zh, this message translates to:
+  /// **'滚动'**
+  String get executionActionScroll;
+
+  /// No description provided for @executionActionPressKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'按键'**
+  String get executionActionPressKey;
+
+  /// No description provided for @executionActionWait.
+  ///
+  /// In zh, this message translates to:
+  /// **'等待'**
+  String get executionActionWait;
+
+  /// No description provided for @executionActionFinished.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成'**
+  String get executionActionFinished;
+
+  /// No description provided for @executionActionCallFunction.
+  ///
+  /// In zh, this message translates to:
+  /// **'调用技能'**
+  String get executionActionCallFunction;
+
+  /// No description provided for @executionActionDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'动作'**
+  String get executionActionDefault;
+
+  /// No description provided for @executionStepLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} steps'**
+  String executionStepLabel(Object count);
+
+  /// No description provided for @executionSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'成功'**
+  String get executionSuccess;
+
+  /// No description provided for @executionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败'**
+  String get executionFailed;
+
+  /// No description provided for @memorySaveAsSkillTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存为功能（Function）'**
+  String get memorySaveAsSkillTitle;
+
+  /// No description provided for @memorySaveAsSkillContent.
+  ///
+  /// In zh, this message translates to:
+  /// **'是否将这次执行记录保存为可复用的功能？\n\n保存后可在「功能库」中查看和管理。'**
+  String get memorySaveAsSkillContent;
+
+  /// No description provided for @memorySavingProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存功能...'**
+  String get memorySavingProgress;
+
+  /// No description provided for @memorySaveSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存为功能：{functionId}'**
+  String memorySaveSuccess(String functionId);
+
+  /// No description provided for @memorySaveSuccessSimple.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存为功能'**
+  String get memorySaveSuccessSimple;
+
+  /// No description provided for @memorySaveSuccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'功能已保存到本地功能库。\n你可以在功能库中查看、编辑或升级此功能。'**
+  String get memorySaveSuccessHint;
+
+  /// No description provided for @memoryViewInLibrary.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看功能库'**
+  String get memoryViewInLibrary;
+
+  /// No description provided for @memorySaveCannotImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'该执行记录无法保存为功能'**
+  String get memorySaveCannotImport;
+
+  /// No description provided for @memorySaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存功能失败'**
+  String get memorySaveFailed;
+
+  /// No description provided for @memorySaveFailedWithMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存功能失败：{message}'**
+  String memorySaveFailedWithMessage(String message);
+
+  /// No description provided for @memoryRunIdMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行记录 ID 缺失，无法保存'**
+  String get memoryRunIdMissing;
+
+  /// No description provided for @omniflowAssetSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'成功'**
+  String get omniflowAssetSuccess;
+
+  /// No description provided for @omniflowAssetFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败'**
+  String get omniflowAssetFailed;
+
+  /// No description provided for @omniflowAssetRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'运行中'**
+  String get omniflowAssetRunning;
+
+  /// No description provided for @omniflowAssetUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'未知'**
+  String get omniflowAssetUnknown;
+
+  /// No description provided for @omniflowAssetCompileHit.
+  ///
+  /// In zh, this message translates to:
+  /// **'复用功能'**
+  String get omniflowAssetCompileHit;
+
+  /// No description provided for @omniflowAssetCompileMiss.
+  ///
+  /// In zh, this message translates to:
+  /// **'VLM 执行'**
+  String get omniflowAssetCompileMiss;
+
+  /// No description provided for @omniflowAssetSteps.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 步'**
+  String omniflowAssetSteps(int count);
+
+  /// No description provided for @omniflowAssetId.
+  ///
+  /// In zh, this message translates to:
+  /// **'ID'**
+  String get omniflowAssetId;
+
+  /// No description provided for @omniflowAssetPackage.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用包名'**
+  String get omniflowAssetPackage;
+
+  /// No description provided for @omniflowAssetSourceRuns.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源执行'**
+  String get omniflowAssetSourceRuns;
+
+  /// No description provided for @omniflowAssetLinkedFunction.
+  ///
+  /// In zh, this message translates to:
+  /// **'关联功能'**
+  String get omniflowAssetLinkedFunction;
+
+  /// No description provided for @omniflowAssetCopyId.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制 ID'**
+  String get omniflowAssetCopyId;
+
+  /// No description provided for @omniflowAssetEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑'**
+  String get omniflowAssetEdit;
+
+  /// No description provided for @omniflowAssetMemory.
+  ///
+  /// In zh, this message translates to:
+  /// **'记忆'**
+  String get omniflowAssetMemory;
+
+  /// No description provided for @omniflowAssetReplay.
+  ///
+  /// In zh, this message translates to:
+  /// **'重放'**
+  String get omniflowAssetReplay;
+
+  /// No description provided for @omniflowAssetDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get omniflowAssetDelete;
+
+  /// No description provided for @omniflowAssetEnrich.
+  ///
+  /// In zh, this message translates to:
+  /// **'升级'**
+  String get omniflowAssetEnrich;
+
+  /// No description provided for @omniflowAssetUpload.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传'**
+  String get omniflowAssetUpload;
+
+  /// No description provided for @omniflowAssetIdCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'ID 已复制'**
+  String get omniflowAssetIdCopied;
+
+  /// No description provided for @omniflowAssetJsonCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'JSON 已复制'**
+  String get omniflowAssetJsonCopied;
+
+  /// No description provided for @omniflowAssetFunctionDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'功能详情'**
+  String get omniflowAssetFunctionDetail;
+
+  /// No description provided for @omniflowAssetRunLogDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行记录详情'**
+  String get omniflowAssetRunLogDetail;
+
+  /// No description provided for @omniflowAssetCopyJson.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制 JSON'**
+  String get omniflowAssetCopyJson;
+
+  /// No description provided for @omniflowAssetClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get omniflowAssetClose;
+
+  /// No description provided for @omniflowAssetStartPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'起始页面'**
+  String get omniflowAssetStartPage;
+
+  /// No description provided for @omniflowAssetEndPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束页面'**
+  String get omniflowAssetEndPage;
+
+  /// No description provided for @omniflowAssetCreatedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建时间'**
+  String get omniflowAssetCreatedAt;
+
+  /// No description provided for @omniflowAssetGoal.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标'**
+  String get omniflowAssetGoal;
+
+  /// No description provided for @omniflowAssetStartedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始时间'**
+  String get omniflowAssetStartedAt;
+
+  /// No description provided for @omniflowAssetDoneReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成原因'**
+  String get omniflowAssetDoneReason;
+
+  /// No description provided for @omniflowAssetView.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看'**
+  String get omniflowAssetView;
+
+  /// No description provided for @omniflowAssetLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败'**
+  String get omniflowAssetLoadFailed;
+
+  /// No description provided for @omniflowAssetRunLogNotReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行记录尚未落盘'**
+  String get omniflowAssetRunLogNotReady;
+
+  /// No description provided for @omniflowAssetRunLogIndexFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取执行记录索引失败'**
+  String get omniflowAssetRunLogIndexFailed;
+
+  /// No description provided for @omniflowAssetReplayTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'重放执行记录'**
+  String get omniflowAssetReplayTitle;
+
+  /// No description provided for @omniflowAssetReplayConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'是否确定重放这次执行记录？'**
+  String get omniflowAssetReplayConfirm;
+
+  /// No description provided for @omniflowAssetReplayProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在重放执行记录...'**
+  String get omniflowAssetReplayProgress;
+
+  /// No description provided for @omniflowAssetReplaySuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'重放成功'**
+  String get omniflowAssetReplaySuccess;
+
+  /// No description provided for @omniflowAssetReplaySuccessWithId.
+  ///
+  /// In zh, this message translates to:
+  /// **'重放成功：{functionId}'**
+  String omniflowAssetReplaySuccessWithId(String functionId);
+
+  /// No description provided for @omniflowAssetReplayFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'重放失败'**
+  String get omniflowAssetReplayFailed;
+
+  /// No description provided for @omniflowAssetReplayFailedWithMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'重放失败：{message}'**
+  String omniflowAssetReplayFailedWithMessage(String message);
+
+  /// No description provided for @omniflowAssetCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get omniflowAssetCancel;
+
+  /// No description provided for @omniflowAssetConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定'**
+  String get omniflowAssetConfirm;
+
+  /// No description provided for @omniflowAssetCopySuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label} 已复制'**
+  String omniflowAssetCopySuccess(String label);
+
+  /// No description provided for @omniflowAssetCopyFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label} 复制失败'**
+  String omniflowAssetCopyFailed(String label);
+
+  /// No description provided for @omniflowAssetEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label} 为空'**
+  String omniflowAssetEmpty(String label);
+
+  /// No description provided for @omniflowAssetNoSteps.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有可展示的步骤'**
+  String get omniflowAssetNoSteps;
+
+  /// No description provided for @functionLibraryEnrich.
+  ///
+  /// In zh, this message translates to:
+  /// **'升级'**
+  String get functionLibraryEnrich;
+
+  /// No description provided for @functionLibraryEnrichTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'升级功能'**
+  String get functionLibraryEnrichTitle;
+
+  /// No description provided for @functionLibraryEnrichConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用 AI 补齐此功能的语义信息？\n\n将自动生成：描述、参数槽位、前置/后置条件等。'**
+  String get functionLibraryEnrichConfirm;
+
+  /// No description provided for @functionLibraryEnrichProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在升级功能...'**
+  String get functionLibraryEnrichProgress;
+
+  /// No description provided for @functionLibraryEnrichSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'功能升级成功'**
+  String get functionLibraryEnrichSuccess;
+
+  /// No description provided for @functionLibraryEnrichFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'升级失败'**
+  String get functionLibraryEnrichFailed;
+
+  /// No description provided for @functionLibraryEnrichFailedWithMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'升级失败：{message}'**
+  String functionLibraryEnrichFailedWithMessage(String message);
+
+  /// No description provided for @functionLibrarySplit.
+  ///
+  /// In zh, this message translates to:
+  /// **'拆分'**
+  String get functionLibrarySplit;
+
+  /// No description provided for @functionLibrarySplitTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'拆分功能'**
+  String get functionLibrarySplitTitle;
+
+  /// No description provided for @functionLibrarySplitConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用 AI 将此功能拆分为多个更小的功能？'**
+  String get functionLibrarySplitConfirm;
+
+  /// No description provided for @functionLibrarySplitProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在拆分功能...'**
+  String get functionLibrarySplitProgress;
+
+  /// No description provided for @functionLibrarySplitSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'功能拆分成功，生成了 {count} 个新功能'**
+  String functionLibrarySplitSuccess(int count);
+
+  /// No description provided for @functionLibrarySplitFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'拆分失败'**
+  String get functionLibrarySplitFailed;
+
+  /// No description provided for @actionTypeOpenApp.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开应用'**
+  String get actionTypeOpenApp;
+
+  /// No description provided for @actionTypeClick.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击'**
+  String get actionTypeClick;
+
+  /// No description provided for @actionTypeClickNode.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击节点'**
+  String get actionTypeClickNode;
+
+  /// No description provided for @actionTypeLongPress.
+  ///
+  /// In zh, this message translates to:
+  /// **'长按'**
+  String get actionTypeLongPress;
+
+  /// No description provided for @actionTypeInputText.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入文本'**
+  String get actionTypeInputText;
+
+  /// No description provided for @actionTypeSwipe.
+  ///
+  /// In zh, this message translates to:
+  /// **'滑动'**
+  String get actionTypeSwipe;
+
+  /// No description provided for @actionTypePressKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'按键'**
+  String get actionTypePressKey;
+
+  /// No description provided for @actionTypeWait.
+  ///
+  /// In zh, this message translates to:
+  /// **'等待'**
+  String get actionTypeWait;
+
+  /// No description provided for @actionTypeFinished.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束'**
+  String get actionTypeFinished;
+
+  /// No description provided for @actionTypeCallFunction.
+  ///
+  /// In zh, this message translates to:
+  /// **'调用功能'**
+  String get actionTypeCallFunction;
+
+  /// No description provided for @actionTypeDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'动作'**
+  String get actionTypeDefault;
 }
 
 class _AppLocalizationsDelegate

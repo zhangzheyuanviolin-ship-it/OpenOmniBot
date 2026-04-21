@@ -1,8 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ui/features/home/pages/chat/tool_activity_utils.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_transcript.dart';
+import 'package:ui/l10n/generated/app_localizations.dart';
+import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/theme/app_colors.dart';
@@ -220,9 +223,9 @@ class AgentToolSummaryCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        child: const Text(
-                          '查看',
-                          style: TextStyle(
+                        child: Text(
+                          context.l10n.omniflowAssetView,
+                          style: const TextStyle(
                             color: AppColors.primaryBlue,
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
@@ -255,7 +258,7 @@ class AgentToolSummaryCard extends StatelessWidget {
       }
       final message = e.toString().trim();
       showToast(
-        message.isEmpty ? '读取 OmniFlow runlog 索引失败' : message,
+        message.isEmpty ? context.l10n.omniflowAssetRunLogIndexFailed : message,
         type: ToastType.error,
       );
       return;
@@ -267,7 +270,7 @@ class AgentToolSummaryCard extends StatelessWidget {
     if (runId.isEmpty) {
       final message = (payload['error_message'] ?? '').toString().trim();
       showToast(
-        message.isEmpty ? 'OmniFlow runlog 尚未落盘' : message,
+        message.isEmpty ? context.l10n.omniflowAssetRunLogNotReady : message,
         type: ToastType.error,
       );
       return;
@@ -291,7 +294,7 @@ class AgentToolSummaryCard extends StatelessWidget {
       }
       final message = e.toString().trim();
       showToast(
-        message.isEmpty ? '加载 OmniFlow runlog 失败' : message,
+        message.isEmpty ? context.l10n.omniflowAssetLoadFailed : message,
         type: ToastType.error,
       );
       return;
@@ -343,18 +346,19 @@ class AgentToolSummaryCard extends StatelessWidget {
         ? (view['step_count'] as num).toInt()
         : int.tryParse((view['step_count'] ?? '').toString()) ?? 0;
     final compileLabel = (view['compile_label'] ?? '').toString().trim().isEmpty
-        ? 'compile unknown'
+        ? context.l10n.omniflowAssetUnknown
         : (view['compile_label'] ?? '').toString().trim();
     final toolLabel = (view['tool_label'] ?? '').toString().trim();
-    final toolName = toolLabel.isEmpty ? '无 tool' : toolLabel;
+    final toolName = toolLabel.isEmpty ? '-' : toolLabel;
     final summary = (view['summary'] ?? '').toString().trim();
     final goal = (view['goal'] ?? raw['goal'] ?? '').toString().trim();
     final finalPackage = (view['final_package'] ?? '').toString().trim().isEmpty
         ? 'unknown'
         : (view['final_package'] ?? '').toString().trim();
-    final emptyMessage = (view['empty_message'] ?? '').toString().trim().isEmpty
-        ? 'provider 当前没有返回可展示的 step。'
-        : (view['empty_message'] ?? '').toString().trim();
+    final rawEmptyMessage = (view['empty_message'] ?? '').toString().trim();
+    final emptyMessage = rawEmptyMessage.isNotEmpty
+        ? rawEmptyMessage
+        : context.l10n.omniflowAssetNoSteps;
     final prettyJson = const JsonEncoder.withIndent('  ').convert(view);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -379,16 +383,20 @@ class AgentToolSummaryCard extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _buildRunStatusPill(success),
-            _buildRunDetailPill('$stepCount steps'),
+            _buildRunStatusPill(
+              success,
+              successLabel: context.l10n.omniflowAssetSuccess,
+              failedLabel: context.l10n.omniflowAssetFailed,
+            ),
+            _buildRunDetailPill(context.l10n.omniflowAssetSteps(stepCount)),
             _buildRunDetailPill(compileLabel),
             _buildRunDetailPill(toolName),
           ],
         ),
-        _buildInfoRow('goal', goal),
-        _buildInfoRow('started_at', (raw['started_at'] ?? '').toString()),
-        _buildInfoRow('done_reason', (raw['done_reason'] ?? '').toString()),
-        _buildInfoRow('final_package', finalPackage),
+        _buildInfoRow(context.l10n.omniflowAssetGoal, goal),
+        _buildInfoRow(context.l10n.omniflowAssetStartedAt, (raw['started_at'] ?? '').toString()),
+        _buildInfoRow(context.l10n.omniflowAssetDoneReason, (raw['done_reason'] ?? '').toString()),
+        _buildInfoRow(context.l10n.omniflowAssetPackage, finalPackage),
         const SizedBox(height: 16),
         Container(
           width: double.infinity,
@@ -402,9 +410,9 @@ class AgentToolSummaryCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Text(
-                    'Run Log 详情',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  Text(
+                    context.l10n.omniflowAssetRunLogDetail,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const Spacer(),
                   OutlinedButton(
@@ -412,10 +420,10 @@ class AgentToolSummaryCard extends StatelessWidget {
                         ? null
                         : () => _copyText(
                             context,
-                            'provider view json',
+                            'JSON',
                             prettyJson,
                           ),
-                    child: const Text('复制 View JSON'),
+                    child: Text(context.l10n.omniflowAssetCopyJson),
                   ),
                 ],
               ),
@@ -487,7 +495,11 @@ class AgentToolSummaryCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            _buildRunStatusPill(stepSuccess),
+                            _buildRunStatusPill(
+                              stepSuccess,
+                              successLabel: context.l10n.omniflowAssetSuccess,
+                              failedLabel: context.l10n.omniflowAssetFailed,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -580,26 +592,26 @@ class AgentToolSummaryCard extends StatelessWidget {
             children: [
               if (runId.isNotEmpty)
                 OutlinedButton(
-                  onPressed: () => _copyText(context, 'run_id', runId),
-                  child: const Text('复制 run_id'),
+                  onPressed: () => _copyText(context, 'ID', runId),
+                  child: Text(context.l10n.omniflowAssetCopyId),
                 ),
               FilledButton.icon(
                 onPressed: !canImport
                     ? null
                     : () => _importRunLogToOmniFlow(context, runId: runId),
                 icon: const Icon(Icons.psychology_alt_outlined),
-                label: const Text('记忆'),
+                label: Text(context.l10n.omniflowAssetMemory),
               ),
               OutlinedButton.icon(
                 onPressed: !canImport
                     ? null
                     : () => _replayRunLogViaOmniFlow(context, runId: runId),
                 icon: const Icon(Icons.play_arrow_outlined),
-                label: const Text('重放'),
+                label: Text(context.l10n.omniflowAssetReplay),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('关闭'),
+                child: Text(context.l10n.omniflowAssetClose),
               ),
             ],
           ),
@@ -617,18 +629,16 @@ class AgentToolSummaryCard extends StatelessWidget {
       useRootNavigator: false,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('记忆到 OmniFlow'),
-          content: const Text(
-            '是否确定将这次执行记录记忆到 OmniFlow 临时区？\n\n后续可在 OmniFlow 轨迹执行页继续沉淀为可 compile 资产。',
-          ),
+          title: Text(context.l10n.memorySaveAsSkillTitle),
+          content: Text(context.l10n.memorySaveAsSkillContent),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
+              child: Text(context.l10n.omniflowCancel),
             ),
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('确定'),
+              child: Text(context.l10n.functionLibraryConfirm),
             ),
           ],
         );
@@ -643,16 +653,16 @@ class AgentToolSummaryCard extends StatelessWidget {
       useRootNavigator: false,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return const AlertDialog(
+        return AlertDialog(
           content: Row(
             children: [
-              SizedBox(
+              const SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2.4),
               ),
-              SizedBox(width: 12),
-              Expanded(child: Text('正在整理执行记录并写入 OmniFlow 临时区...')),
+              const SizedBox(width: 12),
+              Expanded(child: Text(context.l10n.memorySavingProgress)),
             ],
           ),
         );
@@ -662,7 +672,7 @@ class AgentToolSummaryCard extends StatelessWidget {
     try {
       final effectiveRunId = runId.trim();
       if (effectiveRunId.isEmpty) {
-        throw Exception('OmniFlow run_id 缺失，无法记忆');
+        throw Exception(context.l10n.memoryRunIdMissing);
       }
       final result = await AssistsMessageService.importUtgRunLog(
         runId: effectiveRunId,
@@ -676,18 +686,18 @@ class AgentToolSummaryCard extends StatelessWidget {
       }
       if (result.success) {
         final createdFunctionId = result.createdFunctionId.trim();
-        final zoneLabel = result.assetState.trim().isEmpty
-            ? '临时区'
-            : result.assetState.trim();
-        showToast(
-          createdFunctionId.isEmpty
-              ? '已记忆到 OmniFlow $zoneLabel'
-              : '已记忆到 OmniFlow $zoneLabel：$createdFunctionId',
-          type: ToastType.success,
-        );
+        // 先关闭当前弹窗
+        Navigator.of(context).pop();
+        // 显示成功弹窗
+        if (context.mounted) {
+          await _showSaveSuccessDialog(
+            context,
+            functionId: createdFunctionId,
+          );
+        }
       } else {
         showToast(
-          result.errorMessage ?? '该 run_log 不能记忆到 OmniFlow',
+          result.errorMessage ?? context.l10n.memorySaveCannotImport,
           type: ToastType.error,
         );
       }
@@ -701,9 +711,94 @@ class AgentToolSummaryCard extends StatelessWidget {
       }
       final message = e.toString().trim();
       showToast(
-        message.isEmpty ? '记忆到 OmniFlow 失败' : '记忆到 OmniFlow 失败：$message',
+        message.isEmpty
+            ? context.l10n.memorySaveFailed
+            : context.l10n.memorySaveFailedWithMessage(message),
         type: ToastType.error,
       );
+    }
+  }
+
+  Future<void> _showSaveSuccessDialog(
+    BuildContext context, {
+    required String functionId,
+  }) async {
+    final action = await showDialog<String>(
+      context: context,
+      useRootNavigator: false,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          icon: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: const Icon(
+              Icons.check_circle,
+              color: Color(0xFF10B981),
+              size: 32,
+            ),
+          ),
+          title: Text(
+            context.l10n.memorySaveSuccessSimple,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (functionId.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F4FA),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(
+                    functionId,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'monospace',
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Text(
+                context.l10n.memorySaveSuccessHint,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(dialogContext).pop('close'),
+              child: Text(context.l10n.omniflowAssetClose),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop('view'),
+              icon: const Icon(Icons.visibility_outlined, size: 18),
+              label: Text(context.l10n.memoryViewInLibrary),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!context.mounted) return;
+
+    if (action == 'view') {
+      context.push('/task/function_library');
     }
   }
 
@@ -716,16 +811,16 @@ class AgentToolSummaryCard extends StatelessWidget {
       useRootNavigator: false,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('通过 OmniFlow 重放'),
-          content: const Text('是否确定通过 OmniFlow 直接重放这次执行记录？'),
+          title: Text(context.l10n.omniflowAssetReplayTitle),
+          content: Text(context.l10n.omniflowAssetReplayConfirm),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
+              child: Text(context.l10n.omniflowAssetCancel),
             ),
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('确定'),
+              child: Text(context.l10n.omniflowAssetConfirm),
             ),
           ],
         );
@@ -740,16 +835,16 @@ class AgentToolSummaryCard extends StatelessWidget {
       useRootNavigator: false,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return const AlertDialog(
+        return AlertDialog(
           content: Row(
             children: [
-              SizedBox(
+              const SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2.4),
               ),
-              SizedBox(width: 12),
-              Expanded(child: Text('正在通过 OmniFlow 重放执行记录...')),
+              const SizedBox(width: 12),
+              Expanded(child: Text(context.l10n.omniflowAssetReplayProgress)),
             ],
           ),
         );
@@ -759,7 +854,7 @@ class AgentToolSummaryCard extends StatelessWidget {
     try {
       final effectiveRunId = runId.trim();
       if (effectiveRunId.isEmpty) {
-        throw Exception('OmniFlow run_id 缺失，无法重放');
+        throw Exception(context.l10n.omniflowAssetEmpty('run_id'));
       }
       final result = await AssistsMessageService.replayUtgRunLog(
         runId: effectiveRunId,
@@ -776,13 +871,11 @@ class AgentToolSummaryCard extends StatelessWidget {
       showToast(
         result.success
             ? (functionId.isEmpty
-                  ? '已通过 OmniFlow 重放'
-                  : '已通过 OmniFlow 重放：$functionId')
+                  ? context.l10n.omniflowAssetReplaySuccess
+                  : context.l10n.omniflowAssetReplaySuccessWithId(functionId))
             : (failureMessage.isNotEmpty
-                  ? 'OmniFlow 重放失败：$failureMessage'
-                  : (functionId.isEmpty
-                        ? 'OmniFlow 重放失败'
-                        : 'OmniFlow 重放失败：$functionId')),
+                  ? context.l10n.omniflowAssetReplayFailedWithMessage(failureMessage)
+                  : context.l10n.omniflowAssetReplayFailed),
         type: result.success ? ToastType.success : ToastType.error,
       );
     } catch (e) {
@@ -795,7 +888,9 @@ class AgentToolSummaryCard extends StatelessWidget {
       }
       final message = e.toString().trim();
       showToast(
-        message.isEmpty ? '通过 OmniFlow 重放失败' : '通过 OmniFlow 重放失败：$message',
+        message.isEmpty
+            ? context.l10n.omniflowAssetReplayFailed
+            : context.l10n.omniflowAssetReplayFailedWithMessage(message),
         type: ToastType.error,
       );
     }
@@ -807,7 +902,7 @@ class AgentToolSummaryCard extends StatelessWidget {
     String value,
   ) async {
     if (value.trim().isEmpty) {
-      showToast('$label 为空', type: ToastType.error);
+      showToast(context.l10n.omniflowAssetEmpty(label), type: ToastType.error);
       return;
     }
     final copied = await AssistsMessageService.copyToClipboard(value);
@@ -815,7 +910,9 @@ class AgentToolSummaryCard extends StatelessWidget {
       return;
     }
     showToast(
-      copied ? '$label 已复制' : '$label 复制失败',
+      copied
+          ? context.l10n.omniflowAssetCopySuccess(label)
+          : context.l10n.omniflowAssetCopyFailed(label),
       type: copied ? ToastType.success : ToastType.error,
     );
   }
@@ -858,7 +955,7 @@ Color _resolvedCardBackground({
   return fallback;
 }
 
-Widget _buildRunStatusPill(bool success) {
+Widget _buildRunStatusPill(bool success, {String? successLabel, String? failedLabel}) {
   final color = success ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
   final background = success
       ? const Color(0xFFE7F8ED)
@@ -870,7 +967,7 @@ Widget _buildRunStatusPill(bool success) {
       borderRadius: BorderRadius.circular(999),
     ),
     child: Text(
-      success ? 'success' : 'failed',
+      success ? (successLabel ?? 'success') : (failedLabel ?? 'failed'),
       style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700),
     ),
   );
@@ -925,34 +1022,36 @@ Widget _buildInfoRow(String label, String value) {
   );
 }
 
-String _actionDisplayName(String actionType) {
+String _actionDisplayName(String actionType, AppLocalizations l10n) {
   switch (actionType.trim()) {
     case 'open_app':
-      return '打开应用';
+      return l10n.actionTypeOpenApp;
     case 'click':
-      return 'click';
+      return l10n.actionTypeClick;
     case 'click_node':
-      return 'click_node';
+      return l10n.actionTypeClickNode;
     case 'long_press':
-      return '长按';
+      return l10n.actionTypeLongPress;
     case 'input_text':
-      return '输入文本';
+      return l10n.actionTypeInputText;
     case 'swipe':
-      return '滑动';
+      return l10n.actionTypeSwipe;
     case 'press_key':
-      return '按键';
+      return l10n.actionTypePressKey;
     case 'wait':
-      return '等待';
+      return l10n.actionTypeWait;
     case 'finished':
-      return '结束';
+      return l10n.actionTypeFinished;
+    case 'call_function':
+      return l10n.actionTypeCallFunction;
     default:
-      return actionType.trim().isEmpty ? '动作' : actionType.trim();
+      return actionType.trim().isEmpty ? l10n.actionTypeDefault : actionType.trim();
   }
 }
 
-String _buildActionPreviewText(Map<String, dynamic> rawAction) {
+String _buildActionPreviewText(Map<String, dynamic> rawAction, AppLocalizations l10n) {
   final actionType = (rawAction['type'] ?? '').toString().trim();
-  final label = _actionDisplayName(actionType);
+  final label = _actionDisplayName(actionType, l10n);
   final params = (rawAction['params'] as Map<dynamic, dynamic>?) ?? const {};
   final packageName =
       (rawAction['packageName'] ??

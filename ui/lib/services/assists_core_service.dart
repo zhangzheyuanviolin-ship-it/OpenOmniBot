@@ -98,7 +98,7 @@ class ModelAvailabilityCheckResult {
       return const ModelAvailabilityCheckResult(
         available: false,
         code: null,
-        message: '检测失败：返回为空',
+        message: 'Check failed: empty response',
       );
     }
 
@@ -229,7 +229,8 @@ class EmbeddedProviderInstallResult {
 class UtgFunctionSummary {
   final String functionId;
   final String description;
-  final int stepCount;
+  final int actionCount;  // Recursive total (expanding call_function)
+  final int stepCount;    // Direct steps only
   final List<String> parameterNames;
   final Map<String, String> parameterExamples;
   final String startNodeId;
@@ -253,10 +254,15 @@ class UtgFunctionSummary {
   final int successCount;
   final int failCount;
   final Map<String, dynamic> lastRun;
+  // 新增字段
+  final List<String> sourceRunIds;
+  final Map<String, dynamic> assetRefs;
+  final Map<String, dynamic> runStats;
 
   const UtgFunctionSummary({
     required this.functionId,
     required this.description,
+    required this.actionCount,
     required this.stepCount,
     required this.parameterNames,
     required this.parameterExamples,
@@ -281,6 +287,9 @@ class UtgFunctionSummary {
     required this.successCount,
     required this.failCount,
     required this.lastRun,
+    this.sourceRunIds = const [],
+    this.assetRefs = const {},
+    this.runStats = const {},
   });
 
   factory UtgFunctionSummary.fromMap(Map<dynamic, dynamic>? map) {
@@ -288,6 +297,9 @@ class UtgFunctionSummary {
     return UtgFunctionSummary(
       functionId: (raw['function_id'] ?? '').toString(),
       description: (raw['description'] ?? '').toString(),
+      actionCount: raw['action_count'] is num
+          ? (raw['action_count'] as num).toInt()
+          : int.tryParse((raw['action_count'] ?? '0').toString()) ?? 0,
       stepCount: raw['step_count'] is num
           ? (raw['step_count'] as num).toInt()
           : int.tryParse((raw['step_count'] ?? '0').toString()) ?? 0,
@@ -342,6 +354,21 @@ class UtgFunctionSummary {
                 0,
       lastRun:
           (raw['last_run'] as Map<dynamic, dynamic>?)?.map(
+            (k, v) => MapEntry(k.toString(), v),
+          ) ??
+          const <String, dynamic>{},
+      sourceRunIds:
+          (raw['source_run_ids'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const <String>[],
+      assetRefs:
+          (raw['asset_refs'] as Map<dynamic, dynamic>?)?.map(
+            (k, v) => MapEntry(k.toString(), v),
+          ) ??
+          const <String, dynamic>{},
+      runStats:
+          (raw['run_stats'] as Map<dynamic, dynamic>?)?.map(
             (k, v) => MapEntry(k.toString(), v),
           ) ??
           const <String, dynamic>{},
@@ -733,6 +760,9 @@ class UtgRunLogImportResult {
   final String assetKind;
   final String assetState;
   final Map<String, dynamic> rawJson;
+  // 新增字段
+  final List<String> hitFunctionIds;
+  final int missActionCount;
 
   const UtgRunLogImportResult({
     required this.success,
@@ -749,6 +779,8 @@ class UtgRunLogImportResult {
     required this.assetKind,
     required this.assetState,
     required this.rawJson,
+    this.hitFunctionIds = const [],
+    this.missActionCount = 0,
   });
 
   factory UtgRunLogImportResult.fromMap(Map<String, dynamic> map) {
@@ -780,6 +812,89 @@ class UtgRunLogImportResult {
       assetKind: (map['function_kind'] ?? map['asset_kind'] ?? '').toString(),
       assetState: (map['asset_state'] ?? '').toString(),
       rawJson: Map<String, dynamic>.from(map),
+      hitFunctionIds:
+          (map['hit_function_ids'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const <String>[],
+      missActionCount: map['miss_action_count'] is num
+          ? (map['miss_action_count'] as num).toInt()
+          : int.tryParse((map['miss_action_count'] ?? '0').toString()) ?? 0,
+    );
+  }
+}
+
+/// Function 升级结果
+class UtgFunctionEnrichResult {
+  final bool success;
+  final String functionId;
+  final String? description;
+  final List<Map<String, dynamic>> slots;
+  final List<String> preconditions;
+  final List<String> postconditions;
+  final String? errorCode;
+  final String? errorMessage;
+
+  const UtgFunctionEnrichResult({
+    required this.success,
+    required this.functionId,
+    this.description,
+    this.slots = const [],
+    this.preconditions = const [],
+    this.postconditions = const [],
+    this.errorCode,
+    this.errorMessage,
+  });
+
+  factory UtgFunctionEnrichResult.fromMap(Map<String, dynamic> map) {
+    return UtgFunctionEnrichResult(
+      success: map['success'] == true,
+      functionId: (map['function_id'] ?? '').toString(),
+      description: map['description']?.toString(),
+      slots: (map['slots'] as List<dynamic>?)
+              ?.map((s) => s is Map ? Map<String, dynamic>.from(s) : <String, dynamic>{})
+              .toList() ??
+          const [],
+      preconditions: (map['preconditions'] as List<dynamic>?)
+              ?.map((p) => p.toString())
+              .toList() ??
+          const [],
+      postconditions: (map['postconditions'] as List<dynamic>?)
+              ?.map((p) => p.toString())
+              .toList() ??
+          const [],
+      errorCode: map['error_code']?.toString(),
+      errorMessage: map['error_message']?.toString(),
+    );
+  }
+}
+
+/// Function 拆分结果
+class UtgFunctionSplitResult {
+  final bool success;
+  final String functionId;
+  final List<Map<String, dynamic>> newFunctions;
+  final String? errorCode;
+  final String? errorMessage;
+
+  const UtgFunctionSplitResult({
+    required this.success,
+    required this.functionId,
+    this.newFunctions = const [],
+    this.errorCode,
+    this.errorMessage,
+  });
+
+  factory UtgFunctionSplitResult.fromMap(Map<String, dynamic> map) {
+    return UtgFunctionSplitResult(
+      success: map['success'] == true,
+      functionId: (map['function_id'] ?? '').toString(),
+      newFunctions: (map['new_functions'] as List<dynamic>?)
+              ?.map((f) => f is Map ? Map<String, dynamic>.from(f) : <String, dynamic>{})
+              .toList() ??
+          const [],
+      errorCode: map['error_code']?.toString(),
+      errorMessage: map['error_message']?.toString(),
     );
   }
 }
@@ -1695,7 +1810,7 @@ class AssistsMessageService {
       throw Exception(
         detail.errorMessage.trim().isNotEmpty
             ? detail.errorMessage
-            : '加载 run_log 详情失败',
+            : 'Failed to load run_log details',
       );
     }
     return detail;
@@ -1712,7 +1827,7 @@ class AssistsMessageService {
       return <String, dynamic>{
         'success': false,
         'task_id': taskId.trim(),
-        'error_message': '未找到对应的 run_log',
+        'error_message': 'Run log not found',
       };
     }
     return result.map((key, value) => MapEntry(key.toString(), value));
@@ -1855,6 +1970,36 @@ class AssistsMessageService {
       },
     );
     return UtgFunctionMutationResult.fromMap(decoded);
+  }
+
+  /// 升级 function（LLM 补齐语义信息）
+  static Future<UtgFunctionEnrichResult> enrichUtgFunction({
+    required String functionId,
+    String? baseUrl,
+  }) async {
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/functions/$functionId/enrich',
+      baseUrl: baseUrl,
+    );
+    return UtgFunctionEnrichResult.fromMap(decoded);
+  }
+
+  /// 拆分 function（LLM 语义切分）
+  static Future<UtgFunctionSplitResult> splitUtgFunction({
+    required String functionId,
+    String? hint,
+    String? baseUrl,
+  }) async {
+    final decoded = await _requestUtgJson(
+      method: 'POST',
+      path: '/functions/$functionId/split',
+      baseUrl: baseUrl,
+      payload: {
+        if (hint != null) 'hint': hint,
+      },
+    );
+    return UtgFunctionSplitResult.fromMap(decoded);
   }
 
   /// 导入 run_log 为持久化 function

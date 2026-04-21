@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:ui/l10n/l10n.dart';
 import 'package:ui/core/mixins/page_lifecycle_mixin.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/omniflow_asset_card.dart';
 
 class FunctionLibraryPage extends StatefulWidget {
   const FunctionLibraryPage({super.key});
@@ -438,158 +440,23 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
 
   Widget _buildFunctionCard(
       UtgFunctionSummary func, bool isExpanded, dynamic palette) {
-    final hasParams = func.parameterNames.isNotEmpty;
-    final successRate = func.runCount > 0
-        ? ((func.successCount / func.runCount) * 100).toInt()
-        : null;
-    final appName = func.appName.isNotEmpty ? func.appName : func.groupName;
+    // Convert to OmniFlowAssetCardData
+    final cardData = OmniFlowAssetCardData.fromUtgFunctionSummary(func);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: palette.surfacePrimary,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: palette.borderSubtle, width: 1),
-      ),
-      child: Column(
-        children: [
-          // 主卡片内容
-          InkWell(
-            onTap: () {
-              setState(() {
-                _expandedFunctionId =
-                    isExpanded ? null : func.functionId;
-              });
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 标题行
-                  Row(
-                    children: [
-                      // 功能图标
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: palette.accentPrimary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.bolt,
-                          color: palette.accentPrimary,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // 标题和应用名
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              func.description.isNotEmpty
-                                  ? func.description
-                                  : func.functionId,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: palette.textPrimary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              appName.isNotEmpty ? appName : '-',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: palette.textTertiary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // 展开箭头
-                      Icon(
-                        isExpanded
-                            ? Icons.keyboard_arrow_up
-                            : Icons.keyboard_arrow_down,
-                        color: palette.textTertiary,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // 统计标签
-                  Row(
-                    children: [
-                      _buildStatChip(
-                        '${func.stepCount} ${context.l10n.functionLibrarySteps}',
-                        palette,
-                      ),
-                      if (hasParams)
-                        _buildStatChip(
-                          context.l10n.functionLibraryHasParams,
-                          palette,
-                          color: palette.accentPrimary,
-                        ),
-                      if (successRate != null)
-                        _buildStatChip(
-                          '$successRate%',
-                          palette,
-                          color: successRate >= 80
-                              ? Colors.green
-                              : successRate >= 50
-                                  ? Colors.orange
-                                  : Colors.red,
-                        ),
-                      if (func.createdAt.isNotEmpty)
-                        _buildStatChip(
-                          _formatDateShort(func.createdAt),
-                          palette,
-                        ),
-                      const Spacer(),
-                      if (func.runCount > 0)
-                        Text(
-                          '${context.l10n.functionLibraryRunCount}: ${func.runCount}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: palette.textTertiary,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // 展开详情
-          if (isExpanded) _buildExpandedContent(func, palette),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatChip(String label, dynamic palette, {Color? color}) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: (color ?? palette.textTertiary).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          color: color ?? palette.textSecondary,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+    return OmniFlowAssetCard(
+      data: cardData,
+      expanded: isExpanded,
+      onTap: () {
+        setState(() {
+          _expandedFunctionId = isExpanded ? null : func.functionId;
+        });
+      },
+      onEdit: () => _editFunction(func),
+      onEnrich: () => _enrichFunction(func),
+      onUpload: () => _uploadFunction(func),
+      onDelete: () => _deleteFunction(func),
+      expandedContentBuilder: (context, isDark) =>
+          _buildExpandedContent(func, palette),
     );
   }
 
@@ -599,86 +466,132 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
     final lastRunSuccess = lastRun['success'] == true;
     final lastRunGoal = (lastRun['goal'] ?? '').toString();
     final lastRunTime = (lastRun['finished_at'] ?? lastRun['started_at'] ?? '').toString();
-
-    // 生成自然语言总结
-    final summary = _buildFunctionSummary(func);
+    final isDark = context.isDarkTheme;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(color: palette.borderSubtle, width: 1),
+          top: BorderSide(
+            color: isDark ? palette.borderSubtle : OmniFlowAssetColors.border,
+            width: 1,
+          ),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 12),
-          // 自然语言总结
-          if (summary.isNotEmpty) ...[
-            Text(
-              summary,
-              style: TextStyle(
-                fontSize: 14,
-                color: palette.textSecondary,
-                height: 1.4,
-              ),
+          // Function ID（始终显示）
+          _buildDetailRow(
+            context.l10n.omniflowAssetId,
+            func.functionId,
+            palette,
+            mono: true,
+            selectable: true,
+          ),
+          // 包名
+          if (func.packageName.isNotEmpty)
+            _buildDetailRow(
+              context.l10n.omniflowAssetPackage,
+              func.packageName,
+              palette,
             ),
-            const SizedBox(height: 12),
-          ],
+          // 起始页面
+          if (func.startNodeDescription.isNotEmpty)
+            _buildDetailRow(
+              context.l10n.omniflowAssetStartPage,
+              func.startNodeDescription,
+              palette,
+            ),
+          // 结束页面
+          if (func.endNodeDescription.isNotEmpty)
+            _buildDetailRow(
+              context.l10n.omniflowAssetEndPage,
+              func.endNodeDescription,
+              palette,
+            ),
           // 参数
-          if (func.parameterNames.isNotEmpty) ...[
+          if (func.parameterNames.isNotEmpty)
             _buildDetailRow(
               context.l10n.functionLibraryParams,
               func.parameterNames.join(', '),
               palette,
             ),
-            const SizedBox(height: 8),
-          ],
+          // 创建时间
+          if (func.createdAt.isNotEmpty)
+            _buildDetailRow(
+              context.l10n.omniflowAssetCreatedAt,
+              _formatDateFull(func.createdAt),
+              palette,
+            ),
+          // 来源执行记录
+          if (func.sourceRunIds.isNotEmpty)
+            _buildDetailRow(
+              context.l10n.omniflowAssetSourceRuns,
+              func.sourceRunIds.take(3).map((id) => _truncateId(id)).join(', '),
+              palette,
+              mono: true,
+            ),
           // 最近执行信息
           if (hasLastRun) ...[
+            const SizedBox(height: 4),
             _buildLastRunSection(
               palette,
               success: lastRunSuccess,
               goal: lastRunGoal,
               time: lastRunTime,
             ),
-            const SizedBox(height: 8),
           ],
           // 同步状态
-          if (func.syncStatus.isNotEmpty && func.syncStatus != 'local_only') ...[
+          if (func.syncStatus.isNotEmpty && func.syncStatus != 'local_only')
             _buildDetailRow(
               context.l10n.functionLibrarySyncStatus,
               _getSyncStatusText(func.syncStatus),
               palette,
             ),
-            const SizedBox(height: 8),
-          ],
-          // 操作按钮行
+          const SizedBox(height: 12),
+          // 操作按钮行 - 使用统一颜色
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              // 复制 ID
+              _buildActionButton(
+                icon: Icons.copy_outlined,
+                label: context.l10n.omniflowAssetCopyId,
+                color: OmniFlowAssetColors.detailPillText,
+                onTap: () => _copyFunctionId(func),
+              ),
+              const SizedBox(width: 12),
               // 编辑按钮
               _buildActionButton(
                 icon: Icons.edit_outlined,
                 label: context.l10n.functionLibraryEdit,
-                color: palette.accentPrimary,
+                color: OmniFlowAssetColors.compileMiss,
                 onTap: () => _editFunction(func),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
+              // 升级按钮
+              _buildActionButton(
+                icon: Icons.auto_awesome_outlined,
+                label: context.l10n.functionLibraryEnrich,
+                color: OmniFlowAssetColors.functionType,
+                onTap: () => _enrichFunction(func),
+              ),
+              const SizedBox(width: 12),
               // 上传按钮
               _buildActionButton(
                 icon: Icons.cloud_upload_outlined,
                 label: context.l10n.functionLibraryUpload,
-                color: palette.textSecondary,
+                color: OmniFlowAssetColors.detailPillText,
                 onTap: () => _uploadFunction(func),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               // 删除按钮
               _buildActionButton(
                 icon: Icons.delete_outline,
                 label: context.l10n.functionLibraryDelete,
-                color: Colors.red,
+                color: OmniFlowAssetColors.failed,
                 onTap: () => _deleteFunction(func),
               ),
             ],
@@ -712,36 +625,6 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
         ),
       ),
     );
-  }
-
-  String _buildFunctionSummary(UtgFunctionSummary func) {
-    final l10n = context.l10n;
-    final parts = <String>[];
-
-    // 起始 -> 结束
-    if (func.startNodeDescription.isNotEmpty && func.endNodeDescription.isNotEmpty) {
-      if (func.startNodeDescription == func.endNodeDescription) {
-        parts.add(l10n.functionLibrarySummaryOnPage(func.startNodeDescription));
-      } else {
-        parts.add(l10n.functionLibrarySummaryFromTo(func.startNodeDescription, func.endNodeDescription));
-      }
-    } else if (func.startNodeDescription.isNotEmpty) {
-      parts.add(l10n.functionLibrarySummaryFrom(func.startNodeDescription));
-    } else if (func.endNodeDescription.isNotEmpty) {
-      parts.add(l10n.functionLibrarySummaryTo(func.endNodeDescription));
-    }
-
-    // 步数
-    if (func.stepCount > 0) {
-      parts.add(l10n.functionLibrarySummarySteps(func.stepCount));
-    }
-
-    // 参数
-    if (func.parameterNames.isNotEmpty) {
-      parts.add(l10n.functionLibrarySummaryParams(func.parameterNames.length));
-    }
-
-    return parts.join(', ');
   }
 
   Future<void> _editFunction(UtgFunctionSummary func) async {
@@ -814,11 +697,111 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
     }
   }
 
+  Future<void> _enrichFunction(UtgFunctionSummary func) async {
+    // 确认对话框
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: OmniFlowAssetColors.functionTypeBg,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: const Icon(
+            Icons.auto_awesome,
+            color: OmniFlowAssetColors.functionType,
+            size: 24,
+          ),
+        ),
+        title: Text(context.l10n.functionLibraryEnrichTitle),
+        content: Text(
+          context.l10n.functionLibraryEnrichConfirm,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey[600],
+            height: 1.5,
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(context.l10n.omniflowAssetCancel),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.auto_awesome, size: 18),
+            label: Text(context.l10n.functionLibraryEnrich),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // 显示加载中
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2.4),
+            ),
+            const SizedBox(width: 16),
+            Expanded(child: Text(context.l10n.functionLibraryEnrichProgress)),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final config = await AssistsMessageService.getUtgBridgeConfig();
+      final result = await AssistsMessageService.enrichUtgFunction(
+        functionId: func.functionId,
+        baseUrl: config.resolvedOmniflowBaseUrl,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // 关闭加载对话框
+
+      if (result.success) {
+        showToast(context.l10n.functionLibraryEnrichSuccess, type: ToastType.success);
+        _loadData(silent: true);
+      } else {
+        showToast(
+          result.errorMessage != null
+              ? context.l10n.functionLibraryEnrichFailedWithMessage(result.errorMessage!)
+              : context.l10n.functionLibraryEnrichFailed,
+          type: ToastType.error,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // 关闭加载对话框
+      showToast(
+        context.l10n.functionLibraryEnrichFailedWithMessage(e.toString()),
+        type: ToastType.error,
+      );
+    }
+  }
+
   Widget _buildLastRunSection(dynamic palette, {
     required bool success,
     required String goal,
     required String time,
   }) {
+    final isDark = context.isDarkTheme;
+    final successColor = OmniFlowAssetColors.success;
+    final failedColor = OmniFlowAssetColors.failed;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -828,14 +811,16 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
               context.l10n.functionLibraryLastRun,
               style: TextStyle(
                 fontSize: 13,
-                color: palette.textTertiary,
+                color: isDark ? Colors.white54 : OmniFlowAssetColors.textTertiary,
               ),
             ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: (success ? Colors.green : Colors.red).withOpacity(0.1),
+                color: success
+                    ? OmniFlowAssetColors.successBg
+                    : OmniFlowAssetColors.failedBg,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -844,7 +829,7 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
                     : context.l10n.functionLibraryLastRunFailed,
                 style: TextStyle(
                   fontSize: 11,
-                  color: success ? Colors.green : Colors.red,
+                  color: success ? successColor : failedColor,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -855,7 +840,7 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
                 _formatDateShort(time),
                 style: TextStyle(
                   fontSize: 12,
-                  color: palette.textTertiary,
+                  color: isDark ? Colors.white54 : OmniFlowAssetColors.textTertiary,
                 ),
               ),
             ],
@@ -867,7 +852,7 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
             goal,
             style: TextStyle(
               fontSize: 13,
-              color: palette.textSecondary,
+              color: isDark ? Colors.white70 : OmniFlowAssetColors.textSecondary,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -878,31 +863,49 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
   }
 
   Widget _buildDetailRow(String label, String value, dynamic palette,
-      {bool mono = false}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: palette.textTertiary,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
+      {bool mono = false, bool selectable = false}) {
+    if (value.isEmpty) return const SizedBox.shrink();
+    final isDark = context.isDarkTheme;
+
+    final textWidget = selectable
+        ? SelectableText(
             value,
             style: TextStyle(
               fontSize: 13,
-              color: palette.textSecondary,
+              color: isDark ? Colors.white70 : OmniFlowAssetColors.textSecondary,
               fontFamily: mono ? 'monospace' : null,
+              height: 1.5,
+            ),
+          )
+        : Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? Colors.white70 : OmniFlowAssetColors.textSecondary,
+              fontFamily: mono ? 'monospace' : null,
+              height: 1.5,
+            ),
+          );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white54 : OmniFlowAssetColors.textTertiary,
+              ),
             ),
           ),
-        ),
-      ],
+          Expanded(child: textWidget),
+        ],
+      ),
     );
   }
 
@@ -922,6 +925,30 @@ class _FunctionLibraryPageState extends State<FunctionLibraryPage>
         return dateStr.substring(5, 10).replaceAll('-', '/');
       }
       return dateStr;
+    }
+  }
+
+  String _formatDateFull(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      if (dateStr.length >= 16) {
+        return dateStr.substring(0, 16).replaceAll('T', ' ');
+      }
+      return dateStr;
+    }
+  }
+
+  String _truncateId(String id) {
+    if (id.length <= 12) return id;
+    return '${id.substring(0, 6)}...${id.substring(id.length - 4)}';
+  }
+
+  Future<void> _copyFunctionId(UtgFunctionSummary func) async {
+    await Clipboard.setData(ClipboardData(text: func.functionId));
+    if (mounted) {
+      showToast(context.l10n.omniflowAssetIdCopied, type: ToastType.success);
     }
   }
 }

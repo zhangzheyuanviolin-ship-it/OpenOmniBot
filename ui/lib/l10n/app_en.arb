@@ -479,5 +479,180 @@
   "functionLibrarySummaryParams": "requires {count} params",
   "functionLibraryTest": "Test",
   "functionLibraryTestNeedParams": "Parameters needed: {params}",
-  "functionLibraryTestStarted": "Test execution started"
+  "functionLibraryTestStarted": "Test execution started",
+
+  "executionCompileHit": "Reuse Skill",
+  "executionCompileHitWithFunction": "Reuse Skill · {functionId}",
+  "executionVlmExecution": "VLM Execution",
+  "executionActionOpenApp": "Open App",
+  "executionActionClick": "Click",
+  "executionActionClickNode": "Click Element",
+  "executionActionLongPress": "Long Press",
+  "executionActionInputText": "Input Text",
+  "executionActionSwipe": "Swipe",
+  "executionActionScroll": "Scroll",
+  "executionActionPressKey": "Press Key",
+  "executionActionWait": "Wait",
+  "executionActionFinished": "Finished",
+  "executionActionCallFunction": "Call Skill",
+  "executionActionDefault": "Action",
+  "executionStepLabel": "{count} steps",
+  "executionSuccess": "Success",
+  "executionFailed": "Failed",
+
+  "memorySaveAsSkillTitle": "Save as Function",
+  "memorySaveAsSkillContent": "Save this execution as a reusable function?\n\nYou can view and manage it in the Function Library.",
+  "memorySavingProgress": "Saving function...",
+  "memorySaveSuccess": "Saved as function: {functionId}",
+  "@memorySaveSuccess": {
+    "placeholders": {
+      "functionId": {
+        "type": "String"
+      }
+    }
+  },
+  "memorySaveSuccessSimple": "Saved as Function",
+  "memorySaveSuccessHint": "Function saved to local library.\nYou can view, edit or upgrade it in the Function Library.",
+  "memoryViewInLibrary": "View Library",
+  "memorySaveCannotImport": "This execution cannot be saved as a function",
+  "memorySaveFailed": "Failed to save function",
+  "memorySaveFailedWithMessage": "Failed to save function: {message}",
+  "@memorySaveFailedWithMessage": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "memoryRunIdMissing": "Execution record ID missing, cannot save",
+
+  "omniflowAssetSuccess": "Success",
+  "omniflowAssetFailed": "Failed",
+  "omniflowAssetRunning": "Running",
+  "omniflowAssetUnknown": "Unknown",
+  "omniflowAssetCompileHit": "Reuse Function",
+  "omniflowAssetCompileMiss": "VLM Execution",
+  "omniflowAssetSteps": "{count} steps",
+  "@omniflowAssetSteps": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "omniflowAssetId": "ID",
+  "omniflowAssetPackage": "Package",
+  "omniflowAssetSourceRuns": "Source Runs",
+  "omniflowAssetLinkedFunction": "Linked Function",
+  "omniflowAssetCopyId": "Copy ID",
+  "omniflowAssetEdit": "Edit",
+  "omniflowAssetMemory": "Memory",
+  "omniflowAssetReplay": "Replay",
+  "omniflowAssetDelete": "Delete",
+  "omniflowAssetEnrich": "Enrich",
+  "omniflowAssetUpload": "Upload",
+  "omniflowAssetIdCopied": "ID copied",
+  "omniflowAssetJsonCopied": "JSON copied",
+  "omniflowAssetFunctionDetail": "Function Details",
+  "omniflowAssetRunLogDetail": "Run Log Details",
+  "omniflowAssetCopyJson": "Copy JSON",
+  "omniflowAssetClose": "Close",
+  "omniflowAssetStartPage": "Start Page",
+  "omniflowAssetEndPage": "End Page",
+  "omniflowAssetCreatedAt": "Created At",
+  "omniflowAssetGoal": "Goal",
+  "omniflowAssetStartedAt": "Started At",
+  "omniflowAssetDoneReason": "Done Reason",
+  "omniflowAssetView": "View",
+  "omniflowAssetLoadFailed": "Failed to load",
+  "omniflowAssetRunLogNotReady": "Run log not yet persisted",
+  "omniflowAssetRunLogIndexFailed": "Failed to read run log index",
+  "omniflowAssetReplayTitle": "Replay Run Log",
+  "omniflowAssetReplayConfirm": "Replay this execution?",
+  "omniflowAssetReplayProgress": "Replaying...",
+  "omniflowAssetReplaySuccess": "Replay successful",
+  "omniflowAssetReplaySuccessWithId": "Replay successful: {functionId}",
+  "@omniflowAssetReplaySuccessWithId": {
+    "placeholders": {
+      "functionId": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetReplayFailed": "Replay failed",
+  "omniflowAssetReplayFailedWithMessage": "Replay failed: {message}",
+  "@omniflowAssetReplayFailedWithMessage": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetCancel": "Cancel",
+  "omniflowAssetConfirm": "Confirm",
+  "omniflowAssetCopySuccess": "{label} copied",
+  "@omniflowAssetCopySuccess": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetCopyFailed": "Failed to copy {label}",
+  "@omniflowAssetCopyFailed": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetEmpty": "{label} is empty",
+  "@omniflowAssetEmpty": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetNoSteps": "No steps to display",
+
+  "functionLibraryEnrich": "Upgrade",
+  "functionLibraryEnrichTitle": "Upgrade Function",
+  "functionLibraryEnrichConfirm": "Use AI to enrich this function's semantic info?\n\nWill auto-generate: description, parameter slots, pre/post conditions, etc.",
+  "functionLibraryEnrichProgress": "Upgrading function...",
+  "functionLibraryEnrichSuccess": "Function upgraded successfully",
+  "functionLibraryEnrichFailed": "Upgrade failed",
+  "functionLibraryEnrichFailedWithMessage": "Upgrade failed: {message}",
+  "@functionLibraryEnrichFailedWithMessage": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "functionLibrarySplit": "Split",
+  "functionLibrarySplitTitle": "Split Function",
+  "functionLibrarySplitConfirm": "Use AI to split this function into smaller ones?",
+  "functionLibrarySplitProgress": "Splitting function...",
+  "functionLibrarySplitSuccess": "Function split successfully, created {count} new functions",
+  "@functionLibrarySplitSuccess": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "functionLibrarySplitFailed": "Split failed",
+
+  "actionTypeOpenApp": "Open App",
+  "actionTypeClick": "Click",
+  "actionTypeClickNode": "Click Node",
+  "actionTypeLongPress": "Long Press",
+  "actionTypeInputText": "Input Text",
+  "actionTypeSwipe": "Swipe",
+  "actionTypePressKey": "Press Key",
+  "actionTypeWait": "Wait",
+  "actionTypeFinished": "Finished",
+  "actionTypeCallFunction": "Call Function",
+  "actionTypeDefault": "Action"
 }

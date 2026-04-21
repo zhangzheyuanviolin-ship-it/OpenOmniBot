@@ -479,5 +479,180 @@
   "functionLibrarySummaryParams": "需要 {count} 个参数",
   "functionLibraryTest": "测试",
   "functionLibraryTestNeedParams": "需要输入参数：{params}",
-  "functionLibraryTestStarted": "已发起测试执行"
+  "functionLibraryTestStarted": "已发起测试执行",
+
+  "executionCompileHit": "复用技能",
+  "executionCompileHitWithFunction": "复用技能 · {functionId}",
+  "executionVlmExecution": "VLM 执行",
+  "executionActionOpenApp": "打开应用",
+  "executionActionClick": "点击",
+  "executionActionClickNode": "点击元素",
+  "executionActionLongPress": "长按",
+  "executionActionInputText": "输入文本",
+  "executionActionSwipe": "滑动",
+  "executionActionScroll": "滚动",
+  "executionActionPressKey": "按键",
+  "executionActionWait": "等待",
+  "executionActionFinished": "完成",
+  "executionActionCallFunction": "调用技能",
+  "executionActionDefault": "动作",
+  "executionStepLabel": "{count} steps",
+  "executionSuccess": "成功",
+  "executionFailed": "失败",
+
+  "memorySaveAsSkillTitle": "保存为功能（Function）",
+  "memorySaveAsSkillContent": "是否将这次执行记录保存为可复用的功能？\n\n保存后可在「功能库」中查看和管理。",
+  "memorySavingProgress": "正在保存功能...",
+  "memorySaveSuccess": "已保存为功能：{functionId}",
+  "@memorySaveSuccess": {
+    "placeholders": {
+      "functionId": {
+        "type": "String"
+      }
+    }
+  },
+  "memorySaveSuccessSimple": "已保存为功能",
+  "memorySaveSuccessHint": "功能已保存到本地功能库。\n你可以在功能库中查看、编辑或升级此功能。",
+  "memoryViewInLibrary": "查看功能库",
+  "memorySaveCannotImport": "该执行记录无法保存为功能",
+  "memorySaveFailed": "保存功能失败",
+  "memorySaveFailedWithMessage": "保存功能失败：{message}",
+  "@memorySaveFailedWithMessage": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "memoryRunIdMissing": "执行记录 ID 缺失，无法保存",
+
+  "omniflowAssetSuccess": "成功",
+  "omniflowAssetFailed": "失败",
+  "omniflowAssetRunning": "运行中",
+  "omniflowAssetUnknown": "未知",
+  "omniflowAssetCompileHit": "复用功能",
+  "omniflowAssetCompileMiss": "VLM 执行",
+  "omniflowAssetSteps": "{count} 步",
+  "@omniflowAssetSteps": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "omniflowAssetId": "ID",
+  "omniflowAssetPackage": "应用包名",
+  "omniflowAssetSourceRuns": "来源执行",
+  "omniflowAssetLinkedFunction": "关联功能",
+  "omniflowAssetCopyId": "复制 ID",
+  "omniflowAssetEdit": "编辑",
+  "omniflowAssetMemory": "记忆",
+  "omniflowAssetReplay": "重放",
+  "omniflowAssetDelete": "删除",
+  "omniflowAssetEnrich": "升级",
+  "omniflowAssetUpload": "上传",
+  "omniflowAssetIdCopied": "ID 已复制",
+  "omniflowAssetJsonCopied": "JSON 已复制",
+  "omniflowAssetFunctionDetail": "功能详情",
+  "omniflowAssetRunLogDetail": "执行记录详情",
+  "omniflowAssetCopyJson": "复制 JSON",
+  "omniflowAssetClose": "关闭",
+  "omniflowAssetStartPage": "起始页面",
+  "omniflowAssetEndPage": "结束页面",
+  "omniflowAssetCreatedAt": "创建时间",
+  "omniflowAssetGoal": "目标",
+  "omniflowAssetStartedAt": "开始时间",
+  "omniflowAssetDoneReason": "完成原因",
+  "omniflowAssetView": "查看",
+  "omniflowAssetLoadFailed": "加载失败",
+  "omniflowAssetRunLogNotReady": "执行记录尚未落盘",
+  "omniflowAssetRunLogIndexFailed": "读取执行记录索引失败",
+  "omniflowAssetReplayTitle": "重放执行记录",
+  "omniflowAssetReplayConfirm": "是否确定重放这次执行记录？",
+  "omniflowAssetReplayProgress": "正在重放执行记录...",
+  "omniflowAssetReplaySuccess": "重放成功",
+  "omniflowAssetReplaySuccessWithId": "重放成功：{functionId}",
+  "@omniflowAssetReplaySuccessWithId": {
+    "placeholders": {
+      "functionId": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetReplayFailed": "重放失败",
+  "omniflowAssetReplayFailedWithMessage": "重放失败：{message}",
+  "@omniflowAssetReplayFailedWithMessage": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetCancel": "取消",
+  "omniflowAssetConfirm": "确定",
+  "omniflowAssetCopySuccess": "{label} 已复制",
+  "@omniflowAssetCopySuccess": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetCopyFailed": "{label} 复制失败",
+  "@omniflowAssetCopyFailed": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetEmpty": "{label} 为空",
+  "@omniflowAssetEmpty": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "omniflowAssetNoSteps": "没有可展示的步骤",
+
+  "functionLibraryEnrich": "升级",
+  "functionLibraryEnrichTitle": "升级功能",
+  "functionLibraryEnrichConfirm": "使用 AI 补齐此功能的语义信息？\n\n将自动生成：描述、参数槽位、前置/后置条件等。",
+  "functionLibraryEnrichProgress": "正在升级功能...",
+  "functionLibraryEnrichSuccess": "功能升级成功",
+  "functionLibraryEnrichFailed": "升级失败",
+  "functionLibraryEnrichFailedWithMessage": "升级失败：{message}",
+  "@functionLibraryEnrichFailedWithMessage": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "functionLibrarySplit": "拆分",
+  "functionLibrarySplitTitle": "拆分功能",
+  "functionLibrarySplitConfirm": "使用 AI 将此功能拆分为多个更小的功能？",
+  "functionLibrarySplitProgress": "正在拆分功能...",
+  "functionLibrarySplitSuccess": "功能拆分成功，生成了 {count} 个新功能",
+  "@functionLibrarySplitSuccess": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "functionLibrarySplitFailed": "拆分失败",
+
+  "actionTypeOpenApp": "打开应用",
+  "actionTypeClick": "点击",
+  "actionTypeClickNode": "点击节点",
+  "actionTypeLongPress": "长按",
+  "actionTypeInputText": "输入文本",
+  "actionTypeSwipe": "滑动",
+  "actionTypePressKey": "按键",
+  "actionTypeWait": "等待",
+  "actionTypeFinished": "结束",
+  "actionTypeCallFunction": "调用功能",
+  "actionTypeDefault": "动作"
 }
