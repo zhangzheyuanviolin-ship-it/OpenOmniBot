@@ -268,13 +268,13 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
             await ConversationHistoryService.getConversationMessagesPaged(
               conversationId,
               mode: activeConversationModeValue,
-              limit: 20,
+              limit: 50,
               offset: 0,
             );
         savedMessages = pagedResult.messages;
         setState(() {
           hasMoreMessages = pagedResult.hasMore;
-          messageOffset = 20;
+          messageOffset = 50;
           messages.clear();
           messages.addAll(savedMessages);
         });
@@ -307,14 +307,14 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
           await ConversationHistoryService.getConversationMessagesPaged(
             conversationId,
             mode: activeConversationModeValue,
-            limit: 20,
+            limit: 50,
             offset: messageOffset,
           );
       if (mounted) {
         setState(() {
           messages.addAll(pagedResult.messages);
           hasMoreMessages = pagedResult.hasMore;
-          messageOffset = messageOffset + 20;
+          messageOffset = messageOffset + 50;
           isLoadingMore = false;
         });
       }
