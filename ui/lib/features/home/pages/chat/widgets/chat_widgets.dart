@@ -1136,6 +1136,8 @@ class ChatMessageList extends StatefulWidget {
   final double bottomOverlayInset;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
+  final Future<void> Function()? onLoadMore;
+  final bool hasMore;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
 
@@ -1148,6 +1150,8 @@ class ChatMessageList extends StatefulWidget {
     this.onRequestAuthorize,
     this.bottomOverlayInset = 0,
     this.onUserMessageLongPressStart,
+    this.onLoadMore,
+    this.hasMore = false,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
   });
@@ -1249,6 +1253,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
     if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
       return false;
     }
+
     final isUserDrivenUpdate =
         (notification is ScrollUpdateNotification &&
             notification.dragDetails != null) ||
@@ -1306,55 +1311,68 @@ class _ChatMessageListState extends State<ChatMessageList> {
         ),
       );
     } else {
+      Widget listView = ListView.builder(
+        controller: widget.scrollController,
+        reverse: false,
+        shrinkWrap: true,
+        physics: widget.hasMore
+            ? const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              )
+            : const ClampingScrollPhysics(),
+        clipBehavior: Clip.hardEdge,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        itemCount: widget.messages.length,
+        itemBuilder: (context, index) {
+          final dataIndex = widget.messages.length - 1 - index;
+          final message = widget.messages[dataIndex];
+          final isNewestMessage = dataIndex == 0;
+          final isOldestMessage = dataIndex == widget.messages.length - 1;
+          final bottomPadding = isNewestMessage
+              ? widget.bottomOverlayInset
+              : 0.0;
+          final needTopPadding = isOldestMessage && message.user != 1;
+          return Padding(
+            key: ValueKey('chat-message-list-item-$dataIndex'),
+            padding: EdgeInsets.only(
+              top: needTopPadding ? 24.0 : 0.0,
+              bottom: bottomPadding,
+            ),
+            child: MessageBubble(
+              message: message,
+              key: ValueKey(
+                message.dbId ?? message.contentId ?? message.id,
+              ),
+              onBeforeTaskExecute: widget.onBeforeTaskExecute,
+              onCancelTask: widget.onCancelTask,
+              enableThinkingCollapse: true,
+              parentScrollController: widget.scrollController,
+              onParentScrollHandoff: _handleParentScrollHandoff,
+              onRequestAuthorize: widget.onRequestAuthorize,
+              onUserMessageLongPressStart:
+                  widget.onUserMessageLongPressStart,
+              onStreamingTextLayoutChanged:
+                  _handleStreamingTextLayoutChanged,
+              visualProfile: widget.visualProfile,
+              appearanceConfig: widget.appearanceConfig,
+            ),
+          );
+        },
+      );
+
+      if (widget.hasMore && widget.onLoadMore != null) {
+        listView = RefreshIndicator(
+          onRefresh: widget.onLoadMore!,
+          child: listView,
+        );
+      }
+
       content = ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
           child: NotificationListener<ScrollNotification>(
             onNotification: _handleListScrollNotification,
-            child: ListView.builder(
-              controller: widget.scrollController,
-              reverse: false,
-              shrinkWrap: true,
-              physics: const ClampingScrollPhysics(),
-              clipBehavior: Clip.hardEdge,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-              itemCount: widget.messages.length,
-              itemBuilder: (context, index) {
-                final dataIndex = widget.messages.length - 1 - index;
-                final message = widget.messages[dataIndex];
-                final isNewestMessage = dataIndex == 0;
-                final isOldestMessage = dataIndex == widget.messages.length - 1;
-                final bottomPadding = isNewestMessage
-                    ? widget.bottomOverlayInset
-                    : 0.0;
-                final needTopPadding = isOldestMessage && message.user != 1;
-                return Padding(
-                  key: ValueKey('chat-message-list-item-$dataIndex'),
-                  padding: EdgeInsets.only(
-                    top: needTopPadding ? 24.0 : 0.0,
-                    bottom: bottomPadding,
-                  ),
-                  child: MessageBubble(
-                    message: message,
-                    key: ValueKey(
-                      message.dbId ?? message.contentId ?? message.id,
-                    ),
-                    onBeforeTaskExecute: widget.onBeforeTaskExecute,
-                    onCancelTask: widget.onCancelTask,
-                    enableThinkingCollapse: true,
-                    parentScrollController: widget.scrollController,
-                    onParentScrollHandoff: _handleParentScrollHandoff,
-                    onRequestAuthorize: widget.onRequestAuthorize,
-                    onUserMessageLongPressStart:
-                        widget.onUserMessageLongPressStart,
-                    onStreamingTextLayoutChanged:
-                        _handleStreamingTextLayoutChanged,
-                    visualProfile: widget.visualProfile,
-                    appearanceConfig: widget.appearanceConfig,
-                  ),
-                );
-              },
-            ),
+            child: listView,
           ),
         ),
       );
