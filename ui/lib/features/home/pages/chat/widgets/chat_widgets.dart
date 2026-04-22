@@ -1314,7 +1314,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
       Widget listView = ListView.builder(
         controller: widget.scrollController,
         reverse: false,
-        shrinkWrap: true,
         physics: widget.hasMore
             ? const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics(),

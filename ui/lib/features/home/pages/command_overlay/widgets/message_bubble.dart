@@ -141,47 +141,42 @@ class MessageBubble extends StatelessWidget {
   /// 构建文本消息
   Widget _buildTextMessage(BuildContext context, bool isUserMessage) {
     final text = message.text ?? '';
-    final attachments = _extractAttachments();
 
     if (isUserMessage) {
       // 用户消息：整块气泡长按触发快捷操作。
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final fallbackMaxWidth = MediaQuery.of(context).size.width * 0.75;
-          final availableWidth = constraints.maxWidth.isFinite
-              ? constraints.maxWidth
-              : fallbackMaxWidth;
-          final maxBubbleWidth = availableWidth * 0.78;
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onLongPressStart: onUserMessageLongPressStart == null
-                ? null
-                : (details) => onUserMessageLongPressStart!(message, details),
-            child: Container(
-              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: ShapeDecoration(
-                color: visualProfile.userBubbleColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (text.isNotEmpty) _buildUserText(text),
-                  if (attachments.isNotEmpty) ...[
-                    if (text.isNotEmpty) const SizedBox(height: 8),
-                    _buildUserAttachmentList(context, attachments),
-                  ],
-                ],
-              ),
+      // 使用 MediaQuery.sizeOf 替代 LayoutBuilder，避免额外的布局 pass 导致滚动卡顿。
+      // 32 为外层 ListView 的水平 padding (16 * 2)。
+      final attachments = _extractAttachments();
+      final maxBubbleWidth = (MediaQuery.sizeOf(context).width - 32) * 0.78;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPressStart: onUserMessageLongPressStart == null
+            ? null
+            : (details) => onUserMessageLongPressStart!(message, details),
+        child: Container(
+          constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: ShapeDecoration(
+            color: visualProfile.userBubbleColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(4),
             ),
-          );
-        },
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (text.isNotEmpty) _buildUserText(text),
+              if (attachments.isNotEmpty) ...[
+                if (text.isNotEmpty) const SizedBox(height: 8),
+                _buildUserAttachmentList(context, attachments),
+              ],
+            ],
+          ),
+        ),
       );
     }
 
+    final attachments = _extractAttachments();
     if (attachments.isEmpty) {
       // AI消息：简单文本样式，无背景
       return _buildAiTextWithSpeed(context, text);
