@@ -154,8 +154,9 @@ object OmniFlowPackageManager {
         source: String,
         hash: String?
     ): InstallResult {
+        // 使用 uv 安装（比 pip 快 10-100x）
         val command = """
-            pip install --upgrade --force-reinstall "${wheelFile.absolutePath}" 2>&1
+            uv pip install --upgrade --force-reinstall "${wheelFile.absolutePath}" 2>&1
         """.trimIndent()
 
         val result = EmbeddedTerminalRuntime.executeCommand(
