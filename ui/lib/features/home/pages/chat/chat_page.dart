@@ -95,10 +95,13 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   // ===================== Controllers =====================
   final TextEditingController _messageController = TextEditingController();
+  final TextEditingController _userMessageEditController =
+      TextEditingController();
   final ScrollController _normalMessageScrollController = ScrollController();
   final ScrollController _openClawMessageScrollController = ScrollController();
   final PageController _modePageController = PageController(initialPage: 0);
   final FocusNode _inputFocusNode = FocusNode();
+  final FocusNode _userMessageEditFocusNode = FocusNode();
   final TextEditingController _vlmAnswerController = TextEditingController();
 
   // ===================== Keys =====================
@@ -127,6 +130,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _showSlashCommandPanel = false;
   bool _showModelMentionPanel = false;
   bool _openClawPanelExpanded = false;
+  String? _editingUserMessageId;
+  bool _isSubmittingUserMessageEdit = false;
   _ActiveModelMentionToken? _activeModelMentionToken;
   List<ModelProviderProfileSummary> _modelProviderProfiles = const [];
   Map<String, List<ProviderModelOption>> _modelOptionsByProfileId = const {};

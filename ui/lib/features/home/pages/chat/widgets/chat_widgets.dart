@@ -247,24 +247,28 @@ class ChatAppBar extends StatelessWidget {
                               : _chatAppBarPureChatIconSvg,
                           tooltip: isPureChatToggleLocked
                               ? (isPureChatSelected
-                                    ? (Localizations.localeOf(context)
-                                                  .languageCode ==
+                                    ? (Localizations.localeOf(
+                                                context,
+                                              ).languageCode ==
                                               'en'
                                           ? 'Current thread is locked to pure chat'
                                           : '当前线程已锁定为纯聊天')
-                                    : (Localizations.localeOf(context)
-                                                  .languageCode ==
+                                    : (Localizations.localeOf(
+                                                context,
+                                              ).languageCode ==
                                               'en'
                                           ? 'Current thread mode is locked'
                                           : '当前线程模式已锁定'))
                               : (isPureChatSelected
-                                    ? (Localizations.localeOf(context)
-                                                  .languageCode ==
+                                    ? (Localizations.localeOf(
+                                                context,
+                                              ).languageCode ==
                                               'en'
                                           ? 'Disable pure chat'
                                           : '关闭纯聊天')
-                                    : (Localizations.localeOf(context)
-                                                  .languageCode ==
+                                    : (Localizations.localeOf(
+                                                context,
+                                              ).languageCode ==
                                               'en'
                                           ? 'Enable pure chat'
                                           : '开启纯聊天')),
@@ -842,7 +846,9 @@ class _ChatToolSlider extends StatelessWidget {
                     key: const ValueKey('chat-island-terminal-button'),
                     isSelected: _isTerminalActive,
                     isEnabled: true,
-                    tooltip: LegacyTextLocalizer.isEnglish ? 'Open terminal' : '打开终端',
+                    tooltip: LegacyTextLocalizer.isEnglish
+                        ? 'Open terminal'
+                        : '打开终端',
                     onTap: onTerminalTap,
                     child: SvgPicture.string(
                       terminalIconSvg,
@@ -858,8 +864,12 @@ class _ChatToolSlider extends StatelessWidget {
                     isSelected: _isBrowserActive,
                     isEnabled: isBrowserEnabled,
                     tooltip: isBrowserEnabled
-                        ? (LegacyTextLocalizer.isEnglish ? 'Open browser for current session' : '打开当前会话浏览器')
-                        : (LegacyTextLocalizer.isEnglish ? 'No browser session available' : '当前会话还没有可用的浏览器会话'),
+                        ? (LegacyTextLocalizer.isEnglish
+                              ? 'Open browser for current session'
+                              : '打开当前会话浏览器')
+                        : (LegacyTextLocalizer.isEnglish
+                              ? 'No browser session available'
+                              : '当前会话还没有可用的浏览器会话'),
                     onTap: onBrowserTap,
                     child: SvgPicture.string(
                       browserIconSvg,
@@ -884,8 +894,8 @@ class _ChatToolSlider extends StatelessWidget {
       builder: (anchorContext) {
         return Tooltip(
           message: LegacyTextLocalizer.isEnglish
-            ? 'Manage terminal environment variables'
-            : '管理终端环境变量',
+              ? 'Manage terminal environment variables'
+              : '管理终端环境变量',
           child: InkWell(
             key: const ValueKey('chat-island-terminal-env-button'),
             onTap: () {
@@ -1136,6 +1146,13 @@ class ChatMessageList extends StatefulWidget {
   final double bottomOverlayInset;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
+  final String? editingUserMessageId;
+  final TextEditingController? userMessageEditController;
+  final FocusNode? userMessageEditFocusNode;
+  final bool isSubmittingUserMessageEdit;
+  final VoidCallback? onCancelUserMessageEdit;
+  final Future<void> Function(ChatMessageModel message)?
+  onSubmitUserMessageEdit;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
 
@@ -1148,6 +1165,12 @@ class ChatMessageList extends StatefulWidget {
     this.onRequestAuthorize,
     this.bottomOverlayInset = 0,
     this.onUserMessageLongPressStart,
+    this.editingUserMessageId,
+    this.userMessageEditController,
+    this.userMessageEditFocusNode,
+    this.isSubmittingUserMessageEdit = false,
+    this.onCancelUserMessageEdit,
+    this.onSubmitUserMessageEdit,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
   });
@@ -1347,6 +1370,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
                     onRequestAuthorize: widget.onRequestAuthorize,
                     onUserMessageLongPressStart:
                         widget.onUserMessageLongPressStart,
+                    isEditingUserMessage:
+                        widget.editingUserMessageId == message.id,
+                    userMessageEditController: widget.userMessageEditController,
+                    userMessageEditFocusNode: widget.userMessageEditFocusNode,
+                    isSubmittingUserMessageEdit:
+                        widget.isSubmittingUserMessageEdit,
+                    onCancelUserMessageEdit: widget.onCancelUserMessageEdit,
+                    onSubmitUserMessageEdit: widget.onSubmitUserMessageEdit,
                     onStreamingTextLayoutChanged:
                         _handleStreamingTextLayoutChanged,
                     visualProfile: widget.visualProfile,

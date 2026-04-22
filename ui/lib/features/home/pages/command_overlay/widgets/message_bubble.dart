@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../../../../models/chat_message_model.dart';
+import '../../../../../l10n/legacy_text_localizer.dart';
 import '../../../../../services/app_background_service.dart';
 import '../../../../../services/voice_playback_channel_service.dart';
 import '../../../../../services/voice_playback_coordinator.dart';
@@ -49,6 +50,13 @@ class MessageBubble extends StatelessWidget {
   final OnRequestAuthorize? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
+  final bool isEditingUserMessage;
+  final TextEditingController? userMessageEditController;
+  final FocusNode? userMessageEditFocusNode;
+  final bool isSubmittingUserMessageEdit;
+  final VoidCallback? onCancelUserMessageEdit;
+  final Future<void> Function(ChatMessageModel message)?
+  onSubmitUserMessageEdit;
   final VoidCallback? onStreamingTextLayoutChanged;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
@@ -63,6 +71,12 @@ class MessageBubble extends StatelessWidget {
     this.onParentScrollHandoff,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
+    this.isEditingUserMessage = false,
+    this.userMessageEditController,
+    this.userMessageEditFocusNode,
+    this.isSubmittingUserMessageEdit = false,
+    this.onCancelUserMessageEdit,
+    this.onSubmitUserMessageEdit,
     this.onStreamingTextLayoutChanged,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
@@ -152,31 +166,50 @@ class MessageBubble extends StatelessWidget {
               ? constraints.maxWidth
               : fallbackMaxWidth;
           final maxBubbleWidth = availableWidth * 0.78;
+          final bubbleChild = Container(
+            constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: ShapeDecoration(
+              color: visualProfile.userBubbleColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isEditingUserMessage &&
+                    userMessageEditController != null &&
+                    userMessageEditFocusNode != null)
+                  _buildUserMessageEditor(context),
+                if (!isEditingUserMessage && text.isNotEmpty)
+                  _buildUserText(text),
+                if (attachments.isNotEmpty) ...[
+                  if ((isEditingUserMessage || text.isNotEmpty))
+                    const SizedBox(height: 8),
+                  _buildUserAttachmentList(context, attachments),
+                ],
+              ],
+            ),
+          );
+          if (isEditingUserMessage &&
+              userMessageEditController != null &&
+              userMessageEditFocusNode != null) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                bubbleChild,
+                const SizedBox(height: 8),
+                _buildUserEditActions(context, attachments),
+              ],
+            );
+          }
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onLongPressStart: onUserMessageLongPressStart == null
                 ? null
                 : (details) => onUserMessageLongPressStart!(message, details),
-            child: Container(
-              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: ShapeDecoration(
-                color: visualProfile.userBubbleColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (text.isNotEmpty) _buildUserText(text),
-                  if (attachments.isNotEmpty) ...[
-                    if (text.isNotEmpty) const SizedBox(height: 8),
-                    _buildUserAttachmentList(context, attachments),
-                  ],
-                ],
-              ),
-            ),
+            child: bubbleChild,
           );
         },
       );
@@ -194,6 +227,85 @@ class MessageBubble extends StatelessWidget {
         if (text.isNotEmpty) const SizedBox(height: 8),
         _buildUserAttachmentList(context, attachments),
       ],
+    );
+  }
+
+  Widget _buildUserMessageEditor(BuildContext context) {
+    return TextField(
+      controller: userMessageEditController,
+      focusNode: userMessageEditFocusNode,
+      minLines: 1,
+      maxLines: null,
+      keyboardType: TextInputType.multiline,
+      textCapitalization: TextCapitalization.sentences,
+      style: TextStyle(
+        color: visualProfile.primaryTextColor,
+        fontSize: _chatTextSize,
+        fontFamily: 'PingFang SC',
+        fontWeight: FontWeight.w400,
+        height: 1.43,
+        letterSpacing: 0.33,
+      ),
+      cursorColor: visualProfile.primaryTextColor,
+      decoration: InputDecoration(
+        isDense: true,
+        border: InputBorder.none,
+        contentPadding: EdgeInsets.zero,
+        hintText: LegacyTextLocalizer.isEnglish ? 'Edit message' : '编辑消息',
+        hintStyle: TextStyle(
+          color: visualProfile.secondaryTextColor,
+          fontSize: _chatTextSize,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserEditActions(
+    BuildContext context,
+    List<Map<String, dynamic>> attachments,
+  ) {
+    final controller = userMessageEditController;
+    if (controller == null) {
+      return const SizedBox.shrink();
+    }
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final hasPayload =
+            value.text.trim().isNotEmpty || attachments.isNotEmpty;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              onPressed: isSubmittingUserMessageEdit
+                  ? null
+                  : onCancelUserMessageEdit,
+              child: Text(LegacyTextLocalizer.isEnglish ? 'Exit edit' : '退出编辑'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed:
+                  isSubmittingUserMessageEdit ||
+                      !hasPayload ||
+                      onSubmitUserMessageEdit == null
+                  ? null
+                  : () => unawaited(onSubmitUserMessageEdit!(message)),
+              child: isSubmittingUserMessageEdit
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Theme.of(context).colorScheme.onPrimary,
+                        ),
+                      ),
+                    )
+                  : Text(LegacyTextLocalizer.isEnglish ? 'Send' : '发送'),
+            ),
+          ],
+        );
+      },
     );
   }
 

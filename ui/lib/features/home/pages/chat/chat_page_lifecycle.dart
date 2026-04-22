@@ -543,10 +543,12 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     );
     _messageController.removeListener(_handleSlashCommandInput);
     _messageController.dispose();
+    _userMessageEditController.dispose();
     _normalMessageScrollController.dispose();
     _openClawMessageScrollController.dispose();
     _modePageController.dispose();
     _inputFocusNode.dispose();
+    _userMessageEditFocusNode.dispose();
     _vlmAnswerController.dispose();
     _openClawBaseUrlController.dispose();
     _openClawTokenController.dispose();

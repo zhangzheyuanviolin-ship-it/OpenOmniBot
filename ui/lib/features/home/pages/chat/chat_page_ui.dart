@@ -8,7 +8,7 @@ const double _kSlashCommandDrawerRadius = 18.0;
 const double _kSlashCommandDrawerHandleWidth = 36.0;
 const double _kSlashCommandDrawerHandleHeight = 4.0;
 
-enum _UserMessageQuickAction { copy, retry }
+enum _UserMessageQuickAction { copy, edit, retry }
 
 mixin _ChatPageUiMixin on _ChatPageStateBase {
   ChatPaneOverlayAnchorGeometry? _lastStableToolActivityAnchorGeometry;
@@ -89,14 +89,20 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               'toolTitle': effort,
               'displayName': effort,
               'toolType': 'command',
-              'toolTypeLabel': LegacyTextLocalizer.isEnglish ? 'Thinking' : '思考',
+              'toolTypeLabel': LegacyTextLocalizer.isEnglish
+                  ? 'Thinking'
+                  : '思考',
               'status': isSelected ? 'success' : 'running',
               'statusLabel': isSelected
                   ? (LegacyTextLocalizer.isEnglish ? 'Selected' : '已选')
                   : (LegacyTextLocalizer.isEnglish ? 'Available' : '可选'),
               'summary': isSelected
-                  ? (LegacyTextLocalizer.isEnglish ? 'Current effort: $effort' : '当前思考强度：$effort')
-                  : (LegacyTextLocalizer.isEnglish ? 'Switch reasoning effort to $effort' : '将思考强度切换为 $effort'),
+                  ? (LegacyTextLocalizer.isEnglish
+                        ? 'Current effort: $effort'
+                        : '当前思考强度：$effort')
+                  : (LegacyTextLocalizer.isEnglish
+                        ? 'Switch reasoning effort to $effort'
+                        : '将思考强度切换为 $effort'),
               'progress': LegacyTextLocalizer.isEnglish
                   ? 'reasoning_effort parameter for subsequent requests'
                   : '用于后续请求的 reasoning_effort 参数',
@@ -116,7 +122,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         'toolTypeLabel': LegacyTextLocalizer.isEnglish ? 'Context' : '上下文',
         'status': 'running',
         'statusLabel': LegacyTextLocalizer.isEnglish ? 'Command' : '命令',
-        'summary': LegacyTextLocalizer.isEnglish ? 'Manually compress conversation context' : '手动压缩当前对话上下文',
+        'summary': LegacyTextLocalizer.isEnglish
+            ? 'Manually compress conversation context'
+            : '手动压缩当前对话上下文',
         'progress': LegacyTextLocalizer.isEnglish
             ? 'Compress current session history into a replacement summary'
             : '把当前会话历史压缩成 replacement summary',
@@ -132,11 +140,18 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         'toolType': 'command',
         'toolTypeLabel': LegacyTextLocalizer.isEnglish ? 'Thinking' : '思考',
         'status': activeEffort == null ? 'running' : 'success',
-        'statusLabel': activeEffort ?? (LegacyTextLocalizer.isEnglish ? 'Command' : '命令'),
+        'statusLabel':
+            activeEffort ?? (LegacyTextLocalizer.isEnglish ? 'Command' : '命令'),
         'summary': activeEffort == null
-            ? (LegacyTextLocalizer.isEnglish ? 'Set reasoning effort for this session' : '设置当前会话的思考强度')
-            : (LegacyTextLocalizer.isEnglish ? 'Current effort: $activeEffort' : '当前思考强度：$activeEffort'),
-        'progress': LegacyTextLocalizer.isEnglish ? 'Choose low or high' : '点击后选择 low 或 high',
+            ? (LegacyTextLocalizer.isEnglish
+                  ? 'Set reasoning effort for this session'
+                  : '设置当前会话的思考强度')
+            : (LegacyTextLocalizer.isEnglish
+                  ? 'Current effort: $activeEffort'
+                  : '当前思考强度：$activeEffort'),
+        'progress': LegacyTextLocalizer.isEnglish
+            ? 'Choose low or high'
+            : '点击后选择 low 或 high',
       });
     }
     if (_isOpenClawSurface) {
@@ -409,7 +424,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 ],
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -425,7 +443,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      LegacyTextLocalizer.isEnglish ? 'Compressing context' : '正在压缩上下文',
+                      LegacyTextLocalizer.isEnglish
+                          ? 'Compressing context'
+                          : '正在压缩上下文',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
@@ -530,7 +550,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    LegacyTextLocalizer.isEnglish ? 'OpenClaw Configuration' : 'OpenClaw 配置',
+                                    LegacyTextLocalizer.isEnglish
+                                        ? 'OpenClaw Configuration'
+                                        : 'OpenClaw 配置',
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
@@ -550,8 +572,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                   TextField(
                                     controller: _openClawTokenController,
                                     decoration: InputDecoration(
-                                      labelText: LegacyTextLocalizer.isEnglish ? 'Token (optional)' : 'Token（可选）',
-                                      hintText: LegacyTextLocalizer.isEnglish ? 'Leave empty if no token needed' : '为空表示无需 token',
+                                      labelText: LegacyTextLocalizer.isEnglish
+                                          ? 'Token (optional)'
+                                          : 'Token（可选）',
+                                      hintText: LegacyTextLocalizer.isEnglish
+                                          ? 'Leave empty if no token needed'
+                                          : '为空表示无需 token',
                                       isDense: true,
                                     ),
                                   ),
@@ -559,7 +585,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                                   TextField(
                                     controller: _openClawUserIdController,
                                     decoration: InputDecoration(
-                                      labelText: LegacyTextLocalizer.isEnglish ? 'User ID (optional)' : 'User ID（可选）',
+                                      labelText: LegacyTextLocalizer.isEnglish
+                                          ? 'User ID (optional)'
+                                          : 'User ID（可选）',
                                       isDense: true,
                                     ),
                                   ),
@@ -601,6 +629,16 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           : null,
       onUserMessageLongPressStart: mode == ChatPageMode.normal
           ? _handleUserMessageLongPressStart
+          : null,
+      editingUserMessageId: mode == ChatPageMode.normal
+          ? _editingUserMessageId
+          : null,
+      userMessageEditController: _userMessageEditController,
+      userMessageEditFocusNode: _userMessageEditFocusNode,
+      isSubmittingUserMessageEdit: _isSubmittingUserMessageEdit,
+      onCancelUserMessageEdit: _cancelEditingUserMessage,
+      onSubmitUserMessageEdit: mode == ChatPageMode.normal
+          ? _submitEditedUserMessage
           : null,
       visualProfile: visualProfile,
       appearanceConfig: appearanceConfig,
@@ -1413,9 +1451,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   Future<void> _handleContextUsageRingLongPress() async {
     final conversation = _currentConversation;
     if (conversation == null || conversation.id <= 0) {
-      _showSnackBar(LegacyTextLocalizer.isEnglish
-          ? 'No adjustable context threshold for this conversation'
-          : '当前对话还没有可调整的上下文阈值');
+      _showSnackBar(
+        LegacyTextLocalizer.isEnglish
+            ? 'No adjustable context threshold for this conversation'
+            : '当前对话还没有可调整的上下文阈值',
+      );
       return;
     }
 
@@ -1485,14 +1525,18 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final text = (message.text ?? '').trim();
     final hasAttachments = _extractRetryAttachments(message).isNotEmpty;
     if (text.isEmpty && !hasAttachments) {
-      showToast(LegacyTextLocalizer.isEnglish
-          ? 'No actionable text in this user message'
-          : '这条用户消息没有可操作的文本', type: ToastType.warning);
+      showToast(
+        LegacyTextLocalizer.isEnglish
+            ? 'No actionable text in this user message'
+            : '这条用户消息没有可操作的文本',
+        type: ToastType.warning,
+      );
       return;
     }
 
     final action = await _showUserMessageQuickMenu(
       details.globalPosition,
+      showEditAction: _canEditUserMessage(message),
       showRetryAction: _canRetryUserMessage(message),
     );
     if (!mounted || action == null) return;
@@ -1500,12 +1544,18 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     switch (action) {
       case _UserMessageQuickAction.copy:
         if (text.isEmpty) {
-          showToast(LegacyTextLocalizer.isEnglish
-              ? 'No text to copy in this user message'
-              : '这条用户消息没有可复制的文本', type: ToastType.warning);
+          showToast(
+            LegacyTextLocalizer.isEnglish
+                ? 'No text to copy in this user message'
+                : '这条用户消息没有可复制的文本',
+            type: ToastType.warning,
+          );
           return;
         }
         await _copyUserMessageText(text);
+        return;
+      case _UserMessageQuickAction.edit:
+        _startEditingUserMessage(message);
         return;
       case _UserMessageQuickAction.retry:
         await _retryUserMessage(message);
@@ -1515,9 +1565,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
 
   Future<_UserMessageQuickAction?> _showUserMessageQuickMenu(
     Offset globalPosition, {
+    required bool showEditAction,
     required bool showRetryAction,
   }) {
-    final estimatedMenuHeight = showRetryAction ? 116.0 : 60.0;
+    final estimatedMenuHeight =
+        60.0 + (showEditAction ? 56.0 : 0.0) + (showRetryAction ? 56.0 : 0.0);
     final position = PopupMenuAnchorPosition.fromGlobalOffset(
       context: context,
       globalOffset: globalPosition,
@@ -1538,10 +1590,15 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         _UserMessageQuickMenuEntry(
           width: 188,
           estimatedHeight: estimatedMenuHeight,
+          showEditAction: showEditAction,
           showRetryAction: showRetryAction,
         ),
       ],
     );
+  }
+
+  bool _canEditUserMessage(ChatMessageModel message) {
+    return _canRetryUserMessage(message);
   }
 
   bool _canRetryUserMessage(ChatMessageModel message) {
@@ -1594,20 +1651,122 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     );
   }
 
+  void _startEditingUserMessage(ChatMessageModel message) {
+    if (!_canEditUserMessage(message)) {
+      showToast(
+        LegacyTextLocalizer.isEnglish
+            ? 'Only the latest user message can be edited'
+            : '只有最新一条用户消息支持编辑',
+        type: ToastType.warning,
+      );
+      return;
+    }
+    final text = message.text ?? '';
+    setState(() {
+      _editingUserMessageId = message.id;
+      _isSubmittingUserMessageEdit = false;
+      _userMessageEditController.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _editingUserMessageId != message.id) {
+        return;
+      }
+      _userMessageEditFocusNode.requestFocus();
+    });
+  }
+
+  void _cancelEditingUserMessage() {
+    if (_editingUserMessageId == null && !_isSubmittingUserMessageEdit) {
+      return;
+    }
+    _userMessageEditFocusNode.unfocus();
+    setState(() {
+      _editingUserMessageId = null;
+      _isSubmittingUserMessageEdit = false;
+    });
+  }
+
+  Future<void> _submitEditedUserMessage(ChatMessageModel message) async {
+    if (_isSubmittingUserMessageEdit) {
+      return;
+    }
+    if (!_canEditUserMessage(message)) {
+      showToast(
+        LegacyTextLocalizer.isEnglish
+            ? 'Only the latest user message can be edited'
+            : '只有最新一条用户消息支持编辑',
+        type: ToastType.warning,
+      );
+      _cancelEditingUserMessage();
+      return;
+    }
+    final editedText = _userMessageEditController.text.trim();
+    final attachments = _extractRetryAttachments(message);
+    if (editedText.isEmpty && attachments.isEmpty) {
+      showToast(
+        LegacyTextLocalizer.isEnglish
+            ? 'Edited message cannot be empty'
+            : '编辑后的消息不能为空',
+        type: ToastType.warning,
+      );
+      return;
+    }
+
+    setState(() {
+      _isSubmittingUserMessageEdit = true;
+    });
+    try {
+      await _clearRetriedMessageRound(message);
+      if (!mounted) return;
+
+      _userMessageEditFocusNode.unfocus();
+      setState(() {
+        _editingUserMessageId = null;
+        _isSubmittingUserMessageEdit = false;
+      });
+
+      await _retryUserMessageText(editedText, attachments: attachments);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isSubmittingUserMessageEdit = false;
+      });
+      showToast(
+        LegacyTextLocalizer.isEnglish
+            ? 'Failed to resend edited message'
+            : '发送编辑后的消息失败',
+        type: ToastType.error,
+      );
+    }
+  }
+
   Future<void> _retryUserMessage(ChatMessageModel message) async {
     final text = (message.text ?? '').trim();
     final attachments = _extractRetryAttachments(message);
     if (text.isEmpty && attachments.isEmpty) {
-      showToast(LegacyTextLocalizer.isEnglish
-          ? 'No content to retry in this user message'
-          : '这条用户消息没有可重试的内容', type: ToastType.warning);
+      showToast(
+        LegacyTextLocalizer.isEnglish
+            ? 'No content to retry in this user message'
+            : '这条用户消息没有可重试的内容',
+        type: ToastType.warning,
+      );
       return;
     }
     if (!_canRetryUserMessage(message)) {
-      showToast(LegacyTextLocalizer.isEnglish
-          ? 'Only the latest user message can be retried'
-          : '只有最新一条用户消息支持重试', type: ToastType.warning);
+      showToast(
+        LegacyTextLocalizer.isEnglish
+            ? 'Only the latest user message can be retried'
+            : '只有最新一条用户消息支持重试',
+        type: ToastType.warning,
+      );
       return;
+    }
+
+    if (_editingUserMessageId == message.id) {
+      _cancelEditingUserMessage();
     }
 
     if (text.isNotEmpty) {
@@ -1657,11 +1816,13 @@ class _UserMessageQuickMenuEntry
   const _UserMessageQuickMenuEntry({
     required this.width,
     required this.estimatedHeight,
+    required this.showEditAction,
     required this.showRetryAction,
   });
 
   final double width;
   final double estimatedHeight;
+  final bool showEditAction;
   final bool showRetryAction;
 
   @override
@@ -1738,6 +1899,18 @@ class _UserMessageQuickMenuEntryState
                 label: LegacyTextLocalizer.isEnglish ? 'Copy' : '复制',
                 onTap: () => _select(_UserMessageQuickAction.copy),
               ),
+              if (widget.showEditAction) ...[
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0x14000000),
+                ),
+                _buildAction(
+                  icon: Icons.edit_outlined,
+                  label: LegacyTextLocalizer.isEnglish ? 'Edit' : '编辑',
+                  onTap: () => _select(_UserMessageQuickAction.edit),
+                ),
+              ],
               if (widget.showRetryAction) ...[
                 const Divider(
                   height: 1,
@@ -1746,7 +1919,9 @@ class _UserMessageQuickMenuEntryState
                 ),
                 _buildAction(
                   icon: Icons.refresh_rounded,
-                  label: LegacyTextLocalizer.isEnglish ? 'Retry this message' : '重试这条消息',
+                  label: LegacyTextLocalizer.isEnglish
+                      ? 'Retry this message'
+                      : '重试这条消息',
                   onTap: () => _select(_UserMessageQuickAction.retry),
                 ),
               ],
@@ -1886,7 +2061,9 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
     if (raw.isEmpty) {
       if (showEmptyError) {
         setState(() {
-          _errorText = LegacyTextLocalizer.isEnglish ? 'Please enter a threshold' : '请输入阈值';
+          _errorText = LegacyTextLocalizer.isEnglish
+              ? 'Please enter a threshold'
+              : '请输入阈值';
         });
       }
       return null;
@@ -1894,17 +2071,18 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
     final parsed = int.tryParse(raw);
     if (parsed == null) {
       setState(() {
-        _errorText = LegacyTextLocalizer.isEnglish ? 'Threshold must be an integer' : '阈值必须是整数';
+        _errorText = LegacyTextLocalizer.isEnglish
+            ? 'Threshold must be an integer'
+            : '阈值必须是整数';
       });
       return null;
     }
     if (parsed < _kMinContextTokenThreshold ||
         parsed > _kMaxContextTokenThreshold) {
       setState(() {
-        _errorText =
-            LegacyTextLocalizer.isEnglish
-                ? 'Threshold range: $_kMinContextTokenThreshold to $_kMaxContextTokenThreshold'
-                : '阈值范围为 $_kMinContextTokenThreshold 到 $_kMaxContextTokenThreshold';
+        _errorText = LegacyTextLocalizer.isEnglish
+            ? 'Threshold range: $_kMinContextTokenThreshold to $_kMaxContextTokenThreshold'
+            : '阈值范围为 $_kMinContextTokenThreshold 到 $_kMaxContextTokenThreshold';
       });
       return null;
     }
@@ -2028,10 +2206,14 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
     final statusText = switch ((_saveErrorText, _isSaving, pendingAutoSave)) {
       (final String message?, _, _) => message,
       (_, true, _) => LegacyTextLocalizer.isEnglish ? 'Saving…' : '正在自动保存…',
-      (_, false, true) => LegacyTextLocalizer.isEnglish ? 'Pending auto-save' : '即将自动保存',
-      _ => draftThreshold == _lastSavedThreshold
-          ? (LegacyTextLocalizer.isEnglish ? 'Auto-saved' : '已自动保存')
-          : (LegacyTextLocalizer.isEnglish ? 'Auto-save on change' : '修改后自动保存'),
+      (_, false, true) =>
+        LegacyTextLocalizer.isEnglish ? 'Pending auto-save' : '即将自动保存',
+      _ =>
+        draftThreshold == _lastSavedThreshold
+            ? (LegacyTextLocalizer.isEnglish ? 'Auto-saved' : '已自动保存')
+            : (LegacyTextLocalizer.isEnglish
+                  ? 'Auto-save on change'
+                  : '修改后自动保存'),
     };
     final statusColor = _saveErrorText != null
         ? warningColor
@@ -2080,7 +2262,9 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    LegacyTextLocalizer.isEnglish ? 'Adjust Context Threshold' : '调整上下文阈值',
+                    LegacyTextLocalizer.isEnglish
+                        ? 'Adjust Context Threshold'
+                        : '调整上下文阈值',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -2111,7 +2295,9 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
                       children: [
                         Expanded(
                           child: _ThresholdMetric(
-                            label: LegacyTextLocalizer.isEnglish ? 'Current context' : '当前上下文',
+                            label: LegacyTextLocalizer.isEnglish
+                                ? 'Current context'
+                                : '当前上下文',
                             value: _formatTokenCount(widget.currentUsageTokens),
                             accent: palette.textPrimary,
                           ),
@@ -2119,7 +2305,9 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
                         Container(width: 1, height: 38, color: dividerColor),
                         Expanded(
                           child: _ThresholdMetric(
-                            label: LegacyTextLocalizer.isEnglish ? 'Target threshold' : '目标阈值',
+                            label: LegacyTextLocalizer.isEnglish
+                                ? 'Target threshold'
+                                : '目标阈值',
                             value: _formatTokenCount(draftThreshold),
                             accent: accentColor,
                           ),
@@ -2127,7 +2315,9 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
                         Container(width: 1, height: 38, color: dividerColor),
                         Expanded(
                           child: _ThresholdMetric(
-                            label: LegacyTextLocalizer.isEnglish ? 'Usage' : '占用比例',
+                            label: LegacyTextLocalizer.isEnglish
+                                ? 'Usage'
+                                : '占用比例',
                             value: _formatUsagePercent(usageRatio),
                             accent: usageRatio >= 1
                                 ? warningColor
