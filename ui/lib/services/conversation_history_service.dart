@@ -270,6 +270,46 @@ class ConversationHistoryService {
     }
   }
 
+  /// 分页获取对话消息列表
+  static Future<({List<ChatMessageModel> messages, bool hasMore})>
+      getConversationMessagesPaged(
+    int conversationId, {
+    ConversationMode mode = ConversationMode.normal,
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    try {
+      final result = await _assistCore.invokeMethod<Map<dynamic, dynamic>>(
+        'getConversationMessagesPaged',
+        {
+          'conversationId': conversationId,
+          'mode': mode.storageValue,
+          'limit': limit,
+          'offset': offset,
+        },
+      );
+      if (result == null) return (messages: <ChatMessageModel>[], hasMore: false);
+      final messagesList = result['messages'] as List<dynamic>? ?? [];
+      final hasMore = result['hasMore'] as bool? ?? false;
+      final messages = messagesList
+          .whereType<Map>()
+          .map(
+            (json) => ChatMessageModel.fromJson(
+              Map<String, dynamic>.from(json.cast<String, dynamic>()),
+            ),
+          )
+          .where(_shouldRetainRestoredMessage)
+          .toList();
+      return (messages: messages, hasMore: hasMore);
+    } on PlatformException catch (e) {
+      print('分页获取对话历史失败: ${e.message}');
+      return (messages: <ChatMessageModel>[], hasMore: false);
+    } catch (e) {
+      print('分页解析对话历史失败: $e');
+      return (messages: <ChatMessageModel>[], hasMore: false);
+    }
+  }
+
   static bool _shouldRetainRestoredMessage(ChatMessageModel message) {
     if (message.type != 1 || message.user != 2) {
       return true;

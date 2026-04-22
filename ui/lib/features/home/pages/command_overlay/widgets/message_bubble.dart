@@ -141,10 +141,10 @@ class MessageBubble extends StatelessWidget {
   /// 构建文本消息
   Widget _buildTextMessage(BuildContext context, bool isUserMessage) {
     final text = message.text ?? '';
-    final attachments = _extractAttachments();
 
     if (isUserMessage) {
       // 用户消息：整块气泡长按触发快捷操作。
+      final attachments = _extractAttachments();
       return LayoutBuilder(
         builder: (context, constraints) {
           final fallbackMaxWidth = MediaQuery.of(context).size.width * 0.75;
@@ -182,6 +182,7 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
+    final attachments = _extractAttachments();
     if (attachments.isEmpty) {
       // AI消息：简单文本样式，无背景
       return _buildAiTextWithSpeed(context, text);

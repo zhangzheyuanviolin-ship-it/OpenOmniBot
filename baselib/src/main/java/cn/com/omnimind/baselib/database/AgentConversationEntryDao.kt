@@ -108,6 +108,32 @@ interface AgentConversationEntryDao {
 
     @Query(
         """
+        SELECT * FROM agent_conversation_entries
+        WHERE conversationId = :conversationId AND conversationMode = :conversationMode
+        ORDER BY createdAt DESC, id DESC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    suspend fun getThreadEntriesDescPaged(
+        conversationId: Long,
+        conversationMode: String,
+        limit: Int,
+        offset: Int
+    ): List<AgentConversationEntry>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM agent_conversation_entries
+        WHERE conversationId = :conversationId AND conversationMode = :conversationMode
+        """
+    )
+    suspend fun countThreadEntries(
+        conversationId: Long,
+        conversationMode: String
+    ): Int
+
+    @Query(
+        """
         DELETE FROM agent_conversation_entries
         WHERE conversationId = :conversationId AND conversationMode = :conversationMode
         """

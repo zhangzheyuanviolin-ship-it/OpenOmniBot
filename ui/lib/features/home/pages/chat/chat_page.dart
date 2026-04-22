@@ -252,6 +252,18 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     ChatPageMode.normal: null,
     ChatPageMode.openclaw: null,
   };
+  final Map<ChatPageMode, bool> _hasMoreMessagesByMode = {
+    ChatPageMode.normal: false,
+    ChatPageMode.openclaw: false,
+  };
+  final Map<ChatPageMode, int> _messageOffsetByMode = {
+    ChatPageMode.normal: 0,
+    ChatPageMode.openclaw: 0,
+  };
+  final Map<ChatPageMode, bool> _isLoadingMoreByMode = {
+    ChatPageMode.normal: false,
+    ChatPageMode.openclaw: false,
+  };
   bool _isAwaitingAuthorizeResult = false;
   bool _isRetryingLatestInstructionAfterAuth = false;
   static const String _openClawWaitingHint = '等待龙虾烹饪';
@@ -1052,6 +1064,18 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   @override
   ConversationMode get activeConversationModeValue =>
       _conversationModeForPageMode(_activeMode);
+  @override
+  bool get hasMoreMessages => _hasMoreMessagesByMode[_activeMode] ?? false;
+  @override
+  set hasMoreMessages(bool value) => _hasMoreMessagesByMode[_activeMode] = value;
+  @override
+  bool get isLoadingMore => _isLoadingMoreByMode[_activeMode] ?? false;
+  @override
+  set isLoadingMore(bool value) => _isLoadingMoreByMode[_activeMode] = value;
+  @override
+  int get messageOffset => _messageOffsetByMode[_activeMode] ?? 0;
+  @override
+  set messageOffset(int value) => _messageOffsetByMode[_activeMode] = value;
   @override
   List<ChatMessageModel>? getInMemoryMessagesForConversation(
     int conversationId,

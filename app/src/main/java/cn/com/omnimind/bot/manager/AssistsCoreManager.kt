@@ -4872,6 +4872,37 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
+    fun getConversationMessagesPaged(call: MethodCall, result: MethodChannel.Result) {
+        val conversationId = call.argument<Number>("conversationId")?.toLong() ?: 0L
+        val mode = normalizeConversationMode(
+            call.argument<String>("mode") ?: call.argument<String>("conversationMode")
+        )
+        val limit = call.argument<Number>("limit")?.toInt() ?: 20
+        val offset = call.argument<Number>("offset")?.toInt() ?: 0
+        if (conversationId <= 0L) {
+            result.error("INVALID_ARGUMENTS", "conversationId is invalid", null)
+            return
+        }
+        workJob.launch {
+            try {
+                val pagedResult = conversationDomainService.listConversationMessagesPaged(
+                    conversationId = conversationId,
+                    conversationMode = mode,
+                    limit = limit,
+                    offset = offset
+                )
+                withContext(Dispatchers.Main) {
+                    result.success(pagedResult)
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "分页获取对话消息失败: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("GET_CONVERSATION_MESSAGES_PAGED_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
     fun replaceConversationMessages(call: MethodCall, result: MethodChannel.Result) {
         val conversationId = call.argument<Number>("conversationId")?.toLong() ?: 0L
         val mode = normalizeConversationMode(
