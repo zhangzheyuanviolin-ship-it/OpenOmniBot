@@ -1361,6 +1361,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
       if (widget.hasMore && widget.onLoadMore != null) {
         listView = RefreshIndicator(
+          displacement: 20,
           onRefresh: widget.onLoadMore!,
           child: listView,
         );
