@@ -162,6 +162,11 @@ object UtgBridge {
         @SerializedName("run_id") val runId: String? = null,
         @SerializedName("run_log_path") val runLogPath: String? = null,
         @SerializedName("run_log") val runLog: Map<String, Any?>? = null,
+        // Sync import result (fast)
+        @SerializedName("auto_import") val autoImport: Map<String, Any?>? = null,
+        // Background LLM enrich task (slow)
+        @SerializedName("enrich_task_id") val enrichTaskId: String? = null,
+        @SerializedName("enrich_task_status") val enrichTaskStatus: String? = null,
     )
 
     data class ActionEnvelope(
@@ -670,6 +675,11 @@ object UtgBridge {
                 "run_id" to appendResponse?.runId,
                 "run_log_path" to appendResponse?.runLogPath,
                 "run_log" to appendResponse?.runLog,
+                // Sync import result
+                "auto_import" to appendResponse?.autoImport,
+                // Background LLM enrich task
+                "enrich_task_id" to appendResponse?.enrichTaskId,
+                "enrich_task_status" to appendResponse?.enrichTaskStatus,
                 "error_message" to if (providerPersisted) {
                     null
                 } else {
