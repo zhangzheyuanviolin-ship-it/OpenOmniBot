@@ -287,7 +287,12 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
         _pendingConversationReasoningEffort = null;
       });
     }
-    showToast('已设置思考强度为 $normalizedEffort', type: ToastType.success);
+    showToast(
+      normalizedEffort == 'no'
+          ? (LegacyTextLocalizer.isEnglish ? 'Thinking disabled' : '已关闭思考')
+          : (LegacyTextLocalizer.isEnglish ? 'Thinking effort set to $normalizedEffort' : '已设置思考强度为 $normalizedEffort'),
+      type: ToastType.success,
+    );
   }
 
   @override

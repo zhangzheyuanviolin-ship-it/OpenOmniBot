@@ -94,12 +94,20 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               'statusLabel': isSelected
                   ? (LegacyTextLocalizer.isEnglish ? 'Selected' : '已选')
                   : (LegacyTextLocalizer.isEnglish ? 'Available' : '可选'),
-              'summary': isSelected
-                  ? (LegacyTextLocalizer.isEnglish ? 'Current effort: $effort' : '当前思考强度：$effort')
-                  : (LegacyTextLocalizer.isEnglish ? 'Switch reasoning effort to $effort' : '将思考强度切换为 $effort'),
-              'progress': LegacyTextLocalizer.isEnglish
-                  ? 'reasoning_effort parameter for subsequent requests'
-                  : '用于后续请求的 reasoning_effort 参数',
+              'summary': effort == 'no'
+                  ? (isSelected
+                      ? (LegacyTextLocalizer.isEnglish ? 'Thinking disabled' : '已关闭思考')
+                      : (LegacyTextLocalizer.isEnglish ? 'Disable thinking' : '关闭思考'))
+                  : (isSelected
+                      ? (LegacyTextLocalizer.isEnglish ? 'Current effort: $effort' : '当前思考强度：$effort')
+                      : (LegacyTextLocalizer.isEnglish ? 'Switch reasoning effort to $effort' : '将思考强度切换为 $effort')),
+              'progress': effort == 'no'
+                  ? (LegacyTextLocalizer.isEnglish
+                      ? 'enable_thinking=false for subsequent requests'
+                      : '后续请求将设置 enable_thinking=false')
+                  : (LegacyTextLocalizer.isEnglish
+                      ? 'reasoning_effort parameter for subsequent requests'
+                      : '用于后续请求的 reasoning_effort 参数'),
             };
           })
           .toList(growable: false);
