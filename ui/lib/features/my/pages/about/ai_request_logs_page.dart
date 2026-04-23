@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/ai_request_log_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_text_styles.dart';
@@ -53,7 +54,10 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
   Future<void> _copyJson(String label, String content) async {
     await Clipboard.setData(ClipboardData(text: content));
     if (!mounted) return;
-    showToast('$label已复制', type: ToastType.success);
+    showToast(
+      LegacyTextLocalizer.localize('$label已复制'),
+      type: ToastType.success,
+    );
   }
 
   String _formatDateTime(DateTime value) {
@@ -64,7 +68,9 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
 
   String _buildSummary(AiRequestLogEntry log) {
     final statusText = log.statusCode == null ? '' : 'HTTP ${log.statusCode}';
-    final streamText = log.stream ? '流式' : '非流式';
+    final streamText = LegacyTextLocalizer.localize(
+      log.stream ? '流式' : '非流式',
+    );
     final protocolText = log.protocolType == 'anthropic'
         ? 'Anthropic'
         : 'OpenAI';
@@ -117,7 +123,7 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
               ),
               TextButton(
                 onPressed: () => _copyJson(title, jsonText),
-                child: const Text('复制'),
+                child: Text(LegacyTextLocalizer.localize('复制')),
               ),
             ],
           ),
@@ -150,7 +156,7 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '加载请求日志失败',
+                LegacyTextLocalizer.localize('加载请求日志失败'),
                 style: TextStyle(
                   fontFamily: AppTextStyles.fontFamily,
                   fontSize: 16,
@@ -173,7 +179,10 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              OutlinedButton(onPressed: _loadLogs, child: const Text('重试')),
+              OutlinedButton(
+                onPressed: _loadLogs,
+                child: Text(LegacyTextLocalizer.localize('重试')),
+              ),
             ],
           ),
         ),
@@ -182,7 +191,7 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
     if (_logs.isEmpty) {
       return Center(
         child: Text(
-          '最近还没有 AI 请求日志',
+          LegacyTextLocalizer.localize('最近还没有 AI 请求日志'),
           style: TextStyle(
             fontFamily: AppTextStyles.fontFamily,
             fontSize: 14,
@@ -232,7 +241,9 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
               childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               title: Text(
                 log.model.isEmpty
-                    ? (log.label.isEmpty ? 'AI 请求' : log.label)
+                    ? (log.label.isEmpty
+                          ? LegacyTextLocalizer.localize('AI 请求')
+                          : log.label)
                     : log.model,
                 style: TextStyle(
                   fontFamily: AppTextStyles.fontFamily,
@@ -273,18 +284,30 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
                 ),
               ),
               children: [
-                _buildInfoRow(context, '请求地址', log.url),
-                _buildInfoRow(context, '请求方法', log.method),
+                _buildInfoRow(
+                  context,
+                  LegacyTextLocalizer.localize('请求地址'),
+                  log.url,
+                ),
+                _buildInfoRow(
+                  context,
+                  LegacyTextLocalizer.localize('请求方法'),
+                  log.method,
+                ),
                 if (log.errorMessage.trim().isNotEmpty)
-                  _buildInfoRow(context, '错误信息', log.errorMessage),
+                  _buildInfoRow(
+                    context,
+                    LegacyTextLocalizer.localize('错误信息'),
+                    log.errorMessage,
+                  ),
                 _buildJsonBlock(
                   context: context,
-                  title: '请求 JSON',
+                  title: LegacyTextLocalizer.localize('请求 JSON'),
                   content: log.requestJson,
                 ),
                 _buildJsonBlock(
                   context: context,
-                  title: '响应 JSON',
+                  title: LegacyTextLocalizer.localize('响应 JSON'),
                   content: log.responseJson,
                 ),
               ],
@@ -332,13 +355,13 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
     return Scaffold(
       backgroundColor: palette.pageBackground,
       appBar: CommonAppBar(
-        title: '请求日志',
+        title: LegacyTextLocalizer.localize('请求日志'),
         primary: true,
         actions: [
           IconButton(
             onPressed: _loadLogs,
             icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
+            tooltip: LegacyTextLocalizer.localize('刷新'),
           ),
         ],
       ),

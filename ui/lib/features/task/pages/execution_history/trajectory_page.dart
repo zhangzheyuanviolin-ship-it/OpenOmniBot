@@ -767,7 +767,7 @@ class _TrajectoryPageState
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                '任务记录',
+                                context.l10n.trajectoryTaskRecords,
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
