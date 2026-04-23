@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/terminal_output_utils.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/chat_message_model.dart';
 
 const String kAgentToolSummaryCardType = 'agent_tool_summary';
@@ -36,28 +37,30 @@ Map<String, dynamic>? resolveActiveAgentToolCard(
 String resolveAgentToolTitle(Map<String, dynamic> cardData) {
   final explicit = (cardData[kAgentToolTitleField] ?? '').toString().trim();
   if (explicit.isNotEmpty) {
-    return explicit;
+    return LegacyTextLocalizer.localize(explicit);
   }
 
   final fromArgs = _extractToolTitleFromArgs(
     (cardData['argsJson'] ?? '').toString(),
   );
   if (fromArgs.isNotEmpty) {
-    return fromArgs;
+    return LegacyTextLocalizer.localize(fromArgs);
   }
 
   final summary = (cardData['summary'] ?? '').toString().trim();
   if (summary.isNotEmpty) {
-    return summary;
+    return LegacyTextLocalizer.localize(summary);
   }
 
   final displayName = (cardData['displayName'] ?? '工具调用').toString().trim();
   final serverName = (cardData['serverName'] ?? '').toString().trim();
   if ((cardData['toolType'] ?? '').toString() == 'mcp' &&
       serverName.isNotEmpty) {
-    return '$displayName · $serverName';
+    return '${LegacyTextLocalizer.localize(displayName)} · $serverName';
   }
-  return displayName.isEmpty ? '工具调用' : displayName;
+  return LegacyTextLocalizer.localize(
+    displayName.isEmpty ? '工具调用' : displayName,
+  );
 }
 
 String resolveAgentToolTerminalOutput(Map<String, dynamic> cardData) {
@@ -89,10 +92,10 @@ String resolveAgentToolPreview(Map<String, dynamic> cardData) {
   final summary = (cardData['summary'] ?? '').toString().trim();
   final title = resolveAgentToolTitle(cardData);
   if (progress.isNotEmpty && progress != title) {
-    return progress;
+    return LegacyTextLocalizer.localize(progress);
   }
   if (summary.isNotEmpty && summary != title) {
-    return summary;
+    return LegacyTextLocalizer.localize(summary);
   }
   return resolveAgentToolStatusLabel(cardData);
 }
@@ -100,58 +103,58 @@ String resolveAgentToolPreview(Map<String, dynamic> cardData) {
 String resolveAgentToolStatusLabel(Map<String, dynamic> cardData) {
   final explicitStatusLabel = (cardData['statusLabel'] ?? '').toString().trim();
   if (explicitStatusLabel.isNotEmpty) {
-    return explicitStatusLabel;
+    return LegacyTextLocalizer.localize(explicitStatusLabel);
   }
   final status = (cardData['status'] ?? 'running').toString();
   final toolType = (cardData['toolType'] ?? 'builtin').toString();
   if (status == 'timeout') {
-    return '超时';
+    return LegacyTextLocalizer.localize('超时');
   }
   if (status == 'interrupted') {
-    return '中断';
+    return LegacyTextLocalizer.localize('中断');
   }
   switch (status) {
     case 'success':
-      return '成功';
+      return LegacyTextLocalizer.localize('成功');
     case 'error':
-      return '失败';
+      return LegacyTextLocalizer.localize('失败');
     default:
-      if (toolType == 'terminal') return '运行中';
-      if (toolType == 'browser') return '浏览中';
-      if (toolType == 'mcp') return '响应中';
-      if (toolType == 'memory') return '处理中';
-      return '执行中';
+      if (toolType == 'terminal') return LegacyTextLocalizer.localize('运行中');
+      if (toolType == 'browser') return LegacyTextLocalizer.localize('浏览中');
+      if (toolType == 'mcp') return LegacyTextLocalizer.localize('响应中');
+      if (toolType == 'memory') return LegacyTextLocalizer.localize('处理中');
+      return LegacyTextLocalizer.localize('执行中');
   }
 }
 
 String resolveAgentToolTypeLabel(Map<String, dynamic> cardData) {
   final explicitTypeLabel = (cardData['toolTypeLabel'] ?? '').toString().trim();
   if (explicitTypeLabel.isNotEmpty) {
-    return explicitTypeLabel;
+    return LegacyTextLocalizer.localize(explicitTypeLabel);
   }
   switch ((cardData['toolType'] ?? '').toString()) {
     case 'terminal':
-      return '终端';
+      return LegacyTextLocalizer.localize('终端');
     case 'browser':
-      return '浏览器';
+      return LegacyTextLocalizer.localize('浏览器');
     case 'workspace':
-      return '工作区';
+      return LegacyTextLocalizer.localize('工作区');
     case 'schedule':
-      return '定时';
+      return LegacyTextLocalizer.localize('定时');
     case 'alarm':
-      return '提醒';
+      return LegacyTextLocalizer.localize('提醒');
     case 'calendar':
-      return '日历';
+      return LegacyTextLocalizer.localize('日历');
     case 'memory':
-      return '记忆';
+      return LegacyTextLocalizer.localize('记忆');
     case 'skill':
       return 'Skill';
     case 'subagent':
-      return '子任务';
+      return LegacyTextLocalizer.localize('子任务');
     case 'mcp':
       return 'MCP';
     default:
-      return '工具';
+      return LegacyTextLocalizer.localize('工具');
   }
 }
 
@@ -197,7 +200,7 @@ String buildAgentToolTranscript(
     final lines = normalized.split('\n');
     if (lines.length > maxTotalLines) {
       normalized = [
-        '[更早记录已省略]',
+        LegacyTextLocalizer.localize('[更早记录已省略]'),
         ...lines.sublist(lines.length - maxTotalLines),
       ].join('\n');
     }
