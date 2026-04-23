@@ -179,7 +179,7 @@ internal fun resolveChatTaskModelOverride(
 internal fun normalizeReasoningEffort(raw: String?): String? {
     val normalized = raw?.trim()?.lowercase().orEmpty()
     return when (normalized) {
-        "low", "high" -> normalized
+        "no", "low", "high" -> normalized
         else -> null
     }
 }

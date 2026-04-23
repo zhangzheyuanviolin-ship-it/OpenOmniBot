@@ -1170,6 +1170,7 @@ object HttpController {
         text: String,
         reasoningEffort: String? = null
     ): ChatCompletionRequest {
+        val disableThinking = reasoningEffort == "no"
         return ChatCompletionRequest(
             model = resolved.resolvedModel,
             messages = listOf(
@@ -1178,7 +1179,8 @@ object HttpController {
                     content = JsonPrimitive(text)
                 )
             ),
-            reasoningEffort = reasoningEffort
+            enableThinking = if (disableThinking) false else null,
+            reasoningEffort = if (disableThinking) null else reasoningEffort
         )
     }
 
@@ -1188,6 +1190,7 @@ object HttpController {
         enableThinking: Boolean? = null,
         reasoningEffort: String? = null
     ): ChatCompletionRequest {
+        val disableThinking = reasoningEffort == "no"
         val chatMessages = messages.map { message ->
             ChatCompletionMessage(
                 role = message["role"]?.toString().orEmpty().ifBlank { "user" },
@@ -1200,8 +1203,8 @@ object HttpController {
         return ChatCompletionRequest(
             model = resolved.resolvedModel,
             messages = chatMessages,
-            enableThinking = enableThinking,
-            reasoningEffort = reasoningEffort,
+            enableThinking = if (disableThinking) false else enableThinking,
+            reasoningEffort = if (disableThinking) null else reasoningEffort,
             streamOptions = ChatCompletionStreamOptions(includeUsage = true),
         )
     }
