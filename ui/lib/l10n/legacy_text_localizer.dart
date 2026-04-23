@@ -207,10 +207,12 @@ class LegacyTextLocalizer {
     '暂无总结内容': 'No summary content',
     '检查更新失败': 'Failed to check for updates',
     '已是最新版': 'Already up to date',
-    '检查 GitHub Release 获取最新版本': 'Checking GitHub Release for the latest version',
+    '检查 GitHub Release 获取最新版本':
+        'Checking GitHub Release for the latest version',
     '检查中...': 'Checking...',
     '查看新版本': 'View new version',
     '检查更新': 'Check for updates',
+    '已关闭思考': 'Thinking disabled',
     '请求日志': 'Request logs',
     '保存中...': 'Saving...',
     '未选择文件': 'No file selected',
@@ -222,8 +224,7 @@ class LegacyTextLocalizer {
     '去开启': 'Enable',
     '清除缓存': 'Clear cache',
     '设置权限': 'Set up permissions',
-    '请放心，这些权限你随时可以收回':
-        'You can revoke these permissions anytime',
+    '请放心，这些权限你随时可以收回': 'You can revoke these permissions anytime',
     '权限检查中...': 'Checking permissions...',
     '继续任务': 'Continue task',
     '继续任务仅要求': 'Continue requires only',
@@ -231,8 +232,7 @@ class LegacyTextLocalizer {
     '可选，允许 Agent 通过 Termux 执行终端命令':
         'Optional: allow the Agent to run terminal commands via Termux',
     '可选': 'Optional',
-    '让小万带你执行一次任务吧！':
-        'Let Omnibot walk you through one task!',
+    '让小万带你执行一次任务吧！': 'Let Omnibot walk you through one task!',
     '其中 Termux 终端能力为可选项，未开启也不影响基础自动化':
         'Termux capability is optional; leaving it off will not affect basic automation',
     '未绑定': 'Unbound',
@@ -246,10 +246,8 @@ class LegacyTextLocalizer {
         'e.g. default_zh / mimo_default / default_en',
     '风格': 'Style',
     '自定义补充': 'Custom note',
-    '唱歌模式下不支持附加风格':
-        'Additional style is not supported in singing mode',
-    '例如：更温柔、节奏慢一点、偏播客感':
-        'e.g. softer, slower, podcast-like',
+    '唱歌模式下不支持附加风格': 'Additional style is not supported in singing mode',
+    '例如：更温柔、节奏慢一点、偏播客感': 'e.g. softer, slower, podcast-like',
     '收起语音设置': 'Collapse voice settings',
     '展开语音设置': 'Expand voice settings',
     '没有匹配的模型': 'No matching models',
@@ -298,8 +296,7 @@ class LegacyTextLocalizer {
     '任务已取消': 'Task canceled',
     '停止工具': 'Stop tool',
     '正在停止工具': 'Stopping tool',
-    '停止工具调用失败，请稍后重试':
-        'Failed to stop tool call. Please try again later.',
+    '停止工具调用失败，请稍后重试': 'Failed to stop tool call. Please try again later.',
     '工具调用': 'Tool call',
     '超时': 'Timeout',
     '中断': 'Interrupted',
@@ -365,18 +362,12 @@ class LegacyTextLocalizer {
       RegExp(r'^继续任务仅要求：(.+)$'),
       (match) => 'Continue requires only: ${match.group(1)!}',
     ),
-    (
-      RegExp(r'^默认：(.+)$'),
-      (match) => 'Default: ${match.group(1)!}',
-    ),
+    (RegExp(r'^默认：(.+)$'), (match) => 'Default: ${match.group(1)!}'),
     (
       RegExp(r'^恢复默认（(.+)）$'),
       (match) => 'Restore default (${match.group(1)!})',
     ),
-    (
-      RegExp(r'^(.+) 已清除绑定$'),
-      (match) => '${match.group(1)!} binding cleared',
-    ),
+    (RegExp(r'^(.+) 已清除绑定$'), (match) => '${match.group(1)!} binding cleared'),
     (
       RegExp(r'^(.+) 已恢复默认模型$'),
       (match) => '${match.group(1)!} restored to default model',
@@ -385,10 +376,7 @@ class LegacyTextLocalizer {
       RegExp(r'^保存 Voice 配置失败：(.+)$'),
       (match) => 'Failed to save Voice config: ${match.group(1)!}',
     ),
-    (
-      RegExp(r'^已切换到 (.+)$'),
-      (match) => 'Switched to ${match.group(1)!}',
-    ),
+    (RegExp(r'^已切换到 (.+)$'), (match) => 'Switched to ${match.group(1)!}'),
     (
       RegExp(r'^已设置思考强度为 (.+)$'),
       (match) => 'Reasoning effort set to ${match.group(1)!}',
@@ -401,38 +389,17 @@ class LegacyTextLocalizer {
       RegExp(r'^更新 Agent 模型失败：(.+)$'),
       (match) => 'Failed to update Agent model: ${match.group(1)!}',
     ),
-    (
-      RegExp(r'^(.+)已复制$'),
-      (match) => '${match.group(1)!} copied',
-    ),
-    (
-      RegExp(r'^(\d+) 条消息$'),
-      (match) => '${match.group(1)!} messages',
-    ),
+    (RegExp(r'^(.+)已复制$'), (match) => '${match.group(1)!} copied'),
+    (RegExp(r'^(\d+) 条消息$'), (match) => '${match.group(1)!} messages'),
     (
       RegExp(r'^(.+) · (\d+) 条消息$'),
       (match) => '${match.group(1)!} · ${match.group(2)!} messages',
     ),
-    (
-      RegExp(r'^匹配 (\d+)%$'),
-      (match) => 'Match ${match.group(1)!}%',
-    ),
-    (
-      RegExp(r'^(\d+) 分钟前$'),
-      (match) => '${match.group(1)!} min ago',
-    ),
-    (
-      RegExp(r'^(\d+) 小时前$'),
-      (match) => '${match.group(1)!} hr ago',
-    ),
-    (
-      RegExp(r'^(\d+) 天前$'),
-      (match) => '${match.group(1)!} days ago',
-    ),
-    (
-      RegExp(r'^(\d+) 秒$'),
-      (match) => '${match.group(1)!}s',
-    ),
+    (RegExp(r'^匹配 (\d+)%$'), (match) => 'Match ${match.group(1)!}%'),
+    (RegExp(r'^(\d+) 分钟前$'), (match) => '${match.group(1)!} min ago'),
+    (RegExp(r'^(\d+) 小时前$'), (match) => '${match.group(1)!} hr ago'),
+    (RegExp(r'^(\d+) 天前$'), (match) => '${match.group(1)!} days ago'),
+    (RegExp(r'^(\d+) 秒$'), (match) => '${match.group(1)!}s'),
     (
       RegExp(r'^(\d+) 分 (\d+) 秒$'),
       (match) => '${match.group(1)!}m ${match.group(2)!}s',
@@ -446,14 +413,8 @@ class LegacyTextLocalizer {
       RegExp(r'^无对话 · (\d+)\/(\d+)$'),
       (match) => 'No conversations · ${match.group(1)!}/${match.group(2)!}',
     ),
-    (
-      RegExp(r'^本地 (.+)%$'),
-      (match) => 'Local ${match.group(1)!}%',
-    ),
-    (
-      RegExp(r'^云端 (.+)%$'),
-      (match) => 'Cloud ${match.group(1)!}%',
-    ),
+    (RegExp(r'^本地 (.+)%$'), (match) => 'Local ${match.group(1)!}%'),
+    (RegExp(r'^云端 (.+)%$'), (match) => 'Cloud ${match.group(1)!}%'),
     (
       RegExp(r'^本地 (.+) · 云端 (.+)$'),
       (match) => 'Local ${match.group(1)!} · Cloud ${match.group(2)!}',
@@ -462,14 +423,8 @@ class LegacyTextLocalizer {
       RegExp(r'^正在搜索\s*(.+?)\s*技能$'),
       (match) => 'Searching ${match.group(1)!} skill',
     ),
-    (
-      RegExp(r'^打开\s*(.+?)\s*应用$'),
-      (match) => 'Opening ${match.group(1)!} app',
-    ),
-    (
-      RegExp(r'^正在打开(.+)$'),
-      (match) => 'Opening ${match.group(1)!}',
-    ),
+    (RegExp(r'^打开\s*(.+?)\s*应用$'), (match) => 'Opening ${match.group(1)!} app'),
+    (RegExp(r'^正在打开(.+)$'), (match) => 'Opening ${match.group(1)!}'),
   ];
 
   static void setResolvedLocale(Locale locale) {

@@ -76,6 +76,7 @@ class AgentOrchestrator(
                     tag,
                     "round=$round request_tools=${toolRegistry.toolsForModel.size}"
                 )
+                val disableThinking = input.executionEnv.reasoningEffort == "no"
                 val turn = llmClient.streamTurn(
                     request = ChatCompletionRequest(
                         messages = messages.toList(),
@@ -83,7 +84,8 @@ class AgentOrchestrator(
                         maxCompletionTokens = 16384,
                         stream = true,
                         streamOptions = ChatCompletionStreamOptions(includeUsage = true),
-                        reasoningEffort = input.executionEnv.reasoningEffort,
+                        enableThinking = if (disableThinking) false else null,
+                        reasoningEffort = if (disableThinking) null else input.executionEnv.reasoningEffort,
                         tools = toolRegistry.toolsForModel,
                         toolChoice = toolChoiceForRound,
                         parallelToolCalls = false

@@ -116,6 +116,30 @@ class HttpAgentLlmClient(
         onReasoningUpdate: (suspend (String) -> Unit)?,
         onContentUpdate: (suspend (String) -> Unit)?
     ): ChatCompletionTurn {
+        return try {
+            doStreamTurnOnce(model, requestJson, onReasoningUpdate, onContentUpdate, forceHttp1 = false)
+        } catch (e: StreamRequestFailure) {
+            if (isHttp2ProtocolError(e)) {
+                OmniLog.w(tag, "HTTP/2 stream PROTOCOL_ERROR, retrying with HTTP/1.1")
+                doStreamTurnOnce(model, requestJson, onReasoningUpdate, onContentUpdate, forceHttp1 = true)
+            } else {
+                throw e
+            }
+        }
+    }
+
+    private fun isHttp2ProtocolError(error: StreamRequestFailure): Boolean {
+        return error.reason.contains("PROTOCOL_ERROR", ignoreCase = true)
+                || error.reason.contains("stream was reset", ignoreCase = true)
+    }
+
+    private suspend fun doStreamTurnOnce(
+        model: String,
+        requestJson: String,
+        onReasoningUpdate: (suspend (String) -> Unit)?,
+        onContentUpdate: (suspend (String) -> Unit)?,
+        forceHttp1: Boolean
+    ): ChatCompletionTurn {
         val streamDone = CompletableDeferred<ChatCompletionTurn>()
         val completed = AtomicBoolean(false)
         val accumulator = AgentLlmStreamAccumulator(
@@ -220,7 +244,8 @@ class HttpAgentLlmClient(
                 explicitApiBase = modelOverride?.apiBase,
                 explicitApiKey = modelOverride?.apiKey,
                 explicitModel = modelOverride?.modelId,
-                explicitProtocolType = modelOverride?.protocolType
+                explicitProtocolType = modelOverride?.protocolType,
+                forceHttp1 = forceHttp1
             )
             return streamDone.await()
         } finally {
