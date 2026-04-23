@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.sse.EventSource
@@ -1119,7 +1120,8 @@ object HttpController {
     private suspend fun postAnthropicStreamRequest(
         resolved: ResolvedSceneRequest,
         requestJson: String,
-        event: EventSourceListener
+        event: EventSourceListener,
+        forceHttp1: Boolean = false
     ): EventSource = withContext(Dispatchers.IO) {
         val base = normalizeApiBase(resolved.apiBase ?: "")
             ?: throw IllegalArgumentException("Invalid apiBase for Anthropic")
@@ -1133,7 +1135,7 @@ object HttpController {
         )
             .addHeader("Accept", "text/event-stream")
             .build()
-        EventSources.createFactory(openAIStreamClient()).newEventSource(
+        EventSources.createFactory(openAIStreamClient(forceHttp1)).newEventSource(
             request,
             createLoggingEventListener(
                 "[anthropic stream model=${resolved.resolvedModel}]",
@@ -1152,8 +1154,11 @@ object HttpController {
 
     // ---- end Anthropic protocol helpers ----
 
-    private fun openAIStreamClient(): OkHttpClient {
+    private fun openAIStreamClient(forceHttp1: Boolean = false): OkHttpClient {
         return OkHttpClient.Builder()
+            .apply {
+                if (forceHttp1) protocols(listOf(Protocol.HTTP_1_1))
+            }
             .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(0, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
@@ -1523,7 +1528,8 @@ object HttpController {
     private suspend fun postOpenAIChatCompletionsStreamRequest(
         resolved: ResolvedSceneRequest,
         requestBodyJson: String,
-        event: EventSourceListener
+        event: EventSourceListener,
+        forceHttp1: Boolean = false
     ): EventSource = withContext(Dispatchers.IO) {
         prepareLocalProviderIfNeeded(resolved)
         if (resolved.protocolType == "anthropic") {
@@ -1535,7 +1541,7 @@ object HttpController {
                 return@withContext buildDummyFailureEventSource(event, "Failed to parse request for Anthropic conversion")
             }
             val anthropicJson = convertToAnthropicRequestJson(parsedRequest)
-            return@withContext postAnthropicStreamRequest(resolved, anthropicJson, event)
+            return@withContext postAnthropicStreamRequest(resolved, anthropicJson, event, forceHttp1)
         }
         val base = normalizeApiBase(resolved.apiBase ?: "")
             ?: throw IllegalArgumentException("Invalid apiBase")
@@ -1552,7 +1558,7 @@ object HttpController {
         )
             .addHeader("Accept", "text/event-stream")
             .build()
-        EventSources.createFactory(openAIStreamClient()).newEventSource(
+        EventSources.createFactory(openAIStreamClient(forceHttp1)).newEventSource(
             request,
             createLoggingEventListener(
                 "[openai_compatible chat-completions model=${resolved.resolvedModel}]",
@@ -1690,7 +1696,8 @@ object HttpController {
         explicitApiBase: String? = null,
         explicitApiKey: String? = null,
         explicitModel: String? = null,
-        explicitProtocolType: String? = null
+        explicitProtocolType: String? = null,
+        forceHttp1: Boolean = false
     ): EventSource {
         val resolved = resolveSceneRequest(
             modelOrScene = model,
@@ -1703,7 +1710,8 @@ object HttpController {
         return postOpenAIChatCompletionsStreamRequest(
             resolved = resolved,
             requestBodyJson = requestBodyJson,
-            event = event
+            event = event,
+            forceHttp1 = forceHttp1
         )
     }
 
