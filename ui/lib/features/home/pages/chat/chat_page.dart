@@ -517,7 +517,11 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       mode: nextMode,
     );
     await ConversationService.setCurrentConversationTarget(nextTarget);
-    showToast(nextMode == ConversationMode.chatOnly ? '已进入仅聊天模式' : '已退出仅聊天模式');
+    showToast(
+      LegacyTextLocalizer.localize(
+        nextMode == ConversationMode.chatOnly ? '已进入仅聊天模式' : '已退出仅聊天模式',
+      ),
+    );
   }
 
   String get _expectedBrowserWorkspaceId => chatConversationWorkspaceId(
@@ -1282,7 +1286,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     final waitingCardId = _openClawWaitingCardId(taskId);
     final cardData = {
       'type': 'stage_hint',
-      'hint': _openClawWaitingHint,
+      'hint': LegacyTextLocalizer.localize(_openClawWaitingHint),
       'statusKey': _openClawWaitingStatusKey,
       'taskID': taskId,
       'startTime': DateTime.now().millisecondsSinceEpoch,
