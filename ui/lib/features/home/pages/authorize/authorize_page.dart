@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/authorize/widgets/permission_section.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/special_permission.dart';
+import 'package:ui/theme/theme_context.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
 import '../../../../services/device_service.dart';
@@ -153,9 +154,10 @@ class _AuthorizePageState extends State<AuthorizePage>
   @override
   Widget build(BuildContext context) {
     final requiredPermissionHint = _requiredPermissionHint();
+    final palette = context.omniPalette;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: palette.pageBackground,
       appBar: CommonAppBar(
         primary: true,
         onBackPressed: () => Navigator.of(context).pop(false),
@@ -175,7 +177,7 @@ class _AuthorizePageState extends State<AuthorizePage>
                       Text(
                         LegacyTextLocalizer.localize('设置权限'),
                         style: TextStyle(
-                          color: Colors.black.withValues(alpha: 0.80),
+                          color: palette.textPrimary,
                           fontSize: 35,
                           fontWeight: FontWeight.w500,
                           height: 0.86,
@@ -185,7 +187,7 @@ class _AuthorizePageState extends State<AuthorizePage>
                       Text(
                         LegacyTextLocalizer.localize('请放心，这些权限你随时可以收回'),
                         style: TextStyle(
-                          color: Color(0xFF666666),
+                          color: palette.textSecondary,
                           fontSize: 14,
                           fontWeight: FontWeight.w400,
                           height: 1.57,
@@ -195,8 +197,8 @@ class _AuthorizePageState extends State<AuthorizePage>
                       if (requiredPermissionHint != null)
                         Text(
                           requiredPermissionHint,
-                          style: const TextStyle(
-                            color: Color(0xFF1930D9),
+                          style: TextStyle(
+                            color: palette.accentPrimary,
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                             height: 1.57,
@@ -218,7 +220,7 @@ class _AuthorizePageState extends State<AuthorizePage>
             ),
             Container(
               padding: const EdgeInsets.fromLTRB(62, 16, 62, 34),
-              decoration: const BoxDecoration(color: Colors.white),
+              decoration: BoxDecoration(color: palette.pageBackground),
               child: ValueListenableBuilder<bool>(
                 valueListenable: _canContinue,
                 builder: (context, authorized, child) {

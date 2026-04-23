@@ -602,6 +602,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       onUserMessageLongPressStart: mode == ChatPageMode.normal
           ? _handleUserMessageLongPressStart
           : null,
+      onLoadMore: loadMoreMessages,
+      hasMore: hasMoreMessages,
       visualProfile: visualProfile,
       appearanceConfig: appearanceConfig,
     );

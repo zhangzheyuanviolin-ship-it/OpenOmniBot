@@ -115,15 +115,17 @@ jobs:
       - name: Rename release artifacts
         run: |
           RELEASE_DIR="app/build/outputs/apk/production/release"
-          RELEASE_APK_NAME="OpenOmniBot-${GITHUB_REF_NAME}.apk"
+          SAFE_REF_NAME="$(printf '%s' "${GITHUB_REF_NAME}" | sed 's#[^A-Za-z0-9._-]#-#g')"
+          RELEASE_APK_NAME="OpenOmniBot-${SAFE_REF_NAME}.apk"
           mv "${RELEASE_DIR}/app-production-release.apk" "${RELEASE_DIR}/${RELEASE_APK_NAME}"
           mv "${RELEASE_DIR}/app-production-release.apk.sha256" "${RELEASE_DIR}/${RELEASE_APK_NAME}.sha256"
+          echo "SAFE_REF_NAME=${SAFE_REF_NAME}" >> "$GITHUB_ENV"
           echo "RELEASE_APK_NAME=${RELEASE_APK_NAME}" >> "$GITHUB_ENV"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk-${{ github.ref_name }}
+          name: release-apk-${{ env.SAFE_REF_NAME }}
           path: |
             app/build/outputs/apk/production/release/${{ env.RELEASE_APK_NAME }}
             app/build/outputs/apk/production/release/${{ env.RELEASE_APK_NAME }}.sha256
