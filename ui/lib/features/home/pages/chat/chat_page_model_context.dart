@@ -291,9 +291,9 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
       });
     }
     showToast(
-      normalizedEffort == 'no'
-          ? (LegacyTextLocalizer.isEnglish ? 'Thinking disabled' : '已关闭思考')
-          : (LegacyTextLocalizer.isEnglish ? 'Thinking effort set to $normalizedEffort' : '已设置思考强度为 $normalizedEffort'),
+      LegacyTextLocalizer.localize(
+        normalizedEffort == 'no' ? '已关闭思考' : '已设置思考强度为 $normalizedEffort',
+      ),
       type: ToastType.success,
     );
   }
@@ -1199,7 +1199,9 @@ class _ConversationModelSelectorPopupEntryState
                               Padding(
                                 padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
                                 child: Text(
-                                  LegacyTextLocalizer.localize('该 Provider 暂无可选模型'),
+                                  LegacyTextLocalizer.localize(
+                                    '该 Provider 暂无可选模型',
+                                  ),
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: context.isDarkTheme
