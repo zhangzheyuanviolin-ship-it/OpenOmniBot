@@ -75,7 +75,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         _supportsReasoningEffortCommand) {
       final activeEffort = _activeConversationReasoningEffort;
       final query = _slashCommandRouteQuery(route).toLowerCase();
-      final efforts = <String>['low', 'high']
+      final efforts = <String>['no', 'low', 'high']
           .where((effort) {
             return query.isEmpty || effort.contains(query);
           })
@@ -136,7 +136,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         'summary': activeEffort == null
             ? (LegacyTextLocalizer.isEnglish ? 'Set reasoning effort for this session' : '设置当前会话的思考强度')
             : (LegacyTextLocalizer.isEnglish ? 'Current effort: $activeEffort' : '当前思考强度：$activeEffort'),
-        'progress': LegacyTextLocalizer.isEnglish ? 'Choose low or high' : '点击后选择 low 或 high',
+        'progress': LegacyTextLocalizer.isEnglish ? 'Choose no, low or high' : '点击后选择 no、low 或 high',
       });
     }
     if (_isOpenClawSurface) {
@@ -176,6 +176,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         _inputFocusNode.requestFocus();
         _handleSlashCommandInput();
         break;
+      case 'no':
       case 'low':
       case 'high':
         unawaited(_applyConversationReasoningEffort(command));
