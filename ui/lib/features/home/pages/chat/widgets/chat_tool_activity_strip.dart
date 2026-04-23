@@ -6,6 +6,7 @@ import 'package:ui/features/home/pages/chat/tool_activity_utils.dart'
 import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail_gesture_gate.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_transcript.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/terminal_output_utils.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
@@ -322,7 +323,13 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
     });
     ScaffoldMessenger.maybeOf(
       context,
-    )?.showSnackBar(const SnackBar(content: Text('停止工具调用失败，请稍后重试')));
+    )?.showSnackBar(
+      SnackBar(
+        content: Text(
+          LegacyTextLocalizer.localize('停止工具调用失败，请稍后重试'),
+        ),
+      ),
+    );
   }
 
   void _handleHistoryPointerDown(int pointer) {
@@ -782,7 +789,9 @@ class _ToolStopButton extends StatelessWidget {
         : Colors.white.withValues(alpha: enabled ? 0.9 : 0.72);
 
     return Tooltip(
-      message: enabled ? '停止工具' : '正在停止工具',
+      message: LegacyTextLocalizer.localize(
+        enabled ? '停止工具' : '正在停止工具',
+      ),
       child: GestureDetector(
         key: kChatToolActivityStopKey,
         behavior: HitTestBehavior.opaque,

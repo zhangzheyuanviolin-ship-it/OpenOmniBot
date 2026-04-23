@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/authorize/widgets/permission_section.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -142,7 +143,12 @@ class _AuthorizePageState extends State<AuthorizePage>
         .toList(growable: false);
 
     if (labels.isEmpty) return null;
-    return '继续任务仅要求：${labels.join('、')}';
+    if (LegacyTextLocalizer.isEnglish) {
+      return 'Continue requires only: ${labels.join(', ')}';
+    }
+    return LegacyTextLocalizer.localize(
+      '继续任务仅要求：${labels.join('、')}',
+    );
   }
 
   @override
@@ -169,7 +175,7 @@ class _AuthorizePageState extends State<AuthorizePage>
                     children: [
                       const SizedBox(height: 35),
                       Text(
-                        '设置权限',
+                        LegacyTextLocalizer.localize('设置权限'),
                         style: TextStyle(
                           color: palette.textPrimary,
                           fontSize: 35,
@@ -179,7 +185,7 @@ class _AuthorizePageState extends State<AuthorizePage>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '请放心，这些权限你随时可以收回',
+                        LegacyTextLocalizer.localize('请放心，这些权限你随时可以收回'),
                         style: TextStyle(
                           color: palette.textSecondary,
                           fontSize: 14,
@@ -254,8 +260,8 @@ class _AuthorizePageState extends State<AuthorizePage>
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                const Text(
-                                  '权限检查中...',
+                                Text(
+                                  LegacyTextLocalizer.localize('权限检查中...'),
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 17,
@@ -264,8 +270,8 @@ class _AuthorizePageState extends State<AuthorizePage>
                                   ),
                                 ),
                               ] else
-                                const Text(
-                                  '继续任务',
+                                Text(
+                                  LegacyTextLocalizer.localize('继续任务'),
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 17,

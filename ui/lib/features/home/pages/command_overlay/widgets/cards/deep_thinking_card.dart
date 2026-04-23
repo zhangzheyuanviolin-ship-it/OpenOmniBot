@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail_gesture_gate.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import './bot_status.dart';
@@ -328,18 +329,22 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
 
   String _formatTime(int seconds) {
     if (seconds < 60) {
-      return '$seconds 秒';
+      return LegacyTextLocalizer.localize('$seconds 秒');
     } else {
       final minutes = seconds ~/ 60;
       final remainingSeconds = seconds % 60;
-      return '$minutes 分 $remainingSeconds 秒';
+      return LegacyTextLocalizer.localize('$minutes 分 $remainingSeconds 秒');
     }
   }
 
   /// 构建文本显示
   Widget _buildText(String text, Color textColor) {
+    final localizedText = text
+        .split('\n')
+        .map(LegacyTextLocalizer.localize)
+        .join('\n');
     return Text(
-      text,
+      localizedText,
       style: TextStyle(
         color: textColor,
         fontSize: 12 * widget.textScale,
@@ -371,20 +376,20 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
     String hintText;
     switch (widget.stage) {
       case 1:
-        hintText = '正在思考';
+        hintText = LegacyTextLocalizer.localize('正在思考');
         break;
       case 2:
-        hintText = '正在思考';
+        hintText = LegacyTextLocalizer.localize('正在思考');
         break;
       case 3:
-        hintText = '正在思考';
+        hintText = LegacyTextLocalizer.localize('正在思考');
         break;
       case 4:
       case 5:
-        hintText = '完成思考';
+        hintText = LegacyTextLocalizer.localize('完成思考');
         break;
       default:
-        hintText = '正在思考';
+        hintText = LegacyTextLocalizer.localize('正在思考');
     }
 
     final header = canCollapse && hasContent
@@ -546,7 +551,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '准备执行任务...',
+                  LegacyTextLocalizer.localize('准备执行任务...'),
                   style: TextStyle(
                     color: secondaryTextColor,
                     fontSize: 12 * widget.textScale,
@@ -560,7 +565,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
                       ? () => widget.onCancelTask!(widget.taskId!)
                       : null,
                   child: Text(
-                    '取消任务',
+                    LegacyTextLocalizer.localize('取消任务'),
                     style: TextStyle(
                       color: context.isDarkTheme
                           ? palette.accentPrimary
@@ -579,7 +584,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
         ? Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              '任务已取消',
+              LegacyTextLocalizer.localize('任务已取消'),
               style: TextStyle(
                 color: secondaryTextColor,
                 fontSize: 12 * widget.textScale,
