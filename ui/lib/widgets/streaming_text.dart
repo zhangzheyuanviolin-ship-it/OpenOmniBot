@@ -187,30 +187,39 @@ class _StreamingTextState extends State<StreamingText> {
         // 如果启用Markdown，根据 markdownRenderedLength 决定渲染策略
         if (widget.enableMarkdown) {
           final mdLen = widget.markdownRenderedLength;
-          // 分段渲染：已 flush 的前缀用 Markdown，新增尾部用纯文本
+          // 分段渲染：已 flush 的前缀用 Markdown，新增尾部作为
+          // trailingInline 追加到 Markdown 最后一个段落的行内位置
           if (mdLen != null && mdLen > 0 && mdLen < displayLength) {
             final safeMdLen = _clampToCodePointBoundary(displayText, mdLen);
             final mdText = displayText.substring(0, safeMdLen);
             final plainTail = displayText.substring(safeMdLen);
 
-            Widget child = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                OmnibotMarkdownBody(
-                  data: mdText,
-                  baseStyle: widget.style,
-                  inlineResourcePlainStyle: true,
+            // 将纯文本尾部 + 原始 trailing 组合为一个行内 Widget
+            Widget? inlineTrailing;
+            if (plainTail.isNotEmpty || widget.trailing != null) {
+              inlineTrailing = Text.rich(
+                TextSpan(
+                  children: [
+                    if (plainTail.isNotEmpty)
+                      TextSpan(text: plainTail, style: widget.style),
+                    if (widget.trailing != null)
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.middle,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: widget.trailing!,
+                        ),
+                      ),
+                  ],
                 ),
-                if (plainTail.isNotEmpty)
-                  RichText(
-                    text: TextSpan(
-                      text: plainTail,
-                      style: widget.style,
-                      children: _trailingSpanOnly(widget.trailing),
-                    ),
-                  ),
-              ],
+              );
+            }
+
+            Widget child = OmnibotMarkdownBody(
+              data: mdText,
+              baseStyle: widget.style,
+              inlineResourcePlainStyle: true,
+              trailingInline: inlineTrailing,
             );
 
             return widget.selectable
@@ -315,20 +324,6 @@ class _StreamingTextState extends State<StreamingText> {
           ),
         ),
     ], trailing);
-  }
-
-  /// 仅生成 trailing WidgetSpan（用于分段渲染时的纯文本尾部）
-  List<InlineSpan>? _trailingSpanOnly(Widget? trailing) {
-    if (trailing == null) return null;
-    return [
-      WidgetSpan(
-        alignment: PlaceholderAlignment.middle,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: trailing,
-        ),
-      ),
-    ];
   }
 
   int _clampToCodePointBoundary(String text, int requestedLength) {
