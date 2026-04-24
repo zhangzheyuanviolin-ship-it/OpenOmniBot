@@ -8,6 +8,7 @@ import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/office_preview_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/pdf_preview_service.dart';
+import 'package:ui/widgets/chat_drawer_gesture_guard.dart';
 import 'package:ui/widgets/image_preview_overlay.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:video_player/video_player.dart';
@@ -1330,9 +1331,11 @@ class _OfficePreviewSectionView extends StatelessWidget {
           ],
           if (section.hasTable) ...[
             const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: _OfficePreviewTable(rows: section.tableRows),
+            ChatDrawerGestureGuard(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: _OfficePreviewTable(rows: section.tableRows),
+              ),
             ),
           ],
         ],
