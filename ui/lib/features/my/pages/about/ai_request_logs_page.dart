@@ -129,7 +129,10 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
               ),
             ],
           ),
-          _CollapsibleJsonView(content: content),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: _CollapsibleJsonView(content: content),
+          ),
         ],
       ),
     );
@@ -498,16 +501,13 @@ class _JsonNodeState extends State<_JsonNode> {
             Text('"${widget.fieldKey}"', style: keyStyle),
             Text(': ', style: punctuationStyle),
           ],
-          Flexible(
-            child: Text(
-              '${_formatLeafValue(widget.data)}$trailing',
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-                height: 1.5,
-                color: _valueColor(context, widget.data),
-              ),
-              softWrap: true,
+          Text(
+            '${_formatLeafValue(widget.data)}$trailing',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              height: 1.5,
+              color: _valueColor(context, widget.data),
             ),
           ),
         ],
@@ -612,6 +612,7 @@ class _JsonNodeState extends State<_JsonNode> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(width: 18), // 对齐展开箭头的空间
@@ -631,6 +632,7 @@ class _JsonNodeState extends State<_JsonNode> {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
