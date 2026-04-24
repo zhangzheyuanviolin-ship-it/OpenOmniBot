@@ -9,6 +9,7 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
   static const double _kBrowserOverlayTopMargin = 64;
   static const double _kBrowserOverlayBottomMargin = 16;
   static const double _kPageSwipeThreshold = 18;
+  static const double _kDrawerSwipeThreshold = 36;
   static const double _kRevealInterruptThreshold = 6;
 
   void _applyPageVerticalIntent(double delta) {
@@ -21,16 +22,46 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
     );
   }
 
+  bool _maybeOpenDrawerFromPageSwipe() {
+    if (!mounted ||
+        _activeSurfaceMode != ChatSurfaceMode.normal ||
+        _isHdPadLandscapeForMediaQuery(MediaQuery.of(context))) {
+      return false;
+    }
+    final horizontalDelta = _pageHorizontalDragDelta;
+    if (horizontalDelta < _kDrawerSwipeThreshold) {
+      return false;
+    }
+    if (horizontalDelta.abs() <= _pageVerticalDragDelta.abs() * 1.2) {
+      return false;
+    }
+    final scaffoldState = _scaffoldKey.currentState;
+    if (scaffoldState == null || scaffoldState.isDrawerOpen) {
+      return false;
+    }
+    _dismissChatInputFocus();
+    scaffoldState.openDrawer();
+    return true;
+  }
+
   @override
   void _handlePagePointerDown(PointerDownEvent event) {
     if (_activeSurfaceMode != ChatSurfaceMode.normal) {
       _pageGesturePointerId = null;
+      _pageHorizontalDragDelta = 0;
       _pageVerticalDragDelta = 0;
       return;
     }
     if (_isBrowserOverlayVisible &&
         _isPointerInside(_browserOverlayKey, event.position)) {
       _pageGesturePointerId = null;
+      _pageHorizontalDragDelta = 0;
+      _pageVerticalDragDelta = 0;
+      return;
+    }
+    if (_isPointerInside(_inputAreaKey, event.position)) {
+      _pageGesturePointerId = null;
+      _pageHorizontalDragDelta = 0;
       _pageVerticalDragDelta = 0;
       return;
     }
@@ -40,10 +71,12 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
         (_isPointerInside(_openClawPanelKey, event.position) ||
             _isPointerInside(_slashCommandStripKey, event.position))) {
       _pageGesturePointerId = null;
+      _pageHorizontalDragDelta = 0;
       _pageVerticalDragDelta = 0;
       return;
     }
     _pageGesturePointerId = event.pointer;
+    _pageHorizontalDragDelta = 0;
     _pageVerticalDragDelta = 0;
   }
 
@@ -53,15 +86,19 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
         _activeSurfaceMode != ChatSurfaceMode.normal) {
       return;
     }
-    if (ToolCardDetailGestureGate.containsPointer(event.pointer)) {
+    if (ToolCardDetailGestureGate.containsPointer(event.pointer) ||
+        ChatDrawerGestureGate.containsPointer(event.pointer)) {
       _pageGesturePointerId = null;
+      _pageHorizontalDragDelta = 0;
       _pageVerticalDragDelta = 0;
       return;
     }
+    _pageHorizontalDragDelta += event.delta.dx;
     _pageVerticalDragDelta += event.delta.dy;
     if (_normalSurfaceModelRevealTimer != null &&
         !_normalSurfaceModelRevealInterrupted &&
-        _pageVerticalDragDelta.abs() >= _kRevealInterruptThreshold) {
+        (_pageVerticalDragDelta.abs() >= _kRevealInterruptThreshold ||
+            _pageHorizontalDragDelta.abs() >= _kRevealInterruptThreshold)) {
       _interruptNormalSurfaceModelReveal();
     }
   }
@@ -71,13 +108,19 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
     if (event.pointer != _pageGesturePointerId) {
       return;
     }
-    if (ToolCardDetailGestureGate.containsPointer(event.pointer)) {
+    if (ToolCardDetailGestureGate.containsPointer(event.pointer) ||
+        ChatDrawerGestureGate.containsPointer(event.pointer)) {
       _pageGesturePointerId = null;
+      _pageHorizontalDragDelta = 0;
       _pageVerticalDragDelta = 0;
       return;
     }
-    _applyPageVerticalIntent(_pageVerticalDragDelta);
+    final handledDrawerSwipe = _maybeOpenDrawerFromPageSwipe();
+    if (!handledDrawerSwipe) {
+      _applyPageVerticalIntent(_pageVerticalDragDelta);
+    }
     _pageGesturePointerId = null;
+    _pageHorizontalDragDelta = 0;
     _pageVerticalDragDelta = 0;
   }
 
@@ -87,6 +130,7 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
       return;
     }
     _pageGesturePointerId = null;
+    _pageHorizontalDragDelta = 0;
     _pageVerticalDragDelta = 0;
   }
 

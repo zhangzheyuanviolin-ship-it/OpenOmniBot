@@ -47,6 +47,7 @@ import 'package:ui/services/storage_service.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/features/home/pages/chat/utils/deep_thinking_persistence.dart';
+import 'package:ui/widgets/chat_drawer_gesture_guard.dart';
 
 // 导入 Mixins
 import 'mixins/chat_message_handler.dart';
@@ -319,6 +320,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   int _browserOverlayViewSeed = 0;
   String? _lastObservedBrowserSnapshotSignature;
   int? _pageGesturePointerId;
+  double _pageHorizontalDragDelta = 0;
   double _pageVerticalDragDelta = 0;
   Timer? _normalSurfaceModelRevealTimer;
   bool _normalSurfaceModelRevealInterrupted = false;
