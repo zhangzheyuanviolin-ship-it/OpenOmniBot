@@ -51,10 +51,8 @@ class MessageBubble extends StatelessWidget {
   final OnRequestAuthorize? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
-  final bool showUserEditButton;
   final bool isUserMessageEditing;
   final TextEditingController? userMessageEditController;
-  final VoidCallback? onUserEditTap;
   final VoidCallback? onCancelUserEdit;
   final VoidCallback? onSaveUserEdit;
   final VoidCallback? onStreamingTextLayoutChanged;
@@ -71,10 +69,8 @@ class MessageBubble extends StatelessWidget {
     this.onParentScrollHandoff,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
-    this.showUserEditButton = false,
     this.isUserMessageEditing = false,
     this.userMessageEditController,
-    this.onUserEditTap,
     this.onCancelUserEdit,
     this.onSaveUserEdit,
     this.onStreamingTextLayoutChanged,
@@ -176,16 +172,11 @@ class MessageBubble extends StatelessWidget {
             child: Container(
               key: ValueKey('user-message-bubble-${message.id}'),
               constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: ShapeDecoration(
                 color: visualProfile.userBubbleColor,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(18),
-                    topRight: Radius.circular(8),
-                    bottomLeft: Radius.circular(18),
-                    bottomRight: Radius.circular(18),
-                  ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ),
               child: Column(
@@ -207,32 +198,13 @@ class MessageBubble extends StatelessWidget {
                   if (!isUserMessageEditing && linkPreviews.isNotEmpty) ...[
                     if (text.isNotEmpty || attachments.isNotEmpty)
                       const SizedBox(height: 8),
-                    _buildLinkPreviewList(context, linkPreviews),
-                  ],
-                  if (!isUserMessageEditing &&
-                      showUserEditButton &&
-                      onUserEditTap != null)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 28,
-                          height: 28,
-                        ),
-                        padding: EdgeInsets.zero,
-                        splashRadius: 16,
-                        tooltip: 'Edit message',
-                        onPressed: onUserEditTap,
-                        icon: Icon(
-                          Icons.edit_outlined,
-                          size: 16,
-                          color: visualProfile.primaryTextColor.withValues(
-                            alpha: 0.82,
-                          ),
-                        ),
-                      ),
+                    _buildLinkPreviewList(
+                      context,
+                      linkPreviews,
+                      compactStyle: true,
+                      isUserMessage: true,
                     ),
+                  ],
                 ],
               ),
             ),
@@ -258,7 +230,12 @@ class MessageBubble extends StatelessWidget {
         if (linkPreviews.isNotEmpty) ...[
           if (text.isNotEmpty || attachments.isNotEmpty)
             const SizedBox(height: 8),
-          _buildLinkPreviewList(context, linkPreviews),
+          _buildLinkPreviewList(
+            context,
+            linkPreviews,
+            compactStyle: true,
+            isUserMessage: false,
+          ),
         ],
       ],
     );
@@ -463,11 +440,13 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // 链接预览是块级卡片，不塞进 Markdown 行内渲染，便于展示摘要和封面图。
+  // 链接预览独立成块，便于保持引用式层级和轻量点击反馈。
   Widget _buildLinkPreviewList(
     BuildContext context,
-    List<ChatLinkPreview> previews,
-  ) {
+    List<ChatLinkPreview> previews, {
+    required bool compactStyle,
+    required bool isUserMessage,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: previews.asMap().entries.map((entry) {
@@ -475,7 +454,13 @@ class MessageBubble extends StatelessWidget {
           padding: EdgeInsets.only(
             bottom: entry.key == previews.length - 1 ? 0 : 8,
           ),
-          child: _buildLinkPreviewCard(context, entry.value, entry.key),
+          child: _buildLinkPreviewCard(
+            context,
+            entry.value,
+            entry.key,
+            compactStyle: compactStyle,
+            isUserMessage: isUserMessage,
+          ),
         );
       }).toList(),
     );
@@ -484,8 +469,18 @@ class MessageBubble extends StatelessWidget {
   Widget _buildLinkPreviewCard(
     BuildContext context,
     ChatLinkPreview preview,
-    int index,
-  ) {
+    int index, {
+    required bool compactStyle,
+    required bool isUserMessage,
+  }) {
+    if (compactStyle) {
+      return _buildCompactLinkPreview(
+        context,
+        preview,
+        index,
+        isUserMessage: isUserMessage,
+      );
+    }
     final isEnglish =
         Localizations.maybeLocaleOf(context)?.languageCode == 'en';
     final title = preview.title.trim();
@@ -605,6 +600,159 @@ class MessageBubble extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildCompactLinkPreview(
+    BuildContext context,
+    ChatLinkPreview preview,
+    int index, {
+    required bool isUserMessage,
+  }) {
+    final isEnglish =
+        Localizations.maybeLocaleOf(context)?.languageCode == 'en';
+    final title = preview.title.trim();
+    final description = preview.description.trim();
+    final siteName = preview.displaySiteName.trim();
+    final hasImage =
+        preview.imageUrl.startsWith('http://') ||
+        preview.imageUrl.startsWith('https://');
+    final primaryColor = isUserMessage
+        ? visualProfile.primaryTextColor
+        : _resolvedAiPrimaryTextColor(context);
+    final secondaryBaseColor = isUserMessage
+        ? visualProfile.primaryTextColor
+        : _resolvedAiSecondaryTextColor(context);
+    final lineColor = secondaryBaseColor.withValues(alpha: 0.42);
+    final metaColor = secondaryBaseColor.withValues(alpha: 0.82);
+    final secondaryColor = secondaryBaseColor.withValues(alpha: 0.94);
+    final statusLabel = switch (preview.status) {
+      ChatLinkPreview.statusLoading => isEnglish ? 'Loading preview' : '加载预览中',
+      ChatLinkPreview.statusFailed =>
+        isEnglish ? 'Preview unavailable' : '预览暂不可用',
+      _ => '',
+    };
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: ValueKey('link-preview-card-$index'),
+        onTap: () {
+          if (preview.url.isEmpty) {
+            return;
+          }
+          OmnibotResourceService.handleLinkTap(preview.url);
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          key: ValueKey('link-preview-quote-$index'),
+          constraints: BoxConstraints(maxWidth: isUserMessage ? 320 : 360),
+          padding: const EdgeInsets.only(left: 10, top: 2, right: 2, bottom: 2),
+          decoration: BoxDecoration(
+            border: Border(left: BorderSide(color: lineColor, width: 3)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (siteName.isNotEmpty)
+                        Text(
+                          siteName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: metaColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            height: 1.2,
+                          ),
+                        ),
+                      if (title.isNotEmpty) ...[
+                        if (siteName.isNotEmpty) const SizedBox(height: 2),
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: primaryColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            height: 1.22,
+                          ),
+                        ),
+                      ],
+                      if (description.isNotEmpty) ...[
+                        if (title.isNotEmpty || siteName.isNotEmpty)
+                          const SizedBox(height: 2),
+                        Text(
+                          description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: secondaryColor,
+                            fontSize: 10.5,
+                            height: 1.25,
+                          ),
+                        ),
+                      ],
+                      if (statusLabel.isNotEmpty &&
+                          preview.status != ChatLinkPreview.statusReady) ...[
+                        if (title.isNotEmpty ||
+                            description.isNotEmpty ||
+                            siteName.isNotEmpty)
+                          const SizedBox(height: 2),
+                        Text(
+                          statusLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: metaColor,
+                            fontSize: 10,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              if (hasImage) ...[
+                const SizedBox(width: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    preview.imageUrl,
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _buildCompactLinkPreviewImageFallback(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactLinkPreviewImageFallback() {
+    return Container(
+      width: 40,
+      height: 40,
+      alignment: Alignment.center,
+      color: visualProfile.primaryTextColor.withValues(alpha: 0.08),
+      child: Icon(
+        Icons.link_outlined,
+        size: 14,
+        color: visualProfile.primaryTextColor.withValues(alpha: 0.72),
       ),
     );
   }
@@ -748,14 +896,15 @@ class MessageBubble extends StatelessWidget {
               _buildUserAttachmentList(context, attachments),
             ],
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 8,
+              overflowAlignment: OverflowBarAlignment.end,
               children: [
                 TextButton(
                   onPressed: onCancelUserEdit,
                   child: const Text('Cancel'),
                 ),
-                const SizedBox(width: 8),
                 FilledButton(
                   onPressed: canSave ? onSaveUserEdit : null,
                   style: FilledButton.styleFrom(

@@ -4,6 +4,7 @@ import cn.com.omnimind.assists.controller.http.HttpController
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionTurn
 import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
+import cn.com.omnimind.baselib.llm.ReasoningStreamUpdatePolicy
 import cn.com.omnimind.baselib.util.OmniLog
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -42,7 +43,8 @@ class HttpAgentLlmClient(
     private val tag = "HttpAgentLlmClient"
 
     private companion object {
-        const val REASONING_UPDATE_INTERVAL_MS = 300L
+        const val REASONING_UPDATE_INTERVAL_MS =
+            ReasoningStreamUpdatePolicy.DEFAULT_INTERVAL_MS
     }
 
     private data class StreamRequestVariant(
@@ -209,8 +211,12 @@ class HttpAgentLlmClient(
                     return@synchronized
                 }
                 if (reasoningEmitJob?.isActive == true) return
-                val elapsed = System.currentTimeMillis() - lastReasoningEmitAt
-                val delayMs = REASONING_UPDATE_INTERVAL_MS - elapsed
+                val delayMs = ReasoningStreamUpdatePolicy.nextDelayMs(
+                    hasEmittedBefore = lastReasoningEmitLength > 0,
+                    lastEmitAtMs = lastReasoningEmitAt,
+                    nowMs = System.currentTimeMillis(),
+                    intervalMs = REASONING_UPDATE_INTERVAL_MS
+                )
                 if (delayMs <= 0L) {
                     snapshot = collectReasoningSnapshotLocked()
                 } else {

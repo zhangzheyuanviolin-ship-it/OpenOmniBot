@@ -8,7 +8,7 @@ const double _kSlashCommandDrawerRadius = 18.0;
 const double _kSlashCommandDrawerHandleWidth = 36.0;
 const double _kSlashCommandDrawerHandleHeight = 4.0;
 
-enum _UserMessageQuickAction { copy, retry }
+enum _UserMessageQuickAction { copy, edit, retry }
 
 mixin _ChatPageUiMixin on _ChatPageStateBase {
   ChatPaneOverlayAnchorGeometry? _lastStableToolActivityAnchorGeometry;
@@ -616,9 +616,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           : null,
       userMessageEditController: mode == ChatPageMode.normal
           ? _userMessageEditControllerForMode(mode)
-          : null,
-      onUserMessageEditRequested: mode == ChatPageMode.normal
-          ? _startEditingLatestUserMessage
           : null,
       onUserMessageEditCancelled: mode == ChatPageMode.normal
           ? _cancelUserMessageEditing
@@ -1519,11 +1516,15 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
 
     final action = await _showUserMessageQuickMenu(
       details.globalPosition,
+      showEditAction: _canEditUserMessage(message),
       showRetryAction: _canRetryUserMessage(message),
     );
     if (!mounted || action == null) return;
 
     switch (action) {
+      case _UserMessageQuickAction.edit:
+        _startEditingLatestUserMessage(message);
+        return;
       case _UserMessageQuickAction.copy:
         if (text.isEmpty) {
           showToast(LegacyTextLocalizer.isEnglish
@@ -1541,9 +1542,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
 
   Future<_UserMessageQuickAction?> _showUserMessageQuickMenu(
     Offset globalPosition, {
+    required bool showEditAction,
     required bool showRetryAction,
   }) {
-    final estimatedMenuHeight = showRetryAction ? 116.0 : 60.0;
+    final actionCount =
+        1 + (showEditAction ? 1 : 0) + (showRetryAction ? 1 : 0);
+    final estimatedMenuHeight = 4 + actionCount * 48.0 + (actionCount - 1);
     final position = PopupMenuAnchorPosition.fromGlobalOffset(
       context: context,
       globalOffset: globalPosition,
@@ -1564,6 +1568,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         _UserMessageQuickMenuEntry(
           width: 188,
           estimatedHeight: estimatedMenuHeight,
+          showEditAction: showEditAction,
           showRetryAction: showRetryAction,
         ),
       ],
@@ -1571,6 +1576,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   }
 
   bool _canRetryUserMessage(ChatMessageModel message) {
+    return _isLatestUserMessage(message);
+  }
+
+  bool _canEditUserMessage(ChatMessageModel message) {
     return _isLatestUserMessage(message);
   }
 
@@ -1756,11 +1765,13 @@ class _UserMessageQuickMenuEntry
   const _UserMessageQuickMenuEntry({
     required this.width,
     required this.estimatedHeight,
+    required this.showEditAction,
     required this.showRetryAction,
   });
 
   final double width;
   final double estimatedHeight;
+  final bool showEditAction;
   final bool showRetryAction;
 
   @override
@@ -1837,6 +1848,18 @@ class _UserMessageQuickMenuEntryState
                 label: LegacyTextLocalizer.isEnglish ? 'Copy' : '复制',
                 onTap: () => _select(_UserMessageQuickAction.copy),
               ),
+              if (widget.showEditAction) ...[
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0x14000000),
+                ),
+                _buildAction(
+                  icon: Icons.edit_outlined,
+                  label: LegacyTextLocalizer.isEnglish ? 'Edit' : '编辑',
+                  onTap: () => _select(_UserMessageQuickAction.edit),
+                ),
+              ],
               if (widget.showRetryAction) ...[
                 const Divider(
                   height: 1,
