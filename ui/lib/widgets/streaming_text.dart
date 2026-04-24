@@ -80,6 +80,21 @@ class _StreamingTextState extends State<StreamingText> {
   String? _lastSelectedContent; // 跟踪最后选中的内容
   int? _lastNotifiedDisplayLength;
 
+  // ── Markdown 前缀缓存 ──
+  // 当 mdText 不变时，复用同一 OmnibotMarkdownBody widget 对象，
+  // Flutter 的 identical() 检查会跳过整棵子树的更新（含 markdown 解析）。
+  // 变化的 trailing（纯文本尾部）通过 ValueNotifier 独立更新。
+  String? _cachedMdPrefixText;
+  TextStyle? _cachedMdPrefixStyle;
+  Widget? _cachedMdPrefixWidget;
+  final ValueNotifier<Widget?> _trailingInlineNotifier = ValueNotifier(null);
+
+  @override
+  void dispose() {
+    _trailingInlineNotifier.dispose();
+    super.dispose();
+  }
+
   @override
   void didUpdateWidget(StreamingText oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -153,6 +168,83 @@ class _StreamingTextState extends State<StreamingText> {
           : child;
     }
 
+    // ── 分段渲染快速路径（在 TweenAnimationBuilder 之外） ──
+    // 中间 chunk 不走逐字动画，避免每帧重建 OmnibotMarkdownBody。
+    // build() 仅在 props 变化时调用（每个 chunk 一次），而非每帧。
+    //
+    // 缓存策略：当 markdown 前缀文本不变时，复用同一 OmnibotMarkdownBody
+    // widget 对象。Flutter 的 Element.updateChild 对 identical widget 直接
+    // 跳过更新，从而完全避免 markdown 重解析。变化的纯文本尾部通过
+    // ValueNotifier → ValueListenableBuilder 独立刷新，不触碰 markdown 子树。
+    if (widget.enableMarkdown) {
+      final mdLen = widget.markdownRenderedLength;
+      if (mdLen != null && mdLen > 0 && mdLen < widget.fullText.length) {
+        final safeMdLen = _clampToCodePointBoundary(widget.fullText, mdLen);
+        final mdText = widget.fullText.substring(0, safeMdLen);
+        final plainTail = widget.fullText.substring(safeMdLen);
+
+        _notifyDisplayedTextChanged(widget.fullText.length);
+
+        // 将纯文本尾部 + 原始 trailing 组合为行内 Widget
+        Widget? inlineTrailing;
+        if (plainTail.isNotEmpty || widget.trailing != null) {
+          inlineTrailing = Text.rich(
+            TextSpan(
+              children: [
+                if (plainTail.isNotEmpty)
+                  TextSpan(text: plainTail, style: widget.style),
+                if (widget.trailing != null)
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: widget.trailing!,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }
+
+        // 缓存命中：mdText 和 style 均未变化 → 复用 identical widget，
+        // 仅通过 ValueNotifier 更新 trailing
+        if (_cachedMdPrefixText == mdText &&
+            _cachedMdPrefixStyle == widget.style &&
+            _cachedMdPrefixWidget != null) {
+          _trailingInlineNotifier.value = inlineTrailing;
+        } else {
+          // 缓存未命中：重建 OmnibotMarkdownBody 并缓存
+          _cachedMdPrefixText = mdText;
+          _cachedMdPrefixStyle = widget.style;
+          _trailingInlineNotifier.value = inlineTrailing;
+          _cachedMdPrefixWidget = OmnibotMarkdownBody(
+            data: mdText,
+            baseStyle: widget.style,
+            inlineResourcePlainStyle: true,
+            trailingInline: ValueListenableBuilder<Widget?>(
+              valueListenable: _trailingInlineNotifier,
+              builder: (_, child, __) => child ?? const SizedBox.shrink(),
+            ),
+          );
+        }
+
+        Widget child = _cachedMdPrefixWidget!;
+
+        return widget.selectable
+            ? SelectionArea(
+                onSelectionChanged: (content) {
+                  _lastSelectedContent = content?.plainText;
+                },
+                contextMenuBuilder: (context, selectableRegionState) {
+                  return _buildSelectionContextMenu(selectableRegionState);
+                },
+                child: child,
+              )
+            : child;
+      }
+    }
+
+    // ── 全量渲染路径（flush 后 / 首批文本 / 非流式） ──
     // 如果从思考中文案切换到实际内容，从0开始
     final previousLength = _previousFullText == kThinkingText
         ? 0
@@ -184,57 +276,7 @@ class _StreamingTextState extends State<StreamingText> {
         final displayText = widget.fullText.substring(0, displayLength);
         _notifyDisplayedTextChanged(displayText.length);
 
-        // 如果启用Markdown，根据 markdownRenderedLength 决定渲染策略
         if (widget.enableMarkdown) {
-          final mdLen = widget.markdownRenderedLength;
-          // 分段渲染：已 flush 的前缀用 Markdown，新增尾部作为
-          // trailingInline 追加到 Markdown 最后一个段落的行内位置
-          if (mdLen != null && mdLen > 0 && mdLen < displayLength) {
-            final safeMdLen = _clampToCodePointBoundary(displayText, mdLen);
-            final mdText = displayText.substring(0, safeMdLen);
-            final plainTail = displayText.substring(safeMdLen);
-
-            // 将纯文本尾部 + 原始 trailing 组合为一个行内 Widget
-            Widget? inlineTrailing;
-            if (plainTail.isNotEmpty || widget.trailing != null) {
-              inlineTrailing = Text.rich(
-                TextSpan(
-                  children: [
-                    if (plainTail.isNotEmpty)
-                      TextSpan(text: plainTail, style: widget.style),
-                    if (widget.trailing != null)
-                      WidgetSpan(
-                        alignment: PlaceholderAlignment.middle,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 4),
-                          child: widget.trailing!,
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            }
-
-            Widget child = OmnibotMarkdownBody(
-              data: mdText,
-              baseStyle: widget.style,
-              inlineResourcePlainStyle: true,
-              trailingInline: inlineTrailing,
-            );
-
-            return widget.selectable
-                ? SelectionArea(
-                    onSelectionChanged: (content) {
-                      _lastSelectedContent = content?.plainText;
-                    },
-                    contextMenuBuilder: (context, selectableRegionState) {
-                      return _buildSelectionContextMenu(selectableRegionState);
-                    },
-                    child: child,
-                  )
-                : child;
-          }
-
           // 全量 Markdown 渲染（默认 / flush 后 / 首批文本）
           Widget child = OmnibotMarkdownBody(
             data: displayText,
