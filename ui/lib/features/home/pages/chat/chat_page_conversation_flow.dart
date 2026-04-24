@@ -92,6 +92,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
           runtime?.browserSessionSnapshot ??
           _browserSessionSnapshotByMode[mode],
     );
+    _rememberRuntimeUiSnapshot(mode);
   }
 
   @override

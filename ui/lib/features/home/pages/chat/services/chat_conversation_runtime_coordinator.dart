@@ -30,7 +30,7 @@ class ChatConversationRuntimeState {
   final String mode;
 
   ConversationModel? conversation;
-  final List<ChatMessageModel> messages = <ChatMessageModel>[];
+  final ObservableChatMessageList messages = ObservableChatMessageList();
   final Map<String, String> currentAiMessages = <String, String>{};
   final Map<String, String> currentThinkingMessages = <String, String>{};
   bool isAiResponding = false;
@@ -63,6 +63,10 @@ class ChatConversationRuntimeState {
       isExecutingTask ||
       currentDispatchTaskId != null ||
       currentAiMessages.isNotEmpty;
+
+  void dispose() {
+    messages.dispose();
+  }
 }
 
 class _TaskBinding {
@@ -207,9 +211,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       _runtimes[key] = runtime;
     }
     if (runtime.messages.isEmpty && initialMessages != null) {
-      runtime.messages
-        ..clear()
-        ..addAll(initialMessages);
+      runtime.messages.addAll(initialMessages);
     }
     if (conversation != null) {
       runtime.conversation = conversation;
@@ -252,9 +254,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       mode: mode,
       conversation: conversation,
     );
-    runtime.messages
-      ..clear()
-      ..addAll(messages);
+    runtime.messages.replaceAllMessages(messages);
     runtime.conversation = conversation ?? runtime.conversation;
     runtime.isAiResponding = isAiResponding;
     runtime.isContextCompressing = isContextCompressing;
@@ -393,6 +393,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       request.timer.cancel();
     }
     _pendingPersistence.clear();
+    for (final runtime in _runtimes.values) {
+      runtime.dispose();
+    }
     _runtimes.clear();
     _taskBindings.clear();
   }
@@ -433,6 +436,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       _runtimeKey(conversationId: conversationId, mode: mode),
     );
     if (removed != null) {
+      removed.dispose();
       notifyListeners();
     }
   }
