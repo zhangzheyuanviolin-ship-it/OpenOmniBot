@@ -1757,7 +1757,7 @@ class _UserMessageQuickMenuEntryState
                 ),
                 _buildAction(
                   icon: Icons.refresh_rounded,
-                  label: LegacyTextLocalizer.isEnglish ? 'Retry this message' : '重试这条消息',
+                  label: LegacyTextLocalizer.isEnglish ? 'Retry' : '重试这条消息',
                   onTap: () => _select(_UserMessageQuickAction.retry),
                 ),
               ],
