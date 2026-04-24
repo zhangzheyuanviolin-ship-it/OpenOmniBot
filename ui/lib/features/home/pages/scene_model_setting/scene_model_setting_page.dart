@@ -11,6 +11,7 @@ import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/agent_avatar.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 import 'package:ui/l10n/l10n.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/widgets/settings_section_title.dart';
 
 const double _kSceneSelectionPopupMaxHeight = 420;
@@ -167,10 +168,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   String _sceneTooltip(SceneCatalogItem item) {
     final mapped = _sceneTooltipMap[item.sceneId];
     if (mapped != null) {
-      return mapped;
+      return context.trLegacy(mapped);
     }
     if (item.description.trim().isNotEmpty) {
-      return item.description.trim();
+      return context.trLegacy(item.description.trim());
     }
     return item.sceneId;
   }
@@ -438,10 +439,11 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       setState(() {
         _bindings = bindings;
       });
+      final toastText = _isVoiceScene(sceneId)
+          ? '${_sceneDisplayName(sceneId)} 已清除绑定'
+          : '${_sceneDisplayName(sceneId)} 已恢复默认模型';
       showToast(
-        _isVoiceScene(sceneId)
-            ? '${_sceneDisplayName(sceneId)} 已清除绑定'
-            : '${_sceneDisplayName(sceneId)} 已恢复默认模型',
+        LegacyTextLocalizer.localize(toastText),
         type: ToastType.success,
       );
     } catch (e) {
@@ -495,7 +497,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       }
     } catch (e) {
       if (!mounted) return;
-      showToast('保存 Voice 配置失败：$e', type: ToastType.error);
+      showToast(
+        LegacyTextLocalizer.localize('保存 Voice 配置失败：$e'),
+        type: ToastType.error,
+      );
     } finally {
       if (mounted) {
         setState(() => _isSavingVoiceConfig = false);
@@ -585,9 +590,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     final binding = _bindingMap[scene.sceneId];
     if (binding == null) {
       if (scene.defaultModel.trim().isEmpty) {
-        return '未绑定';
+        return context.trLegacy('未绑定');
       }
-      return '默认：${scene.defaultModel}';
+      return context.trLegacy('默认：${scene.defaultModel}');
     }
     final profile = _profiles.where(
       (item) => item.id == binding.providerProfileId,
@@ -688,7 +693,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
           children: [
             Expanded(
               child: Text(
-                'AI 响应完成后自动播放',
+                context.trLegacy('AI 响应完成后自动播放'),
                 style: TextStyle(
                   color: _primaryTextColor,
                   fontSize: 13,
@@ -707,7 +712,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         ),
         const SizedBox(height: 12),
         Text(
-          '音色',
+          context.trLegacy('音色'),
           style: TextStyle(
             color: _primaryTextColor,
             fontSize: 13,
@@ -720,7 +725,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
           controller: _voiceIdController,
           maxLines: 1,
           decoration: InputDecoration(
-            hintText: '例如：default_zh / mimo_default / default_en',
+            hintText: context.trLegacy(
+              '例如：default_zh / mimo_default / default_en',
+            ),
             border: const OutlineInputBorder(),
             isDense: true,
             suffixIcon: _isSavingVoiceConfig
@@ -741,7 +748,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         ),
         const SizedBox(height: 12),
         Text(
-          '风格',
+          context.trLegacy('风格'),
           style: TextStyle(
             color: _primaryTextColor,
             fontSize: 13,
@@ -769,7 +776,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '自定义补充',
+                      context.trLegacy('自定义补充'),
                       style: TextStyle(
                         color: _primaryTextColor,
                         fontSize: 13,
@@ -785,8 +792,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                       minLines: 1,
                       decoration: InputDecoration(
                         hintText: isSinging
-                            ? '唱歌模式下不支持附加风格'
-                            : '例如：更温柔、节奏慢一点、偏播客感',
+                            ? context.trLegacy('唱歌模式下不支持附加风格')
+                            : context.trLegacy('例如：更温柔、节奏慢一点、偏播客感'),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
@@ -842,7 +849,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                preset,
+                context.trLegacy(preset),
                 style: TextStyle(
                   color: _primaryTextColor,
                   fontSize: 13,
@@ -908,7 +915,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                         height: 22,
                       ),
                       splashRadius: 14,
-                      tooltip: isExpanded ? '收起语音设置' : '展开语音设置',
+                      tooltip: context.trLegacy(
+                        isExpanded ? '收起语音设置' : '展开语音设置',
+                      ),
                       onPressed: () => _toggleSceneExpanded(scene.sceneId),
                       icon: Icon(
                         isExpanded
@@ -1020,7 +1029,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                         if (_showManualRefreshButton)
                           const SizedBox(height: 12),
                         Text(
-                          '点击右侧按钮后，可按 Provider 搜索、折叠并选择模型；Voice 的音色与自动播放可通过调节按钮展开。',
+                          context.trLegacy(
+                            '点击右侧按钮后，可按 Provider 搜索、折叠并选择模型；Voice 的音色与自动播放可通过调节按钮展开。',
+                          ),
                           style: TextStyle(
                             color: _secondaryTextColor,
                             fontSize: 12,
@@ -1221,8 +1232,8 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
   Widget _buildRestoreDefaultTile() {
     final selected = widget.currentBinding == null;
     final label = widget.scene.sceneId == 'scene.voice'
-        ? '清除绑定'
-        : '恢复默认（${widget.scene.defaultModel}）';
+        ? context.trLegacy('清除绑定')
+        : context.trLegacy('恢复默认（${widget.scene.defaultModel}）');
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 4),
       child: InkWell(

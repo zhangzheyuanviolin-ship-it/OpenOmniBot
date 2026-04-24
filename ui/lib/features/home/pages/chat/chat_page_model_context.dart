@@ -259,7 +259,10 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
     }
 
     final switchedLabel = displayAsMentionChip ? '@$modelId' : modelId;
-    showToast('已切换到 $switchedLabel', type: ToastType.success);
+    showToast(
+      LegacyTextLocalizer.localize('已切换到 $switchedLabel'),
+      type: ToastType.success,
+    );
   }
 
   @override
@@ -287,7 +290,12 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
         _pendingConversationReasoningEffort = null;
       });
     }
-    showToast('已设置思考强度为 $normalizedEffort', type: ToastType.success);
+    showToast(
+      LegacyTextLocalizer.localize(
+        normalizedEffort == 'no' ? '已关闭思考' : '已设置思考强度为 $normalizedEffort',
+      ),
+      type: ToastType.success,
+    );
   }
 
   @override
@@ -315,7 +323,10 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
         overrideSelection: null,
       );
     });
-    showToast('已恢复场景默认模型', type: ToastType.success);
+    showToast(
+      LegacyTextLocalizer.localize('已恢复场景默认模型'),
+      type: ToastType.success,
+    );
   }
 
   @override
@@ -496,10 +507,16 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
       );
       await _loadNormalChatModelContext();
       if (!mounted) return;
-      showToast('Agent 模型已切换到 $modelId', type: ToastType.success);
+      showToast(
+        LegacyTextLocalizer.localize('Agent 模型已切换到 $modelId'),
+        type: ToastType.success,
+      );
     } catch (e) {
       if (!mounted) return;
-      showToast('更新 Agent 模型失败：$e', type: ToastType.error);
+      showToast(
+        LegacyTextLocalizer.localize('更新 Agent 模型失败：$e'),
+        type: ToastType.error,
+      );
     }
   }
 
@@ -777,7 +794,7 @@ class _ChatModelMentionPanelState extends State<_ChatModelMentionPanel> {
                   Padding(
                     padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
                     child: Text(
-                      '没有匹配的模型',
+                      LegacyTextLocalizer.localize('没有匹配的模型'),
                       style: TextStyle(
                         fontSize: 12,
                         color: context.isDarkTheme
@@ -928,7 +945,7 @@ class _ConversationModelSelectorPopupEntryState
                 ),
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: '搜索模型 ID',
+                  hintText: LegacyTextLocalizer.localize('搜索模型 ID'),
                   hintStyle: TextStyle(
                     fontSize: 13,
                     color: isDark
@@ -1137,7 +1154,7 @@ class _ConversationModelSelectorPopupEntryState
               Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  '请先在模型提供商页配置 Provider',
+                  LegacyTextLocalizer.localize('请先在模型提供商页配置 Provider'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
@@ -1152,7 +1169,7 @@ class _ConversationModelSelectorPopupEntryState
               Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  '没有匹配的模型',
+                  LegacyTextLocalizer.localize('没有匹配的模型'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
@@ -1182,7 +1199,9 @@ class _ConversationModelSelectorPopupEntryState
                               Padding(
                                 padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
                                 child: Text(
-                                  '该 Provider 暂无可选模型',
+                                  LegacyTextLocalizer.localize(
+                                    '该 Provider 暂无可选模型',
+                                  ),
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: context.isDarkTheme

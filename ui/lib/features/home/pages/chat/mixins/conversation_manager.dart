@@ -4,6 +4,7 @@ import '../../../../../models/conversation_thread_target.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/conversation_service.dart';
 import '../../../../../services/conversation_history_service.dart';
+import '../utils/deep_thinking_persistence.dart';
 
 /// 对话管理 Mixin
 /// 负责对话的创建、加载、保存、切换等功能
@@ -25,7 +26,9 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
       await ConversationHistoryService.upsertConversationUiCard(
         conversationId,
         entryId: message.id,
-        cardData: Map<String, dynamic>.from(cardData),
+        cardData: buildPersistentDeepThinkingCardData(
+          Map<String, dynamic>.from(cardData),
+        ),
         createdAtMillis: message.createAt.millisecondsSinceEpoch,
         mode: mode,
       );
@@ -41,6 +44,12 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
   set currentConversation(ConversationModel? value);
   ConversationThreadTarget? get routeThreadTarget;
   ConversationMode get activeConversationModeValue;
+  bool get hasMoreMessages;
+  set hasMoreMessages(bool value);
+  bool get isLoadingMore;
+  set isLoadingMore(bool value);
+  int get messageOffset;
+  set messageOffset(int value);
   List<ChatMessageModel>? getInMemoryMessagesForConversation(
     int conversationId,
     ConversationMode mode,
@@ -87,6 +96,9 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
           currentConversationId = null;
           currentConversation = null;
           _hasSavedConversation = false;
+          hasMoreMessages = false;
+          messageOffset = 0;
+          isLoadingMore = false;
         });
         onConversationReset(target.mode);
         return;
@@ -122,6 +134,9 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
           currentConversationId = null;
           currentConversation = null;
           _hasSavedConversation = false;
+          hasMoreMessages = false;
+          messageOffset = 0;
+          isLoadingMore = false;
         });
         onConversationReset(activeConversationModeValue);
         return;
@@ -171,12 +186,18 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
         currentConversationId = null;
         currentConversation = null;
         _hasSavedConversation = false;
+        hasMoreMessages = false;
+        messageOffset = 0;
+        isLoadingMore = false;
       });
     } else {
       messages.clear();
       currentConversationId = null;
       currentConversation = null;
       _hasSavedConversation = false;
+      hasMoreMessages = false;
+      messageOffset = 0;
+      isLoadingMore = false;
     }
 
     onConversationReset(activeConversationModeValue);
@@ -236,16 +257,31 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
         });
       }
 
-      final savedMessages = inMemoryMessages == null
-          ? await ConversationHistoryService.getConversationMessages(
+      List<ChatMessageModel> savedMessages;
+      if (inMemoryMessages != null) {
+        savedMessages = List<ChatMessageModel>.from(inMemoryMessages);
+        setState(() {
+          hasMoreMessages = false;
+          messageOffset = savedMessages.length;
+          messages.clear();
+          messages.addAll(savedMessages);
+        });
+      } else {
+        final pagedResult =
+            await ConversationHistoryService.getConversationMessagesPaged(
               conversationId,
               mode: activeConversationModeValue,
-            )
-          : List<ChatMessageModel>.from(inMemoryMessages);
-      setState(() {
-        messages.clear();
-        messages.addAll(savedMessages);
-      });
+              limit: 50,
+              offset: 0,
+            );
+        savedMessages = pagedResult.messages;
+        setState(() {
+          hasMoreMessages = pagedResult.hasMore;
+          messageOffset = 50;
+          messages.clear();
+          messages.addAll(savedMessages);
+        });
+      }
       onConversationLoaded(
         activeConversationModeValue,
         conversationId,
@@ -254,6 +290,44 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
       );
     } catch (e) {
       debugPrint('加载对话失败: $e');
+    }
+  }
+
+  // ===================== 分页加载更多 =====================
+
+  /// 加载更多历史消息
+  Future<void> loadMoreMessages() async {
+    if (!hasMoreMessages || isLoadingMore) return;
+    final conversationId = currentConversationId;
+    if (conversationId == null) return;
+
+    setState(() {
+      isLoadingMore = true;
+    });
+
+    try {
+      final pagedResult =
+          await ConversationHistoryService.getConversationMessagesPaged(
+            conversationId,
+            mode: activeConversationModeValue,
+            limit: 50,
+            offset: messageOffset,
+          );
+      if (mounted) {
+        setState(() {
+          messages.addAll(pagedResult.messages);
+          hasMoreMessages = pagedResult.hasMore;
+          messageOffset = messageOffset + 50;
+          isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('加载更多消息失败: $e');
+      if (mounted) {
+        setState(() {
+          isLoadingMore = false;
+        });
+      }
     }
   }
 
@@ -317,11 +391,17 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
             messages.clear();
             currentConversationId = null;
             currentConversation = null;
+            hasMoreMessages = false;
+            messageOffset = 0;
+            isLoadingMore = false;
           });
         } else {
           messages.clear();
           currentConversationId = null;
           currentConversation = null;
+          hasMoreMessages = false;
+          messageOffset = 0;
+          isLoadingMore = false;
         }
         onConversationReset(activeConversationModeValue);
         final blankTarget = ConversationThreadTarget.newConversation(
@@ -637,6 +717,9 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
       currentConversationId = null;
       currentConversation = null;
       _hasSavedConversation = false;
+      hasMoreMessages = false;
+      messageOffset = 0;
+      isLoadingMore = false;
     });
     onConversationReset(activeConversationModeValue);
 

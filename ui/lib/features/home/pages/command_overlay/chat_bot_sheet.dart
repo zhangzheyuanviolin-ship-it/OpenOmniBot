@@ -13,6 +13,7 @@ import 'package:ui/features/home/pages/command_overlay/services/chat_service.dar
 import 'package:ui/features/home/pages/command_overlay/constants/messages.dart';
 import 'package:ui/features/home/pages/command_overlay/utils/deep_thinking_parser.dart';
 import 'package:ui/features/home/pages/chat/utils/stream_text_merge.dart';
+import 'package:ui/features/home/pages/chat/utils/deep_thinking_persistence.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/services/screen_dialog_service.dart';
@@ -158,10 +159,20 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       ConversationHistoryService.upsertConversationUiCard(
         conversationId,
         entryId: message.id,
-        cardData: Map<String, dynamic>.from(cardData!),
+        cardData: buildPersistentDeepThinkingCardData(
+          Map<String, dynamic>.from(cardData!),
+        ),
         createdAtMillis: message.createAt.millisecondsSinceEpoch,
       ),
     );
+  }
+
+  void _persistThinkingCardForTask(String taskID, {String? cardId}) {
+    final thinkingCardId = cardId ?? '$taskID-thinking';
+    final index = _messages.indexWhere((msg) => msg.id == thinkingCardId);
+    if (index != -1) {
+      _persistDeepThinkingCardIfNeeded(_messages[index]);
+    }
   }
 
   @override
@@ -762,7 +773,9 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
           await ConversationHistoryService.upsertConversationUiCard(
             _currentConversationId!,
             entryId: message.id,
-            cardData: Map<String, dynamic>.from(cardData),
+            cardData: buildPersistentDeepThinkingCardData(
+              Map<String, dynamic>.from(cardData),
+            ),
             createdAtMillis: message.createAt.millisecondsSinceEpoch,
           );
         }
@@ -1518,7 +1531,6 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         content['cardData'] = cardData;
         _messages[index] = existing.copyWith(content: content);
       });
-      _persistDeepThinkingCardIfNeeded(_messages[index]);
     }
   }
 
@@ -1531,6 +1543,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     _updateThinkingCard(taskID);
 
     // 调用post-process接口
+    _persistThinkingCardForTask(taskID);
     await _callDispatchPostProcess(taskID, fullContent);
   }
 
@@ -1548,6 +1561,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     _updateThinkingCard(taskID);
 
     // 如果是429限流错误，直接显示限流提示，不再走后续流程
+    _persistThinkingCardForTask(taskID);
     if (isRateLimited) {
       _handleRateLimitError(taskID);
       _resetDispatchState();
@@ -1574,6 +1588,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
 
   /// 处理dispatch错误
   void _handleDispatchError(String taskID, String error) {
+    _persistThinkingCardForTask(taskID);
     setState(() {
       _isAiResponding = false;
       // 移除 loading 消息（如果还存在）
@@ -1603,6 +1618,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     _currentThinkingStage = 4;
     _isDeepThinking = false;
     _updateThinkingCard(taskID);
+    _persistThinkingCardForTask(taskID);
     setState(() {
       _isAiResponding = false;
       _messages.removeWhere((msg) => msg.id == taskID && msg.isLoading);

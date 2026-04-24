@@ -75,7 +75,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         _supportsReasoningEffortCommand) {
       final activeEffort = _activeConversationReasoningEffort;
       final query = _slashCommandRouteQuery(route).toLowerCase();
-      final efforts = <String>['low', 'high']
+      final efforts = <String>['no', 'low', 'high']
           .where((effort) {
             return query.isEmpty || effort.contains(query);
           })
@@ -94,12 +94,20 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               'statusLabel': isSelected
                   ? (LegacyTextLocalizer.isEnglish ? 'Selected' : '已选')
                   : (LegacyTextLocalizer.isEnglish ? 'Available' : '可选'),
-              'summary': isSelected
-                  ? (LegacyTextLocalizer.isEnglish ? 'Current effort: $effort' : '当前思考强度：$effort')
-                  : (LegacyTextLocalizer.isEnglish ? 'Switch reasoning effort to $effort' : '将思考强度切换为 $effort'),
-              'progress': LegacyTextLocalizer.isEnglish
-                  ? 'reasoning_effort parameter for subsequent requests'
-                  : '用于后续请求的 reasoning_effort 参数',
+              'summary': effort == 'no'
+                  ? (isSelected
+                      ? (LegacyTextLocalizer.isEnglish ? 'Thinking disabled' : '已关闭思考')
+                      : (LegacyTextLocalizer.isEnglish ? 'Disable thinking' : '关闭思考'))
+                  : (isSelected
+                      ? (LegacyTextLocalizer.isEnglish ? 'Current effort: $effort' : '当前思考强度：$effort')
+                      : (LegacyTextLocalizer.isEnglish ? 'Switch reasoning effort to $effort' : '将思考强度切换为 $effort')),
+              'progress': effort == 'no'
+                  ? (LegacyTextLocalizer.isEnglish
+                      ? 'enable_thinking=false for subsequent requests'
+                      : '后续请求将设置 enable_thinking=false')
+                  : (LegacyTextLocalizer.isEnglish
+                      ? 'reasoning_effort parameter for subsequent requests'
+                      : '用于后续请求的 reasoning_effort 参数'),
             };
           })
           .toList(growable: false);
@@ -136,7 +144,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         'summary': activeEffort == null
             ? (LegacyTextLocalizer.isEnglish ? 'Set reasoning effort for this session' : '设置当前会话的思考强度')
             : (LegacyTextLocalizer.isEnglish ? 'Current effort: $activeEffort' : '当前思考强度：$activeEffort'),
-        'progress': LegacyTextLocalizer.isEnglish ? 'Choose low or high' : '点击后选择 low 或 high',
+        'progress': LegacyTextLocalizer.isEnglish ? 'Choose no, low or high' : '点击后选择 no、low 或 high',
       });
     }
     if (_isOpenClawSurface) {
@@ -176,6 +184,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         _inputFocusNode.requestFocus();
         _handleSlashCommandInput();
         break;
+      case 'no':
       case 'low':
       case 'high':
         unawaited(_applyConversationReasoningEffort(command));
@@ -617,6 +626,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       onUserMessageEditSaved: mode == ChatPageMode.normal
           ? _saveAndResendEditedUserMessage
           : null,
+      onLoadMore: loadMoreMessages,
+      hasMore: hasMoreMessages,
       visualProfile: visualProfile,
       appearanceConfig: appearanceConfig,
     );
@@ -1834,7 +1845,7 @@ class _UserMessageQuickMenuEntryState
                 ),
                 _buildAction(
                   icon: Icons.refresh_rounded,
-                  label: LegacyTextLocalizer.isEnglish ? 'Retry this message' : '重试这条消息',
+                  label: LegacyTextLocalizer.isEnglish ? 'Retry' : '重试这条消息',
                   onTap: () => _select(_UserMessageQuickAction.retry),
                 ),
               ],

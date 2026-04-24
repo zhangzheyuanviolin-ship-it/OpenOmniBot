@@ -81,11 +81,13 @@ class OmnibotMarkdownBody extends StatelessWidget {
     if (trailingInline == null) {
       return source;
     }
-    final trimmed = source.trimRight();
+    // 只去除尾部换行（避免 token 被推入新段落），保留原始空格，
+    // 不人为添加额外空格，使 markdown 前缀与纯文本尾部无缝衔接。
+    final trimmed = source.replaceFirst(RegExp(r'[\r\n]+$'), '');
     if (trimmed.isEmpty) {
       return _trailingInlineToken;
     }
-    return '$trimmed $_trailingInlineToken';
+    return '$trimmed$_trailingInlineToken';
   }
 }
 
@@ -545,7 +547,7 @@ class OmnibotTrailingInlineBuilder extends MarkdownElementBuilder {
     return Text.rich(
       WidgetSpan(
         alignment: PlaceholderAlignment.middle,
-        child: Padding(padding: const EdgeInsets.only(left: 4), child: child),
+        child: child,
       ),
     );
   }

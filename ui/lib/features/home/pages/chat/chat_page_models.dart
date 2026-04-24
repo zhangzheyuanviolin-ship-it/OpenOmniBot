@@ -1,6 +1,10 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
+import 'package:ui/models/chat_message_model.dart';
 
 enum ChatIslandDisplayLayer {
   mode('mode'),
@@ -19,6 +23,276 @@ enum ChatIslandDisplayLayer {
       }
     }
     return ChatIslandDisplayLayer.mode;
+  }
+}
+
+enum ChatMessageListMutationKind { none, content, structure }
+
+class ChatMessageListItemNotifier extends ValueNotifier<ChatMessageModel> {
+  ChatMessageListItemNotifier(super.value);
+
+  void update(ChatMessageModel message) {
+    value = message;
+  }
+}
+
+class ObservableChatMessageList extends ChangeNotifier
+    with ListMixin<ChatMessageModel> {
+  static const String _kAgentToolSummaryCardType = 'agent_tool_summary';
+
+  final List<ChatMessageModel> _messages = <ChatMessageModel>[];
+  final List<ChatMessageListItemNotifier> _messageNotifiers =
+      <ChatMessageListItemNotifier>[];
+
+  bool _isDisposed = false;
+  int _structureRevision = 0;
+  int _lastMutationRevision = 0;
+  bool _lastMutationAffectsPageChrome = false;
+  ChatMessageListMutationKind _lastMutationKind =
+      ChatMessageListMutationKind.none;
+
+  int get structureRevision => _structureRevision;
+  int get lastMutationRevision => _lastMutationRevision;
+  bool get lastMutationAffectsPageChrome => _lastMutationAffectsPageChrome;
+  ChatMessageListMutationKind get lastMutationKind => _lastMutationKind;
+
+  ValueListenable<ChatMessageModel> listenableAt(int index) {
+    return _messageNotifiers[index];
+  }
+
+  @override
+  void addListener(VoidCallback listener) {
+    if (_isDisposed) {
+      return;
+    }
+    super.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    if (_isDisposed) {
+      return;
+    }
+    super.removeListener(listener);
+  }
+
+  void replaceAllMessages(Iterable<ChatMessageModel> messages) {
+    final nextMessages = List<ChatMessageModel>.from(messages);
+    final affectsPageChrome =
+        _batchAffectsPageChrome(_messages) ||
+        _batchAffectsPageChrome(nextMessages);
+    _disposeMessageNotifiers(_messageNotifiers);
+    _messages
+      ..clear()
+      ..addAll(nextMessages);
+    _messageNotifiers
+      ..clear()
+      ..addAll(nextMessages.map(ChatMessageListItemNotifier.new));
+    _recordStructureMutation(affectsPageChrome: affectsPageChrome);
+    notifyListeners();
+  }
+
+  @override
+  int get length => _messages.length;
+
+  @override
+  set length(int newLength) {
+    RangeError.checkNotNegative(newLength, 'newLength');
+    if (newLength == _messages.length) {
+      return;
+    }
+    if (newLength > _messages.length) {
+      throw UnsupportedError(
+        'Expanding the message list length is unsupported',
+      );
+    }
+    final removedMessages = _messages.sublist(newLength);
+    final removedNotifiers = _messageNotifiers.sublist(newLength);
+    _messages.removeRange(newLength, _messages.length);
+    _messageNotifiers.removeRange(newLength, _messageNotifiers.length);
+    _disposeMessageNotifiers(removedNotifiers);
+    _recordStructureMutation(
+      affectsPageChrome: _batchAffectsPageChrome(removedMessages),
+    );
+    notifyListeners();
+  }
+
+  @override
+  ChatMessageModel operator [](int index) => _messages[index];
+
+  @override
+  void operator []=(int index, ChatMessageModel value) {
+    final previous = _messages[index];
+    _messages[index] = value;
+    _messageNotifiers[index].update(value);
+    _recordContentMutation(
+      affectsPageChrome:
+          _messageAffectsPageChrome(previous) ||
+          _messageAffectsPageChrome(value),
+    );
+  }
+
+  @override
+  void add(ChatMessageModel value) {
+    insert(length, value);
+  }
+
+  @override
+  void addAll(Iterable<ChatMessageModel> iterable) {
+    final nextMessages = List<ChatMessageModel>.from(iterable);
+    if (nextMessages.isEmpty) {
+      return;
+    }
+    _messages.addAll(nextMessages);
+    _messageNotifiers.addAll(nextMessages.map(ChatMessageListItemNotifier.new));
+    _recordStructureMutation(
+      affectsPageChrome: _batchAffectsPageChrome(nextMessages),
+    );
+    notifyListeners();
+  }
+
+  @override
+  void clear() {
+    if (_messages.isEmpty) {
+      return;
+    }
+    final removedMessages = List<ChatMessageModel>.from(_messages);
+    _messages.clear();
+    _disposeMessageNotifiers(_messageNotifiers);
+    _messageNotifiers.clear();
+    _recordStructureMutation(
+      affectsPageChrome: _batchAffectsPageChrome(removedMessages),
+    );
+    notifyListeners();
+  }
+
+  @override
+  void insert(int index, ChatMessageModel element) {
+    _messages.insert(index, element);
+    _messageNotifiers.insert(index, ChatMessageListItemNotifier(element));
+    _recordStructureMutation(
+      affectsPageChrome: _messageAffectsPageChrome(element),
+    );
+    notifyListeners();
+  }
+
+  @override
+  void insertAll(int index, Iterable<ChatMessageModel> iterable) {
+    final nextMessages = List<ChatMessageModel>.from(iterable);
+    if (nextMessages.isEmpty) {
+      return;
+    }
+    _messages.insertAll(index, nextMessages);
+    _messageNotifiers.insertAll(
+      index,
+      nextMessages.map(ChatMessageListItemNotifier.new),
+    );
+    _recordStructureMutation(
+      affectsPageChrome: _batchAffectsPageChrome(nextMessages),
+    );
+    notifyListeners();
+  }
+
+  @override
+  ChatMessageModel removeAt(int index) {
+    final removedMessage = _messages.removeAt(index);
+    final removedNotifier = _messageNotifiers.removeAt(index);
+    removedNotifier.dispose();
+    _recordStructureMutation(
+      affectsPageChrome: _messageAffectsPageChrome(removedMessage),
+    );
+    notifyListeners();
+    return removedMessage;
+  }
+
+  @override
+  void removeRange(int start, int end) {
+    if (start == end) {
+      return;
+    }
+    final removedMessages = _messages.sublist(start, end);
+    final removedNotifiers = _messageNotifiers.sublist(start, end);
+    _messages.removeRange(start, end);
+    _messageNotifiers.removeRange(start, end);
+    _disposeMessageNotifiers(removedNotifiers);
+    _recordStructureMutation(
+      affectsPageChrome: _batchAffectsPageChrome(removedMessages),
+    );
+    notifyListeners();
+  }
+
+  @override
+  void removeWhere(bool Function(ChatMessageModel element) test) {
+    final removedMessages = <ChatMessageModel>[];
+    final removedNotifiers = <ChatMessageListItemNotifier>[];
+    for (var index = _messages.length - 1; index >= 0; index--) {
+      final message = _messages[index];
+      if (!test(message)) {
+        continue;
+      }
+      removedMessages.add(message);
+      removedNotifiers.add(_messageNotifiers[index]);
+      _messages.removeAt(index);
+      _messageNotifiers.removeAt(index);
+    }
+    if (removedMessages.isEmpty) {
+      return;
+    }
+    _disposeMessageNotifiers(removedNotifiers);
+    _recordStructureMutation(
+      affectsPageChrome: _batchAffectsPageChrome(removedMessages),
+    );
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    if (_isDisposed) {
+      return;
+    }
+    _isDisposed = true;
+    _disposeMessageNotifiers(_messageNotifiers);
+    _messageNotifiers.clear();
+    _messages.clear();
+    super.dispose();
+  }
+
+  void _recordContentMutation({required bool affectsPageChrome}) {
+    _lastMutationRevision += 1;
+    _lastMutationAffectsPageChrome = affectsPageChrome;
+    _lastMutationKind = ChatMessageListMutationKind.content;
+  }
+
+  void _recordStructureMutation({required bool affectsPageChrome}) {
+    _structureRevision += 1;
+    _lastMutationRevision += 1;
+    _lastMutationAffectsPageChrome = affectsPageChrome;
+    _lastMutationKind = ChatMessageListMutationKind.structure;
+  }
+
+  bool _batchAffectsPageChrome(Iterable<ChatMessageModel> messages) {
+    for (final message in messages) {
+      if (_messageAffectsPageChrome(message)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _messageAffectsPageChrome(ChatMessageModel message) {
+    if (message.type != 2) {
+      return false;
+    }
+    return (message.cardData?['type'] ?? '').toString() ==
+        _kAgentToolSummaryCardType;
+  }
+
+  void _disposeMessageNotifiers(
+    Iterable<ChatMessageListItemNotifier> notifiers,
+  ) {
+    for (final notifier in notifiers) {
+      notifier.dispose();
+    }
   }
 }
 

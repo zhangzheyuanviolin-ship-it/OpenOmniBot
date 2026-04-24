@@ -798,6 +798,30 @@ object DatabaseHelper {
         return getDatabase().agentConversationEntryDao().countConversationEntries(conversationId)
     }
 
+    suspend fun getAgentConversationEntriesDescPaged(
+        conversationId: Long,
+        conversationMode: String,
+        limit: Int,
+        offset: Int
+    ): List<AgentConversationEntry> {
+        return getDatabase().agentConversationEntryDao().getThreadEntriesDescPaged(
+            conversationId = conversationId,
+            conversationMode = conversationMode,
+            limit = limit,
+            offset = offset
+        )
+    }
+
+    suspend fun countAgentConversationThreadEntries(
+        conversationId: Long,
+        conversationMode: String
+    ): Int {
+        return getDatabase().agentConversationEntryDao().countThreadEntries(
+            conversationId = conversationId,
+            conversationMode = conversationMode
+        )
+    }
+
     suspend fun incrementConversationMessageCount(id: Long) {
         getDatabase().conversationDao().incrementMessageCount(id, System.currentTimeMillis())
     }

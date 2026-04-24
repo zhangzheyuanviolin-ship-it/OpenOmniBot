@@ -13,7 +13,9 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       ConversationHistoryService.upsertConversationUiCard(
         conversationId,
         entryId: message.id,
-        cardData: Map<String, dynamic>.from(cardData!),
+        cardData: buildPersistentDeepThinkingCardData(
+          Map<String, dynamic>.from(cardData!),
+        ),
         createdAtMillis: message.createAt.millisecondsSinceEpoch,
         mode: activeConversationModeValue,
       ),
@@ -92,6 +94,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
           runtime?.browserSessionSnapshot ??
           _browserSessionSnapshotByMode[mode],
     );
+    _rememberRuntimeUiSnapshot(mode);
   }
 
   @override
@@ -158,7 +161,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         ),
       );
     });
-    _persistDeepThinkingCardIfNeeded(_messages.first);
   }
 
   @override
@@ -200,7 +202,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       content['cardData'] = cardData;
       _messages[index] = existing.copyWith(content: content);
     });
-    _persistDeepThinkingCardIfNeeded(_messages[index]);
   }
 
   @override

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -247,24 +248,28 @@ class ChatAppBar extends StatelessWidget {
                               : _chatAppBarPureChatIconSvg,
                           tooltip: isPureChatToggleLocked
                               ? (isPureChatSelected
-                                    ? (Localizations.localeOf(context)
-                                                  .languageCode ==
+                                    ? (Localizations.localeOf(
+                                                context,
+                                              ).languageCode ==
                                               'en'
                                           ? 'Current thread is locked to pure chat'
                                           : '当前线程已锁定为纯聊天')
-                                    : (Localizations.localeOf(context)
-                                                  .languageCode ==
+                                    : (Localizations.localeOf(
+                                                context,
+                                              ).languageCode ==
                                               'en'
                                           ? 'Current thread mode is locked'
                                           : '当前线程模式已锁定'))
                               : (isPureChatSelected
-                                    ? (Localizations.localeOf(context)
-                                                  .languageCode ==
+                                    ? (Localizations.localeOf(
+                                                context,
+                                              ).languageCode ==
                                               'en'
                                           ? 'Disable pure chat'
                                           : '关闭纯聊天')
-                                    : (Localizations.localeOf(context)
-                                                  .languageCode ==
+                                    : (Localizations.localeOf(
+                                                context,
+                                              ).languageCode ==
                                               'en'
                                           ? 'Enable pure chat'
                                           : '开启纯聊天')),
@@ -842,7 +847,9 @@ class _ChatToolSlider extends StatelessWidget {
                     key: const ValueKey('chat-island-terminal-button'),
                     isSelected: _isTerminalActive,
                     isEnabled: true,
-                    tooltip: LegacyTextLocalizer.isEnglish ? 'Open terminal' : '打开终端',
+                    tooltip: LegacyTextLocalizer.isEnglish
+                        ? 'Open terminal'
+                        : '打开终端',
                     onTap: onTerminalTap,
                     child: SvgPicture.string(
                       terminalIconSvg,
@@ -858,8 +865,12 @@ class _ChatToolSlider extends StatelessWidget {
                     isSelected: _isBrowserActive,
                     isEnabled: isBrowserEnabled,
                     tooltip: isBrowserEnabled
-                        ? (LegacyTextLocalizer.isEnglish ? 'Open browser for current session' : '打开当前会话浏览器')
-                        : (LegacyTextLocalizer.isEnglish ? 'No browser session available' : '当前会话还没有可用的浏览器会话'),
+                        ? (LegacyTextLocalizer.isEnglish
+                              ? 'Open browser for current session'
+                              : '打开当前会话浏览器')
+                        : (LegacyTextLocalizer.isEnglish
+                              ? 'No browser session available'
+                              : '当前会话还没有可用的浏览器会话'),
                     onTap: onBrowserTap,
                     child: SvgPicture.string(
                       browserIconSvg,
@@ -884,8 +895,8 @@ class _ChatToolSlider extends StatelessWidget {
       builder: (anchorContext) {
         return Tooltip(
           message: LegacyTextLocalizer.isEnglish
-            ? 'Manage terminal environment variables'
-            : '管理终端环境变量',
+              ? 'Manage terminal environment variables'
+              : '管理终端环境变量',
           child: InkWell(
             key: const ValueKey('chat-island-terminal-env-button'),
             onTap: () {
@@ -1141,6 +1152,8 @@ class ChatMessageList extends StatefulWidget {
   final ValueChanged<ChatMessageModel>? onUserMessageEditRequested;
   final VoidCallback? onUserMessageEditCancelled;
   final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
+  final Future<void> Function()? onLoadMore;
+  final bool hasMore;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
 
@@ -1158,6 +1171,8 @@ class ChatMessageList extends StatefulWidget {
     this.onUserMessageEditRequested,
     this.onUserMessageEditCancelled,
     this.onUserMessageEditSaved,
+    this.onLoadMore,
+    this.hasMore = false,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
   });
@@ -1171,16 +1186,19 @@ class _ChatMessageListState extends State<ChatMessageList> {
   bool _autoStickToLatest = true;
   bool _outerScrollWasUserDriven = false;
   static const double _latestEdgeTolerance = 48.0;
+  ObservableChatMessageList? _observableMessages;
 
   @override
   void initState() {
     super.initState();
+    _bindObservableMessages(widget.messages);
     _scheduleStickToBottom();
   }
 
   @override
   void didUpdateWidget(covariant ChatMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _bindObservableMessages(widget.messages);
     if (oldWidget.scrollController != widget.scrollController) {
       _autoStickToLatest = true;
       _outerScrollWasUserDriven = false;
@@ -1189,6 +1207,12 @@ class _ChatMessageListState extends State<ChatMessageList> {
       _autoStickToLatest = true;
       _scheduleStickToLatest();
     }
+  }
+
+  @override
+  void dispose() {
+    _observableMessages?.removeListener(_handleObservableMessagesChanged);
+    super.dispose();
   }
 
   bool _isNearLatest([ScrollMetrics? metrics]) {
@@ -1250,6 +1274,28 @@ class _ChatMessageListState extends State<ChatMessageList> {
     }
   }
 
+  void _bindObservableMessages(List<ChatMessageModel> messages) {
+    final nextObservable = messages is ObservableChatMessageList
+        ? messages
+        : null;
+    if (identical(_observableMessages, nextObservable)) {
+      return;
+    }
+    _observableMessages?.removeListener(_handleObservableMessagesChanged);
+    _observableMessages = nextObservable;
+    _observableMessages?.addListener(_handleObservableMessagesChanged);
+  }
+
+  void _handleObservableMessagesChanged() {
+    if (!mounted) {
+      return;
+    }
+    if (_autoStickToLatest) {
+      _scheduleStickToLatest();
+    }
+    setState(() {});
+  }
+
   void _handleParentScrollHandoff() {
     _autoStickToLatest = false;
     _outerScrollWasUserDriven = false;
@@ -1259,6 +1305,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
     if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
       return false;
     }
+
     final isUserDrivenUpdate =
         (notification is ScrollUpdateNotification &&
             notification.dragDetails != null) ||
@@ -1317,83 +1364,76 @@ class _ChatMessageListState extends State<ChatMessageList> {
       );
     } else {
       String? latestUserMessageId;
-      for (final item in widget.messages) {
+      final messageSource = _observableMessages ?? widget.messages;
+      for (final item in messageSource) {
         if (item.user == 1) {
           latestUserMessageId = item.id;
           break;
         }
+      }
+      Widget listView = ListView.builder(
+        controller: widget.scrollController,
+        reverse: false,
+        physics: widget.hasMore
+            ? const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              )
+            : const ClampingScrollPhysics(),
+        clipBehavior: Clip.hardEdge,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        itemCount: messageSource.length,
+        itemBuilder: (context, index) {
+          final dataIndex = messageSource.length - 1 - index;
+          final message = messageSource[dataIndex];
+          final isNewestMessage = dataIndex == 0;
+          final isOldestMessage = dataIndex == messageSource.length - 1;
+          final bottomPadding = isNewestMessage
+              ? widget.bottomOverlayInset
+              : 0.0;
+          final needTopPadding = isOldestMessage && message.user != 1;
+          return _ChatMessageListRow(
+            key: ValueKey(
+              'chat-message-list-item-'
+              '${message.dbId ?? message.contentId ?? message.id}',
+            ),
+            message: message,
+            latestUserMessageId: latestUserMessageId,
+            editingUserMessageId: widget.editingUserMessageId,
+            userMessageEditController: widget.userMessageEditController,
+            onUserMessageEditRequested: widget.onUserMessageEditRequested,
+            onUserMessageEditCancelled: widget.onUserMessageEditCancelled,
+            onUserMessageEditSaved: widget.onUserMessageEditSaved,
+            messageListenable: _observableMessages?.listenableAt(dataIndex),
+            padding: EdgeInsets.only(
+              top: needTopPadding ? 24.0 : 0.0,
+              bottom: bottomPadding,
+            ),
+            onBeforeTaskExecute: widget.onBeforeTaskExecute,
+            onCancelTask: widget.onCancelTask,
+            parentScrollController: widget.scrollController,
+            onParentScrollHandoff: _handleParentScrollHandoff,
+            onRequestAuthorize: widget.onRequestAuthorize,
+            onUserMessageLongPressStart: widget.onUserMessageLongPressStart,
+            onStreamingTextLayoutChanged: _handleStreamingTextLayoutChanged,
+            visualProfile: widget.visualProfile,
+            appearanceConfig: widget.appearanceConfig,
+          );
+        },
+      );
+
+      if (widget.hasMore && widget.onLoadMore != null) {
+        listView = RefreshIndicator(
+          displacement: 20,
+          onRefresh: widget.onLoadMore!,
+          child: listView,
+        );
       }
       content = ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
           child: NotificationListener<ScrollNotification>(
             onNotification: _handleListScrollNotification,
-            child: ListView.builder(
-              controller: widget.scrollController,
-              reverse: false,
-              shrinkWrap: true,
-              physics: const ClampingScrollPhysics(),
-              clipBehavior: Clip.hardEdge,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-              itemCount: widget.messages.length,
-              itemBuilder: (context, index) {
-                final dataIndex = widget.messages.length - 1 - index;
-                final message = widget.messages[dataIndex];
-                final canShowEditAction =
-                    widget.onUserMessageEditRequested != null &&
-                    message.user == 1 &&
-                    message.id == latestUserMessageId;
-                final isEditingUserMessage =
-                    canShowEditAction &&
-                    widget.editingUserMessageId == message.id &&
-                    widget.userMessageEditController != null;
-                final isNewestMessage = dataIndex == 0;
-                final isOldestMessage = dataIndex == widget.messages.length - 1;
-                final bottomPadding = isNewestMessage
-                    ? widget.bottomOverlayInset
-                    : 0.0;
-                final needTopPadding = isOldestMessage && message.user != 1;
-                return Padding(
-                  key: ValueKey('chat-message-list-item-$dataIndex'),
-                  padding: EdgeInsets.only(
-                    top: needTopPadding ? 24.0 : 0.0,
-                    bottom: bottomPadding,
-                  ),
-                  child: MessageBubble(
-                    message: message,
-                    key: ValueKey(
-                      message.dbId ?? message.contentId ?? message.id,
-                    ),
-                    onBeforeTaskExecute: widget.onBeforeTaskExecute,
-                    onCancelTask: widget.onCancelTask,
-                    enableThinkingCollapse: true,
-                    parentScrollController: widget.scrollController,
-                    onParentScrollHandoff: _handleParentScrollHandoff,
-                    onRequestAuthorize: widget.onRequestAuthorize,
-                    onUserMessageLongPressStart:
-                        widget.onUserMessageLongPressStart,
-                    showUserEditButton: canShowEditAction,
-                    isUserMessageEditing: isEditingUserMessage,
-                    userMessageEditController: isEditingUserMessage
-                        ? widget.userMessageEditController
-                        : null,
-                    onUserEditTap: canShowEditAction
-                        ? () => widget.onUserMessageEditRequested?.call(message)
-                        : null,
-                    onCancelUserEdit: isEditingUserMessage
-                        ? widget.onUserMessageEditCancelled
-                        : null,
-                    onSaveUserEdit: isEditingUserMessage
-                        ? () => widget.onUserMessageEditSaved?.call(message)
-                        : null,
-                    onStreamingTextLayoutChanged:
-                        _handleStreamingTextLayoutChanged,
-                    visualProfile: widget.visualProfile,
-                    appearanceConfig: widget.appearanceConfig,
-                  ),
-                );
-              },
-            ),
+            child: listView,
           ),
         ),
       );
@@ -1403,6 +1443,107 @@ class _ChatMessageListState extends State<ChatMessageList> {
       return content;
     }
     return ColoredBox(color: pageBackgroundColor, child: content);
+  }
+}
+
+class _ChatMessageListRow extends StatelessWidget {
+  const _ChatMessageListRow({
+    super.key,
+    required this.message,
+    required this.padding,
+    required this.onBeforeTaskExecute,
+    this.latestUserMessageId,
+    this.editingUserMessageId,
+    this.userMessageEditController,
+    this.onUserMessageEditRequested,
+    this.onUserMessageEditCancelled,
+    this.onUserMessageEditSaved,
+    this.messageListenable,
+    this.onCancelTask,
+    this.parentScrollController,
+    this.onParentScrollHandoff,
+    this.onRequestAuthorize,
+    this.onUserMessageLongPressStart,
+    this.onStreamingTextLayoutChanged,
+    required this.visualProfile,
+    required this.appearanceConfig,
+  });
+
+  final ChatMessageModel message;
+  final ValueListenable<ChatMessageModel>? messageListenable;
+  final EdgeInsets padding;
+  final Future<void> Function() onBeforeTaskExecute;
+  final String? latestUserMessageId;
+  final String? editingUserMessageId;
+  final TextEditingController? userMessageEditController;
+  final ValueChanged<ChatMessageModel>? onUserMessageEditRequested;
+  final VoidCallback? onUserMessageEditCancelled;
+  final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
+  final void Function(String taskId)? onCancelTask;
+  final ScrollController? parentScrollController;
+  final VoidCallback? onParentScrollHandoff;
+  final void Function(List<String> requiredPermissionIds)? onRequestAuthorize;
+  final void Function(ChatMessageModel message, LongPressStartDetails details)?
+  onUserMessageLongPressStart;
+  final VoidCallback? onStreamingTextLayoutChanged;
+  final AppBackgroundVisualProfile visualProfile;
+  final AppBackgroundConfig appearanceConfig;
+
+  @override
+  Widget build(BuildContext context) {
+    if (messageListenable == null) {
+      return _buildBubble(message);
+    }
+    return ValueListenableBuilder<ChatMessageModel>(
+      valueListenable: messageListenable!,
+      builder: (context, currentMessage, _) {
+        return _buildBubble(currentMessage);
+      },
+    );
+  }
+
+  Widget _buildBubble(ChatMessageModel currentMessage) {
+    final canShowEditAction =
+        onUserMessageEditRequested != null &&
+        currentMessage.user == 1 &&
+        currentMessage.id == latestUserMessageId;
+    final isEditingUserMessage =
+        canShowEditAction &&
+        editingUserMessageId == currentMessage.id &&
+        userMessageEditController != null;
+    return Padding(
+      padding: padding,
+      child: MessageBubble(
+        message: currentMessage,
+        key: ValueKey(
+          currentMessage.dbId ?? currentMessage.contentId ?? currentMessage.id,
+        ),
+        onBeforeTaskExecute: onBeforeTaskExecute,
+        onCancelTask: onCancelTask,
+        enableThinkingCollapse: true,
+        parentScrollController: parentScrollController,
+        onParentScrollHandoff: onParentScrollHandoff,
+        onRequestAuthorize: onRequestAuthorize,
+        onUserMessageLongPressStart: onUserMessageLongPressStart,
+        showUserEditButton: canShowEditAction,
+        isUserMessageEditing: isEditingUserMessage,
+        userMessageEditController: isEditingUserMessage
+            ? userMessageEditController
+            : null,
+        onUserEditTap: canShowEditAction
+            ? () => onUserMessageEditRequested?.call(currentMessage)
+            : null,
+        onCancelUserEdit: isEditingUserMessage
+            ? onUserMessageEditCancelled
+            : null,
+        onSaveUserEdit: isEditingUserMessage
+            ? () => onUserMessageEditSaved?.call(currentMessage)
+            : null,
+        onStreamingTextLayoutChanged: onStreamingTextLayoutChanged,
+        visualProfile: visualProfile,
+        appearanceConfig: appearanceConfig,
+      ),
+    );
   }
 }
 

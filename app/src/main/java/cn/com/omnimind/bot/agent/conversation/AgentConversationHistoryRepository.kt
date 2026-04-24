@@ -264,6 +264,29 @@ class AgentConversationHistoryRepository(
         ConversationSnapshotOrdering.sortForDisplay(messagePayloads)
     }
 
+    suspend fun listConversationMessagesPaged(
+        conversationId: Long,
+        conversationMode: String,
+        limit: Int,
+        offset: Int
+    ): Pair<List<Map<String, Any?>>, Boolean> = withContext(Dispatchers.IO) {
+        val totalCount = DatabaseHelper.countAgentConversationThreadEntries(
+            conversationId, conversationMode
+        )
+        val entries = DatabaseHelper.getAgentConversationEntriesDescPaged(
+            conversationId, conversationMode, limit, offset
+        )
+        val normalized = if (offset == 0) {
+            normalizeEntriesForDisplay(entries)
+        } else {
+            entries
+        }
+        val messagePayloads = normalized.mapNotNull { entry -> entryToMessagePayload(entry) }
+        val sorted = ConversationSnapshotOrdering.sortForDisplay(messagePayloads)
+        val hasMore = offset + entries.size < totalCount
+        Pair(sorted, hasMore)
+    }
+
     suspend fun clearConversationMessages(
         conversationId: Long,
         conversationMode: String

@@ -46,6 +46,7 @@ import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
+import 'package:ui/features/home/pages/chat/utils/deep_thinking_persistence.dart';
 
 // 导入 Mixins
 import 'mixins/chat_message_handler.dart';
@@ -170,6 +171,14 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     ChatPageMode.normal: null,
     ChatPageMode.openclaw: null,
   };
+  final Map<ChatPageMode, String> _runtimeChromeSignatureByMode = {
+    ChatPageMode.normal: '',
+    ChatPageMode.openclaw: '',
+  };
+  final Map<ChatPageMode, int> _runtimeMessageMutationRevisionByMode = {
+    ChatPageMode.normal: 0,
+    ChatPageMode.openclaw: 0,
+  };
   final Map<ChatPageMode, ChatBrowserSessionSnapshot?>
   _browserSessionSnapshotByMode = {
     ChatPageMode.normal: null,
@@ -261,6 +270,18 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final Map<ChatPageMode, ConversationModel?> _currentConversationByMode = {
     ChatPageMode.normal: null,
     ChatPageMode.openclaw: null,
+  };
+  final Map<ChatPageMode, bool> _hasMoreMessagesByMode = {
+    ChatPageMode.normal: false,
+    ChatPageMode.openclaw: false,
+  };
+  final Map<ChatPageMode, int> _messageOffsetByMode = {
+    ChatPageMode.normal: 0,
+    ChatPageMode.openclaw: 0,
+  };
+  final Map<ChatPageMode, bool> _isLoadingMoreByMode = {
+    ChatPageMode.normal: false,
+    ChatPageMode.openclaw: false,
   };
   bool _isAwaitingAuthorizeResult = false;
   bool _isRetryingLatestInstructionAfterAuth = false;
@@ -366,6 +387,34 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
+
+  String _runtimeChromeSignature(ChatConversationRuntimeState? runtime) {
+    if (runtime == null) {
+      return '';
+    }
+    return <String>[
+      runtime.isAiResponding ? '1' : '0',
+      runtime.isContextCompressing ? '1' : '0',
+      runtime.isCheckingExecutableTask ? '1' : '0',
+      runtime.isSubmittingVlmReply ? '1' : '0',
+      runtime.vlmInfoQuestion ?? '',
+      runtime.currentDispatchTaskId ?? '',
+      runtime.currentThinkingStage.toString(),
+      runtime.isInputAreaVisible ? '1' : '0',
+      runtime.isExecutingTask ? '1' : '0',
+      runtime.chatIslandDisplayLayer.wireName,
+      runtime.lastAgentToolType ?? '',
+      _browserSnapshotSignature(runtime.browserSessionSnapshot),
+    ].join('|');
+  }
+
+  void _rememberRuntimeUiSnapshot(ChatPageMode mode) {
+    final runtime = _runtimeForMode(mode);
+    _runtimeChromeSignatureByMode[mode] = _runtimeChromeSignature(runtime);
+    _runtimeMessageMutationRevisionByMode[mode] =
+        runtime?.messages.lastMutationRevision ?? 0;
+  }
+
   double get _surfacePageProgress {
     final fallback = _pageIndexForSurface(_activeSurfaceMode).toDouble();
     if (!_modePageController.hasClients) {
@@ -515,7 +564,11 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       mode: nextMode,
     );
     await ConversationService.setCurrentConversationTarget(nextTarget);
-    showToast(nextMode == ConversationMode.chatOnly ? '已进入仅聊天模式' : '已退出仅聊天模式');
+    showToast(
+      LegacyTextLocalizer.localize(
+        nextMode == ConversationMode.chatOnly ? '已进入仅聊天模式' : '已退出仅聊天模式',
+      ),
+    );
   }
 
   String get _expectedBrowserWorkspaceId => chatConversationWorkspaceId(
@@ -1072,6 +1125,19 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   ConversationMode get activeConversationModeValue =>
       _conversationModeForPageMode(_activeMode);
   @override
+  bool get hasMoreMessages => _hasMoreMessagesByMode[_activeMode] ?? false;
+  @override
+  set hasMoreMessages(bool value) =>
+      _hasMoreMessagesByMode[_activeMode] = value;
+  @override
+  bool get isLoadingMore => _isLoadingMoreByMode[_activeMode] ?? false;
+  @override
+  set isLoadingMore(bool value) => _isLoadingMoreByMode[_activeMode] = value;
+  @override
+  int get messageOffset => _messageOffsetByMode[_activeMode] ?? 0;
+  @override
+  set messageOffset(int value) => _messageOffsetByMode[_activeMode] = value;
+  @override
   List<ChatMessageModel>? getInMemoryMessagesForConversation(
     int conversationId,
     ConversationMode mode,
@@ -1277,7 +1343,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     final waitingCardId = _openClawWaitingCardId(taskId);
     final cardData = {
       'type': 'stage_hint',
-      'hint': _openClawWaitingHint,
+      'hint': LegacyTextLocalizer.localize(_openClawWaitingHint),
       'statusKey': _openClawWaitingStatusKey,
       'taskID': taskId,
       'startTime': DateTime.now().millisecondsSinceEpoch,
@@ -1310,7 +1376,24 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   void _handleRuntimeCoordinatorChanged() {
     if (!mounted || _activeRuntime == null) return;
     _scheduleBrowserSessionRefreshIfNeeded();
-    setState(() {});
+    final mode = _activeMode;
+    final runtime = _activeRuntime!;
+    final nextChromeSignature = _runtimeChromeSignature(runtime);
+    final previousChromeSignature = _runtimeChromeSignatureByMode[mode] ?? '';
+    final nextMutationRevision = runtime.messages.lastMutationRevision;
+    final previousMutationRevision =
+        _runtimeMessageMutationRevisionByMode[mode] ?? 0;
+    final hasChromeChange = nextChromeSignature != previousChromeSignature;
+    final hasMessageMutation = nextMutationRevision != previousMutationRevision;
+
+    _runtimeChromeSignatureByMode[mode] = nextChromeSignature;
+    _runtimeMessageMutationRevisionByMode[mode] = nextMutationRevision;
+
+    if (hasChromeChange ||
+        (hasMessageMutation &&
+            runtime.messages.lastMutationAffectsPageChrome)) {
+      setState(() {});
+    }
   }
 
   void _resetLocalConversationState(ChatPageMode mode) {
@@ -1334,6 +1417,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
         ? ChatIslandDisplayLayer.model
         : ChatIslandDisplayLayer.mode;
     _lastAgentToolTypeByMode[mode] = null;
+    _runtimeChromeSignatureByMode[mode] = '';
+    _runtimeMessageMutationRevisionByMode[mode] = 0;
     _browserSessionSnapshotByMode[mode] = null;
     _pendingAttachmentsByMode[mode]!.clear();
     _editingUserMessageIdByMode[mode] = null;
