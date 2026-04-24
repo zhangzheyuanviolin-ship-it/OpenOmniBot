@@ -500,6 +500,7 @@ class MessageBubble extends StatelessWidget {
   Widget _buildAiText(BuildContext context, String text, {Widget? trailing}) {
     final aiPrimaryTextColor = _resolvedAiPrimaryTextColor(context);
     final aiSecondaryTextColor = _resolvedAiSecondaryTextColor(context);
+    final enableMarkdown = _shouldRenderMarkdown();
     // 如果是 loading 状态，显示浮动三个点动画（左对齐，与回复文本位置一致）
     if (message.isLoading) {
       return Align(
@@ -525,7 +526,7 @@ class MessageBubble extends StatelessWidget {
           _buildSummaryCompleteHeader(),
           const SizedBox(height: 8),
           StreamingText(
-            enableMarkdown: true,
+            enableMarkdown: enableMarkdown,
             fullText: text,
             selectable: true,
             onDisplayedTextChanged: onStreamingTextLayoutChanged,
@@ -541,7 +542,7 @@ class MessageBubble extends StatelessWidget {
     }
 
     return StreamingText(
-      enableMarkdown: true,
+      enableMarkdown: enableMarkdown,
       fullText: text,
       selectable: true,
       onDisplayedTextChanged: onStreamingTextLayoutChanged,
@@ -552,6 +553,11 @@ class MessageBubble extends StatelessWidget {
         height: 1.57,
       ),
     );
+  }
+
+  bool _shouldRenderMarkdown() {
+    final raw = message.content?['renderMarkdown'];
+    return raw is bool ? raw : true;
   }
 
   /// AI text with optional inference speed label

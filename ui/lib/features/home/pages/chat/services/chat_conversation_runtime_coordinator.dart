@@ -888,11 +888,21 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     return _visibleAgentReplyText(runtime, taskId, messageId: messageId);
   }
 
+  bool _shouldRenderReplyMarkdown(
+    ChatConversationRuntimeState runtime,
+    String taskId,
+    _StreamingTextStreamKind kind,
+  ) {
+    final batch = _streamingTextBatchFor(runtime, taskId, kind);
+    return batch == null || !batch.hasPendingFlush;
+  }
+
   bool _applyPureChatReplyUpdate(
     ChatConversationRuntimeState runtime,
     String taskId, {
     required String text,
     required bool isError,
+    bool renderMarkdown = true,
     bool isSummarizing = false,
     List<Map<String, dynamic>> attachments = const <Map<String, dynamic>>[],
     double? prefillTokensPerSecond,
@@ -923,6 +933,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       text,
       isError,
       isSummarizing: isSummarizing,
+      renderMarkdown: renderMarkdown,
       attachments: attachments,
       prefillTokensPerSecond: prefillTokensPerSecond,
       decodeTokensPerSecond: decodeTokensPerSecond,
@@ -969,6 +980,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       taskId,
       text: visibleText,
       isError: false,
+      renderMarkdown: true,
       emitVoiceUpdate: emitVoiceUpdate,
       schedulePersistence: schedulePersistence,
     );
@@ -978,6 +990,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     ChatConversationRuntimeState runtime,
     String messageId,
     String text, {
+    bool renderMarkdown = true,
     bool isFinal = false,
     double? prefillTokensPerSecond,
     double? decodeTokensPerSecond,
@@ -995,6 +1008,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           content: {
             'text': text,
             'id': messageId,
+            'renderMarkdown': renderMarkdown,
             if (isFinal && prefillTokensPerSecond != null)
               'prefillTokensPerSecond': prefillTokensPerSecond,
             if (isFinal && decodeTokensPerSecond != null)
@@ -1009,6 +1023,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final content = Map<String, dynamic>.from(existing.content ?? const {});
     final currentText = (content['text'] ?? '').toString();
     content['text'] = text.isNotEmpty ? text : currentText;
+    content['renderMarkdown'] = renderMarkdown;
     if (isFinal && prefillTokensPerSecond != null) {
       content['prefillTokensPerSecond'] = prefillTokensPerSecond;
     }
@@ -1054,6 +1069,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         runtime,
         messageId,
         text,
+        renderMarkdown: true,
         isFinal: isFinal,
         prefillTokensPerSecond: prefillTokensPerSecond,
         decodeTokensPerSecond: decodeTokensPerSecond,
@@ -1191,7 +1207,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       );
       shouldUpdateAiMessage = true;
     } else if (isOpenClawAttachment) {
-      _flushPureChatReplyBatch(runtime, taskId, emitVoiceUpdate: true);
       messageText =
           runtime.currentAiMessages[taskId] ??
           _visiblePureChatReplyText(runtime, taskId);
@@ -1232,6 +1247,14 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
               schedulePersistence: true,
             );
             didSchedulePersistence = true;
+          } else {
+            _applyPureChatReplyUpdate(
+              runtime,
+              taskId,
+              text: mergedText,
+              isError: false,
+              renderMarkdown: false,
+            );
           }
         }
       }
@@ -1240,7 +1263,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       isSummarizing = false;
       runtime.isContextCompressing = false;
       if (payloadAttachments.isNotEmpty || hasPerformanceMetrics) {
-        _flushPureChatReplyBatch(runtime, taskId, emitVoiceUpdate: true);
         shouldUpdateAiMessage = true;
       }
     }
@@ -1251,6 +1273,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           taskId,
           text: messageText,
           isError: isError,
+          renderMarkdown: _shouldRenderReplyMarkdown(
+            runtime,
+            taskId,
+            _StreamingTextStreamKind.pureChatReply,
+          ),
           isSummarizing: isSummarizing,
           attachments: payloadAttachments,
           prefillTokensPerSecond: prefillTokensPerSecond,
@@ -1579,6 +1606,13 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           taskId,
           emitVoiceEvent: true,
           schedulePersistence: true,
+        );
+      } else {
+        _upsertAgentReplyMessage(
+          runtime,
+          aiTextMessageId,
+          visibleText,
+          renderMarkdown: false,
         );
       }
     }
@@ -2281,6 +2315,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     String taskId,
     String text,
     bool isError, {
+    bool renderMarkdown = true,
     bool isSummarizing = false,
     List<Map<String, dynamic>> attachments = const [],
     double? prefillTokensPerSecond,
@@ -2288,7 +2323,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   }) {
     final index = runtime.messages.indexWhere((msg) => msg.id == taskId);
     if (index == -1) {
-      final content = <String, dynamic>{'text': text, 'id': taskId};
+      final content = <String, dynamic>{
+        'text': text,
+        'id': taskId,
+        'renderMarkdown': renderMarkdown,
+      };
       if (prefillTokensPerSecond != null) {
         content['prefillTokensPerSecond'] = prefillTokensPerSecond;
       }
@@ -2317,6 +2356,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final content = Map<String, dynamic>.from(existing.content ?? {});
     final existingText = content['text'] as String? ?? '';
     content['text'] = text.isNotEmpty ? text : existingText;
+    content['renderMarkdown'] = renderMarkdown;
     if (prefillTokensPerSecond != null) {
       content['prefillTokensPerSecond'] = prefillTokensPerSecond;
     }
