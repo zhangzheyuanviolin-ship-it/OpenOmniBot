@@ -7,6 +7,8 @@ import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.util.OmniLog
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -38,6 +40,10 @@ class HttpAgentLlmClient(
     }
 ) : AgentLlmClient {
     private val tag = "HttpAgentLlmClient"
+
+    private companion object {
+        const val REASONING_UPDATE_INTERVAL_MS = 300L
+    }
 
     private data class StreamRequestVariant(
         val name: String,
@@ -150,18 +156,69 @@ class HttpAgentLlmClient(
             )
         )
         var lastReasoning = ""
+        var lastReasoningEmitLength = 0
+        var lastReasoningEmitAt = 0L
+        var reasoningEmitJob: Job? = null
+        val reasoningLock = Any()
         var lastContent = ""
         var eventSource: EventSource? = null
 
-        fun emitReasoning() {
-            val reasoning = accumulator.currentReasoning()
-            if (reasoning.isBlank() || reasoning == lastReasoning) return
+        fun dispatchReasoningSnapshot(reasoning: String) {
             lastReasoning = reasoning
             if (onReasoningUpdate != null) {
                 scope.launch {
                     runCatching { onReasoningUpdate.invoke(reasoning) }
                         .onFailure { OmniLog.w(tag, "emit reasoning update failed: ${it.message}") }
                 }
+            }
+        }
+
+        fun collectReasoningSnapshotLocked(): String? {
+            val length = accumulator.currentReasoningLength()
+            if (length <= 0 || length == lastReasoningEmitLength) return null
+            val reasoning = accumulator.currentReasoning()
+            lastReasoningEmitLength = length
+            if (reasoning.isBlank() || reasoning == lastReasoning) return null
+            lastReasoning = reasoning
+            lastReasoningEmitAt = System.currentTimeMillis()
+            return reasoning
+        }
+
+        fun scheduleReasoningSnapshotLocked(delayMs: Long) {
+            reasoningEmitJob = scope.launch {
+                delay(delayMs)
+                val snapshot = synchronized(reasoningLock) {
+                    reasoningEmitJob = null
+                    collectReasoningSnapshotLocked()
+                }
+                if (snapshot != null) {
+                    dispatchReasoningSnapshot(snapshot)
+                }
+            }
+        }
+
+        fun emitReasoning(force: Boolean = false) {
+            var snapshot: String? = null
+            synchronized(reasoningLock) {
+                val length = accumulator.currentReasoningLength()
+                if (length <= 0 || length == lastReasoningEmitLength) return
+                if (force) {
+                    reasoningEmitJob?.cancel()
+                    reasoningEmitJob = null
+                    snapshot = collectReasoningSnapshotLocked()
+                    return@synchronized
+                }
+                if (reasoningEmitJob?.isActive == true) return
+                val elapsed = System.currentTimeMillis() - lastReasoningEmitAt
+                val delayMs = REASONING_UPDATE_INTERVAL_MS - elapsed
+                if (delayMs <= 0L) {
+                    snapshot = collectReasoningSnapshotLocked()
+                } else {
+                    scheduleReasoningSnapshotLocked(delayMs)
+                }
+            }
+            if (snapshot != null) {
+                dispatchReasoningSnapshot(snapshot!!)
             }
         }
 
@@ -181,7 +238,7 @@ class HttpAgentLlmClient(
             if (!completed.compareAndSet(false, true)) return
             runCatching {
                 val turn = accumulator.buildTurn()
-                emitReasoning()
+                emitReasoning(force = true)
                 emitContent()
                 turn
             }.onSuccess { turn ->
@@ -249,6 +306,7 @@ class HttpAgentLlmClient(
             )
             return streamDone.await()
         } finally {
+            reasoningEmitJob?.cancel()
             eventSource?.cancel()
         }
     }

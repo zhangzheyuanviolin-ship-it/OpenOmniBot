@@ -125,6 +125,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 internal const val CHAT_ONLY_MODE = "chat_only"
+private const val MAX_PERSISTED_THINKING_CHARS = 16 * 1024
+private const val THINKING_TRUNCATION_NOTICE = "[Earlier reasoning omitted]\n"
 
 private val chatTaskPayloadJson = Json {
     ignoreUnknownKeys = true
@@ -3863,10 +3865,25 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     startTime: Long,
                     endTime: Long?
                 ): Map<String, Any?> {
+                    val sanitizedThinking = AgentTextSanitizer.sanitizeUtf16(thinkingContent)
+                    val originalLength = sanitizedThinking.length
+                    val persistedThinking = if (originalLength <= MAX_PERSISTED_THINKING_CHARS) {
+                        sanitizedThinking
+                    } else {
+                        val bodyLimit = (MAX_PERSISTED_THINKING_CHARS - THINKING_TRUNCATION_NOTICE.length)
+                            .coerceAtLeast(0)
+                        AgentTextSanitizer.sanitizeUtf16(
+                            THINKING_TRUNCATION_NOTICE + sanitizedThinking.takeLast(bodyLimit)
+                        )
+                    }
+                    val truncated = persistedThinking.length < originalLength
                     return linkedMapOf(
                         "type" to "deep_thinking",
                         "isLoading" to isLoading,
-                        "thinkingContent" to thinkingContent,
+                        "thinkingContent" to persistedThinking,
+                        "thinkingContentTruncated" to truncated,
+                        "thinkingOriginalLength" to originalLength,
+                        "thinkingTruncateMode" to if (truncated) "head_omitted" else "none",
                         "stage" to stage,
                         "taskID" to taskId,
                         "startTime" to startTime,
@@ -3896,7 +3913,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             conversationMode = resolvedConversationMode,
                             entryId = entryId,
                             cardData = buildDeepThinkingCardData(
-                                thinkingContent = AgentTextSanitizer.sanitizeUtf16(thinkingContent),
+                                thinkingContent = thinkingContent,
                                 isLoading = isLoading,
                                 stage = stage,
                                 startTime = startTime,
@@ -4033,13 +4050,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             activeThinkingEntryId = entryId
                             val startTime = System.currentTimeMillis()
                             thinkingCardStartTimes.putIfAbsent(entryId, startTime)
-                            upsertThinkingCard(
-                                entryId = entryId,
-                                thinkingContent = latestThinkingContent,
-                                isLoading = true,
-                                stage = 1,
-                                createdAt = startTime
-                            )
                         } else {
                             pendingThinkingRoundSplit = true
                         }
@@ -4064,13 +4074,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             thinkingCardStartTimes[entryId] = startTime
                             latestThinkingContent = normalizedThinking
                             pendingThinkingRoundSplit = false
-                            upsertThinkingCard(
-                                entryId = entryId,
-                                thinkingContent = latestThinkingContent,
-                                isLoading = true,
-                                stage = 1,
-                                createdAt = startTime
-                            )
                         } else {
                             val entryId = activeThinkingEntryId ?: run {
                                 if (thinkingRound <= 0) {
@@ -4085,12 +4088,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 }
                             }
                             latestThinkingContent = normalizedThinking
-                            upsertThinkingCard(
-                                entryId = entryId,
-                                thinkingContent = latestThinkingContent,
-                                isLoading = true,
-                                stage = 1
-                            )
                         }
                         sendEvent("onAgentThinkingUpdate", mapOf("thinking" to thinking))
                     }

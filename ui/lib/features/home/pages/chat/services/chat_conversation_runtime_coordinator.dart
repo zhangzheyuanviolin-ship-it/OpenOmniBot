@@ -6,6 +6,7 @@ import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
 import 'package:ui/features/home/pages/chat/utils/stream_text_merge.dart';
 import 'package:ui/features/home/pages/command_overlay/constants/messages.dart';
 import 'package:ui/features/home/pages/chat/mixins/agent_stream_handler.dart';
+import 'package:ui/features/home/pages/chat/utils/deep_thinking_persistence.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
@@ -1766,12 +1767,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       if (notifyAfterUpdate) {
         notifyListeners();
       }
-      if (schedulePersistence) {
-        schedulePersistRuntimeConversation(
-          conversationId: binding.conversationId,
-          mode: binding.mode,
-        );
-      }
       return;
     }
 
@@ -1803,12 +1798,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     }
     if (notifyAfterUpdate) {
       notifyListeners();
-    }
-    if (schedulePersistence) {
-      schedulePersistRuntimeConversation(
-        conversationId: binding.conversationId,
-        mode: binding.mode,
-      );
     }
   }
 
@@ -2507,11 +2496,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         createAt: DateTime.fromMillisecondsSinceEpoch(startTime),
       ),
     );
-    _persistDeepThinkingCardIfNeeded(
-      conversationId: runtime.conversationId,
-      mode: runtime.mode,
-      message: runtime.messages.first,
-    );
   }
 
   String _buildContextCompactionMarkerId({
@@ -2660,11 +2644,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     content['cardData'] = cardData;
     runtime.messages[index] = existing.copyWith(content: content);
-    _persistDeepThinkingCardIfNeeded(
-      conversationId: runtime.conversationId,
-      mode: runtime.mode,
-      message: runtime.messages[index],
-    );
   }
 
   void _persistDeepThinkingCardIfNeeded({
@@ -2680,7 +2659,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       ConversationHistoryService.upsertConversationUiCard(
         conversationId,
         entryId: message.id,
-        cardData: Map<String, dynamic>.from(cardData!),
+        cardData: buildPersistentDeepThinkingCardData(
+          Map<String, dynamic>.from(cardData!),
+        ),
         createdAtMillis: message.createAt.millisecondsSinceEpoch,
         mode: _conversationModeFromRuntimeMode(
           mode,
