@@ -95,8 +95,19 @@ class BotStatus extends StatelessWidget {
       iconWidget = null;
     }
 
+    final normalizedCostTime = costTime == null
+        ? ''
+        : LegacyTextLocalizer.isEnglish
+        ? costTime!
+        : costTime!.replaceAll(' ', '');
+    final timeJoiner =
+        timeDesc != null &&
+            normalizedCostTime.isNotEmpty &&
+            LegacyTextLocalizer.isEnglish
+        ? ' '
+        : '';
     final timeText = timeDesc != null
-        ? '($timeDesc${costTime ?? ''})$timeDescSuffix'
+        ? '($timeDesc$timeJoiner$normalizedCostTime)$timeDescSuffix'
         : '';
     final textGroup = Row(
       mainAxisSize: MainAxisSize.min,
