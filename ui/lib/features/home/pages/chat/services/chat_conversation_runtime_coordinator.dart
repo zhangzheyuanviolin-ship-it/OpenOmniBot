@@ -45,6 +45,13 @@ class _StreamingTextBatchState {
   bool get reachedFlushThreshold =>
       pendingChunkCount >= _kStreamingTextChunkFlushThreshold;
 
+  /// 自上次 flush 以来的新增文本中是否包含换行符。
+  /// 遇到换行时立即 flush，确保 markdown 块级元素（段落、列表等）及时渲染。
+  bool get containsNewlineSinceFlush {
+    if (latestText.length <= lastFlushedText.length) return false;
+    return latestText.indexOf('\n', lastFlushedText.length) >= 0;
+  }
+
   void stage(String nextText) {
     if (nextText == latestText) {
       return;
@@ -799,7 +806,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       return state.reachedFlushThreshold;
     }
     state.stage(nextText);
-    return state.reachedFlushThreshold;
+    return state.reachedFlushThreshold || state.containsNewlineSinceFlush;
   }
 
   String _visiblePureChatReplyText(
