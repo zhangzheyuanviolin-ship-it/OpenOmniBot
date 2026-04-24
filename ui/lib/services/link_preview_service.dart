@@ -46,18 +46,25 @@ class LinkPreviewService {
       return const <String>[];
     }
 
+    final sanitizedText = _maskIgnoredSchemeUrls(text);
     final matches = <_UrlCandidate>[
       ...RegExp(r'https?://[^\s<>"\]\[]+', caseSensitive: false)
-          .allMatches(text)
+          .allMatches(sanitizedText)
           .map((match) => _UrlCandidate(match.start, match.group(0) ?? '')),
       ...RegExp(
             r'(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z][a-z0-9-]{1,62}(?:/[^\s<>"\]\[]*)?',
             caseSensitive: false,
           )
-          .allMatches(text)
+          .allMatches(sanitizedText)
           .where((match) {
-            final previous = match.start > 0 ? text[match.start - 1] : '';
-            return previous != '@' && previous != '/' && previous != '.';
+            final previous = match.start > 0
+                ? sanitizedText[match.start - 1]
+                : '';
+            return previous != '@' &&
+                previous != '/' &&
+                previous != '.' &&
+                previous != '_' &&
+                previous != '-';
           })
           .map((match) => _UrlCandidate(match.start, match.group(0) ?? '')),
     ]..sort((left, right) => left.index.compareTo(right.index));
@@ -92,6 +99,13 @@ class LinkPreviewService {
     }
 
     return urls;
+  }
+
+  String _maskIgnoredSchemeUrls(String text) {
+    return text.replaceAllMapped(
+      RegExp(r'omnibot://[^\s<>"\]\[)]+', caseSensitive: false),
+      (match) => ''.padLeft(match.group(0)?.length ?? 0),
+    );
   }
 
   List<Map<String, dynamic>> reconcilePreviewMaps({
@@ -310,6 +324,9 @@ class LinkPreviewService {
     if (candidate.isEmpty) {
       return null;
     }
+    final hadExplicitScheme = candidate.startsWith(
+      RegExp(r'https?://', caseSensitive: false),
+    );
     while (candidate.isNotEmpty) {
       final last = candidate[candidate.length - 1];
       if (!_isTrailingPunctuation(last)) {
@@ -319,6 +336,9 @@ class LinkPreviewService {
         break;
       }
       candidate = candidate.substring(0, candidate.length - 1);
+    }
+    if (!hadExplicitScheme && _looksLikeBareFilenameCandidate(candidate)) {
+      return null;
     }
     if (candidate.isNotEmpty &&
         !candidate.startsWith(RegExp(r'https?://', caseSensitive: false))) {
@@ -393,15 +413,68 @@ class LinkPreviewService {
   bool _looksLikeImageUrl(String url) {
     final parsed = Uri.tryParse(url);
     final path = (parsed?.path ?? url).toLowerCase();
-    return path.endsWith('.png') ||
-        path.endsWith('.jpg') ||
-        path.endsWith('.jpeg') ||
-        path.endsWith('.gif') ||
-        path.endsWith('.webp') ||
-        path.endsWith('.bmp') ||
-        path.endsWith('.svg') ||
-        path.endsWith('.heic') ||
-        path.endsWith('.heif');
+    return _hasKnownFileExtension(path, const <String>{
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'bmp',
+      'svg',
+      'heic',
+      'heif',
+    });
+  }
+
+  bool _looksLikeBareFilenameCandidate(String value) {
+    final candidate = value.trim().toLowerCase();
+    if (candidate.isEmpty ||
+        candidate.contains('/') ||
+        candidate.contains('?') ||
+        candidate.contains('#')) {
+      return false;
+    }
+    return _hasKnownFileExtension(candidate, const <String>{
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'bmp',
+      'svg',
+      'heic',
+      'heif',
+      'pdf',
+      'txt',
+      'md',
+      'json',
+      'csv',
+      'doc',
+      'docx',
+      'xls',
+      'xlsx',
+      'ppt',
+      'pptx',
+      'zip',
+      'rar',
+      '7z',
+      'mp3',
+      'wav',
+      'm4a',
+      'mp4',
+      'mov',
+      'avi',
+    });
+  }
+
+  bool _hasKnownFileExtension(String value, Set<String> extensions) {
+    final pureValue = value.split('?').first.split('#').first;
+    final lastDot = pureValue.lastIndexOf('.');
+    if (lastDot <= 0 || lastDot == pureValue.length - 1) {
+      return false;
+    }
+    final extension = pureValue.substring(lastDot + 1).toLowerCase();
+    return extensions.contains(extension);
   }
 
   String _collapseWhitespace(String value) {

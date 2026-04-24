@@ -202,6 +202,7 @@ class MessageBubble extends StatelessWidget {
                       context,
                       linkPreviews,
                       compactStyle: true,
+                      isUserMessage: true,
                     ),
                   ],
                 ],
@@ -229,7 +230,12 @@ class MessageBubble extends StatelessWidget {
         if (linkPreviews.isNotEmpty) ...[
           if (text.isNotEmpty || attachments.isNotEmpty)
             const SizedBox(height: 8),
-          _buildLinkPreviewList(context, linkPreviews, compactStyle: false),
+          _buildLinkPreviewList(
+            context,
+            linkPreviews,
+            compactStyle: true,
+            isUserMessage: false,
+          ),
         ],
       ],
     );
@@ -434,11 +440,12 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // 链接预览是块级卡片，不塞进 Markdown 行内渲染，便于展示摘要和封面图。
+  // 链接预览独立成块，便于保持引用式层级和轻量点击反馈。
   Widget _buildLinkPreviewList(
     BuildContext context,
     List<ChatLinkPreview> previews, {
     required bool compactStyle,
+    required bool isUserMessage,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -452,6 +459,7 @@ class MessageBubble extends StatelessWidget {
             entry.value,
             entry.key,
             compactStyle: compactStyle,
+            isUserMessage: isUserMessage,
           ),
         );
       }).toList(),
@@ -463,9 +471,15 @@ class MessageBubble extends StatelessWidget {
     ChatLinkPreview preview,
     int index, {
     required bool compactStyle,
+    required bool isUserMessage,
   }) {
     if (compactStyle) {
-      return _buildCompactLinkPreview(context, preview, index);
+      return _buildCompactLinkPreview(
+        context,
+        preview,
+        index,
+        isUserMessage: isUserMessage,
+      );
     }
     final isEnglish =
         Localizations.maybeLocaleOf(context)?.languageCode == 'en';
@@ -593,8 +607,9 @@ class MessageBubble extends StatelessWidget {
   Widget _buildCompactLinkPreview(
     BuildContext context,
     ChatLinkPreview preview,
-    int index,
-  ) {
+    int index, {
+    required bool isUserMessage,
+  }) {
     final isEnglish =
         Localizations.maybeLocaleOf(context)?.languageCode == 'en';
     final title = preview.title.trim();
@@ -603,11 +618,15 @@ class MessageBubble extends StatelessWidget {
     final hasImage =
         preview.imageUrl.startsWith('http://') ||
         preview.imageUrl.startsWith('https://');
-    final lineColor = visualProfile.primaryTextColor.withValues(alpha: 0.36);
-    final metaColor = visualProfile.primaryTextColor.withValues(alpha: 0.68);
-    final secondaryColor = visualProfile.primaryTextColor.withValues(
-      alpha: 0.78,
-    );
+    final primaryColor = isUserMessage
+        ? visualProfile.primaryTextColor
+        : _resolvedAiPrimaryTextColor(context);
+    final secondaryBaseColor = isUserMessage
+        ? visualProfile.primaryTextColor
+        : _resolvedAiSecondaryTextColor(context);
+    final lineColor = secondaryBaseColor.withValues(alpha: 0.42);
+    final metaColor = secondaryBaseColor.withValues(alpha: 0.82);
+    final secondaryColor = secondaryBaseColor.withValues(alpha: 0.94);
     final statusLabel = switch (preview.status) {
       ChatLinkPreview.statusLoading => isEnglish ? 'Loading preview' : '加载预览中',
       ChatLinkPreview.statusFailed =>
@@ -628,7 +647,7 @@ class MessageBubble extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Container(
           key: ValueKey('link-preview-quote-$index'),
-          constraints: const BoxConstraints(maxWidth: 320),
+          constraints: BoxConstraints(maxWidth: isUserMessage ? 320 : 360),
           padding: const EdgeInsets.only(left: 10, top: 2, right: 2, bottom: 2),
           decoration: BoxDecoration(
             border: Border(left: BorderSide(color: lineColor, width: 3)),
@@ -661,7 +680,7 @@ class MessageBubble extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: visualProfile.primaryTextColor,
+                            color: primaryColor,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             height: 1.22,

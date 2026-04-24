@@ -117,4 +117,42 @@ void main() {
     expect(find.text('链接预览标题'), findsOneWidget);
     expect(find.byKey(const ValueKey('link-preview-card-0')), findsOneWidget);
   });
+
+  testWidgets('assistant bubble also uses compact quote-style link preview', (
+    tester,
+  ) async {
+    final message = ChatMessageModel(
+      id: 'assistant-bubble',
+      type: 1,
+      user: 2,
+      content: {
+        'text': '你可以看这个链接',
+        'id': 'assistant-bubble',
+        'linkPreviews': [
+          {
+            'url': 'https://example.com/article',
+            'domain': 'example.com',
+            'siteName': 'Example',
+            'title': 'AI 链接预览标题',
+            'description': 'AI 链接预览描述',
+            'status': 'ready',
+          },
+        ],
+      },
+    );
+
+    await pumpBubble(tester, message: message);
+
+    final previewQuote = tester.widget<Container>(
+      find.byKey(const ValueKey('link-preview-quote-0')),
+    );
+    final previewDecoration = previewQuote.decoration! as BoxDecoration;
+    final previewTitle = tester.widget<Text>(find.text('AI 链接预览标题'));
+
+    expect(previewDecoration.color, isNull);
+    expect(previewDecoration.border, isA<Border>());
+    expect((previewDecoration.border! as Border).left.width, 3);
+    expect(previewTitle.style?.fontSize, 12);
+    expect(find.byKey(const ValueKey('link-preview-card-0')), findsOneWidget);
+  });
 }
