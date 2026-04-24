@@ -48,6 +48,17 @@ class StreamingText extends StatefulWidget {
   /// 尾随在文本末尾的内联组件
   final Widget? trailing;
 
+  /// 已完成 Markdown 渲染的文本长度（字符数）。
+  ///
+  /// 当流式输出时，每 N 个 chunk 才执行一次 Markdown 渲染。该值表示上次
+  /// flush 时已渲染为 Markdown 的文本长度。超出该长度的新文本以纯文本追加，
+  /// 避免整段文本在 Markdown 与纯文本之间来回跳动。
+  ///
+  /// - `null`：整段文本按 Markdown 渲染（默认行为 / flush 后）
+  /// - `0`：尚未执行过 flush，全部按 Markdown 渲染（避免首批文本跳变）
+  /// - `> 0 && < fullText.length`：前缀按 Markdown 渲染，尾部按纯文本追加
+  final int? markdownRenderedLength;
+
   const StreamingText({
     super.key,
     required this.fullText,
@@ -56,6 +67,7 @@ class StreamingText extends StatefulWidget {
     this.selectable = false,
     this.onDisplayedTextChanged,
     this.trailing,
+    this.markdownRenderedLength,
   });
 
   @override
@@ -172,8 +184,49 @@ class _StreamingTextState extends State<StreamingText> {
         final displayText = widget.fullText.substring(0, displayLength);
         _notifyDisplayedTextChanged(displayText.length);
 
-        // 如果启用Markdown，直接渲染Markdown内容
+        // 如果启用Markdown，根据 markdownRenderedLength 决定渲染策略
         if (widget.enableMarkdown) {
+          final mdLen = widget.markdownRenderedLength;
+          // 分段渲染：已 flush 的前缀用 Markdown，新增尾部用纯文本
+          if (mdLen != null && mdLen > 0 && mdLen < displayLength) {
+            final safeMdLen = _clampToCodePointBoundary(displayText, mdLen);
+            final mdText = displayText.substring(0, safeMdLen);
+            final plainTail = displayText.substring(safeMdLen);
+
+            Widget child = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OmnibotMarkdownBody(
+                  data: mdText,
+                  baseStyle: widget.style,
+                  inlineResourcePlainStyle: true,
+                ),
+                if (plainTail.isNotEmpty)
+                  RichText(
+                    text: TextSpan(
+                      text: plainTail,
+                      style: widget.style,
+                      children: _trailingSpanOnly(widget.trailing),
+                    ),
+                  ),
+              ],
+            );
+
+            return widget.selectable
+                ? SelectionArea(
+                    onSelectionChanged: (content) {
+                      _lastSelectedContent = content?.plainText;
+                    },
+                    contextMenuBuilder: (context, selectableRegionState) {
+                      return _buildSelectionContextMenu(selectableRegionState);
+                    },
+                    child: child,
+                  )
+                : child;
+          }
+
+          // 全量 Markdown 渲染（默认 / flush 后 / 首批文本）
           Widget child = OmnibotMarkdownBody(
             data: displayText,
             baseStyle: widget.style,
@@ -262,6 +315,20 @@ class _StreamingTextState extends State<StreamingText> {
           ),
         ),
     ], trailing);
+  }
+
+  /// 仅生成 trailing WidgetSpan（用于分段渲染时的纯文本尾部）
+  List<InlineSpan>? _trailingSpanOnly(Widget? trailing) {
+    if (trailing == null) return null;
+    return [
+      WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: trailing,
+        ),
+      ),
+    ];
   }
 
   int _clampToCodePointBoundary(String text, int requestedLength) {

@@ -888,13 +888,20 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     return _visibleAgentReplyText(runtime, taskId, messageId: messageId);
   }
 
-  bool _shouldRenderReplyMarkdown(
+  /// 返回已完成 Markdown 渲染的文本长度。
+  ///
+  /// - 无待刷新数据时返回 `null`（表示全量 Markdown 渲染）
+  /// - 有待刷新数据时返回上次 flush 的文本长度，前端据此分段渲染
+  int? _markdownRenderedLengthForBatch(
     ChatConversationRuntimeState runtime,
     String taskId,
     _StreamingTextStreamKind kind,
   ) {
     final batch = _streamingTextBatchFor(runtime, taskId, kind);
-    return batch == null || !batch.hasPendingFlush;
+    if (batch == null || !batch.hasPendingFlush) {
+      return null;
+    }
+    return batch.lastFlushedText.length;
   }
 
   bool _applyPureChatReplyUpdate(
@@ -903,6 +910,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     required String text,
     required bool isError,
     bool renderMarkdown = true,
+    int? markdownRenderedLength,
     bool isSummarizing = false,
     List<Map<String, dynamic>> attachments = const <Map<String, dynamic>>[],
     double? prefillTokensPerSecond,
@@ -934,6 +942,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       isError,
       isSummarizing: isSummarizing,
       renderMarkdown: renderMarkdown,
+      markdownRenderedLength: markdownRenderedLength,
       attachments: attachments,
       prefillTokensPerSecond: prefillTokensPerSecond,
       decodeTokensPerSecond: decodeTokensPerSecond,
@@ -991,6 +1000,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     String messageId,
     String text, {
     bool renderMarkdown = true,
+    int? markdownRenderedLength,
     bool isFinal = false,
     double? prefillTokensPerSecond,
     double? decodeTokensPerSecond,
@@ -999,21 +1009,25 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       (message) => message.id == messageId,
     );
     if (index == -1) {
+      final content = <String, dynamic>{
+        'text': text,
+        'id': messageId,
+        'renderMarkdown': renderMarkdown,
+        if (isFinal && prefillTokensPerSecond != null)
+          'prefillTokensPerSecond': prefillTokensPerSecond,
+        if (isFinal && decodeTokensPerSecond != null)
+          'decodeTokensPerSecond': decodeTokensPerSecond,
+      };
+      if (markdownRenderedLength != null) {
+        content['markdownRenderedLength'] = markdownRenderedLength;
+      }
       runtime.messages.insert(
         0,
         ChatMessageModel(
           id: messageId,
           type: 1,
           user: 2,
-          content: {
-            'text': text,
-            'id': messageId,
-            'renderMarkdown': renderMarkdown,
-            if (isFinal && prefillTokensPerSecond != null)
-              'prefillTokensPerSecond': prefillTokensPerSecond,
-            if (isFinal && decodeTokensPerSecond != null)
-              'decodeTokensPerSecond': decodeTokensPerSecond,
-          },
+          content: content,
         ),
       );
       return;
@@ -1024,6 +1038,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final currentText = (content['text'] ?? '').toString();
     content['text'] = text.isNotEmpty ? text : currentText;
     content['renderMarkdown'] = renderMarkdown;
+    if (markdownRenderedLength != null) {
+      content['markdownRenderedLength'] = markdownRenderedLength;
+    } else {
+      content.remove('markdownRenderedLength');
+    }
     if (isFinal && prefillTokensPerSecond != null) {
       content['prefillTokensPerSecond'] = prefillTokensPerSecond;
     }
@@ -1248,12 +1267,18 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
             );
             didSchedulePersistence = true;
           } else {
+            final batch = _streamingTextBatchFor(
+              runtime,
+              taskId,
+              _StreamingTextStreamKind.pureChatReply,
+            );
             _applyPureChatReplyUpdate(
               runtime,
               taskId,
               text: mergedText,
               isError: false,
-              renderMarkdown: false,
+              renderMarkdown: true,
+              markdownRenderedLength: batch?.lastFlushedText.length,
             );
           }
         }
@@ -1273,7 +1298,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           taskId,
           text: messageText,
           isError: isError,
-          renderMarkdown: _shouldRenderReplyMarkdown(
+          renderMarkdown: true,
+          markdownRenderedLength: _markdownRenderedLengthForBatch(
             runtime,
             taskId,
             _StreamingTextStreamKind.pureChatReply,
@@ -1608,11 +1634,17 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           schedulePersistence: true,
         );
       } else {
+        final batch = _streamingTextBatchFor(
+          runtime,
+          taskId,
+          _StreamingTextStreamKind.agentReply,
+        );
         _upsertAgentReplyMessage(
           runtime,
           aiTextMessageId,
           visibleText,
-          renderMarkdown: false,
+          renderMarkdown: true,
+          markdownRenderedLength: batch?.lastFlushedText.length,
         );
       }
     }
@@ -2316,6 +2348,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     String text,
     bool isError, {
     bool renderMarkdown = true,
+    int? markdownRenderedLength,
     bool isSummarizing = false,
     List<Map<String, dynamic>> attachments = const [],
     double? prefillTokensPerSecond,
@@ -2328,6 +2361,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         'id': taskId,
         'renderMarkdown': renderMarkdown,
       };
+      if (markdownRenderedLength != null) {
+        content['markdownRenderedLength'] = markdownRenderedLength;
+      } else {
+        content.remove('markdownRenderedLength');
+      }
       if (prefillTokensPerSecond != null) {
         content['prefillTokensPerSecond'] = prefillTokensPerSecond;
       }
@@ -2357,6 +2395,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final existingText = content['text'] as String? ?? '';
     content['text'] = text.isNotEmpty ? text : existingText;
     content['renderMarkdown'] = renderMarkdown;
+    if (markdownRenderedLength != null) {
+      content['markdownRenderedLength'] = markdownRenderedLength;
+    } else {
+      content.remove('markdownRenderedLength');
+    }
     if (prefillTokensPerSecond != null) {
       content['prefillTokensPerSecond'] = prefillTokensPerSecond;
     }

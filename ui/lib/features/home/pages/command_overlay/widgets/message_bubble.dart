@@ -527,6 +527,7 @@ class MessageBubble extends StatelessWidget {
           const SizedBox(height: 8),
           StreamingText(
             enableMarkdown: enableMarkdown,
+            markdownRenderedLength: _markdownRenderedLength(),
             fullText: text,
             selectable: true,
             onDisplayedTextChanged: onStreamingTextLayoutChanged,
@@ -543,6 +544,7 @@ class MessageBubble extends StatelessWidget {
 
     return StreamingText(
       enableMarkdown: enableMarkdown,
+      markdownRenderedLength: _markdownRenderedLength(),
       fullText: text,
       selectable: true,
       onDisplayedTextChanged: onStreamingTextLayoutChanged,
@@ -558,6 +560,11 @@ class MessageBubble extends StatelessWidget {
   bool _shouldRenderMarkdown() {
     final raw = message.content?['renderMarkdown'];
     return raw is bool ? raw : true;
+  }
+
+  int? _markdownRenderedLength() {
+    final raw = message.content?['markdownRenderedLength'];
+    return raw is int ? raw : null;
   }
 
   /// AI text with optional inference speed label
