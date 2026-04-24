@@ -143,6 +143,72 @@ void main() {
 
     expect(controller.offset, closeTo(controller.position.maxScrollExtent, 1));
   });
+
+  testWidgets('latest user message no longer shows inline edit button', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    final messages = <ChatMessageModel>[
+      ChatMessageModel.userMessage('最新用户消息', id: 'latest-user'),
+      ChatMessageModel.assistantMessage('收到', id: 'assistant-1'),
+      ChatMessageModel.userMessage('更早的用户消息', id: 'older-user'),
+    ];
+
+    await tester.pumpWidget(
+      _buildChatMessageListHarness(controller: controller, messages: messages),
+    );
+    await tester.pumpAndSettle();
+
+    final latestBubble = find.byKey(
+      const ValueKey('user-message-bubble-latest-user'),
+    );
+
+    expect(latestBubble, findsOneWidget);
+    expect(
+      find.descendant(of: latestBubble, matching: find.byType(IconButton)),
+      findsNothing,
+    );
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+  });
+
+  testWidgets('latest user message editing reuses bubble content area', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    final editingController = TextEditingController(text: '最新用户消息');
+    final messages = <ChatMessageModel>[
+      ChatMessageModel.userMessage('最新用户消息', id: 'latest-user'),
+      ChatMessageModel.assistantMessage('收到', id: 'assistant-1'),
+    ];
+
+    addTearDown(editingController.dispose);
+
+    await tester.pumpWidget(
+      _buildLocalizedApp(
+        child: SizedBox(
+          width: 400,
+          height: 520,
+          child: ChatMessageList(
+            messages: messages,
+            scrollController: controller,
+            editingUserMessageId: 'latest-user',
+            userMessageEditController: editingController,
+            onBeforeTaskExecute: () async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('user-message-bubble-latest-user')),
+      findsOneWidget,
+    );
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+    expect(find.text('Save & send'), findsOneWidget);
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+  });
 }
 
 Widget _buildChatMessageListHarness({

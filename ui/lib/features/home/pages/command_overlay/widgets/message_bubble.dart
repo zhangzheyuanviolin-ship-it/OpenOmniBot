@@ -51,10 +51,8 @@ class MessageBubble extends StatelessWidget {
   final OnRequestAuthorize? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
-  final bool showUserEditButton;
   final bool isUserMessageEditing;
   final TextEditingController? userMessageEditController;
-  final VoidCallback? onUserEditTap;
   final VoidCallback? onCancelUserEdit;
   final VoidCallback? onSaveUserEdit;
   final VoidCallback? onStreamingTextLayoutChanged;
@@ -71,10 +69,8 @@ class MessageBubble extends StatelessWidget {
     this.onParentScrollHandoff,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
-    this.showUserEditButton = false,
     this.isUserMessageEditing = false,
     this.userMessageEditController,
-    this.onUserEditTap,
     this.onCancelUserEdit,
     this.onSaveUserEdit,
     this.onStreamingTextLayoutChanged,
@@ -209,30 +205,6 @@ class MessageBubble extends StatelessWidget {
                       const SizedBox(height: 8),
                     _buildLinkPreviewList(context, linkPreviews),
                   ],
-                  if (!isUserMessageEditing &&
-                      showUserEditButton &&
-                      onUserEditTap != null)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 28,
-                          height: 28,
-                        ),
-                        padding: EdgeInsets.zero,
-                        splashRadius: 16,
-                        tooltip: 'Edit message',
-                        onPressed: onUserEditTap,
-                        icon: Icon(
-                          Icons.edit_outlined,
-                          size: 16,
-                          color: visualProfile.primaryTextColor.withValues(
-                            alpha: 0.82,
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -748,14 +720,15 @@ class MessageBubble extends StatelessWidget {
               _buildUserAttachmentList(context, attachments),
             ],
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 8,
+              overflowAlignment: OverflowBarAlignment.end,
               children: [
                 TextButton(
                   onPressed: onCancelUserEdit,
                   child: const Text('Cancel'),
                 ),
-                const SizedBox(width: 8),
                 FilledButton(
                   onPressed: canSave ? onSaveUserEdit : null,
                   style: FilledButton.styleFrom(

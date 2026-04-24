@@ -1149,7 +1149,6 @@ class ChatMessageList extends StatefulWidget {
   onUserMessageLongPressStart;
   final String? editingUserMessageId;
   final TextEditingController? userMessageEditController;
-  final ValueChanged<ChatMessageModel>? onUserMessageEditRequested;
   final VoidCallback? onUserMessageEditCancelled;
   final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
   final Future<void> Function()? onLoadMore;
@@ -1168,7 +1167,6 @@ class ChatMessageList extends StatefulWidget {
     this.onUserMessageLongPressStart,
     this.editingUserMessageId,
     this.userMessageEditController,
-    this.onUserMessageEditRequested,
     this.onUserMessageEditCancelled,
     this.onUserMessageEditSaved,
     this.onLoadMore,
@@ -1400,7 +1398,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
             latestUserMessageId: latestUserMessageId,
             editingUserMessageId: widget.editingUserMessageId,
             userMessageEditController: widget.userMessageEditController,
-            onUserMessageEditRequested: widget.onUserMessageEditRequested,
             onUserMessageEditCancelled: widget.onUserMessageEditCancelled,
             onUserMessageEditSaved: widget.onUserMessageEditSaved,
             messageListenable: _observableMessages?.listenableAt(dataIndex),
@@ -1455,7 +1452,6 @@ class _ChatMessageListRow extends StatelessWidget {
     this.latestUserMessageId,
     this.editingUserMessageId,
     this.userMessageEditController,
-    this.onUserMessageEditRequested,
     this.onUserMessageEditCancelled,
     this.onUserMessageEditSaved,
     this.messageListenable,
@@ -1476,7 +1472,6 @@ class _ChatMessageListRow extends StatelessWidget {
   final String? latestUserMessageId;
   final String? editingUserMessageId;
   final TextEditingController? userMessageEditController;
-  final ValueChanged<ChatMessageModel>? onUserMessageEditRequested;
   final VoidCallback? onUserMessageEditCancelled;
   final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
   final void Function(String taskId)? onCancelTask;
@@ -1503,12 +1498,10 @@ class _ChatMessageListRow extends StatelessWidget {
   }
 
   Widget _buildBubble(ChatMessageModel currentMessage) {
-    final canShowEditAction =
-        onUserMessageEditRequested != null &&
-        currentMessage.user == 1 &&
-        currentMessage.id == latestUserMessageId;
+    final canEditUserMessage =
+        currentMessage.user == 1 && currentMessage.id == latestUserMessageId;
     final isEditingUserMessage =
-        canShowEditAction &&
+        canEditUserMessage &&
         editingUserMessageId == currentMessage.id &&
         userMessageEditController != null;
     return Padding(
@@ -1525,13 +1518,9 @@ class _ChatMessageListRow extends StatelessWidget {
         onParentScrollHandoff: onParentScrollHandoff,
         onRequestAuthorize: onRequestAuthorize,
         onUserMessageLongPressStart: onUserMessageLongPressStart,
-        showUserEditButton: canShowEditAction,
         isUserMessageEditing: isEditingUserMessage,
         userMessageEditController: isEditingUserMessage
             ? userMessageEditController
-            : null,
-        onUserEditTap: canShowEditAction
-            ? () => onUserMessageEditRequested?.call(currentMessage)
             : null,
         onCancelUserEdit: isEditingUserMessage
             ? onUserMessageEditCancelled
