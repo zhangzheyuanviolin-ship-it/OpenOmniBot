@@ -229,11 +229,7 @@ class MessageBubble extends StatelessWidget {
         if (linkPreviews.isNotEmpty) ...[
           if (text.isNotEmpty || attachments.isNotEmpty)
             const SizedBox(height: 8),
-          _buildLinkPreviewList(
-            context,
-            linkPreviews,
-            compactStyle: false,
-          ),
+          _buildLinkPreviewList(context, linkPreviews, compactStyle: false),
         ],
       ],
     );
@@ -441,9 +437,9 @@ class MessageBubble extends StatelessWidget {
   // 链接预览是块级卡片，不塞进 Markdown 行内渲染，便于展示摘要和封面图。
   Widget _buildLinkPreviewList(
     BuildContext context,
-    List<ChatLinkPreview> previews,
-    {required bool compactStyle}
-  ) {
+    List<ChatLinkPreview> previews, {
+    required bool compactStyle,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: previews.asMap().entries.map((entry) {
@@ -465,9 +461,9 @@ class MessageBubble extends StatelessWidget {
   Widget _buildLinkPreviewCard(
     BuildContext context,
     ChatLinkPreview preview,
-    int index,
-    {required bool compactStyle}
-  ) {
+    int index, {
+    required bool compactStyle,
+  }) {
     if (compactStyle) {
       return _buildCompactLinkPreview(context, preview, index);
     }
@@ -609,7 +605,9 @@ class MessageBubble extends StatelessWidget {
         preview.imageUrl.startsWith('https://');
     final lineColor = visualProfile.primaryTextColor.withValues(alpha: 0.36);
     final metaColor = visualProfile.primaryTextColor.withValues(alpha: 0.68);
-    final secondaryColor = visualProfile.primaryTextColor.withValues(alpha: 0.78);
+    final secondaryColor = visualProfile.primaryTextColor.withValues(
+      alpha: 0.78,
+    );
     final statusLabel = switch (preview.status) {
       ChatLinkPreview.statusLoading => isEnglish ? 'Loading preview' : '加载预览中',
       ChatLinkPreview.statusFailed =>
@@ -714,7 +712,8 @@ class MessageBubble extends StatelessWidget {
                     width: 40,
                     height: 40,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _buildCompactLinkPreviewImageFallback(),
+                    errorBuilder: (_, __, ___) =>
+                        _buildCompactLinkPreviewImageFallback(),
                   ),
                 ),
               ],
