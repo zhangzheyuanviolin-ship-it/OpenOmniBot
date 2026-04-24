@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:ui/models/chat_link_preview.dart';
+
 /// AI聊天消息模型
 ///
 /// 支持不同类型的消息：用户消息、AI回复消息，以及卡片类型消息
@@ -71,6 +73,18 @@ class ChatMessageModel {
 
   /// 获取数据库ID（用于本地存储和渲染key）
   int? get dbId => _asNullableInt(content?['dbId']);
+
+  List<ChatLinkPreview> get linkPreviews {
+    final raw = content?['linkPreviews'];
+    if (raw is! List) {
+      return const <ChatLinkPreview>[];
+    }
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item.cast<String, dynamic>()))
+        .map(ChatLinkPreview.fromJson)
+        .toList();
+  }
 
   /// 从JSON创建
   factory ChatMessageModel.fromJson(Map<String, dynamic> json) {

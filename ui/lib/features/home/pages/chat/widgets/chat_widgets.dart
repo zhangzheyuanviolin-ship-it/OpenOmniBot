@@ -1147,6 +1147,11 @@ class ChatMessageList extends StatefulWidget {
   final double bottomOverlayInset;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
+  final String? editingUserMessageId;
+  final TextEditingController? userMessageEditController;
+  final ValueChanged<ChatMessageModel>? onUserMessageEditRequested;
+  final VoidCallback? onUserMessageEditCancelled;
+  final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
   final Future<void> Function()? onLoadMore;
   final bool hasMore;
   final AppBackgroundVisualProfile visualProfile;
@@ -1161,6 +1166,11 @@ class ChatMessageList extends StatefulWidget {
     this.onRequestAuthorize,
     this.bottomOverlayInset = 0,
     this.onUserMessageLongPressStart,
+    this.editingUserMessageId,
+    this.userMessageEditController,
+    this.onUserMessageEditRequested,
+    this.onUserMessageEditCancelled,
+    this.onUserMessageEditSaved,
     this.onLoadMore,
     this.hasMore = false,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
@@ -1353,7 +1363,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
         ),
       );
     } else {
+      String? latestUserMessageId;
       final messageSource = _observableMessages ?? widget.messages;
+      for (final item in messageSource) {
+        if (item.user == 1) {
+          latestUserMessageId = item.id;
+          break;
+        }
+      }
       Widget listView = ListView.builder(
         controller: widget.scrollController,
         reverse: false,
@@ -1380,6 +1397,12 @@ class _ChatMessageListState extends State<ChatMessageList> {
               '${message.dbId ?? message.contentId ?? message.id}',
             ),
             message: message,
+            latestUserMessageId: latestUserMessageId,
+            editingUserMessageId: widget.editingUserMessageId,
+            userMessageEditController: widget.userMessageEditController,
+            onUserMessageEditRequested: widget.onUserMessageEditRequested,
+            onUserMessageEditCancelled: widget.onUserMessageEditCancelled,
+            onUserMessageEditSaved: widget.onUserMessageEditSaved,
             messageListenable: _observableMessages?.listenableAt(dataIndex),
             padding: EdgeInsets.only(
               top: needTopPadding ? 24.0 : 0.0,
@@ -1405,7 +1428,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
           child: listView,
         );
       }
-
       content = ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
@@ -1430,6 +1452,12 @@ class _ChatMessageListRow extends StatelessWidget {
     required this.message,
     required this.padding,
     required this.onBeforeTaskExecute,
+    this.latestUserMessageId,
+    this.editingUserMessageId,
+    this.userMessageEditController,
+    this.onUserMessageEditRequested,
+    this.onUserMessageEditCancelled,
+    this.onUserMessageEditSaved,
     this.messageListenable,
     this.onCancelTask,
     this.parentScrollController,
@@ -1445,6 +1473,12 @@ class _ChatMessageListRow extends StatelessWidget {
   final ValueListenable<ChatMessageModel>? messageListenable;
   final EdgeInsets padding;
   final Future<void> Function() onBeforeTaskExecute;
+  final String? latestUserMessageId;
+  final String? editingUserMessageId;
+  final TextEditingController? userMessageEditController;
+  final ValueChanged<ChatMessageModel>? onUserMessageEditRequested;
+  final VoidCallback? onUserMessageEditCancelled;
+  final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
   final void Function(String taskId)? onCancelTask;
   final ScrollController? parentScrollController;
   final VoidCallback? onParentScrollHandoff;
@@ -1469,6 +1503,14 @@ class _ChatMessageListRow extends StatelessWidget {
   }
 
   Widget _buildBubble(ChatMessageModel currentMessage) {
+    final canShowEditAction =
+        onUserMessageEditRequested != null &&
+        currentMessage.user == 1 &&
+        currentMessage.id == latestUserMessageId;
+    final isEditingUserMessage =
+        canShowEditAction &&
+        editingUserMessageId == currentMessage.id &&
+        userMessageEditController != null;
     return Padding(
       padding: padding,
       child: MessageBubble(
@@ -1483,6 +1525,20 @@ class _ChatMessageListRow extends StatelessWidget {
         onParentScrollHandoff: onParentScrollHandoff,
         onRequestAuthorize: onRequestAuthorize,
         onUserMessageLongPressStart: onUserMessageLongPressStart,
+        showUserEditButton: canShowEditAction,
+        isUserMessageEditing: isEditingUserMessage,
+        userMessageEditController: isEditingUserMessage
+            ? userMessageEditController
+            : null,
+        onUserEditTap: canShowEditAction
+            ? () => onUserMessageEditRequested?.call(currentMessage)
+            : null,
+        onCancelUserEdit: isEditingUserMessage
+            ? onUserMessageEditCancelled
+            : null,
+        onSaveUserEdit: isEditingUserMessage
+            ? () => onUserMessageEditSaved?.call(currentMessage)
+            : null,
         onStreamingTextLayoutChanged: onStreamingTextLayoutChanged,
         visualProfile: visualProfile,
         appearanceConfig: appearanceConfig,

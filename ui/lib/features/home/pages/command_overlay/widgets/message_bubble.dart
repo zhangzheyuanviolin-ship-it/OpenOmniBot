@@ -3,6 +3,9 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:ui/models/chat_link_preview.dart';
+import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/widgets/image_preview_overlay.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
 import '../../../../../services/voice_playback_channel_service.dart';
@@ -12,7 +15,6 @@ import '../../../../../widgets/streaming_text.dart';
 import 'thinking_dots_indicator.dart';
 import 'cards/card_widget_factory.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:ui/widgets/image_preview_overlay.dart';
 
 export 'package:ui/widgets/streaming_text.dart'
     show kThinkingText, kSummarizingText, kSummaryCompleteText;
@@ -49,6 +51,12 @@ class MessageBubble extends StatelessWidget {
   final OnRequestAuthorize? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
+  final bool showUserEditButton;
+  final bool isUserMessageEditing;
+  final TextEditingController? userMessageEditController;
+  final VoidCallback? onUserEditTap;
+  final VoidCallback? onCancelUserEdit;
+  final VoidCallback? onSaveUserEdit;
   final VoidCallback? onStreamingTextLayoutChanged;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
@@ -63,6 +71,12 @@ class MessageBubble extends StatelessWidget {
     this.onParentScrollHandoff,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
+    this.showUserEditButton = false,
+    this.isUserMessageEditing = false,
+    this.userMessageEditController,
+    this.onUserEditTap,
+    this.onCancelUserEdit,
+    this.onSaveUserEdit,
     this.onStreamingTextLayoutChanged,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
@@ -141,10 +155,11 @@ class MessageBubble extends StatelessWidget {
   /// 构建文本消息
   Widget _buildTextMessage(BuildContext context, bool isUserMessage) {
     final text = message.text ?? '';
+    final attachments = _extractAttachments();
+    final linkPreviews = message.linkPreviews;
 
     if (isUserMessage) {
       // 用户消息：整块气泡长按触发快捷操作。
-      final attachments = _extractAttachments();
       return LayoutBuilder(
         builder: (context, constraints) {
           final fallbackMaxWidth = MediaQuery.of(context).size.width * 0.75;
@@ -154,26 +169,70 @@ class MessageBubble extends StatelessWidget {
           final maxBubbleWidth = availableWidth * 0.78;
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onLongPressStart: onUserMessageLongPressStart == null
+            onLongPressStart:
+                isUserMessageEditing || onUserMessageLongPressStart == null
                 ? null
                 : (details) => onUserMessageLongPressStart!(message, details),
             child: Container(
+              key: ValueKey('user-message-bubble-${message.id}'),
               constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: ShapeDecoration(
                 color: visualProfile.userBubbleColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(18),
+                    topRight: Radius.circular(8),
+                    bottomLeft: Radius.circular(18),
+                    bottomRight: Radius.circular(18),
+                  ),
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (text.isNotEmpty) _buildUserText(text),
-                  if (attachments.isNotEmpty) ...[
-                    if (text.isNotEmpty) const SizedBox(height: 8),
-                    _buildUserAttachmentList(context, attachments),
+                  if (isUserMessageEditing && userMessageEditController != null)
+                    _buildUserEditComposer(
+                      context,
+                      userMessageEditController!,
+                      attachments,
+                    )
+                  else ...[
+                    if (text.isNotEmpty) _buildUserText(text),
+                    if (attachments.isNotEmpty) ...[
+                      if (text.isNotEmpty) const SizedBox(height: 8),
+                      _buildUserAttachmentList(context, attachments),
+                    ],
                   ],
+                  if (!isUserMessageEditing && linkPreviews.isNotEmpty) ...[
+                    if (text.isNotEmpty || attachments.isNotEmpty)
+                      const SizedBox(height: 8),
+                    _buildLinkPreviewList(context, linkPreviews),
+                  ],
+                  if (!isUserMessageEditing &&
+                      showUserEditButton &&
+                      onUserEditTap != null)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 28,
+                          height: 28,
+                        ),
+                        padding: EdgeInsets.zero,
+                        splashRadius: 16,
+                        tooltip: 'Edit message',
+                        onPressed: onUserEditTap,
+                        icon: Icon(
+                          Icons.edit_outlined,
+                          size: 16,
+                          color: visualProfile.primaryTextColor.withValues(
+                            alpha: 0.82,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -182,18 +241,25 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
-    final attachments = _extractAttachments();
-    if (attachments.isEmpty) {
+    if (attachments.isEmpty && linkPreviews.isEmpty) {
       // AI消息：简单文本样式，无背景
       return _buildAiTextWithSpeed(context, text);
     }
 
+    // AI 消息按“正文 -> 附件 -> 链接预览”顺序分块展示。
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (text.isNotEmpty) _buildAiTextWithSpeed(context, text),
-        if (text.isNotEmpty) const SizedBox(height: 8),
-        _buildUserAttachmentList(context, attachments),
+        if (attachments.isNotEmpty) ...[
+          if (text.isNotEmpty) const SizedBox(height: 8),
+          _buildUserAttachmentList(context, attachments),
+        ],
+        if (linkPreviews.isNotEmpty) ...[
+          if (text.isNotEmpty || attachments.isNotEmpty)
+            const SizedBox(height: 8),
+          _buildLinkPreviewList(context, linkPreviews),
+        ],
       ],
     );
   }
@@ -397,6 +463,166 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // 链接预览是块级卡片，不塞进 Markdown 行内渲染，便于展示摘要和封面图。
+  Widget _buildLinkPreviewList(
+    BuildContext context,
+    List<ChatLinkPreview> previews,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: previews.asMap().entries.map((entry) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: entry.key == previews.length - 1 ? 0 : 8,
+          ),
+          child: _buildLinkPreviewCard(context, entry.value, entry.key),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildLinkPreviewCard(
+    BuildContext context,
+    ChatLinkPreview preview,
+    int index,
+  ) {
+    final isEnglish =
+        Localizations.maybeLocaleOf(context)?.languageCode == 'en';
+    final title = preview.title.trim();
+    final description = preview.description.trim();
+    final siteName = preview.displaySiteName.trim();
+    final hasImage =
+        preview.imageUrl.startsWith('http://') ||
+        preview.imageUrl.startsWith('https://');
+    final statusLabel = switch (preview.status) {
+      ChatLinkPreview.statusLoading => isEnglish ? 'Loading preview' : '加载预览中',
+      ChatLinkPreview.statusFailed =>
+        isEnglish ? 'Preview unavailable' : '预览暂不可用',
+      _ => '',
+    };
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: ValueKey('link-preview-card-$index'),
+        onTap: () {
+          if (preview.url.isEmpty) {
+            return;
+          }
+          OmnibotResourceService.handleLinkTap(preview.url);
+        },
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 360),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: visualProfile.attachmentSurfaceColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: visualProfile.attachmentBorderColor,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (siteName.isNotEmpty)
+                      Text(
+                        siteName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: visualProfile.secondaryTextColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    if (title.isNotEmpty) ...[
+                      if (siteName.isNotEmpty) const SizedBox(height: 4),
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: visualProfile.primaryTextColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                    if (description.isNotEmpty) ...[
+                      if (title.isNotEmpty || siteName.isNotEmpty)
+                        const SizedBox(height: 4),
+                      Text(
+                        description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: visualProfile.secondaryTextColor,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                    if (statusLabel.isNotEmpty &&
+                        preview.status != ChatLinkPreview.statusReady) ...[
+                      if (title.isNotEmpty ||
+                          description.isNotEmpty ||
+                          siteName.isNotEmpty)
+                        const SizedBox(height: 4),
+                      Text(
+                        statusLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: visualProfile.secondaryTextColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (hasImage) ...[
+                const SizedBox(width: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    preview.imageUrl,
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _buildLinkPreviewImageFallback(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLinkPreviewImageFallback() {
+    return Container(
+      width: 72,
+      height: 72,
+      color: visualProfile.attachmentSurfaceColor,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.link_outlined,
+        size: 18,
+        color: visualProfile.attachmentIconColor,
+      ),
+    );
+  }
+
   bool _isImageAttachment(Map<String, dynamic> item) {
     final explicit = item['isImage'];
     if (explicit is bool && explicit) return true;
@@ -478,6 +704,71 @@ class MessageBubble extends StatelessWidget {
     if (size < 1024) return '${size}B';
     if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)}KB';
     return '${(size / (1024 * 1024)).toStringAsFixed(1)}MB';
+  }
+
+  Widget _buildUserEditComposer(
+    BuildContext context,
+    TextEditingController controller,
+    List<Map<String, dynamic>> attachments,
+  ) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final hasText = value.text.trim().isNotEmpty;
+        final canSave = hasText || attachments.isNotEmpty;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              minLines: 1,
+              maxLines: 6,
+              autofocus: true,
+              style: TextStyle(
+                color: visualProfile.primaryTextColor,
+                fontSize: _chatTextSize,
+                fontFamily: 'PingFang SC',
+                fontWeight: FontWeight.w400,
+                height: 1.43,
+                letterSpacing: 0.33,
+              ),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+                hintText: 'Edit your message',
+                hintStyle: TextStyle(
+                  color: visualProfile.primaryTextColor.withValues(alpha: 0.6),
+                  fontSize: _chatTextSize,
+                ),
+              ),
+            ),
+            if (attachments.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _buildUserAttachmentList(context, attachments),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: onCancelUserEdit,
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: canSave ? onSaveUserEdit : null,
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('Save & send'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// 构建用户文本（不使用流式效果）

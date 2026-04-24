@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
+import 'package:ui/models/chat_link_preview.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/ai_chat_service.dart';
@@ -18,6 +19,7 @@ import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/services/screen_dialog_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
+import 'package:ui/services/link_preview_service.dart';
 import 'package:ui/widgets/ai_generated_badge.dart';
 import 'package:ui/constants/openclaw/openclaw_keys.dart';
 import 'package:ui/utils/ui.dart';
@@ -234,6 +236,13 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
 
   @override
   Future<void> persistAgentConversation() => _saveConversationToDb();
+
+  @override
+  void onAgentTextMessageUpdated(String messageId, {bool isFinal = true}) {
+    if (isFinal) {
+      _syncMessageLinkPreviews(messageId);
+    }
+  }
 
   @override
   void initState() {
@@ -1237,6 +1246,155 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     });
   }
 
+  // 悬浮聊天页也复用同一套 linkPreviews 字段，保证两种聊天入口表现一致。
+  void _syncMessageLinkPreviews(String taskId) {
+    final index = _messages.indexWhere((msg) => msg.id == taskId);
+    if (index == -1) {
+      return;
+    }
+
+    final message = _messages[index];
+    if (message.type != 1 ||
+        (message.user != 1 && message.user != 2) ||
+        message.isLoading ||
+        message.isError ||
+        message.isSummarizing) {
+      return;
+    }
+
+    final content = Map<String, dynamic>.from(message.content ?? const {});
+    final nextPreviews = LinkPreviewService.instance.reconcilePreviewMaps(
+      text: message.text ?? '',
+      existing: content['linkPreviews'],
+    );
+    final currentPreviews = content['linkPreviews'];
+    var didUpdate = false;
+    if (!_previewMapListsEqual(currentPreviews, nextPreviews)) {
+      if (nextPreviews.isEmpty) {
+        content.remove('linkPreviews');
+      } else {
+        content['linkPreviews'] = nextPreviews;
+      }
+      _messages[index] = message.copyWith(content: content);
+      didUpdate = true;
+    }
+    if (didUpdate &&
+        nextPreviews.any(
+          (item) =>
+              ChatLinkPreview.fromJson(item).status !=
+              ChatLinkPreview.statusLoading,
+        )) {
+      final conversationId = _currentConversationId;
+      if (conversationId != null) {
+        unawaited(
+          ConversationHistoryService.saveConversationMessages(
+            conversationId,
+            List<ChatMessageModel>.from(_messages),
+          ),
+        );
+      }
+    }
+
+    // 先渲染占位卡片，网络请求成功后再替换为 ready/failed 数据。
+    for (final previewMap in nextPreviews) {
+      final preview = ChatLinkPreview.fromJson(previewMap);
+      if (preview.status != ChatLinkPreview.statusLoading ||
+          preview.url.isEmpty) {
+        continue;
+      }
+      unawaited(_resolveMessageLinkPreview(taskId, preview.url));
+    }
+  }
+
+  Future<void> _resolveMessageLinkPreview(String taskId, String url) async {
+    final resolved = await LinkPreviewService.instance.loadPreview(url);
+    if (!mounted) {
+      return;
+    }
+
+    // 只更新当前消息里的同一个 loading URL，避免异步结果串到别的消息。
+    var didUpdate = false;
+    setState(() {
+      final index = _messages.indexWhere((msg) => msg.id == taskId);
+      if (index == -1) {
+        return;
+      }
+
+      final message = _messages[index];
+      final content = Map<String, dynamic>.from(message.content ?? const {});
+      final rawPreviews = content['linkPreviews'];
+      if (rawPreviews is! List) {
+        return;
+      }
+
+      final updatedPreviews = rawPreviews
+          .whereType<Map>()
+          .map(
+            (item) => Map<String, dynamic>.from(item.cast<String, dynamic>()),
+          )
+          .map((previewMap) {
+            final preview = ChatLinkPreview.fromJson(previewMap);
+            if (preview.url != url ||
+                preview.status != ChatLinkPreview.statusLoading) {
+              return previewMap;
+            }
+            didUpdate = true;
+            return resolved.toJson();
+          })
+          .toList();
+      if (!didUpdate) {
+        return;
+      }
+
+      content['linkPreviews'] = updatedPreviews;
+      _messages[index] = message.copyWith(content: content);
+    });
+
+    if (!didUpdate) {
+      return;
+    }
+
+    final conversationId = _currentConversationId;
+    if (conversationId != null) {
+      await ConversationHistoryService.saveConversationMessages(
+        conversationId,
+        List<ChatMessageModel>.from(_messages),
+      );
+    }
+  }
+
+  bool _previewMapListsEqual(dynamic left, List<Map<String, dynamic>> right) {
+    if (left is! List) {
+      return right.isEmpty;
+    }
+    final normalizedLeft = left
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item.cast<String, dynamic>()))
+        .toList();
+    if (normalizedLeft.length != right.length) {
+      return false;
+    }
+    for (var index = 0; index < normalizedLeft.length; index += 1) {
+      if (!_previewMapEquals(normalizedLeft[index], right[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _previewMapEquals(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    return left['url'] == right['url'] &&
+        left['domain'] == right['domain'] &&
+        left['siteName'] == right['siteName'] &&
+        left['title'] == right['title'] &&
+        left['description'] == right['description'] &&
+        left['imageUrl'] == right['imageUrl'] &&
+        left['status'] == right['status'];
+  }
+
   void _handleAiMessageEnd(String taskId) async {
     setState(() => _isAiResponding = false);
 
@@ -1250,6 +1408,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       setState(() {
         final existing = _messages[index];
         _messages[index] = existing.copyWith(content: existing.content);
+        _syncMessageLinkPreviews(taskId);
       });
     }
     if (!isErrorMessage && messageText.trim().isNotEmpty) {
@@ -1599,6 +1758,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
       _messageController.clear();
       _isAiResponding = true;
     });
+    _syncMessageLinkPreviews(userMessageId);
 
     return (userMessageId: userMessageId, aiMessageId: aiMessageId);
   }

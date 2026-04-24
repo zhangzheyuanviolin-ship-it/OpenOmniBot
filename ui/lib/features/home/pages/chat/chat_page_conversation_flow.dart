@@ -384,6 +384,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
 
     _inputFocusNode.unfocus();
     final messageIds = addUserMessage(messageText, attachments: attachments);
+    _syncUserMessageLinkPreviews(messageIds.userMessageId);
     if (restoreInputValue != null && mounted) {
       _messageController.value = restoreInputValue;
     }
@@ -416,6 +417,138 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         _currentDispatchTaskId == messageIds.aiMessageId) {
       handleAgentError('统一 Agent 启动失败，请检查模型提供商与场景模型配置。');
     }
+  }
+
+  void _syncUserMessageLinkPreviews(String messageId) {
+    final index = _messages.indexWhere((msg) => msg.id == messageId);
+    if (index == -1) {
+      return;
+    }
+
+    final message = _messages[index];
+    if (message.type != 1 || message.user != 1) {
+      return;
+    }
+
+    final content = Map<String, dynamic>.from(message.content ?? const {});
+    final nextPreviews = LinkPreviewService.instance.reconcilePreviewMaps(
+      text: message.text ?? '',
+      existing: content['linkPreviews'],
+    );
+    if (_previewMapListsEqual(content['linkPreviews'], nextPreviews)) {
+      return;
+    }
+
+    setState(() {
+      if (nextPreviews.isEmpty) {
+        content.remove('linkPreviews');
+      } else {
+        content['linkPreviews'] = nextPreviews;
+      }
+      _messages[index] = message.copyWith(content: content);
+    });
+
+    // 用户消息也先展示 loading 卡片，抓取完成后再回填真实预览。
+    for (final previewMap in nextPreviews) {
+      final preview = ChatLinkPreview.fromJson(previewMap);
+      if (preview.status != ChatLinkPreview.statusLoading ||
+          preview.url.isEmpty) {
+        continue;
+      }
+      unawaited(_resolveUserMessageLinkPreview(messageId, preview.url));
+    }
+  }
+
+  Future<void> _resolveUserMessageLinkPreview(
+    String messageId,
+    String url,
+  ) async {
+    final resolved = await LinkPreviewService.instance.loadPreview(url);
+    if (!mounted) {
+      return;
+    }
+
+    var didUpdate = false;
+    setState(() {
+      final index = _messages.indexWhere((msg) => msg.id == messageId);
+      if (index == -1) {
+        return;
+      }
+
+      final message = _messages[index];
+      final content = Map<String, dynamic>.from(message.content ?? const {});
+      final rawPreviews = content['linkPreviews'];
+      if (rawPreviews is! List) {
+        return;
+      }
+
+      final updatedPreviews = rawPreviews
+          .whereType<Map>()
+          .map(
+            (item) => Map<String, dynamic>.from(item.cast<String, dynamic>()),
+          )
+          .map((previewMap) {
+            final preview = ChatLinkPreview.fromJson(previewMap);
+            if (preview.url != url ||
+                preview.status != ChatLinkPreview.statusLoading) {
+              return previewMap;
+            }
+            didUpdate = true;
+            return resolved.toJson();
+          })
+          .toList();
+      if (!didUpdate) {
+        return;
+      }
+
+      content['linkPreviews'] = updatedPreviews;
+      _messages[index] = message.copyWith(content: content);
+    });
+
+    if (!didUpdate) {
+      return;
+    }
+
+    final conversationId = _currentConversationId;
+    if (conversationId != null) {
+      await ConversationHistoryService.saveConversationMessages(
+        conversationId,
+        List<ChatMessageModel>.from(_messages),
+        mode: activeConversationModeValue,
+      );
+    }
+  }
+
+  bool _previewMapListsEqual(dynamic left, List<Map<String, dynamic>> right) {
+    if (left is! List) {
+      return right.isEmpty;
+    }
+    final normalizedLeft = left
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item.cast<String, dynamic>()))
+        .toList();
+    if (normalizedLeft.length != right.length) {
+      return false;
+    }
+    for (var index = 0; index < normalizedLeft.length; index += 1) {
+      if (!_previewMapEquals(normalizedLeft[index], right[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _previewMapEquals(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    return left['url'] == right['url'] &&
+        left['domain'] == right['domain'] &&
+        left['siteName'] == right['siteName'] &&
+        left['title'] == right['title'] &&
+        left['description'] == right['description'] &&
+        left['imageUrl'] == right['imageUrl'] &&
+        left['status'] == right['status'];
   }
 
   @override
