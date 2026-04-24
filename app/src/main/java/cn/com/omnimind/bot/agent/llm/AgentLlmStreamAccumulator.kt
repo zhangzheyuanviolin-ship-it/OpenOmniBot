@@ -193,6 +193,8 @@ class AgentLlmStreamAccumulator(
 
     fun currentReasoning(): String = AgentTextSanitizer.sanitizeUtf16(reasoningBuffer.toString())
 
+    fun currentReasoningLength(): Int = reasoningBuffer.length
+
     fun currentContent(): String = AgentTextSanitizer.sanitizeUtf16(contentBuffer.toString())
 
     fun buildTurn(): ChatCompletionTurn {

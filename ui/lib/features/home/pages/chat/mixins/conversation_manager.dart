@@ -4,6 +4,7 @@ import '../../../../../models/conversation_thread_target.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/conversation_service.dart';
 import '../../../../../services/conversation_history_service.dart';
+import '../utils/deep_thinking_persistence.dart';
 
 /// 对话管理 Mixin
 /// 负责对话的创建、加载、保存、切换等功能
@@ -25,7 +26,9 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
       await ConversationHistoryService.upsertConversationUiCard(
         conversationId,
         entryId: message.id,
-        cardData: Map<String, dynamic>.from(cardData),
+        cardData: buildPersistentDeepThinkingCardData(
+          Map<String, dynamic>.from(cardData),
+        ),
         createdAtMillis: message.createAt.millisecondsSinceEpoch,
         mode: mode,
       );
