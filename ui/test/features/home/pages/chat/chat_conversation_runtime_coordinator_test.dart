@@ -30,6 +30,14 @@ void main() {
     await Future<void>.delayed(Duration.zero);
   }
 
+  List<String> visibleMessageIds(ChatConversationRuntimeState runtime) {
+    return runtime.messages
+        .map((message) => message.id)
+        .toList()
+        .reversed
+        .toList();
+  }
+
   setUp(() async {
     coordinator.resetForTest();
     await VoicePlaybackCoordinator.instance.debugResetForTest();
@@ -839,6 +847,7 @@ void main() {
     runtime.activeToolCardId = 'agent-task-tool-1';
     runtime.activeThinkingCardId = 'agent-task-thinking';
     runtime.pendingAgentTextTaskId = 'agent-task';
+    runtime.waitingThinkingBeforeAgentTextTaskId = 'agent-task';
     runtime.pendingThinkingRoundSplit = true;
     runtime.toolCardSequence = 3;
     runtime.thinkingRound = 2;
@@ -856,10 +865,58 @@ void main() {
     expect(runtime.activeToolCardId, isNull);
     expect(runtime.activeThinkingCardId, isNull);
     expect(runtime.pendingAgentTextTaskId, isNull);
+    expect(runtime.waitingThinkingBeforeAgentTextTaskId, isNull);
     expect(runtime.pendingThinkingRoundSplit, isFalse);
     expect(runtime.toolCardSequence, 0);
     expect(runtime.thinkingRound, 0);
   });
+
+  test(
+    'shows thinking before assistant content when reasoning arrives later',
+    () async {
+      const conversationId = 4451;
+      const taskId = 'agent-thinking-before-content';
+
+      final runtime = coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      runtime.currentDispatchTaskId = taskId;
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      await emitPlatformEvent('onAgentThinkingStart', <String, dynamic>{
+        'taskId': taskId,
+      });
+      await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+        'taskId': taskId,
+        'message': '先给出结论。',
+        'isFinal': false,
+      });
+
+      expect(runtime.messages, hasLength(1));
+      expect(runtime.messages.single.id, '$taskId-thinking');
+
+      await emitPlatformEvent('onAgentThinkingUpdate', <String, dynamic>{
+        'taskId': taskId,
+        'thinking': '我先检查一下上下文。',
+      });
+
+      expect(
+        visibleMessageIds(runtime),
+        equals(<String>['$taskId-thinking', '$taskId-text']),
+      );
+      expect(
+        runtime.messages
+            .firstWhere((message) => message.id == '$taskId-text')
+            .text,
+        '先给出结论。',
+      );
+    },
+  );
 
   test(
     'keeps assistant content visible when tool calls start afterwards',
@@ -905,6 +962,51 @@ void main() {
     },
   );
 
+  test('keeps visible order as thinking then content then tool card', () async {
+    const conversationId = 4520;
+    const taskId = 'agent-thinking-content-tool';
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = taskId;
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onAgentThinkingStart', <String, dynamic>{
+      'taskId': taskId,
+    });
+    await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+      'taskId': taskId,
+      'message': '让我先检查仓库状态。',
+      'isFinal': false,
+    });
+    await emitPlatformEvent('onAgentToolCallStart', <String, dynamic>{
+      'taskId': taskId,
+      'toolName': 'terminal_execute',
+      'displayName': 'terminal_execute',
+      'toolType': 'terminal',
+      'summary': '检查 git 状态',
+    });
+
+    final visibleIds = visibleMessageIds(runtime);
+    expect(visibleIds, hasLength(3));
+    expect(visibleIds[0], '$taskId-thinking');
+    expect(visibleIds[1], '$taskId-text');
+    expect(
+      runtime.messages
+          .firstWhere(
+            (message) => message.cardData?['type'] == 'agent_tool_summary',
+          )
+          .id,
+      visibleIds[2],
+    );
+  });
+
   test('stores toolTitle from agent tool events on tool cards', () async {
     const conversationId = 4555;
     const taskId = 'agent-task-title';
@@ -935,6 +1037,50 @@ void main() {
     );
 
     expect(toolMessage.cardData?['toolTitle'], '查看配置');
+  });
+
+  test('releases buffered final content after a short timeout', () async {
+    const conversationId = 4606;
+    const taskId = 'agent-timeout-release';
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+    runtime.currentDispatchTaskId = taskId;
+    coordinator.registerTask(
+      taskId: taskId,
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+    );
+
+    await emitPlatformEvent('onAgentThinkingStart', <String, dynamic>{
+      'taskId': taskId,
+    });
+    await emitPlatformEvent('onAgentChatMessage', <String, dynamic>{
+      'taskId': taskId,
+      'message': '即使没等到思考文本，也要尽快显示正文。',
+      'isFinal': true,
+      'prefillTokensPerSecond': 12.3,
+      'decodeTokensPerSecond': 45.6,
+    });
+
+    expect(runtime.messages, hasLength(1));
+    expect(runtime.messages.single.id, '$taskId-thinking');
+
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      visibleMessageIds(runtime),
+      equals(<String>['$taskId-thinking', '$taskId-text']),
+    );
+    final textMessage = runtime.messages.firstWhere(
+      (message) => message.id == '$taskId-text',
+    );
+    expect(textMessage.text, '即使没等到思考文本，也要尽快显示正文。');
+    expect(textMessage.content?['prefillTokensPerSecond'], 12.3);
+    expect(textMessage.content?['decodeTokensPerSecond'], 45.6);
   });
 
   test('persists deep thinking cards for history restoration', () async {
