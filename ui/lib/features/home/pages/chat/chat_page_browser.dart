@@ -146,6 +146,19 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
       snapshot.currentUrl,
       snapshot.title,
       snapshot.userAgentProfile ?? '',
+      snapshot.isBookmarked ? '1' : '0',
+      snapshot.canGoBack ? '1' : '0',
+      snapshot.canGoForward ? '1' : '0',
+      snapshot.isLoading ? '1' : '0',
+      snapshot.hasSslError ? '1' : '0',
+      snapshot.isDesktopMode ? '1' : '0',
+      snapshot.activeDownloadCount.toString(),
+      snapshot.tabs.length.toString(),
+      snapshot.downloads.length.toString(),
+      snapshot.userscriptSummary.installedScripts.length.toString(),
+      snapshot.externalOpenPrompt?.requestId ?? '',
+      snapshot.pendingDialog?.requestId ?? '',
+      snapshot.permissionPrompt?.requestId ?? '',
     ].join('|');
   }
 
@@ -174,7 +187,7 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
   Future<void> _refreshLiveBrowserSessionSnapshot({
     bool syncRuntime = false,
   }) async {
-    final snapshot = await AgentBrowserSessionService.getLiveSessionSnapshot();
+    final snapshot = await AgentBrowserSessionService.getSnapshot();
     if (!mounted) {
       return;
     }
@@ -200,6 +213,41 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
     if (!mounted) {
       return;
     }
+    setState(() {
+      _liveBrowserSessionSnapshot = resolved;
+      if (previousSignature != nextSignature) {
+        _browserOverlayViewSeed += 1;
+      }
+      if (shouldHideOverlay) {
+        _isBrowserOverlayVisible = false;
+        _isBrowserOverlayInitialized = false;
+      }
+    });
+  }
+
+  @override
+  void _handleBrowserSessionSnapshotChanged(Map<String, dynamic> raw) {
+    final snapshot = ChatBrowserSessionSnapshot.fromMap(raw);
+    final resolved =
+        snapshot.matchesWorkspace(_expectedBrowserWorkspaceId) &&
+            snapshot.available
+        ? snapshot
+        : null;
+    final runtime = _runtimeForMode(ChatPageMode.normal);
+    if (runtime != null) {
+      runtime.browserSessionSnapshot = resolved;
+    } else {
+      _browserSessionSnapshotByMode[ChatPageMode.normal] = resolved;
+    }
+    if (!mounted) {
+      _liveBrowserSessionSnapshot = resolved;
+      return;
+    }
+    final previousSignature = _browserSnapshotSignature(
+      _liveBrowserSessionSnapshot,
+    );
+    final nextSignature = _browserSnapshotSignature(resolved);
+    final shouldHideOverlay = resolved == null || !resolved.available;
     setState(() {
       _liveBrowserSessionSnapshot = resolved;
       if (previousSignature != nextSignature) {
@@ -476,9 +524,29 @@ mixin _ChatPageBrowserMixin on _ChatPageStateBase {
               ),
               child: ChatBrowserOverlay(
                 key: _browserOverlayKey,
-                workspaceId: snapshot.workspaceId,
-                title: snapshot.title,
-                currentUrl: snapshot.currentUrl,
+                snapshot: snapshot,
+                onSnapshotChanged: (next) {
+                  if (!mounted) {
+                    return;
+                  }
+                  final resolved =
+                      next?.matchesWorkspace(_expectedBrowserWorkspaceId) == true
+                      ? next
+                      : null;
+                  final runtime = _runtimeForMode(ChatPageMode.normal);
+                  if (runtime != null) {
+                    runtime.browserSessionSnapshot = resolved;
+                  } else {
+                    _browserSessionSnapshotByMode[ChatPageMode.normal] = resolved;
+                  }
+                  setState(() {
+                    _liveBrowserSessionSnapshot = resolved;
+                    if (resolved == null || !resolved.available) {
+                      _isBrowserOverlayVisible = false;
+                      _isBrowserOverlayInitialized = false;
+                    }
+                  });
+                },
                 onClose: _hideBrowserOverlay,
                 onDragDelta: (delta) => _moveBrowserOverlay(delta, constraints),
                 onResizeLeftDelta: (delta) =>

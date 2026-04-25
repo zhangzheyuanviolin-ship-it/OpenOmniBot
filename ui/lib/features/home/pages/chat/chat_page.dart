@@ -312,6 +312,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   _conversationListChangedSubscription;
   StreamSubscription<Map<String, dynamic>>?
   _conversationMessagesChangedSubscription;
+  StreamSubscription<Map<String, dynamic>>?
+  _browserSessionSnapshotChangedSubscription;
   ChatBrowserSessionSnapshot? _liveBrowserSessionSnapshot;
   bool _isBrowserOverlayVisible = false;
   bool _isBrowserOverlayInitialized = false;
@@ -1643,6 +1645,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   void _handlePagePointerCancel(PointerCancelEvent event);
 
   Future<void> _refreshLiveBrowserSessionSnapshot({bool syncRuntime = false});
+
+  void _handleBrowserSessionSnapshotChanged(Map<String, dynamic> raw);
 
   void _setChatIslandDisplayLayerForMode(
     ChatPageMode mode,
