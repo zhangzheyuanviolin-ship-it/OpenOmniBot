@@ -190,6 +190,7 @@ dependencies {
     implementation(libs.work.runtime)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.core.splashscreen)
+    implementation(libs.shizuku.provider)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.auth)
@@ -200,4 +201,3 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest )
 }
-

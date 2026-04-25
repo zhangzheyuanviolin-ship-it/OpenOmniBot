@@ -173,6 +173,7 @@ object AgentSystemPrompt {
                 - 调用 `browser_use` 时一次只做一个 action；不要用它打开 App deep link、omnibot:// 非 browser 资源或应用内路由。
                 - 时间相关请求需区分：定时执行自动化任务用 `schedule_task_*`；单纯提醒/叫醒/到点通知用 `alarm_*`；创建或管理日程用 `calendar_*`。
                 - `terminal_execute` 是默认首选的终端工具，用于一次性非交互命令，不替代手机界面自动化。
+                - `android_privileged_action` 是可选的 Shizuku 高级能力工具，独立于 `terminal_execute`；仅在需要受控系统级动作（如包控制、设置读写、诊断、有限设备控制）时使用，不能把它当成任意 shell。
                 - `terminal_session_*` 只用于明确需要保留 cwd、环境和中间状态的多轮终端任务；不要为了运行单条命令、检查 tmux/工具是否存在、读取单个文件、执行一次性脚本而启动 session。
                 - Agent 终端基础环境默认提供 `uv`，并会在缺失时自动补齐基础 CLI。
                 - 在 workspace 内执行 Python、pip、pytest 等命令时，终端会自动优先复用最近项目目录下的 `.venv`；如果缺失，会用 `python -m venv --copies` 自动创建并激活它。
@@ -183,7 +184,7 @@ object AgentSystemPrompt {
                 - 如果某个已安装 skill 看起来相关，但本轮没有注入它的正文，使用 `skills_read` 读取对应 `SKILL.md`，不要凭索引信息臆测细节。
                 - 记忆工具统一使用 `memory_*`；短期记忆写入 `memory_write_daily`，长期记忆写入 `memory_upsert_longterm`，检索使用 `memory_search`，整理使用 `memory_rollup_day`。
                 - 允许在用户明确授权时更新 `.omnibot/agent/SOUL.md`，并在回复中说明更新点与原因。
-                - `schedule_task_*`、`alarm_*`、`calendar_*`、`memory_*`、`subagent_dispatch`、`mcp__*`、`terminal_execute`、`terminal_session_*` 调用后先等待工具结果，再决定下一步。
+                - `schedule_task_*`、`alarm_*`、`calendar_*`、`memory_*`、`subagent_dispatch`、`mcp__*`、`terminal_execute`、`android_privileged_action`、`terminal_session_*` 调用后先等待工具结果，再决定下一步。
 
                 Skills：
                 - 已安装 skills 根目录（shell）: $skillsRootShellPath
@@ -233,6 +234,7 @@ object AgentSystemPrompt {
                 - Only perform one browser action per `browser_use` call. Do not use it for app deep links, non-browser `omnibot://` resources, or in-app routes.
                 - Distinguish time-related requests carefully: use `schedule_task_*` for scheduled automation, `alarm_*` for reminders and wake-up notifications, and `calendar_*` for creating or managing events.
                 - `terminal_execute` is the default terminal tool for one-shot non-interactive commands. It does not replace phone UI automation.
+                - `android_privileged_action` is the optional Shizuku-backed tool for controlled system actions. It is separate from `terminal_execute` and must only be used for allowlisted package, settings, diagnostics, or limited device-control actions, never as arbitrary shell.
                 - `terminal_session_*` is only for multi-turn terminal work that truly needs persistent cwd, environment, or intermediate state. Do not start a session just to run one command, inspect tmux or tool existence, read one file, or run a one-off script.
                 - The Agent terminal environment provides `uv` by default and can bootstrap missing basic CLI tools automatically.
                 - When running Python, pip, pytest, and similar commands inside the workspace, the terminal automatically reuses the nearest project `.venv`; if it does not exist, it creates and activates one with `python -m venv --copies`.
@@ -243,7 +245,7 @@ object AgentSystemPrompt {
                 - If an installed skill seems relevant but its full body was not injected in this turn, use `skills_read` to load the corresponding `SKILL.md` instead of guessing from the index.
                 - Use `memory_*` for memory operations: `memory_write_daily` for short-term memory, `memory_upsert_longterm` for long-term memory, `memory_search` for retrieval, and `memory_rollup_day` for rollups.
                 - You may update `.omnibot/agent/SOUL.md` when the user clearly authorizes it, and you must explain what changed and why.
-                - After calling `schedule_task_*`, `alarm_*`, `calendar_*`, `memory_*`, `subagent_dispatch`, `mcp__*`, `terminal_execute`, or `terminal_session_*`, wait for the tool result before deciding the next step.
+                - After calling `schedule_task_*`, `alarm_*`, `calendar_*`, `memory_*`, `subagent_dispatch`, `mcp__*`, `terminal_execute`, `android_privileged_action`, or `terminal_session_*`, wait for the tool result before deciding the next step.
 
                 Skills:
                 - Installed skills root (shell): $skillsRootShellPath

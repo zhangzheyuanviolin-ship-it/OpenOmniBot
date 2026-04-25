@@ -474,10 +474,16 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private fun localizedPermissionName(name: String): String {
         val trimmed = name.trim()
         return when (trimmed) {
-            "无障碍权限", "Accessibility", "Accessibility Permission" -> "Accessibility"
-            "悬浮窗权限", "Overlay", "Overlay Permission" -> "Overlay"
-            "应用列表读取权限", "Installed Apps Access", "Installed Apps Permission" -> "Installed Apps Access"
-            "公共文件访问", "Public Storage Access" -> "Public Storage Access"
+            "无障碍权限", "Accessibility", "Accessibility Permission" ->
+                t("无障碍权限", "Accessibility")
+            "悬浮窗权限", "Overlay", "Overlay Permission" ->
+                t("悬浮窗权限", "Overlay")
+            "应用列表读取权限", "Installed Apps Access", "Installed Apps Permission" ->
+                t("应用列表读取权限", "Installed Apps Access")
+            "Shizuku 权限", "Shizuku Permission" ->
+                t("Shizuku 权限", "Shizuku Permission")
+            "公共文件访问", "Public Storage Access" ->
+                t("公共文件访问", "Public Storage Access")
             else -> trimmed
         }
     }
@@ -933,6 +939,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "context_time_now" -> AgentToolMeta("builtin", t("查询当前时间", "Query Current Time"))
             "vlm_task" -> AgentToolMeta("builtin", t("视觉执行", "Vision Task"))
             "browser_use" -> AgentToolMeta("browser", t("浏览器操作", "Browser Action"))
+            "android_privileged_action" -> AgentToolMeta("privileged", t("安卓高级动作", "Android Privileged Action"))
             "terminal_execute" -> AgentToolMeta("terminal", t("终端执行", "Run Terminal Command"))
             "terminal_session_start" -> AgentToolMeta("terminal", t("启动终端会话", "Start Terminal Session"))
             "terminal_session_exec" -> AgentToolMeta("terminal", t("执行会话命令", "Run Session Command"))
@@ -1182,10 +1189,16 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private fun resolveRequiredPermissionIds(missing: List<String>): List<String> {
         val nameToId = linkedMapOf(
             "无障碍权限" to "accessibility",
+            "Accessibility" to "accessibility",
             "悬浮窗权限" to "overlay",
+            "Overlay" to "overlay",
             "应用列表读取权限" to "installed_apps",
+            "Installed Apps Access" to "installed_apps",
+            "Shizuku 权限" to "shizuku",
+            "Shizuku Permission" to "shizuku",
             WorkspaceStorageAccess.REQUIRED_PERMISSION_NAME to "workspace_storage",
-            PublicStorageAccess.REQUIRED_PERMISSION_NAME to "public_storage"
+            PublicStorageAccess.REQUIRED_PERMISSION_NAME to "public_storage",
+            "Public Storage Access" to "public_storage"
         )
         return missing.mapNotNull { raw ->
             nameToId[raw.trim()]

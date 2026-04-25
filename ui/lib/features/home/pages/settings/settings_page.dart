@@ -106,10 +106,7 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {
         hideFromRecentsEnabled = !value;
       });
-      showToast(
-        context.l10n.settingsHideRecentsFailed,
-        type: ToastType.error,
-      );
+      showToast(context.l10n.settingsHideRecentsFailed, type: ToastType.error);
     }
   }
 
@@ -145,10 +142,7 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      showToast(
-        context.l10n.settingsSaveFailed,
-        type: ToastType.error,
-      );
+      showToast(context.l10n.settingsSaveFailed, type: ToastType.error);
     }
   }
 
@@ -207,20 +201,17 @@ class _SettingsPageState extends State<SettingsPage> {
         final endpoint = info?.endpoint ?? '';
         if (endpoint.isNotEmpty) {
           showToast(
-          context.l10n.settingsMcpEnabledToast(endpoint),
-          type: ToastType.success,
-        );
+            context.l10n.settingsMcpEnabledToast(endpoint),
+            type: ToastType.success,
+          );
         }
       } else {
-        showToast(
-          context.l10n.settingsMcpDisabledToast,
-        );
+        showToast(context.l10n.settingsMcpDisabledToast);
       }
     } on PlatformException catch (e) {
       if (!mounted) return;
       showToast(
-        e.message ??
-            context.l10n.settingsMcpToggleFailed,
+        e.message ?? context.l10n.settingsMcpToggleFailed,
         type: ToastType.error,
       );
       setState(() {
@@ -228,10 +219,7 @@ class _SettingsPageState extends State<SettingsPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      showToast(
-        context.l10n.settingsMcpToggleFailed,
-        type: ToastType.error,
-      );
+      showToast(context.l10n.settingsMcpToggleFailed, type: ToastType.error);
       setState(() {
         _mcpEnabled = !enable;
       });
@@ -267,7 +255,9 @@ class _SettingsPageState extends State<SettingsPage> {
               const SizedBox(height: 8),
               Text(context.l10n.settingsMcpToken),
               SelectableText(
-                info.token.isEmpty ? context.l10n.settingsNotGenerated : info.token,
+                info.token.isEmpty
+                    ? context.l10n.settingsNotGenerated
+                    : info.token,
               ),
               const SizedBox(height: 12),
               Row(
@@ -276,9 +266,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: info.endpoint));
                       Navigator.of(context).pop();
-                      showToast(
-                        context.l10n.settingsCopiedAddress,
-                      );
+                      showToast(context.l10n.settingsCopiedAddress);
                     },
                     child: Text(context.l10n.settingsCopyAddress),
                   ),
@@ -286,9 +274,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: info.token));
                       Navigator.of(context).pop();
-                      showToast(
-                        context.l10n.settingsCopiedToken,
-                      );
+                      showToast(context.l10n.settingsCopiedToken);
                     },
                     child: Text(context.l10n.settingsCopyToken),
                   ),
@@ -301,9 +287,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         setState(() {
                           _mcpInfo = refreshed ?? _mcpInfo;
                         });
-                        showToast(
-                          context.l10n.settingsTokenRefreshed,
-                        );
+                        showToast(context.l10n.settingsTokenRefreshed);
                       } catch (_) {
                         showToast(
                           context.l10n.settingsTokenRefreshFailed,
@@ -500,6 +484,15 @@ class _SettingsPageState extends State<SettingsPage> {
         label: context.l10n.settingsSectionPermissionInfo,
         items: [
           _SettingItem(
+            icon: Icons.admin_panel_settings_outlined,
+            iconSvg: 'assets/home/companion_permission_setting_icon.svg',
+            title: context.l10n.authorizePageTitle,
+            subtitle: context.trLegacy('查看并配置无障碍、悬浮窗、Shizuku 等权限'),
+            onTap: () {
+              GoRouterManager.push('/home/authorize_setting');
+            },
+          ),
+          _SettingItem(
             icon: Icons.security,
             iconSvg: 'assets/home/companion_permission_setting_icon.svg',
             title: context.l10n.settingsCompanionPermissionTitle,
@@ -512,9 +505,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 }
               } catch (e) {
                 debugPrint('Failed to request installed apps permission: $e');
-                showToast(
-                  context.l10n.settingsInstalledAppsPermissionFailed,
-                );
+                showToast(context.l10n.settingsInstalledAppsPermissionFailed);
               }
             },
           ),

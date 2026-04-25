@@ -17,6 +17,7 @@ import cn.com.omnimind.bot.omniinfer.OmniInferModelsManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
+import cn.com.omnimind.baselib.shizuku.ShizukuCapabilityManager
 import com.omniinfer.server.OmniInferServer
 import com.rk.resources.Res
 import com.tencent.mmkv.MMKV
@@ -149,6 +150,9 @@ class App : BaseApplication() {
         }
         runCatching {
             WorkspaceScheduledTaskScheduler(this).rescheduleAllEnabled()
+        }
+        runCatching {
+            ShizukuCapabilityManager.get(this)
         }
 
         initSDKsAfterPrivacyConsent()

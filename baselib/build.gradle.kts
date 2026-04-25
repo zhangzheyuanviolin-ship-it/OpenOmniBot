@@ -29,6 +29,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    buildFeatures {
+        aidl = true
+    }
     kotlinOptions {
         jvmTarget = "11"
     }
@@ -62,6 +65,7 @@ dependencies {
     kapt(libs.androidx.room.compiler)
 
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.shizuku.api)
     // ML Kit for OCR
     implementation(libs.text.recognition.chinese)
 

@@ -4,6 +4,9 @@ import android.content.Context
 import android.net.Uri
 import android.provider.Settings
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
+import cn.com.omnimind.baselib.shizuku.PrivilegedActionPolicy
+import cn.com.omnimind.baselib.shizuku.PrivilegedResult
+import cn.com.omnimind.baselib.shizuku.ShizukuCapabilityManager
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.RemoteMcpClient
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
@@ -97,6 +100,7 @@ class AgentToolRouter(
         "应用列表读取权限" to "Installed Apps Access",
         "无障碍权限" to "Accessibility",
         "悬浮窗权限" to "Overlay",
+        "Shizuku 权限" to "Shizuku Permission",
         "精确闹钟权限(SCHEDULE_EXACT_ALARM)" to "Exact alarm permission (SCHEDULE_EXACT_ALARM)",
         "通知权限(POST_NOTIFICATIONS)" to "Notification permission (POST_NOTIFICATIONS)",
         "日历权限(READ/WRITE_CALENDAR)" to "Calendar permission (READ/WRITE_CALENDAR)",
@@ -219,6 +223,8 @@ class AgentToolRouter(
             "Terminal session initialization timed out and may still be running in the background.",
         "终端命令等待超时，可能仍在后台继续运行。" to
             "Terminal command timed out and may still be running in the background.",
+        "正在执行 Shizuku 高级动作" to "Executing privileged Shizuku action",
+        "Shizuku 动作执行失败" to "Shizuku action failed",
         "command 不能为空" to "`command` cannot be empty",
         "terminal_execute 缺少 command" to "`terminal_execute` is missing `command`",
         "executionMode 仅支持 termux 或 proot" to
@@ -281,6 +287,12 @@ class AgentToolRouter(
                 return "Terminal session does not exist: ${text.removePrefix("终端会话不存在：")}"
             text.startsWith("不支持的 action：") ->
                 return "Unsupported action: ${text.removePrefix("不支持的 action：")}"
+            text.startsWith("已执行 Shizuku 动作：") ->
+                return "Executed Shizuku action: ${text.removePrefix("已执行 Shizuku 动作：")}"
+            text.startsWith("Shizuku 动作执行失败：") ->
+                return "Shizuku action failed: ${text.removePrefix("Shizuku 动作执行失败：")}"
+            text.startsWith("当前 Shizuku 后端不支持该动作：") ->
+                return "This Shizuku backend does not support the action: ${text.removePrefix("当前 Shizuku 后端不支持该动作：")}"
             text.startsWith("正在调用 ") && text.contains(" 的 ") -> {
                 val remainder = text.removePrefix("正在调用 ")
                 val parts = remainder.split(" 的 ", limit = 2)
@@ -476,6 +488,10 @@ class AgentToolRouter(
                 runtimeContextRepository = env.runtimeContextRepository,
                 currentPackageName = env.currentPackageName,
                 resolvedSkills = env.resolvedSkills,
+                callback = callback
+            )
+            "android_privileged_action" -> executeAndroidPrivilegedAction(
+                args = args,
                 callback = callback
             )
             "terminal_execute" -> executeTerminalTool(
@@ -929,6 +945,75 @@ class AgentToolRouter(
                 terminalOutput = errorMessage,
                 terminalStreamState = "error",
                 workspaceId = workspace.id
+            )
+        }
+    }
+
+    private suspend fun executeAndroidPrivilegedAction(
+        args: JsonObject,
+        callback: AgentCallback
+    ): ToolExecutionResult {
+        val toolName = "android_privileged_action"
+        return try {
+            val parsed = parseAndroidPrivilegedArgs(args)
+            val shizukuManager = ShizukuCapabilityManager.get(context)
+            val status = shizukuManager.getStatus()
+            if (!status.isGranted()) {
+                return permissionRequiredResult(callback, listOf("Shizuku 权限"))
+            }
+            if (!PrivilegedActionPolicy.isSupported(parsed.action, status.backend, arguments = parsed.arguments)) {
+                return ToolExecutionResult.Error(
+                    toolName,
+                    localized("当前 Shizuku 后端不支持该动作：${parsed.action}")
+                )
+            }
+
+            reportToolProgress(
+                callback,
+                toolName,
+                "正在执行 Shizuku 高级动作",
+                mapOf(
+                    "action" to parsed.action,
+                    "backend" to status.backend.name,
+                    "availableActions" to status.availableActions
+                )
+            )
+
+            val result = shizukuManager.executeAgentAction(
+                action = parsed.action,
+                arguments = parsed.arguments,
+                requiresConfirmation = PrivilegedActionPolicy.requiresConfirmation(parsed.action)
+            )
+
+            if (result.requiresConfirmation || result.code == "confirmation_required") {
+                val question = privilegedConfirmationQuestion(parsed.action)
+                callback.onClarifyRequired(question, listOf("arguments.confirmed"))
+                return ToolExecutionResult.Clarify(question, listOf("arguments.confirmed"))
+            }
+
+            val payload = result.toMap().toMutableMap().apply {
+                this["message"] = localizedPrivilegedMessage(result)
+            }
+            val payloadJson = encodeLocalizedPayload(payload)
+            ToolExecutionResult.ContextResult(
+                toolName = toolName,
+                summaryText = localized(
+                    if (result.success) {
+                        "已执行 Shizuku 动作：${result.action}"
+                    } else {
+                        "Shizuku 动作执行失败：${result.action}"
+                    }
+                ),
+                previewJson = payloadJson,
+                rawResultJson = payloadJson,
+                success = result.success
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ToolExecutionResult.Error(
+                toolName,
+                localized(e.message ?: "Shizuku 动作执行失败")
             )
         }
     }
@@ -3118,6 +3203,25 @@ class AgentToolRouter(
 
     private fun quoteShell(value: String): String = TermuxCommandBuilder.quoteForShell(value)
 
+    private data class AndroidPrivilegedArgs(
+        val action: String,
+        val arguments: Map<String, String>
+    )
+
+    private fun parseAndroidPrivilegedArgs(args: JsonObject): AndroidPrivilegedArgs {
+        val action = args["action"]?.jsonPrimitive?.contentOrNull
+            ?.trim()
+            ?.lowercase()
+            .orEmpty()
+        require(action.isNotEmpty()) { "action 不能为空" }
+
+        val rawArguments = args["arguments"] as? JsonObject ?: JsonObject(emptyMap())
+        return AndroidPrivilegedArgs(
+            action = action,
+            arguments = jsonObjectToStringMap(rawArguments)
+        )
+    }
+
     private fun parseTerminalExecuteArgs(args: JsonObject): TerminalExecuteArgs {
         val command = args["command"]?.jsonPrimitive?.content?.trim().orEmpty()
         require(command.isNotEmpty()) { "terminal_execute 缺少 command" }
@@ -3351,6 +3455,12 @@ class AgentToolRouter(
         }
     }
 
+    private fun jsonObjectToStringMap(jsonObject: JsonObject): Map<String, String> {
+        return jsonObject.entries.associate { (key, value) ->
+            key to (jsonElementToAny(value)?.toString() ?: "")
+        }
+    }
+
     private fun jsonElementToAny(element: JsonElement): Any? {
         return when (element) {
             is JsonNull -> null
@@ -3379,6 +3489,80 @@ class AgentToolRouter(
             is Boolean -> JsonPrimitive(value)
             is Number -> JsonPrimitive(value)
             else -> JsonPrimitive(value.toString())
+        }
+    }
+
+    private fun privilegedConfirmationQuestion(action: String): String {
+        return if (isEnglishLocale) {
+            "The action `$action` changes privileged Android state. Please confirm before I continue."
+        } else {
+            "动作 `$action` 会修改高权限安卓系统状态，请先明确确认后我再继续。"
+        }
+    }
+
+    private fun localizedPrivilegedMessage(result: PrivilegedResult): String {
+        return when (result.code) {
+            "ok" -> if (isEnglishLocale) {
+                "Privileged action executed successfully."
+            } else {
+                "高级动作执行成功。"
+            }
+            "confirmation_required" -> if (isEnglishLocale) {
+                "This privileged action requires explicit confirmation."
+            } else {
+                "该高级动作需要用户明确确认。"
+            }
+            "unsupported_action" -> if (isEnglishLocale) {
+                "The current Shizuku backend does not support this action."
+            } else {
+                "当前 Shizuku 后端不支持该动作。"
+            }
+            "not_installed" -> if (isEnglishLocale) {
+                "Shizuku is not installed."
+            } else {
+                "Shizuku 未安装。"
+            }
+            "not_running" -> if (isEnglishLocale) {
+                "Shizuku is installed but not running."
+            } else {
+                "Shizuku 已安装但未启动。"
+            }
+            "permission_denied" -> if (isEnglishLocale) {
+                "Shizuku permission is not granted."
+            } else {
+                "Shizuku 尚未授权。"
+            }
+            "service_bind_failed" -> if (isEnglishLocale) {
+                "Failed to bind the Shizuku user service."
+            } else {
+                "绑定 Shizuku 用户服务失败。"
+            }
+            "service_send_failed" -> if (isEnglishLocale) {
+                "Failed to send the privileged request to Shizuku."
+            } else {
+                "向 Shizuku 发送高级请求失败。"
+            }
+            "service_timeout" -> if (isEnglishLocale) {
+                "Timed out waiting for the Shizuku user service result."
+            } else {
+                "等待 Shizuku 用户服务结果超时。"
+            }
+            "invalid_arguments" -> if (isEnglishLocale) {
+                "The privileged action arguments are invalid."
+            } else {
+                "高级动作参数不合法。"
+            }
+            "command_failed" -> if (isEnglishLocale) {
+                "The privileged action command failed."
+            } else {
+                "高级动作执行失败。"
+            }
+            "timeout" -> if (isEnglishLocale) {
+                "The privileged action timed out."
+            } else {
+                "高级动作执行超时。"
+            }
+            else -> result.message
         }
     }
 }
