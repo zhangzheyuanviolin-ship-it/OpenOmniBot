@@ -7,23 +7,25 @@
     android:gravity="center"
     android:minHeight="40dp"
     android:orientation="vertical"
-    android:padding="10dp">
-    <!--    展开-->
+    android:padding="10dp"
+    android:contentDescription="@string/floating_container">
 
     <TextView
         android:id="@+id/tv_expand"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:text="展开⬆️"
+        android:text="@string/floating_expand"
         android:textColor="#fff"
-        android:textSize="16sp" />
+        android:textSize="16sp"
+        android:contentDescription="@string/floating_expand" />
 
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/nsv"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:contentDescription="@string/floating_scroll_content">
 
         <LinearLayout
             android:id="@+id/ll_content"
@@ -37,43 +39,49 @@
                 android:scaleType="centerInside"
                 android:layout_height="600dp"
                 android:visibility="gone"
-                android:contentDescription="图片" />
+                android:contentDescription="@string/floating_data_image" />
 
             <EditText
                 android:id="@+id/edt_id"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:hint="请输入nodeID" />
+                android:hint="@string/floating_node_id_hint"
+                android:contentDescription="@string/floating_node_id_label" />
 
             <EditText
                 android:id="@+id/edt_function"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:hint="请输入方法名称" />
+                android:hint="@string/floating_function_hint"
+                android:contentDescription="@string/floating_function_label" />
 
             <EditText
                 android:id="@+id/edt_x"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:hint="请输入x坐标" />
+                android:hint="@string/floating_x_hint"
+                android:contentDescription="@string/floating_x_label" />
 
             <EditText
                 android:id="@+id/edt_y"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:hint="请输入y坐标" />
+                android:hint="@string/floating_y_hint"
+                android:contentDescription="@string/floating_y_label" />
 
             <EditText
                 android:id="@+id/edt_direction"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:hint="请输入滑动距离" />
+                android:hint="@string/floating_direction_hint"
+                android:contentDescription="@string/floating_direction_label" />
 
             <EditText
                 android:id="@+id/edt_distance"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:hint="distance" />
+                android:hint="@string/floating_distance_hint"
+                android:contentDescription="@string/floating_distance_label" />
 
 
 
@@ -85,10 +93,12 @@
         android:id="@+id/btn_start"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="执行" />
+        android:text="@string/floating_start"
+        android:contentDescription="@string/floating_start" />
     <Button
         android:id="@+id/btn_close"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="关闭" />
+        android:text="@string/floating_close"
+        android:contentDescription="@string/floating_close" />
 </LinearLayout>
