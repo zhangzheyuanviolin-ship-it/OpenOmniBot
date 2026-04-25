@@ -189,6 +189,13 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:taskAffinity="" />
+        <activity
+            android:name="cn.com.omnimind.bot.agent.BrowserFileChooserRequestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OmnibotApp.Transparent"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity="" />
         <!-- MCP 文件接收入口，用于“打开方式/分享”接收文件 -->
         <activity
             android:name=".activity.McpFileReceiverActivity"

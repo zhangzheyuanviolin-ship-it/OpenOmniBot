@@ -39,6 +39,9 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         .listen((event) {
           unawaited(_handleExternalConversationMessagesChanged(event));
         });
+    _browserSessionSnapshotChangedSubscription = AssistsMessageService
+        .browserSessionSnapshotChangedStream
+        .listen(_handleBrowserSessionSnapshotChanged);
 
     _inputFocusNode.addListener(_onFocusChange);
     _messageController.addListener(_handleSlashCommandInput);
@@ -533,6 +536,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     _cancelNormalSurfaceModelReveal();
     _conversationListChangedSubscription?.cancel();
     _conversationMessagesChangedSubscription?.cancel();
+    _browserSessionSnapshotChangedSubscription?.cancel();
     if (_subscribedRoute != null) {
       GoRouterManager.routeObserver.unsubscribe(this);
       _subscribedRoute = null;
