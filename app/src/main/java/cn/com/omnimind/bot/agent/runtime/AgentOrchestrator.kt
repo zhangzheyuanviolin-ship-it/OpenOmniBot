@@ -493,9 +493,13 @@ class AgentOrchestrator(
             ?: throw IllegalArgumentException("tool arguments must be a JSON object")
     }
 
-    private fun normalizeThinkingText(text: String, maxLen: Int = 3000): String {
-        val normalized = text.replace("\r\n", "\n").trim()
-        return if (normalized.length <= maxLen) normalized else normalized.take(maxLen) + "\n..."
+    private fun normalizeThinkingText(text: String): String {
+        val normalized = if ('\r' in text) {
+            text.replace("\r\n", "\n").replace('\r', '\n')
+        } else {
+            text
+        }
+        return normalized.trim()
     }
 
     private fun logInfo(tag: String, message: String) {
