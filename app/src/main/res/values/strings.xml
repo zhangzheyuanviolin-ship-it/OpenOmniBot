@@ -1,4 +1,25 @@
 <resources>
     <string name="app_name">小万</string>
     <string name="omni_app_name">小万</string>
+
+    <!-- Floating window accessibility labels -->
+    <string name="floating_expand">展开</string>
+    <string name="floating_collapse">收起</string>
+    <string name="floating_data_image">图片</string>
+    <string name="floating_node_id_hint">请输入nodeID</string>
+    <string name="floating_node_id_label">节点 ID 输入框</string>
+    <string name="floating_function_hint">请输入方法名称</string>
+    <string name="floating_function_label">方法名称输入框</string>
+    <string name="floating_x_hint">请输入x坐标</string>
+    <string name="floating_x_label">X 坐标输入框</string>
+    <string name="floating_y_hint">请输入y坐标</string>
+    <string name="floating_y_label">Y 坐标输入框</string>
+    <string name="floating_direction_hint">请输入滑动距离</string>
+    <string name="floating_direction_label">滑动距离输入框</string>
+    <string name="floating_distance_hint">distance</string>
+    <string name="floating_distance_label">距离输入框</string>
+    <string name="floating_start">执行</string>
+    <string name="floating_close">关闭</string>
+    <string name="floating_container">自动化操作面板</string>
+    <string name="floating_scroll_content">操作内容区域</string>
 </resources>
