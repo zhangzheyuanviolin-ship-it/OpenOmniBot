@@ -37,4 +37,27 @@ void main() {
 
     expect(urls, isEmpty);
   });
+
+  test('extractUrls ignores dot commands without common domain suffixes', () {
+    final service = LinkPreviewService();
+
+    final urls = service.extractUrls(
+      '先执行 diagnostics.getprop 和 settings_control.get，再打开 github.com/docs',
+    );
+
+    expect(urls, <String>['https://github.com/docs']);
+  });
+
+  test('extractUrls keeps common multi-part domain suffixes', () {
+    final service = LinkPreviewService();
+
+    final urls = service.extractUrls(
+      '文档在 example.co.uk/guide 和 docs.github.io/reference',
+    );
+
+    expect(urls, <String>[
+      'https://example.co.uk/guide',
+      'https://docs.github.io/reference',
+    ]);
+  });
 }

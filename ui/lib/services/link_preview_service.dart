@@ -30,6 +30,74 @@ class LinkPreviewService {
   }
 
   static const int maxPreviewsPerMessage = 3;
+  static const Set<String> _commonBareDomainSuffixes = <String>{
+    'com',
+    'net',
+    'org',
+    'io',
+    'ai',
+    'app',
+    'dev',
+    'cn',
+    'cc',
+    'me',
+    'tv',
+    'fm',
+    'xyz',
+    'info',
+    'top',
+    'tech',
+    'site',
+    'online',
+    'cloud',
+    'shop',
+    'store',
+    'blog',
+    'pro',
+    'biz',
+    'name',
+    'edu',
+    'gov',
+    'mil',
+    'int',
+    'us',
+    'uk',
+    'ca',
+    'au',
+    'eu',
+    'de',
+    'fr',
+    'jp',
+    'kr',
+    'sg',
+    'hk',
+    'tw',
+    'in',
+    'br',
+    'ru',
+    'it',
+    'es',
+    'nl',
+    'co.uk',
+    'org.uk',
+    'ac.uk',
+    'gov.uk',
+    'com.cn',
+    'net.cn',
+    'org.cn',
+    'gov.cn',
+    'edu.cn',
+    'co.jp',
+    'ne.jp',
+    'or.jp',
+    'com.au',
+    'net.au',
+    'org.au',
+    'com.hk',
+    'com.tw',
+    'com.sg',
+    'com.br',
+  };
 
   final http.Client _client;
   final Map<String, ChatLinkPreview> _memoryCache = <String, ChatLinkPreview>{};
@@ -340,6 +408,9 @@ class LinkPreviewService {
     if (!hadExplicitScheme && _looksLikeBareFilenameCandidate(candidate)) {
       return null;
     }
+    if (!hadExplicitScheme && !_hasAllowedBareDomainSuffix(candidate)) {
+      return null;
+    }
     if (candidate.isNotEmpty &&
         !candidate.startsWith(RegExp(r'https?://', caseSensitive: false))) {
       candidate = 'https://$candidate';
@@ -465,6 +536,20 @@ class LinkPreviewService {
       'mov',
       'avi',
     });
+  }
+
+  bool _hasAllowedBareDomainSuffix(String value) {
+    final parsed = Uri.tryParse('https://${value.trim()}');
+    final host = _canonicalPreviewHost(parsed?.host ?? '');
+    if (host.isEmpty) {
+      return false;
+    }
+    for (final suffix in _commonBareDomainSuffixes) {
+      if (host == suffix || host.endsWith('.$suffix')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   bool _hasKnownFileExtension(String value, Set<String> extensions) {
