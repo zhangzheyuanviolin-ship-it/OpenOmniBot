@@ -33,7 +33,7 @@ jobs:
           git -C third_party/omniinfer submodule update --init framework/mnn framework/llama.cpp
 
       - name: Secret scan (gitleaks)
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head_repo.full_name == github.repository }}
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -103,3 +103,11 @@ jobs:
           :app:testDevelopDebugUnitTest
           :app:assembleDevelopDebug
           :app:lintDevelopDebug
+
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenOmniBot-Develop-Debug
+          path: app/build/outputs/apk/develop/debug/*.apk
+          retention-days: 5
