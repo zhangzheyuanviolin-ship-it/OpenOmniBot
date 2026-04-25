@@ -5,12 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.os.Bundle
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
-import android.os.Message
-import android.os.Messenger
 import android.os.RemoteException
 import cn.com.omnimind.baselib.util.OmniLog
 import kotlinx.coroutines.CompletableDeferred
@@ -22,7 +17,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import rikka.shizuku.Shizuku
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
 class ShizukuCapabilityManager private constructor(
     context: Context
@@ -35,23 +29,12 @@ class ShizukuCapabilityManager private constructor(
     }
     private val bindMutex = Mutex()
     private val permissionMutex = Mutex()
-    private val pendingResults = ConcurrentHashMap<String, CompletableDeferred<PrivilegedResult>>()
-    private val replyMessenger = Messenger(
-        Handler(Looper.getMainLooper()) { message ->
-            if (message.what != PrivilegedServiceProtocol.MSG_RESULT) {
-                return@Handler false
-            }
-            val resultJson = message.data?.getString(PrivilegedServiceProtocol.KEY_RESULT_JSON)
-            val result = runCatching {
-                json.decodeFromString(PrivilegedResult.serializer(), resultJson.orEmpty())
-            }.getOrNull() ?: return@Handler true
-            pendingResults.remove(result.requestId)?.complete(result)
-            true
-        }
-    )
 
     @Volatile
-    private var remoteMessenger: Messenger? = null
+    private var remoteService: IOmnibotPrivilegedUserService? = null
+
+    @Volatile
+    private var pendingBind: CompletableDeferred<IOmnibotPrivilegedUserService?>? = null
 
     @Volatile
     private var lastBinderDead = false
@@ -69,22 +52,31 @@ class ShizukuCapabilityManager private constructor(
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            remoteMessenger = if (service != null) Messenger(service) else null
-            OmniLog.i(TAG, "Shizuku user service connected")
+            val privilegedService = if (service != null) {
+                IOmnibotPrivilegedUserService.Stub.asInterface(service)
+            } else {
+                null
+            }
+            remoteService = privilegedService
+            pendingBind?.takeIf { !it.isCompleted }?.complete(privilegedService)
+            OmniLog.i(TAG, "Shizuku user service connected: ${name?.className}")
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            remoteMessenger = null
+            remoteService = null
+            pendingBind?.takeIf { !it.isCompleted }?.complete(null)
             OmniLog.w(TAG, "Shizuku user service disconnected")
         }
 
         override fun onBindingDied(name: ComponentName?) {
-            remoteMessenger = null
+            remoteService = null
+            pendingBind?.takeIf { !it.isCompleted }?.complete(null)
             OmniLog.w(TAG, "Shizuku user service binding died")
         }
 
         override fun onNullBinding(name: ComponentName?) {
-            remoteMessenger = null
+            remoteService = null
+            pendingBind?.takeIf { !it.isCompleted }?.complete(null)
             OmniLog.w(TAG, "Shizuku user service null binding")
         }
     }
@@ -127,7 +119,7 @@ class ShizukuCapabilityManager private constructor(
             running = running,
             permissionGranted = permissionGranted,
             binderReady = binderReady,
-            serviceBound = remoteMessenger != null,
+            serviceBound = remoteService != null,
             uid = uid,
             version = version,
             availableActions = suggestedAgentActions(backend),
@@ -264,7 +256,7 @@ class ShizukuCapabilityManager private constructor(
                 availableActions = suggestedAgentActions(status.backend)
             )
         }
-        val messenger = ensureUserServiceBound() ?: return PrivilegedResult(
+        val service = ensureUserServiceBound() ?: return PrivilegedResult(
             requestId = request.requestId,
             action = request.action,
             success = false,
@@ -273,76 +265,101 @@ class ShizukuCapabilityManager private constructor(
             backend = status.backend,
             availableActions = suggestedAgentActions(status.backend)
         )
-        val deferred = CompletableDeferred<PrivilegedResult>()
-        pendingResults[request.requestId] = deferred
-        val sent = runCatching {
-            val message = Message.obtain(null, PrivilegedServiceProtocol.MSG_EXECUTE)
-            message.replyTo = replyMessenger
-            message.data = Bundle().apply {
-                putString(
-                    PrivilegedServiceProtocol.KEY_REQUEST_JSON,
-                    json.encodeToString(PrivilegedRequest.serializer(), request)
-                )
-            }
-            messenger.send(message)
-        }.isSuccess
-        if (!sent) {
-            pendingResults.remove(request.requestId)
-            remoteMessenger = null
-            return PrivilegedResult(
-                requestId = request.requestId,
-                action = request.action,
-                success = false,
-                code = "service_send_failed",
-                message = "Failed to send privileged request.",
-                backend = status.backend,
-                availableActions = suggestedAgentActions(status.backend)
-            )
-        }
-        return withTimeoutOrNull(12_000) {
-            deferred.await()
-        } ?: run {
-            pendingResults.remove(request.requestId)
+        return runCatching {
+            executeRemoteRequest(request, service, status.backend)
+        }.recoverCatching {
+            remoteService = null
+            val reboundService = ensureUserServiceBound()
+                ?: error("Failed to rebind Shizuku user service.")
+            executeRemoteRequest(request, reboundService, status.backend)
+        }.getOrElse { error ->
             PrivilegedResult(
                 requestId = request.requestId,
                 action = request.action,
                 success = false,
-                code = "service_timeout",
-                message = "Timed out waiting for privileged service result.",
+                code = "service_call_failed",
+                message = error.message ?: "Failed to call Shizuku user service.",
                 backend = status.backend,
                 availableActions = suggestedAgentActions(status.backend)
             )
         }
     }
 
-    private suspend fun ensureUserServiceBound(): Messenger? {
-        remoteMessenger?.let { return it }
+    private suspend fun executeRemoteRequest(
+        request: PrivilegedRequest,
+        service: IOmnibotPrivilegedUserService,
+        backend: ShizukuBackend,
+    ): PrivilegedResult {
+        val requestJson = json.encodeToString(PrivilegedRequest.serializer(), request)
+        val resultJson = withTimeoutOrNull(12_000) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    service.execute(requestJson)
+                }.getOrElse { error ->
+                    if (error is RemoteException) {
+                        remoteService = null
+                    }
+                    throw error
+                }
+            }
+        } ?: return PrivilegedResult(
+            requestId = request.requestId,
+            action = request.action,
+            success = false,
+            code = "service_timeout",
+            message = "Timed out waiting for privileged service result.",
+            backend = backend,
+            availableActions = suggestedAgentActions(backend)
+        )
+
+        return runCatching {
+            json.decodeFromString(PrivilegedResult.serializer(), resultJson)
+        }.getOrElse { error ->
+            PrivilegedResult(
+                requestId = request.requestId,
+                action = request.action,
+                success = false,
+                code = "service_decode_failed",
+                message = error.message ?: "Failed to decode privileged service result.",
+                backend = backend,
+                availableActions = suggestedAgentActions(backend)
+            )
+        }
+    }
+
+    private suspend fun ensureUserServiceBound(): IOmnibotPrivilegedUserService? {
+        remoteService?.let { return it }
         return bindMutex.withLock {
-            remoteMessenger?.let { return@withLock it }
+            remoteService?.let { return@withLock it }
             if (!getStatus().isGranted()) {
                 return@withLock null
             }
-            val connected = CompletableDeferred<Messenger?>()
+            val connected = pendingBind?.takeIf { !it.isCompleted }
+                ?: CompletableDeferred<IOmnibotPrivilegedUserService?>().also {
+                    pendingBind = it
+                }
             withContext(Dispatchers.Main) {
                 try {
                     Shizuku.bindUserService(userServiceArgs, serviceConnection)
                 } catch (error: Throwable) {
-                    connected.complete(null)
+                    if (!connected.isCompleted) {
+                        connected.complete(null)
+                    }
                     return@withContext
                 }
-                if (remoteMessenger != null && !connected.isCompleted) {
-                    connected.complete(remoteMessenger)
-                } else {
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        if (!connected.isCompleted) {
-                            connected.complete(remoteMessenger)
-                        }
-                    }, 800)
+                remoteService?.let { service ->
+                    if (!connected.isCompleted) {
+                        connected.complete(service)
+                    }
                 }
             }
-            withTimeoutOrNull(2_000) {
+            val result = withTimeoutOrNull(3_000) {
                 connected.await()
             }
+            if (pendingBind === connected) {
+                pendingBind = null
+            }
+            result
         }
     }
 
@@ -360,7 +377,8 @@ class ShizukuCapabilityManager private constructor(
                 }
                 Shizuku.addBinderDeadListener {
                     lastBinderDead = true
-                    remoteMessenger = null
+                    remoteService = null
+                    pendingBind?.takeIf { !it.isCompleted }?.complete(null)
                 }
             }
             listenersRegistered = true
@@ -382,7 +400,7 @@ class ShizukuCapabilityManager private constructor(
         private const val TAG = "ShizukuCapabilityMgr"
         private const val SHIZUKU_PACKAGE_NAME = "moe.shizuku.privileged.api"
         private const val USER_SERVICE_TAG = "omnibot-privileged-agent"
-        private const val USER_SERVICE_VERSION = 1
+        private const val USER_SERVICE_VERSION = 2
 
         @Volatile
         private var instance: ShizukuCapabilityManager? = null

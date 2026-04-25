@@ -92,10 +92,3 @@ data class PrivilegedResult(
         )
     }
 }
-
-internal object PrivilegedServiceProtocol {
-    const val MSG_EXECUTE = 1
-    const val MSG_RESULT = 2
-    const val KEY_REQUEST_JSON = "request_json"
-    const val KEY_RESULT_JSON = "result_json"
-}

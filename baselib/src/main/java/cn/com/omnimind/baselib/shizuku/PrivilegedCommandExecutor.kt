@@ -206,7 +206,9 @@ internal object PrivilegedCommandExecutor {
                 listOf("input", "text", encodeInputText(requireNotBlank(arguments["text"], "text")))
             }
             PrivilegedActionPolicy.ACTION_DIAGNOSTICS_GETPROP -> {
-                val name = arguments["name"]?.trim().orEmpty()
+                val name = arguments["name"]?.trim()
+                    ?.ifEmpty { null }
+                    ?: arguments["prop"]?.trim().orEmpty()
                 if (name.isBlank()) {
                     listOf("getprop")
                 } else {
