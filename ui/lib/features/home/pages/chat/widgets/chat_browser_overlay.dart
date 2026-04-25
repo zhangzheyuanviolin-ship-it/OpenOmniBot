@@ -30,6 +30,10 @@ class ChatBrowserOverlay extends StatefulWidget {
 }
 
 class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
+  static const double _actionButtonSize = 32;
+  static const double _actionIconSize = 17;
+  static const double _addressPillHeight = 36;
+
   late final TextEditingController _addressController;
   late final FocusNode _addressFocusNode;
   late final TextEditingController _promptController;
@@ -42,8 +46,10 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
   @override
   void initState() {
     super.initState();
-    _addressController = TextEditingController(text: widget.snapshot.currentUrl);
-    _addressFocusNode = FocusNode();
+    _addressController = TextEditingController(
+      text: widget.snapshot.currentUrl,
+    );
+    _addressFocusNode = FocusNode()..addListener(_handleAddressFocusChanged);
     _promptController = TextEditingController(
       text: widget.snapshot.pendingDialog?.defaultValue ?? '',
     );
@@ -60,7 +66,8 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
     final nextPromptId = widget.snapshot.pendingDialog?.requestId;
     if (_lastPromptRequestId != nextPromptId) {
       _lastPromptRequestId = nextPromptId;
-      _promptController.text = widget.snapshot.pendingDialog?.defaultValue ?? '';
+      _promptController.text =
+          widget.snapshot.pendingDialog?.defaultValue ?? '';
     }
   }
 
@@ -70,6 +77,20 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
     _addressFocusNode.dispose();
     _promptController.dispose();
     super.dispose();
+  }
+
+  void _handleAddressFocusChanged() {
+    if (_addressFocusNode.hasFocus) {
+      _addressController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _addressController.text.length,
+      );
+    } else if (_addressController.text != widget.snapshot.currentUrl) {
+      _addressController.text = widget.snapshot.currentUrl;
+    }
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -98,12 +119,16 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
             Column(
               children: [
                 _buildChrome(context, snapshot),
-                if (snapshot.hasSslError) _buildBanner(
-                  icon: Icons.gpp_bad_rounded,
-                  message: _text('此页面存在 SSL 错误，请谨慎操作', 'This page has an SSL error'),
-                  color: const Color(0xFFB42318),
-                  background: const Color(0xFFFFF1F3),
-                ),
+                if (snapshot.hasSslError)
+                  _buildBanner(
+                    icon: Icons.gpp_bad_rounded,
+                    message: _text(
+                      '此页面存在 SSL 错误，请谨慎操作',
+                      'This page has an SSL error',
+                    ),
+                    color: const Color(0xFFB42318),
+                    background: const Color(0xFFFFF1F3),
+                  ),
                 if (snapshot.externalOpenPrompt != null)
                   _buildExternalPrompt(snapshot.externalOpenPrompt!),
                 if (snapshot.permissionPrompt != null)
@@ -142,7 +167,8 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               bottom: 6,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPanUpdate: (details) => widget.onResizeLeftDelta(details.delta),
+                onPanUpdate: (details) =>
+                    widget.onResizeLeftDelta(details.delta),
                 child: const SizedBox(width: 32, height: 28),
               ),
             ),
@@ -151,7 +177,8 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               bottom: 6,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPanUpdate: (details) => widget.onResizeRightDelta(details.delta),
+                onPanUpdate: (details) =>
+                    widget.onResizeRightDelta(details.delta),
                 child: const SizedBox(width: 32, height: 28),
               ),
             ),
@@ -171,9 +198,13 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               ? const Color(0xFF067647)
               : const Color(0xFF617390));
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       decoration: const BoxDecoration(
-        color: Color(0xFFF6F9FF),
+        gradient: LinearGradient(
+          colors: [Color(0xFFF8FBFF), Color(0xFFF3F7FD)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
         border: Border(bottom: BorderSide(color: Color(0xFFE3EBF8))),
       ),
       child: Row(
@@ -181,98 +212,208 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onPanUpdate: (details) => widget.onDragDelta(details.delta),
-            child: const SizedBox(
-              width: 28,
-              height: 40,
-              child: Icon(
-                Icons.drag_indicator_rounded,
-                size: 18,
-                color: Color(0xFF617390),
-              ),
-            ),
-          ),
-          Expanded(
             child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFDCE7F5)),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    snapshot.hasSslError
-                        ? Icons.gpp_bad_rounded
-                        : snapshot.currentUrl.startsWith('https://')
-                        ? Icons.lock_rounded
-                        : Icons.language_rounded,
-                    size: 16,
-                    color: iconColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _addressController,
-                      focusNode: _addressFocusNode,
-                      textInputAction: TextInputAction.go,
-                      onSubmitted: _handleAddressSubmitted,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF213147),
-                      ),
-                      decoration: InputDecoration(
-                        isCollapsed: true,
-                        border: InputBorder.none,
-                        hintText:
-                            snapshot.title.trim().isEmpty
-                                ? context.l10n.browserOverlayTitle
-                                : snapshot.title,
-                      ),
-                    ),
-                  ),
-                ],
+              width: 24,
+              height: _addressPillHeight,
+              alignment: Alignment.center,
+              child: Container(
+                width: 14,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9BAECC),
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
             ),
           ),
+          const SizedBox(width: 8),
+          Expanded(child: _buildAddressPill(context, snapshot, iconColor)),
           const SizedBox(width: 6),
-          IconButton(
+          _compactActionButton(
             onPressed: _handleToggleBookmark,
-            splashRadius: 18,
             tooltip: _text('切换收藏', 'Toggle bookmark'),
             icon: Icon(
-              snapshot.isBookmarked ? Icons.star_rounded : Icons.star_border_rounded,
-              size: 19,
+              snapshot.isBookmarked
+                  ? Icons.star_rounded
+                  : Icons.star_outline_rounded,
+              size: _actionIconSize,
               color: snapshot.isBookmarked
-                  ? const Color(0xFFF59E0B)
+                  ? const Color(0xFFD97706)
                   : const Color(0xFF617390),
             ),
+            backgroundColor: snapshot.isBookmarked
+                ? const Color(0xFFFFF7ED)
+                : Colors.white,
+            borderColor: snapshot.isBookmarked
+                ? const Color(0xFFF7D6A6)
+                : const Color(0xFFD9E5F4),
           ),
-          IconButton(
+          const SizedBox(width: 6),
+          _compactActionButton(
             onPressed: snapshot.isLoading ? _handleStopLoading : _handleReload,
-            splashRadius: 18,
             tooltip: snapshot.isLoading
                 ? _text('停止加载', 'Stop loading')
                 : _text('刷新页面', 'Reload page'),
             icon: Icon(
-              snapshot.isLoading ? Icons.close_rounded : Icons.refresh_rounded,
-              size: 19,
+              snapshot.isLoading
+                  ? Icons.close_rounded
+                  : Icons.autorenew_rounded,
+              size: _actionIconSize,
               color: const Color(0xFF617390),
             ),
           ),
-          IconButton(
+          const SizedBox(width: 6),
+          _compactActionButton(
             onPressed: widget.onClose,
             icon: const Icon(
               Icons.close_rounded,
-              size: 19,
-              color: Color(0xFF617390),
+              size: _actionIconSize,
+              color: Color(0xFF9A3E4A),
             ),
-            splashRadius: 18,
             tooltip: context.l10n.browserOverlayClose,
+            backgroundColor: const Color(0xFFFFF4F5),
+            borderColor: const Color(0xFFF5D4DA),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAddressPill(
+    BuildContext context,
+    ChatBrowserSessionSnapshot snapshot,
+    Color iconColor,
+  ) {
+    final isEditing = _addressFocusNode.hasFocus;
+    final radius = BorderRadius.circular(999);
+    final hintText = snapshot.title.trim().isEmpty
+        ? context.l10n.browserOverlayTitle
+        : snapshot.title;
+    final primaryText = _addressPrimaryText(snapshot, hintText);
+    final secondaryText = _addressSecondaryText(snapshot);
+    final fieldDecoration = BoxDecoration(
+      color: Colors.white,
+      borderRadius: radius,
+      border: Border.all(
+        color: isEditing ? const Color(0xFFB7CAF2) : const Color(0xFFD9E5F4),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: isEditing ? const Color(0x142563EB) : const Color(0x08172B4D),
+          blurRadius: isEditing ? 16 : 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    );
+
+    if (isEditing) {
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        height: _addressPillHeight,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: fieldDecoration,
+        child: Row(
+          children: [
+            Icon(
+              snapshot.hasSslError
+                  ? Icons.gpp_bad_rounded
+                  : snapshot.currentUrl.startsWith('https://')
+                  ? Icons.lock_rounded
+                  : Icons.language_rounded,
+              size: 15,
+              color: iconColor,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _addressController,
+                focusNode: _addressFocusNode,
+                textInputAction: TextInputAction.go,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                enableSuggestions: false,
+                onTapOutside: (_) => _addressFocusNode.unfocus(),
+                onSubmitted: _handleAddressSubmitted,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF213147),
+                ),
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  border: InputBorder.none,
+                  hintText: hintText,
+                  hintStyle: const TextStyle(
+                    color: Color(0xFF93A4BB),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final tooltipText = snapshot.currentUrl.trim().isEmpty
+        ? hintText
+        : snapshot.currentUrl.trim();
+
+    return Tooltip(
+      message: tooltipText,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: radius,
+          onTap: _addressFocusNode.requestFocus,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            height: _addressPillHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: fieldDecoration,
+            child: Row(
+              children: [
+                Icon(
+                  snapshot.hasSslError
+                      ? Icons.gpp_bad_rounded
+                      : snapshot.currentUrl.startsWith('https://')
+                      ? Icons.lock_rounded
+                      : Icons.language_rounded,
+                  size: 15,
+                  color: iconColor,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: primaryText,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF213147),
+                          ),
+                        ),
+                        if (secondaryText.isNotEmpty)
+                          TextSpan(
+                            text: '   $secondaryText',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF7C8EA7),
+                            ),
+                          ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -338,14 +479,18 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               _secondaryActionButton(
                 label: _text('取消', 'Cancel'),
                 onPressed: () => _runCommand(
-                  AgentBrowserSessionService.cancelExternalOpen(prompt.requestId),
+                  AgentBrowserSessionService.cancelExternalOpen(
+                    prompt.requestId,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               _primaryActionButton(
                 label: _text('打开', 'Open'),
                 onPressed: () => _runCommand(
-                  AgentBrowserSessionService.confirmExternalOpen(prompt.requestId),
+                  AgentBrowserSessionService.confirmExternalOpen(
+                    prompt.requestId,
+                  ),
                 ),
               ),
             ],
@@ -461,8 +606,9 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
                   AgentBrowserSessionService.resolveDialog(
                     requestId: prompt.requestId,
                     accept: true,
-                    promptValue:
-                        prompt.type == 'prompt' ? _promptController.text : null,
+                    promptValue: prompt.type == 'prompt'
+                        ? _promptController.text
+                        : null,
                   ),
                 ),
               ),
@@ -475,26 +621,29 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
 
   Widget _buildToolbar(ChatBrowserSessionSnapshot snapshot) {
     return Container(
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      height: 44,
+      padding: const EdgeInsets.fromLTRB(8, 5, 8, 7),
       decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFC),
+        color: Color(0xFFF7F9FC),
         border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
       ),
       child: Row(
         children: [
           _toolbarButton(
-            icon: Icons.arrow_back_rounded,
+            icon: Icons.arrow_back_ios_new_rounded,
             enabled: snapshot.canGoBack,
             tooltip: _text('后退', 'Back'),
             onPressed: () => _runCommand(AgentBrowserSessionService.goBack()),
           ),
+          const SizedBox(width: 6),
           _toolbarButton(
-            icon: Icons.arrow_forward_rounded,
+            icon: Icons.arrow_forward_ios_rounded,
             enabled: snapshot.canGoForward,
             tooltip: _text('前进', 'Forward'),
-            onPressed: () => _runCommand(AgentBrowserSessionService.goForward()),
+            onPressed: () =>
+                _runCommand(AgentBrowserSessionService.goForward()),
           ),
+          const SizedBox(width: 6),
           _toolbarButton(
             icon: Icons.add_rounded,
             tooltip: _text('新标签页', 'New tab'),
@@ -503,31 +652,31 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
           Expanded(
             child: Center(
               child: InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(999),
                 onTap: _showTabsSheet,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
-                    vertical: 8,
+                    vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFDCE7F5)),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFD9E5F4)),
                     color: Colors.white,
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
-                        Icons.tab_rounded,
-                        size: 18,
+                        Icons.layers_outlined,
+                        size: 16,
                         color: Color(0xFF42526B),
                       ),
                       const SizedBox(width: 6),
                       Text(
                         '${widget.snapshot.tabs.length}',
                         style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFF213147),
                         ),
@@ -538,6 +687,7 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               ),
             ),
           ),
+          const SizedBox(width: 6),
           _toolbarButton(
             icon: Icons.more_horiz_rounded,
             tooltip: _text('菜单', 'Menu'),
@@ -554,14 +704,48 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
     String? tooltip,
     bool enabled = true,
   }) {
-    return IconButton(
+    return _compactActionButton(
       onPressed: enabled ? onPressed : null,
-      splashRadius: 18,
       tooltip: tooltip,
-      icon: Icon(icon, size: 20),
-      color: const Color(0xFF42526B),
-      disabledColor: const Color(0xFFB8C3D5),
+      icon: Icon(icon, size: _actionIconSize, color: const Color(0xFF42526B)),
     );
+  }
+
+  Widget _compactActionButton({
+    required Widget icon,
+    VoidCallback? onPressed,
+    String? tooltip,
+    Color backgroundColor = Colors.white,
+    Color borderColor = const Color(0xFFD9E5F4),
+  }) {
+    final enabled = onPressed != null;
+    Widget child = AnimatedOpacity(
+      duration: const Duration(milliseconds: 150),
+      opacity: enabled ? 1 : 0.48,
+      child: Material(
+        color: enabled ? backgroundColor : const Color(0xFFF6F8FB),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onPressed,
+          child: Ink(
+            width: _actionButtonSize,
+            height: _actionButtonSize,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: enabled ? borderColor : const Color(0xFFE3EAF4),
+              ),
+            ),
+            child: Center(child: icon),
+          ),
+        ),
+      ),
+    );
+    if (tooltip != null) {
+      child = Tooltip(message: tooltip, child: child);
+    }
+    return child;
   }
 
   Widget _secondaryActionButton({
@@ -589,6 +773,52 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
       default:
         return _text('页面对话框', 'Page dialog');
     }
+  }
+
+  String _addressPrimaryText(
+    ChatBrowserSessionSnapshot snapshot,
+    String fallback,
+  ) {
+    final url = snapshot.currentUrl.trim();
+    if (url.isEmpty) {
+      return fallback;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      return url;
+    }
+    final host = uri.host.trim();
+    if (host.isNotEmpty) {
+      final normalizedHost = host.startsWith('www.') ? host.substring(4) : host;
+      return uri.hasPort ? '$normalizedHost:${uri.port}' : normalizedHost;
+    }
+    if (uri.scheme.trim().isNotEmpty) {
+      return '${uri.scheme.toLowerCase()}://';
+    }
+    return url;
+  }
+
+  String _addressSecondaryText(ChatBrowserSessionSnapshot snapshot) {
+    final url = snapshot.currentUrl.trim();
+    if (url.isEmpty) {
+      return '';
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      return '';
+    }
+    final buffer = StringBuffer();
+    final path = uri.path.trim();
+    if (path.isNotEmpty && path != '/') {
+      buffer.write(path);
+    }
+    if (uri.hasQuery) {
+      buffer.write('?${uri.query}');
+    }
+    if (uri.hasFragment) {
+      buffer.write('#${uri.fragment}');
+    }
+    return buffer.toString();
   }
 
   Future<void> _handleAddressSubmitted(String value) async {
@@ -856,7 +1086,9 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
                 OutlinedButton(
                   onPressed: () async {
                     Navigator.of(context).pop();
-                    await _runCommand(AgentBrowserSessionService.clearHistory());
+                    await _runCommand(
+                      AgentBrowserSessionService.clearHistory(),
+                    );
                   },
                   child: Text(_text('清空历史记录', 'Clear history')),
                 ),
@@ -948,7 +1180,9 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               const SizedBox(height: 12),
               if (snapshot.downloads.isEmpty)
                 _emptyState(_text('暂无下载任务', 'No downloads yet')),
-              ...snapshot.downloads.map((item) => _buildDownloadCard(context, item)),
+              ...snapshot.downloads.map(
+                (item) => _buildDownloadCard(context, item),
+              ),
             ],
           ),
         );
@@ -1051,10 +1285,7 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
     );
   }
 
-  Widget _actionChip({
-    required String label,
-    required VoidCallback onPressed,
-  }) {
+  Widget _actionChip({required String label, required VoidCallback onPressed}) {
     return ActionChip(label: Text(label), onPressed: onPressed);
   }
 
@@ -1077,13 +1308,18 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               const SizedBox(height: 12),
               if (pendingInstall != null)
                 _buildPendingUserscriptCard(pendingInstall),
-              if (snapshot.userscriptSummary.currentPageMenuCommands.isNotEmpty) ...[
+              if (snapshot
+                  .userscriptSummary
+                  .currentPageMenuCommands
+                  .isNotEmpty) ...[
                 Text(
                   _text('当前页菜单命令', 'Current page menu'),
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 8),
-                ...snapshot.userscriptSummary.currentPageMenuCommands.map((command) {
+                ...snapshot.userscriptSummary.currentPageMenuCommands.map((
+                  command,
+                ) {
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.play_circle_outline_rounded),
@@ -1104,7 +1340,9 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               const SizedBox(height: 8),
               if (snapshot.userscriptSummary.installedScripts.isEmpty)
                 _emptyState(_text('暂无脚本', 'No scripts installed')),
-              ...snapshot.userscriptSummary.installedScripts.map(_buildUserscriptTile),
+              ...snapshot.userscriptSummary.installedScripts.map(
+                _buildUserscriptTile,
+              ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: _handleInstallUserscriptFromUrl,
@@ -1150,10 +1388,7 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               const SizedBox(height: 6),
               Text(
                 '${_text('未实现的 grants：', 'Unsupported grants: ')}${blocked.join(', ')}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFFB42318),
-                ),
+                style: const TextStyle(fontSize: 12, color: Color(0xFFB42318)),
               ),
             ],
             const SizedBox(height: 8),
@@ -1171,8 +1406,8 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
                   onPressed: blocked.isNotEmpty
                       ? null
                       : () => _runCommand(
-                            AgentBrowserSessionService.confirmUserscriptInstall(),
-                          ),
+                          AgentBrowserSessionService.confirmUserscriptInstall(),
+                        ),
                 ),
               ],
             ),
@@ -1242,7 +1477,8 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
               child: Text(_text('取消', 'Cancel')),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
               child: Text(_text('安装', 'Install')),
             ),
           ],
@@ -1274,8 +1510,8 @@ class _ChatBrowserOverlayState extends State<ChatBrowserOverlay> {
   }
 
   void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }

@@ -1129,13 +1129,13 @@ class BrowserUseEngine(
         activeTabId = tab.tabId
         val (vpWidth, vpHeight) = viewportDimensionsForProfile(tab.userAgentProfile)
         return withContext(Dispatchers.Main.immediate) {
-            layoutWebView(tab.webView, vpWidth, vpHeight)
+            val (captureWidth, captureHeight) = layoutWebView(tab.webView, vpWidth, vpHeight)
             if (tab.webView.windowToken == null) {
                 tab.webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
             }
             val bitmap = Bitmap.createBitmap(
-                vpWidth,
-                vpHeight,
+                captureWidth,
+                captureHeight,
                 Bitmap.Config.ARGB_8888
             )
             val canvas = Canvas(bitmap)
@@ -1278,12 +1278,20 @@ class BrowserUseEngine(
             extension = "jpg"
         )
         var imageDataUrl: String? = null
+        var captureWidth = vpWidth
+        var captureHeight = vpHeight
         withContext(Dispatchers.Main.immediate) {
-            layoutWebView(tab.webView, vpWidth, vpHeight)
+            val layoutSize = layoutWebView(tab.webView, vpWidth, vpHeight)
+            captureWidth = layoutSize.first
+            captureHeight = layoutSize.second
             if (tab.webView.windowToken == null) {
                 tab.webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
             }
-            val bitmap = Bitmap.createBitmap(vpWidth, vpHeight, Bitmap.Config.ARGB_8888)
+            val bitmap = Bitmap.createBitmap(
+                captureWidth,
+                captureHeight,
+                Bitmap.Config.ARGB_8888
+            )
             val canvas = Canvas(bitmap)
             canvas.drawColor(Color.WHITE)
             tab.webView.draw(canvas)
@@ -1304,8 +1312,8 @@ class BrowserUseEngine(
                 extra = mapOf(
                     "artifactUri" to artifact.uri,
                     "pageTitle" to tab.title,
-                    "imageWidth" to vpWidth,
-                    "imageHeight" to vpHeight
+                    "imageWidth" to captureWidth,
+                    "imageHeight" to captureHeight
                 )
             ),
             artifacts = listOf(artifact),
@@ -2298,16 +2306,27 @@ class BrowserUseEngine(
         webView: WebView,
         targetWidth: Int = viewportWidth,
         targetHeight: Int = viewportHeight
-    ) {
+    ): Pair<Int, Int> {
         val parent = webView.parent as? View
-        val measuredWidth = listOf(webView.width, parent?.width ?: 0, targetWidth)
+        val measuredWidth = listOf(
+            webView.width,
+            webView.measuredWidth,
+            parent?.width ?: 0,
+            targetWidth
+        )
             .firstOrNull { it > 0 } ?: targetWidth
-        val measuredHeight = listOf(webView.height, parent?.height ?: 0, targetHeight)
+        val measuredHeight = listOf(
+            webView.height,
+            webView.measuredHeight,
+            parent?.height ?: 0,
+            targetHeight
+        )
             .firstOrNull { it > 0 } ?: targetHeight
         val widthSpec = View.MeasureSpec.makeMeasureSpec(measuredWidth, View.MeasureSpec.EXACTLY)
         val heightSpec = View.MeasureSpec.makeMeasureSpec(measuredHeight, View.MeasureSpec.EXACTLY)
         webView.measure(widthSpec, heightSpec)
         webView.layout(0, 0, measuredWidth, measuredHeight)
+        return measuredWidth to measuredHeight
     }
 
     private fun decodeJavascriptString(raw: String?): String {
