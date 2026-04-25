@@ -62,6 +62,7 @@ dependencies {
     kapt(libs.androidx.room.compiler)
 
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.shizuku.api)
     // ML Kit for OCR
     implementation(libs.text.recognition.chinese)
 

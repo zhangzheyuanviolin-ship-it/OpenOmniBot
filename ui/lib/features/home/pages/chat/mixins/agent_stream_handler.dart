@@ -31,9 +31,15 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
   static const Map<String, String> _executionPermissionNameToId =
       <String, String>{
         '无障碍权限': kAccessibilityPermissionId,
+        'Accessibility': kAccessibilityPermissionId,
         '悬浮窗权限': kOverlayPermissionId,
+        'Overlay': kOverlayPermissionId,
         '应用列表读取权限': kInstalledAppsPermissionId,
+        'Installed Apps Access': kInstalledAppsPermissionId,
+        'Shizuku 权限': kShizukuPermissionId,
+        'Shizuku Permission': kShizukuPermissionId,
         '公共文件访问': kPublicStoragePermissionId,
+        'Public Storage Access': kPublicStoragePermissionId,
       };
 
   String? _lastAgentTaskId;

@@ -3,6 +3,9 @@ package cn.com.omnimind.bot.agent
 import android.content.Context
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.i18n.LocalizedText
+import cn.com.omnimind.baselib.shizuku.PrivilegedActionPolicy
+import cn.com.omnimind.baselib.shizuku.ShizukuBackend
+import cn.com.omnimind.baselib.shizuku.ShizukuCapabilityManager
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.RemoteMcpDiscoveredServer
 import cn.com.omnimind.bot.mcp.RemoteMcpToolDescriptor
@@ -37,8 +40,27 @@ class AgentToolRegistry(
 
     init {
         val locale = AppLocaleManager.resolvePromptLocale(context)
+        val shizukuStatus = ShizukuCapabilityManager.get(context).getStatus()
         val runtimeDefinitions = mutableListOf<JsonObject>()
         runtimeDefinitions.addAll(AgentToolDefinitions.staticTools(locale))
+        if (shizukuStatus.isGranted()) {
+            val privilegedVisibleActions = shizukuStatus.availableActions.ifEmpty {
+                PrivilegedActionPolicy.visibleAgentActions(
+                    if (shizukuStatus.backend == ShizukuBackend.ROOT) {
+                        ShizukuBackend.ROOT
+                    } else {
+                        ShizukuBackend.ADB
+                    }
+                )
+            }
+            runtimeDefinitions.add(
+                AgentToolDefinitions.androidPrivilegedActionTool(
+                    visibleActions = privilegedVisibleActions,
+                    backend = shizukuStatus.backend,
+                    locale = locale
+                )
+            )
+        }
         runtimeDefinitions.addAll(AgentToolDefinitions.memoryTools(locale))
         runtimeDefinitions.addAll(AgentToolDefinitions.subagentTools(locale))
         discoveredServers.flatMap { it.tools }.forEach { tool ->

@@ -58,6 +58,7 @@ class LegacyTextLocalizer {
     '无障碍权限': 'Accessibility',
     '悬浮窗权限': 'Overlay',
     '应用列表读取权限': 'Installed Apps Access',
+    'Shizuku 权限': 'Shizuku Permission',
     '公共文件访问': 'Public Storage Access',
     '正在调用工具': 'Calling tool',
     '暂时无法生成回复，请重试。': "I can't generate a reply right now. Please try again.",
@@ -227,6 +228,8 @@ class LegacyTextLocalizer {
     '清除缓存': 'Clear cache',
     '设置权限': 'Set up permissions',
     '请放心，这些权限你随时可以收回': 'You can revoke these permissions anytime',
+    '查看并配置无障碍、悬浮窗、Shizuku 等权限':
+        'Review and configure Accessibility, Overlay, Shizuku, and related permissions',
     '权限检查中...': 'Checking permissions...',
     '继续任务': 'Continue task',
     '继续任务仅要求': 'Continue requires only',

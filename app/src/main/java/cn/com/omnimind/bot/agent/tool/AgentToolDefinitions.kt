@@ -1,5 +1,6 @@
 package cn.com.omnimind.bot.agent
 
+import cn.com.omnimind.baselib.shizuku.ShizukuBackend
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.i18n.PromptLocale
 import kotlinx.serialization.json.JsonElement
@@ -647,6 +648,77 @@ object AgentToolDefinitions {
                 }
             }
         }
+    }
+
+    fun androidPrivilegedActionTool(
+        visibleActions: List<String>,
+        backend: ShizukuBackend,
+        locale: PromptLocale = currentLocale()
+    ): JsonObject {
+        val text: (String, String) -> String = { zh, en ->
+            if (locale == PromptLocale.ZH_CN) zh else en
+        }
+        val backendLabel = when (backend) {
+            ShizukuBackend.ROOT -> text("root/Sui", "root/Sui")
+            ShizukuBackend.ADB -> text("adb shell", "adb shell")
+            ShizukuBackend.NONE -> text("未授权", "not granted")
+        }
+        val actionList = visibleActions.joinToString(", ")
+
+        return decorateToolDefinition(buildJsonObject {
+            put("type", "function")
+            putJsonObject("function") {
+                put("name", "android_privileged_action")
+                put("displayName", text("安卓高级动作", "Android Privileged Action"))
+                put("toolType", "privileged")
+                put(
+                    "description",
+                    text(
+                        "通过 Shizuku 执行受控的系统级安卓动作。这条能力链路独立于 terminal_execute；仅用于 package_control、settings_control、device_control、diagnostics 这四类 allowlist 高级动作，不允许任意 shell。当前后端：$backendLabel。当前可见 action：$actionList。高风险动作需要在 arguments.confirmed 中显式确认。",
+                        "Run controlled Android system actions through Shizuku. This path is separate from `terminal_execute` and only supports allowlisted `package_control`, `settings_control`, `device_control`, and `diagnostics` actions, not arbitrary shell commands. Current backend: $backendLabel. Currently visible actions: $actionList. High-risk actions require explicit confirmation in `arguments.confirmed`."
+                    )
+                )
+                put(
+                    "postToolRule",
+                    text(
+                        "调用后先等待工具结果；如果返回需要确认，不要自行假设用户同意。",
+                        "Wait for the tool result before deciding the next step. If it asks for confirmation, do not assume user consent."
+                    )
+                )
+                putJsonObject("parameters") {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("action") {
+                            put("type", "string")
+                            put(
+                                "description",
+                                text(
+                                    "要执行的受控高级动作标识。",
+                                    "The controlled privileged action to run."
+                                )
+                            )
+                            putJsonArray("enum") {
+                                visibleActions.forEach { add(it) }
+                            }
+                        }
+                        putJsonObject("arguments") {
+                            put("type", "object")
+                            put(
+                                "description",
+                                text(
+                                    "动作参数对象。只传该 action 需要的字段；高风险动作若已获得用户明确同意，请传 confirmed=true。",
+                                    "Arguments object for the selected action. Only include fields needed by that action. For high-risk actions, pass confirmed=true only after explicit user consent."
+                                )
+                            )
+                        }
+                    }
+                    putJsonArray("required") {
+                        add("action")
+                        add("arguments")
+                    }
+                }
+            }
+        }, locale)
     }
 
     val terminalSessionStartTool: JsonObject = buildJsonObject {

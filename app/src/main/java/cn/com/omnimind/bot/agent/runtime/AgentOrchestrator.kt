@@ -285,7 +285,10 @@ class AgentOrchestrator(
                         terminated = true
                         break@roundLoop
                     }
-                    if (toolCall.function.name == "terminal_execute") {
+                    if (
+                        toolCall.function.name == "terminal_execute" ||
+                        toolCall.function.name == "android_privileged_action"
+                    ) {
                         break
                     }
                 }

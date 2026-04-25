@@ -14,15 +14,17 @@ class AuthorizeSettingPage extends StatefulWidget {
   State<AuthorizeSettingPage> createState() => _AuthorizeSettingPageState();
 }
 
-class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with WidgetsBindingObserver {
+class _AuthorizeSettingPageState extends State<AuthorizeSettingPage>
+    with WidgetsBindingObserver {
   bool notificationEnabled = true; // 接收消息通知
   bool personalizedEnabled = true; // 个性化推荐
-  
+
   // 权限状态
   bool _backgroundRunning = false;
   bool _overlayPermission = false;
   bool _installedAppsPermission = false;
   bool _accessibilityPermission = false;
+  ShizukuStatusSnapshot _shizukuStatus = ShizukuStatusSnapshot.fallback();
 
   @override
   void initState() {
@@ -55,27 +57,38 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
         personalizedEnabled = personalized;
       });
     } catch (e) {
-      print('Error loading settings: $e');
+      debugPrint('Error loading settings: $e');
     }
   }
 
   Future<void> _checkPermissions() async {
     try {
-      final backgroundRunning = await spePermission.invokeMethod('isIgnoringBatteryOptimizations') ?? false;
-      final overlayPermission = await spePermission.invokeMethod('isOverlayPermission') ?? false;
-      final installedAppsPermission = await spePermission.invokeMethod('isInstalledAppsPermissionGranted') ?? false;
-      final accessibilityPermission = await spePermission.invokeMethod('isAccessibilityServiceEnabled') ?? false;
-      
+      final backgroundRunning =
+          await spePermission.invokeMethod('isIgnoringBatteryOptimizations') ??
+          false;
+      final overlayPermission =
+          await spePermission.invokeMethod('isOverlayPermission') ?? false;
+      final installedAppsPermission =
+          await spePermission.invokeMethod(
+            'isInstalledAppsPermissionGranted',
+          ) ??
+          false;
+      final accessibilityPermission =
+          await spePermission.invokeMethod('isAccessibilityServiceEnabled') ??
+          false;
+      final shizukuStatus = await getShizukuStatus();
+
       if (mounted) {
         setState(() {
           _backgroundRunning = backgroundRunning;
           _overlayPermission = overlayPermission;
           _installedAppsPermission = installedAppsPermission;
           _accessibilityPermission = accessibilityPermission;
+          _shizukuStatus = shizukuStatus;
         });
       }
     } catch (e) {
-      print('Error checking permissions: $e');
+      debugPrint('Error checking permissions: $e');
     }
   }
 
@@ -106,11 +119,11 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
                       notificationEnabled = val;
                     });
                   },
-                )
+                ),
               ]),
-              
+
               const SizedBox(height: 10),
-              
+
               // 权限设置组
               _buildSettingsCard([
                 _buildPermissionItem(
@@ -119,7 +132,9 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
                   isEnabled: _backgroundRunning,
                   isTop: true,
                   onTap: () {
-                    spePermission.invokeMethod('openBatteryOptimizationSettings');
+                    spePermission.invokeMethod(
+                      'openBatteryOptimizationSettings',
+                    );
                   },
                 ),
                 _buildPermissionItem(
@@ -142,15 +157,40 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
                   title: context.trLegacy('无障碍辅助权限'),
                   subtitle: context.trLegacy('小万执行任务时，需要给予我操作的权限'),
                   isEnabled: _accessibilityPermission,
+                  trailingLabel: _accessibilityPermission
+                      ? context.trLegacy('已开启')
+                      : context.trLegacy('去开启'),
                   isBottom: true,
                   onTap: () {
                     spePermission.invokeMethod('openAccessibilitySettings');
                   },
                 ),
               ]),
-              
+
               const SizedBox(height: 10),
-              
+
+              _buildSettingsCard([
+                _buildPermissionItem(
+                  title: context.trLegacy('Shizuku 权限'),
+                  subtitle: _shizukuStatus.localizedGuide,
+                  isEnabled: _shizukuStatus.isGranted,
+                  isTop: true,
+                  isBottom: true,
+                  trailingLabel: _shizukuStatus.localizedStatusLabel,
+                  trailingLabelColor: _shizukuStatus.isGranted
+                      ? const Color(0xFF999999)
+                      : const Color(0xFF3B74FF),
+                  onTap: () async {
+                    await ensureShizukuPermission(context);
+                    if (mounted) {
+                      await _checkPermissions();
+                    }
+                  },
+                ),
+              ]),
+
+              const SizedBox(height: 10),
+
               // 清除缓存
               _buildSettingsCard([
                 _buildSimpleItem(
@@ -177,15 +217,13 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
         borderRadius: BorderRadius.circular(4),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 4,
             spreadRadius: 2,
           ),
         ],
       ),
-      child: Column(
-        children: children,
-      ),
+      child: Column(children: children),
     );
   }
 
@@ -248,6 +286,8 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
     required String title,
     required String subtitle,
     required bool isEnabled,
+    String? trailingLabel,
+    Color? trailingLabelColor,
     bool? isTop,
     bool? isBottom,
     required VoidCallback onTap,
@@ -293,12 +333,17 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage> with Widget
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    isEnabled
-                        ? context.trLegacy('已开启')
-                        : context.trLegacy('去开启'),
+                    trailingLabel ??
+                        (isEnabled
+                            ? context.trLegacy('已开启')
+                            : context.trLegacy('去开启')),
                     style: TextStyle(
                       fontSize: 12,
-                      color: isEnabled ? const Color(0xFF999999) : const Color(0xFF3B74FF),
+                      color:
+                          trailingLabelColor ??
+                          (isEnabled
+                              ? const Color(0xFF999999)
+                              : const Color(0xFF3B74FF)),
                       fontFamily: 'PingFang SC',
                     ),
                   ),

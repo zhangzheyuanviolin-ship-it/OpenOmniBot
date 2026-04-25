@@ -15,7 +15,6 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/link_preview_service.dart';
-import 'package:ui/services/storage_service.dart';
 import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/utils/data_parser.dart';
 
@@ -163,6 +162,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         'Overlay': kOverlayPermissionId,
         '应用列表读取权限': kInstalledAppsPermissionId,
         'Installed Apps Access': kInstalledAppsPermissionId,
+        'Shizuku 权限': kShizukuPermissionId,
+        'Shizuku Permission': kShizukuPermissionId,
         '公共文件访问': kPublicStoragePermissionId,
         'Public Storage Access': kPublicStoragePermissionId,
       };
@@ -185,6 +186,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       '悬浮窗权限' || 'Overlay' => _isEnglish ? 'Overlay' : '悬浮窗权限',
       '应用列表读取权限' || 'Installed Apps Access' =>
         _isEnglish ? 'Installed Apps Access' : '应用列表读取权限',
+      'Shizuku 权限' ||
+      'Shizuku Permission' => _isEnglish ? 'Shizuku Permission' : 'Shizuku 权限',
       '公共文件访问' || 'Public Storage Access' =>
         _isEnglish ? 'Public Storage Access' : '公共文件访问',
       _ => raw.trim(),
@@ -1034,12 +1037,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       }
       runtime.messages.insert(
         0,
-        ChatMessageModel(
-          id: messageId,
-          type: 1,
-          user: 2,
-          content: content,
-        ),
+        ChatMessageModel(id: messageId, type: 1, user: 2, content: content),
       );
       return;
     }
